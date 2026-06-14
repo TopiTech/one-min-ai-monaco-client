@@ -18,6 +18,7 @@ export const serverConfig = {
 
     // Default models
     defaultChatModel: process.env.DEFAULT_CHAT_MODEL || 'gpt-4o-mini',
+    defaultCodeModel: process.env.DEFAULT_CODE_MODEL || 'qwen3-coder-plus',
     defaultImageModel: process.env.DEFAULT_IMAGE_MODEL || 'gpt-image-2',
     defaultImageEditorModel: process.env.DEFAULT_IMAGE_EDITOR_MODEL || 'gpt-image-2',
 

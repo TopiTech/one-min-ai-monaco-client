@@ -95,10 +95,19 @@ router.post("/chat/stream", async (req, res, next) => {
       ...(brandVoiceId ? { brandVoiceId } : {}),
     };
 
+    const controller = new AbortController();
+    req.on("close", () => {
+      if (!res.writableEnded) {
+        logger.info("Client closed the connection. Aborting stream request.");
+        controller.abort();
+      }
+    });
+
     const response = await callOneMin("/api/chat-with-ai?isStreaming=true", {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
       raw: true,
+      signal: controller.signal,
     });
 
     res.setHeader("Content-Type", "text/event-stream");
@@ -117,11 +126,24 @@ router.post("/chat/stream", async (req, res, next) => {
         res.write(chunk);
       }
     } catch (streamErr) {
-      logger.warn("Stream interrupted", { error: streamErr.message });
+      if (controller.signal.aborted || streamErr.name === 'AbortError') {
+        logger.info("Stream reading aborted due to client disconnection.");
+      } else {
+        logger.warn("Stream interrupted", { error: streamErr.message });
+      }
     } finally {
       res.end();
     }
   } catch (err) {
+    if (err.name === 'AbortError' || err.status === 499) {
+      logger.info("Stream request aborted as client disconnected.");
+      if (!res.headersSent) {
+        res.status(499).json({ error: "Client Closed Request" });
+      } else {
+        res.end();
+      }
+      return;
+    }
     if (!res.headersSent) {
       next(err);
     } else {
@@ -132,11 +154,11 @@ router.post("/chat/stream", async (req, res, next) => {
 
 router.post("/conversations", async (req, res, next) => {
   try {
-    const { title = "New AI Conversation", model } = req.body;
+    const { title = "New AI Conversation", model, type = "UNIFY_CHAT_WITH_AI" } = req.body;
     const payload = {
-      type: "UNIFY_CHAT_WITH_AI",
+      type,
       title,
-      model: model || process.env.DEFAULT_CHAT_MODEL || "gpt-4o-mini",
+      model: model || (type === "CODE_GENERATOR" ? process.env.DEFAULT_CODE_MODEL : process.env.DEFAULT_CHAT_MODEL) || "gpt-4o-mini",
     };
     const data = await callOneMin("/api/conversations", {
       headers: { "Content-Type": "application/json" },
@@ -301,6 +323,9 @@ router.post("/code/generate", async (req, res, next) => {
       language = "plaintext",
       code = "",
       model,
+      webSearch = false,
+      numOfSite,
+      maxWord,
     } = req.body;
     if (!instruction || !String(instruction).trim())
       return res.status(400).json({ error: "instruction is required" });
@@ -309,13 +334,34 @@ router.post("/code/generate", async (req, res, next) => {
     if (String(code).length > MAX_CODE_LENGTH)
       return res.status(400).json({ error: `code exceeds ${MAX_CODE_LENGTH} characters` });
 
+    const parsedWebSearch = Boolean(webSearch);
+    let parsedNumOfSite;
+    if (numOfSite !== undefined && numOfSite !== "") {
+      parsedNumOfSite = Number(numOfSite);
+      if (isNaN(parsedNumOfSite) || parsedNumOfSite < 1 || parsedNumOfSite > 10) {
+        return res.status(400).json({ error: "numOfSite must be a number between 1 and 10" });
+      }
+    }
+    let parsedMaxWord;
+    if (maxWord !== undefined && maxWord !== "") {
+      parsedMaxWord = Number(maxWord);
+      if (isNaN(parsedMaxWord) || parsedMaxWord < 100 || parsedMaxWord > 10000) {
+        return res.status(400).json({ error: "maxWord must be a number between 100 and 10000" });
+      }
+    }
+
     const prompt = `あなたは熟練のソフトウェアエンジニアです。以下のコードに対してユーザー指示を実行してください。\n\n出力ルール:\n- 変更コードが必要な場合は完全なコードブロックで返す\n- 変更理由を短く説明する\n- 可能なら注意点も述べる\n\nファイル名: ${fileName}\n言語: ${language}\n\nユーザー指示:\n${instruction}\n\n現在のコード:\n\`\`\`${language}\n${code}\n\`\`\``;
 
     const payload = {
       type: "CODE_GENERATOR",
-      model: model || process.env.DEFAULT_CHAT_MODEL || "gpt-4o-mini",
+      model: model || process.env.DEFAULT_CODE_MODEL || "qwen3-coder-plus",
       conversationId: "CODE_GENERATOR",
-      promptObject: { prompt, webSearch: false },
+      promptObject: {
+        prompt,
+        webSearch: parsedWebSearch,
+        ...(parsedNumOfSite !== undefined ? { numOfSite: parsedNumOfSite } : {}),
+        ...(parsedMaxWord !== undefined ? { maxWord: parsedMaxWord } : {}),
+      },
     };
     const data = await callOneMin("/api/features", {
       headers: { "Content-Type": "application/json" },
@@ -329,12 +375,28 @@ router.post("/code/generate", async (req, res, next) => {
 
 router.post("/code/autocomplete", async (req, res, next) => {
   try {
-    const { code, line, column, fileName, language, model } = req.body;
+    const { code, line, column, fileName, language, model, webSearch = false, numOfSite, maxWord } = req.body;
     if (code === undefined || !line || !column) {
       return res.status(400).json({ error: "code, line, and column are required" });
     }
     if (String(code).length > MAX_CODE_LENGTH)
       return res.status(400).json({ error: `code exceeds ${MAX_CODE_LENGTH} characters` });
+
+    const parsedWebSearch = Boolean(webSearch);
+    let parsedNumOfSite;
+    if (numOfSite !== undefined && numOfSite !== "") {
+      parsedNumOfSite = Number(numOfSite);
+      if (isNaN(parsedNumOfSite) || parsedNumOfSite < 1 || parsedNumOfSite > 10) {
+        return res.status(400).json({ error: "numOfSite must be a number between 1 and 10" });
+      }
+    }
+    let parsedMaxWord;
+    if (maxWord !== undefined && maxWord !== "") {
+      parsedMaxWord = Number(maxWord);
+      if (isNaN(parsedMaxWord) || parsedMaxWord < 100 || parsedMaxWord > 10000) {
+        return res.status(400).json({ error: "maxWord must be a number between 100 and 10000" });
+      }
+    }
 
     const lines = code.split(/\r?\n/);
     const lineIndex = line - 1;
@@ -367,9 +429,14 @@ ${afterCode}
 
     const payload = {
       type: "CODE_GENERATOR",
-      model: model || process.env.DEFAULT_CHAT_MODEL || "gpt-4o-mini",
+      model: model || process.env.DEFAULT_CODE_MODEL || "qwen3-coder-plus",
       conversationId: "CODE_GENERATOR",
-      promptObject: { prompt, webSearch: false },
+      promptObject: {
+        prompt,
+        webSearch: parsedWebSearch,
+        ...(parsedNumOfSite !== undefined ? { numOfSite: parsedNumOfSite } : {}),
+        ...(parsedMaxWord !== undefined ? { maxWord: parsedMaxWord } : {}),
+      },
     };
 
     const data = await callOneMin("/api/features", {
@@ -388,7 +455,7 @@ ${afterCode}
 
 router.post("/code/inline-chat", async (req, res, next) => {
   try {
-    const { prompt: userPrompt, code, line, column, fileName, language, model } = req.body;
+    const { prompt: userPrompt, code, line, column, fileName, language, model, webSearch = false, numOfSite, maxWord } = req.body;
     if (!userPrompt || code === undefined || !line || !column) {
       return res.status(400).json({ error: "prompt, code, line, and column are required" });
     }
@@ -396,6 +463,22 @@ router.post("/code/inline-chat", async (req, res, next) => {
       return res.status(400).json({ error: `prompt exceeds ${MAX_PROMPT_LENGTH} characters` });
     if (String(code).length > MAX_CODE_LENGTH)
       return res.status(400).json({ error: `code exceeds ${MAX_CODE_LENGTH} characters` });
+
+    const parsedWebSearch = Boolean(webSearch);
+    let parsedNumOfSite;
+    if (numOfSite !== undefined && numOfSite !== "") {
+      parsedNumOfSite = Number(numOfSite);
+      if (isNaN(parsedNumOfSite) || parsedNumOfSite < 1 || parsedNumOfSite > 10) {
+        return res.status(400).json({ error: "numOfSite must be a number between 1 and 10" });
+      }
+    }
+    let parsedMaxWord;
+    if (maxWord !== undefined && maxWord !== "") {
+      parsedMaxWord = Number(maxWord);
+      if (isNaN(parsedMaxWord) || parsedMaxWord < 100 || parsedMaxWord > 10000) {
+        return res.status(400).json({ error: "maxWord must be a number between 100 and 10000" });
+      }
+    }
 
     const lines = code.split(/\r?\n/);
     const lineIndex = line - 1;
@@ -428,9 +511,14 @@ ${afterCode}
 
     const payload = {
       type: "CODE_GENERATOR",
-      model: model || process.env.DEFAULT_CHAT_MODEL || "gpt-4o-mini",
+      model: model || process.env.DEFAULT_CODE_MODEL || "qwen3-coder-plus",
       conversationId: "CODE_GENERATOR",
-      promptObject: { prompt, webSearch: false },
+      promptObject: {
+        prompt,
+        webSearch: parsedWebSearch,
+        ...(parsedNumOfSite !== undefined ? { numOfSite: parsedNumOfSite } : {}),
+        ...(parsedMaxWord !== undefined ? { maxWord: parsedMaxWord } : {}),
+      },
     };
 
     const data = await callOneMin("/api/features", {
@@ -442,6 +530,32 @@ ${afterCode}
     codeResult = stripCodeFences(codeResult);
 
     res.json({ code: codeResult });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/agent/chat", async (req, res, next) => {
+  try {
+    const { prompt, model, conversationId, webSearch = false, history = true } = req.body;
+    if (!prompt || !String(prompt).trim())
+      return res.status(400).json({ error: "prompt is required" });
+
+    const payload = {
+      type: "CODE_GENERATOR",
+      model: model || process.env.DEFAULT_CODE_MODEL || "qwen3-coder-plus",
+      ...(conversationId ? { conversationId } : {}),
+      promptObject: {
+        prompt: String(prompt),
+        webSearch: Boolean(webSearch),
+      },
+    };
+
+    const data = await callOneMin("/api/features", {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    res.json(data);
   } catch (err) {
     next(err);
   }

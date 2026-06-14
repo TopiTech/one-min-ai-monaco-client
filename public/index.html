@@ -666,49 +666,6 @@
                 ></textarea>
 
                 <div class="row agent-setup-controls" style="margin-top: 10px; gap: 8px">
-                  <!-- Model Picker for Agent -->
-                  <button
-                    id="codeModelBtn"
-                    class="model-picker-btn"
-                    data-model-type="code"
-                    data-target-input="codeModel"
-                    style="
-                      flex: 1;
-                      max-width: 140px;
-                      min-width: 120px;
-                      font-size: 0.8rem;
-                      height: 36px;
-                      padding: 0 8px;
-                    "
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <polyline points="16 18 22 12 16 6"></polyline>
-                      <polyline points="8 6 2 12 8 18"></polyline>
-                    </svg>
-                    <span id="codeModelLabel" style="font-size: 0.75rem">GPT-4o mini</span>
-                    <svg
-                      class="chevron"
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="10"
-                      height="10"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <polyline points="6 9 12 15 18 9"></polyline>
-                    </svg>
-                  </button>
-                  <input id="codeModel" value="gpt-4o-mini" type="hidden" />
-
                   <button
                     type="button"
                     id="startAgentBtn"
@@ -743,6 +700,87 @@
                     </svg>
                     エージェント実行
                   </button>
+                </div>
+
+                <!-- Code Generator Web Search Settings -->
+                <div class="code-gen-settings-box" style="margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.05);">
+                  <h4 style="font-size: 0.8rem; font-weight: 600; margin-bottom: 10px; color: var(--text-muted);">
+                    AIコーディングモデルと検索設定
+                  </h4>
+                  <div class="row" style="margin-bottom: 12px;">
+                    <div style="flex: 1;">
+                      <label style="display: block; font-size: 0.75rem; margin-bottom: 4px; color: var(--text-muted);">
+                        コーディングモデル (補完・インラインチャット用)
+                      </label>
+                      <button
+                        id="codeModelBtn"
+                        class="model-picker-btn"
+                        data-model-type="code"
+                        data-target-input="codeModel"
+                        style="width: 100%; font-size: 0.8rem; height: 36px; padding: 0 8px;"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                        >
+                          <polyline points="16 18 22 12 16 6"></polyline>
+                          <polyline points="8 6 2 12 8 18"></polyline>
+                        </svg>
+                        <span id="codeModelLabel" style="font-size: 0.75rem">Qwen3 Coder Plus</span>
+                        <svg
+                          class="chevron"
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="10"
+                          height="10"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                        >
+                          <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                      </button>
+                      <input id="codeModel" value="qwen3-coder-plus" type="hidden" />
+                    </div>
+                  </div>
+                  <label class="check" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 8px;">
+                    <input type="checkbox" id="codeWebSearch" />
+                    <span>Web Search を有効化 (補完・インラインチャット用)</span>
+                  </label>
+                  <div class="row" style="display: flex; gap: 12px; margin-top: 10px;">
+                    <div style="flex: 1;">
+                      <label for="codeNumOfSite" style="display: block; font-size: 0.75rem; margin-bottom: 4px; color: var(--text-muted);">
+                        検索サイト数 (1-10)
+                      </label>
+                      <input
+                        id="codeNumOfSite"
+                        type="number"
+                        min="1"
+                        max="10"
+                        value="3"
+                        style="width: 100%; padding: 8px; font-size: 0.8rem; border-radius: 10px;"
+                      />
+                    </div>
+                    <div style="flex: 1;">
+                      <label for="codeMaxWord" style="display: block; font-size: 0.75rem; margin-bottom: 4px; color: var(--text-muted);">
+                        最大単語数/サイト
+                      </label>
+                      <input
+                        id="codeMaxWord"
+                        type="number"
+                        min="100"
+                        max="10000"
+                        step="100"
+                        value="1000"
+                        style="width: 100%; padding: 8px; font-size: 0.8rem; border-radius: 10px;"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 

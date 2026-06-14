@@ -6,6 +6,29 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 
+const PROTECTED_PATH_PREFIXES = [
+  ".env",
+  ".env.",
+  ".git",
+  ".git/",
+  ".venv",
+  ".venv/",
+  "node_modules",
+  "node_modules/",
+  "package.json",
+  "package-lock.json",
+  "server.js",
+  "utils/",
+  "routes/",
+  "config/",
+  "public/",
+  "tests/",
+  "docs/",
+  "README.md",
+  ".gitignore",
+  ".env.example",
+];
+
 function uniquePaths(paths) {
   return [...new Set(paths.map((p) => path.resolve(p)).filter(Boolean))];
 }
@@ -47,7 +70,12 @@ export function validatePath(targetPath) {
     throw new Error("Path is required");
   }
 
-  const resolvedPath = path.resolve(targetPath);
+  // Resolve relative paths against PROJECT_ROOT (not process.cwd())
+  // This ensures consistent behavior regardless of where the server is started from
+  const isAbsolute = path.isAbsolute(targetPath);
+  const resolvedPath = isAbsolute
+    ? path.resolve(targetPath)
+    : path.resolve(PROJECT_ROOT, targetPath);
   const allowedRoots = getAllowedRoots();
 
   // Resolve symlinks for both target and allowed roots to prevent traversal
@@ -94,6 +122,61 @@ export function validatePath(targetPath) {
   }
 
   return realPath;
+}
+
+function normalizePathForMatching(targetPath) {
+  return targetPath.replace(/\\/g, "/").toLowerCase();
+}
+
+/**
+ * Checks whether a validated path is protected from destructive filesystem operations.
+ * @param {string} resolvedPath The resolved absolute path to check.
+ * @returns {boolean} True if the path is protected.
+ */
+export function isProtectedPath(resolvedPath) {
+  const allowedRoots = getAllowedRoots();
+
+  return allowedRoots.some((root) => {
+    let realRoot;
+    try {
+      realRoot = fs.realpathSync(root);
+    } catch {
+      realRoot = root;
+    }
+
+    const isSubPath = resolvedPath === realRoot || resolvedPath.startsWith(realRoot + path.sep);
+    if (!isSubPath) {
+      return false;
+    }
+
+    const relativePath = path.relative(realRoot, resolvedPath);
+    if (!relativePath) {
+      return false;
+    }
+
+    const normalizedRelativePath = normalizePathForMatching(relativePath);
+    return PROTECTED_PATH_PREFIXES.some((prefix) => {
+      const normalizedPrefix = normalizePathForMatching(prefix).replace(/\/$/, "");
+      return (
+        normalizedRelativePath === normalizedPrefix ||
+        normalizedRelativePath.startsWith(`${normalizedPrefix}/`)
+      );
+    });
+  });
+}
+
+/**
+ * Ensures a validated path is not protected from destructive filesystem operations.
+ * @param {string} resolvedPath The resolved absolute path to check.
+ * @throws {Error} If the path is protected.
+ */
+export function assertNotProtectedPath(resolvedPath) {
+  if (isProtectedPath(resolvedPath)) {
+    const relativePath = path.relative(PROJECT_ROOT, resolvedPath).replace(/\\/g, "/");
+    const err = new Error(`Access denied: Path is protected: ${relativePath}`);
+    err.status = 403;
+    throw err;
+  }
 }
 
 /**

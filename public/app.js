@@ -9,6 +9,60 @@ loadModels().then(() => initModelPickers());
 // ============================================================
 const $ = (id) => document.getElementById(id);
 
+// LocalStorage keys
+const STORAGE_KEY_WEB_SEARCH = "monaco_client_code_web_search";
+const STORAGE_KEY_NUM_OF_SITE = "monaco_client_code_num_of_site";
+const STORAGE_KEY_MAX_WORD = "monaco_client_code_max_word";
+
+function initCodeGeneratorSettings() {
+  const wsInput = $("codeWebSearch");
+  const nosInput = $("codeNumOfSite");
+  const mwInput = $("codeMaxWord");
+
+  if (!wsInput || !nosInput || !mwInput) return;
+
+  // Restore
+  const savedWebSearch = localStorage.getItem(STORAGE_KEY_WEB_SEARCH);
+  if (savedWebSearch !== null) {
+    wsInput.checked = savedWebSearch === "true";
+  }
+  const savedNumOfSite = localStorage.getItem(STORAGE_KEY_NUM_OF_SITE);
+  if (savedNumOfSite !== null) {
+    nosInput.value = savedNumOfSite;
+  }
+  const savedMaxWord = localStorage.getItem(STORAGE_KEY_MAX_WORD);
+  if (savedMaxWord !== null) {
+    mwInput.value = savedMaxWord;
+  }
+
+  // Save on change
+  wsInput.addEventListener("change", () => {
+    localStorage.setItem(STORAGE_KEY_WEB_SEARCH, wsInput.checked);
+  });
+  nosInput.addEventListener("change", () => {
+    let val = parseInt(nosInput.value);
+    if (isNaN(val) || val < 1) val = 1;
+    if (val > 10) val = 10;
+    nosInput.value = val;
+    localStorage.setItem(STORAGE_KEY_NUM_OF_SITE, val);
+  });
+  mwInput.addEventListener("change", () => {
+    let val = parseInt(mwInput.value);
+    if (isNaN(val) || val < 100) val = 100;
+    if (val > 10000) val = 10000;
+    mwInput.value = val;
+    localStorage.setItem(STORAGE_KEY_MAX_WORD, val);
+  });
+}
+
+// Call on startup
+document.addEventListener("DOMContentLoaded", () => {
+  initCodeGeneratorSettings();
+});
+if (document.readyState === "complete" || document.readyState === "interactive") {
+  initCodeGeneratorSettings();
+}
+
 // navigation
 for (const btn of document.querySelectorAll(".nav")) {
   btn.addEventListener("click", () => {
@@ -77,12 +131,10 @@ function addMsg(role, content, images = []) {
   }
 
   // Add text content
-  if (role === "ai" && window.marked) {
+  if (role === "ai") {
     const contentDiv = document.createElement("div");
     contentDiv.className = "msg-content";
-    // Parse markdown then sanitize
-    const rawHtml = marked.parse(content);
-    contentDiv.innerHTML = window.DOMPurify ? DOMPurify.sanitize(rawHtml) : rawHtml;
+    renderMarkdownSafely(contentDiv, content);
     div.appendChild(contentDiv);
   } else {
     const contentDiv = document.createElement("div");
@@ -103,34 +155,59 @@ function updateAttachmentPreview() {
 
   if (chatAttachments.length === 0) {
     attachmentsArea.style.display = "none";
-    container.innerHTML = "";
+    container.textContent = "";
     return;
   }
 
   attachmentsArea.style.display = "block";
-  container.innerHTML = "";
+  container.textContent = "";
 
   chatAttachments.forEach((att, index) => {
     const thumb = document.createElement("div");
     thumb.className = "attachment-thumb";
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "remove-attachment";
+    removeButton.dataset.index = index;
+    removeButton.textContent = "×";
+
     if (att.type === "image" && att.previewUrl) {
-      thumb.innerHTML = `
-        <img src="${att.previewUrl}" alt="preview" />
-        <button type="button" class="remove-attachment" data-index="${index}">×</button>
-        ${att.uploading ? '<div class="upload-spinner"></div>' : ""}
-      `;
+      const img = document.createElement("img");
+      img.src = att.previewUrl;
+      img.alt = "preview";
+      img.onerror = function () {
+        this.style.display = "none";
+      };
+      thumb.appendChild(img);
     } else {
       const ext = att.file.name.split(".").pop().toUpperCase();
-      thumb.innerHTML = `
-        <div class="attachment-file-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-          <span class="attachment-file-ext">${ext}</span>
-        </div>
-        <span class="attachment-file-name" title="${att.file.name}">${att.file.name.length > 20 ? att.file.name.slice(0, 17) + "..." : att.file.name}</span>
-        <button type="button" class="remove-attachment" data-index="${index}">×</button>
-        ${att.uploading ? '<div class="upload-spinner"></div>' : ""}
-      `;
+
+      const icon = document.createElement("div");
+      icon.className = "attachment-file-icon";
+      icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>';
+
+      const extSpan = document.createElement("span");
+      extSpan.className = "attachment-file-ext";
+      extSpan.textContent = ext;
+      icon.appendChild(extSpan);
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "attachment-file-name";
+      nameSpan.textContent = att.file.name.length > 20 ? att.file.name.slice(0, 17) + "..." : att.file.name;
+      nameSpan.title = att.file.name;
+
+      thumb.appendChild(icon);
+      thumb.appendChild(nameSpan);
     }
+
+    thumb.appendChild(removeButton);
+    if (att.uploading) {
+      const spinner = document.createElement("div");
+      spinner.className = "upload-spinner";
+      thumb.appendChild(spinner);
+    }
+
     container.appendChild(thumb);
   });
 
@@ -209,7 +286,7 @@ async function uploadAttachments() {
   for (let i = 0; i < results.length; i++) {
     if (results[i].status === "rejected") {
       pending[i].uploading = false;
-      toast.error(`アップロード失敗: ${results[i].reason.message}`);
+      toast.error(`アップロード失敗: ${results[i].reason?.message || "Unknown error"}`);
     }
   }
 
@@ -275,7 +352,13 @@ $("sendChat").onclick = async () => {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      if (response.status === 422) {
+        throw new Error("Invalid request format");
+      } else if (response.status >= 500) {
+        throw new Error("Server error");
+      } else {
+        throw new Error(`HTTP ${response.status}`);
+      }
     }
 
     const reader = response.body.getReader();
@@ -299,14 +382,7 @@ $("sendChat").onclick = async () => {
             const data = JSON.parse(dataStr);
             if (data.content) {
               fullText += data.content;
-              if (window.marked) {
-                const rawHtml = marked.parse(fullText);
-                aiContentDiv.innerHTML = window.DOMPurify
-                  ? DOMPurify.sanitize(rawHtml)
-                  : rawHtml;
-              } else {
-                aiContentDiv.textContent = fullText;
-              }
+              renderMarkdownSafely(aiContentDiv, fullText);
               $("chatLog").scrollTop = $("chatLog").scrollHeight;
             }
           } catch {
@@ -320,19 +396,13 @@ $("sendChat").onclick = async () => {
       fullText = "(応答が空でした)";
     }
 
-    if (window.marked) {
-      const rawHtml = marked.parse(fullText);
-      aiContentDiv.innerHTML = window.DOMPurify
-        ? DOMPurify.sanitize(rawHtml)
-        : rawHtml;
-    } else {
-      aiContentDiv.textContent = fullText;
-    }
+    renderMarkdownSafely(aiContentDiv, fullText);
 
     pruneChatLog();
   } catch (e) {
-    aiContentDiv.textContent = `Error: ${e.message}`;
-    toast.error(`Chat error: ${e.message}`);
+    const message = e?.message || "Unknown error";
+    aiContentDiv.textContent = `Error: ${message}`;
+    toast.error(`Chat error: ${message}`);
     setStatus("エラー", "error");
   } finally {
     sendBtn.disabled = false;
@@ -523,6 +593,14 @@ require(["vs/editor/editor.main"], function () {
     inlineSuggest: { enabled: true },
   });
 
+  const container = $("editor");
+  if (container) {
+    const observer = new ResizeObserver(() => {
+      if (window.editor) window.editor.layout();
+    });
+    observer.observe(container);
+  }
+
   window.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
     saveFile();
   });
@@ -562,6 +640,9 @@ require(["vs/editor/editor.main"], function () {
               fileName: activeFilePath ? activeFilePath.split(/[\\/]/).pop() : "untitled",
               language: model.getLanguageId(),
               model: $("codeModel").value,
+              webSearch: $("codeWebSearch")?.checked || false,
+              numOfSite: $("codeNumOfSite")?.value ? parseInt($("codeNumOfSite").value) : undefined,
+              maxWord: $("codeMaxWord")?.value ? parseInt($("codeMaxWord").value) : undefined,
             }),
           });
           if (!res.ok || token.isCancellationRequested) return;
@@ -580,7 +661,7 @@ require(["vs/editor/editor.main"], function () {
           console.error("Autocomplete error:", e);
         }
       },
-      freeInlineCompletions: function () {},
+      freeInlineCompletions: function () { },
     });
   }
 });
@@ -659,6 +740,9 @@ async function submitInlineChat() {
         fileName,
         language,
         model: $("codeModel").value,
+        webSearch: $("codeWebSearch")?.checked || false,
+        numOfSite: $("codeNumOfSite")?.value ? parseInt($("codeNumOfSite").value) : undefined,
+        maxWord: $("codeMaxWord")?.value ? parseInt($("codeMaxWord").value) : undefined,
       }),
     });
 
@@ -877,6 +961,7 @@ $("saveFileBtn").onclick = () => {
 let agentActive = false;
 let agentSessionId = null;
 let agentConversationHistory = [];
+let agentChatId = null;
 let currentAgentResolver = null;
 
 function setAgentStatus(statusText, statusClass) {
@@ -894,6 +979,21 @@ function escapeHtml(text) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function renderMarkdownSafely(element, markdown) {
+  if (!element) return;
+  if (typeof markdown !== "string") {
+    element.textContent = "";
+    return;
+  }
+
+  if (!window.marked || !window.DOMPurify) {
+    element.textContent = markdown;
+    return;
+  }
+
+  element.innerHTML = DOMPurify.sanitize(marked.parse(markdown));
 }
 
 function formatMarkdownLike(text) {
@@ -1055,7 +1155,7 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
 function parseXMLTags(text) {
   const thoughtMatch = text.match(/<thought>([\s\S]*?)<\/thought>/i);
   const finishMatch = text.match(/<finish>([\s\S]*?)<\/finish>/i);
-  const toolMatch = text.match(/<call_tool\s+name=["'](\w+)["']\s*>([\s\S]*?)<\/call_tool>/i);
+  const toolMatch = text.match(/<call_tool\s+name=["']?(\w+)["']?\s*>([\s\S]*?)<\/call_tool>/i);
 
   let toolCall = null;
   if (toolMatch) {
@@ -1063,10 +1163,29 @@ function parseXMLTags(text) {
     const innerContent = toolMatch[2];
     const params = {};
 
-    const paramRegex = /<parameter\s+name=["']([^"']+)["']\s*>([\s\S]*?)<\/parameter>/gi;
+    const paramRegex = /<parameter\s+name=["']?([^"\'\s>]+)["']?\s*>([\s\S]*?)<\/parameter>/gi;
     let match;
     while ((match = paramRegex.exec(innerContent)) !== null) {
-      params[match[1]] = match[2].trim();
+      let val = match[2];
+      let cleanedVal = val.trim();
+
+      // 1. Remove accidental Markdown code block wrapping (e.g. ```js ... ```)
+      if (cleanedVal.startsWith("```")) {
+        cleanedVal = cleanedVal.replace(/^```[a-zA-Z0-9+#-]*\s*\n?/, "");
+        cleanedVal = cleanedVal.replace(/\n?```$/, "");
+      }
+
+      // 2. Decode common XML entities if they were escaped (e.g. &lt;, &gt;)
+      if (cleanedVal.includes("&lt;") || cleanedVal.includes("&gt;") || cleanedVal.includes("&amp;")) {
+        cleanedVal = cleanedVal
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/&quot;/g, '"')
+          .replace(/&apos;/g, "'")
+          .replace(/&amp;/g, "&");
+      }
+
+      params[match[1]] = cleanedVal;
     }
     toolCall = { name: toolName, params };
   }
@@ -1121,33 +1240,40 @@ async function runAgentLoop(initialInstruction) {
   const workspaceRoot = $("explorerPath").value || "";
   setAgentStatus("初期化中...", "thinking");
 
-  let sessionData;
-  try {
-    sessionData = await api("/api/agent/sessions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        cwd: workspaceRoot,
-        task: initialInstruction,
-      }),
-    });
-  } catch (e) {
+  if (!agentSessionId) {
+    try {
+      const sessionData = await api("/api/agent/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cwd: workspaceRoot,
+          task: initialInstruction,
+        }),
+      });
+      agentSessionId = sessionData.session.id;
+      addAgentTimelineStep(
+        "thought",
+        "セッション開始",
+        `エージェントセッションが開始されました。\nワークスペース: ${workspaceRoot}`,
+      );
+    } catch (e) {
+      addAgentTimelineStep(
+        "error",
+        "セッション作成失敗",
+        `セッションの初期化に失敗しました: ${e.message}`,
+      );
+      setAgentStatus("エラー", "error");
+      return;
+    }
+  } else {
     addAgentTimelineStep(
-      "error",
-      "セッション作成失敗",
-      `セッションの初期化に失敗しました: ${e.message}`,
+      "thought",
+      "セッション再開",
+      `既存のセッションで追加指示を実行します。`,
     );
-    setAgentStatus("エラー", "error");
-    return;
   }
 
-  const sessionId = sessionData.session.id;
-  agentSessionId = sessionId;
-  addAgentTimelineStep(
-    "thought",
-    "セッション開始",
-    `エージェントセッションが開始されました。\nワークスペース: ${workspaceRoot}`,
-  );
+  const sessionId = agentSessionId;
 
   let workspaceFilesText = `ワークスペースパス: ${workspaceRoot}\n`;
   try {
@@ -1181,6 +1307,10 @@ async function runAgentLoop(initialInstruction) {
 2. write_file
    - パラメータ: { "path": "ファイルパス", "content": "完全なコード内容" }
    - 目的: ファイルを新規作成または上書きする。変更は最小限ではなく、ファイル全体の正解コードを送ること。
+   - **注意点**:
+     - \`content\` パラメータには、絶対にマークダウンのコードブロック（例: \`\`\`js ... \`\`\`）を含めず、**プログラムの生テキストのみ**を直接記述してください。
+     - HTML/XMLの実体参照エスケープ（\`&lt;\`や\`&gt;\`、\`&amp;\`など）は**一切行わず**、そのままの記号（\`<\`, \`>\`, \`&\`）で記述してください。
+     - コードの途中で省略（例: \`// ... 残りのコード ...\`）せず、完全な内容を出力してください。
    <call_tool name="write_file"><parameter name="path">utils/helper.js</parameter><parameter name="content">export const add = (a, b) => a + b;</parameter></call_tool>
 
 3. search_files
@@ -1199,37 +1329,45 @@ async function runAgentLoop(initialInstruction) {
 【重要な注意】
 - 出力は必ず <thought> と <call_tool> (または <finish>) のペアのみにしてください。
 - 余計な挨拶、マークダウンのコードブロック、解説文をタグの外側に含めないでください。
+- \`content\` パラメータの中身は生のソースコードそのものでなければなりません。
 - すでに存在するファイルを変更する場合、まず read_file で現在の内容を確認することが必須です。
 
 現在のワークスペース構造:
 ${workspaceFilesText}
 
-現在 Monaco エディタで開いているファイル:
+現在の Monaco エディタで開いているファイル:
 パス: ${activeFilePath || "なし"}
 `;
 
-  agentConversationHistory = [
-    { role: "user", content: `${sysPrompt}\n\n【指示】\n${initialInstruction}` },
-  ];
+  if (agentConversationHistory.length === 0) {
+    agentConversationHistory = [
+      { role: "user", content: `${sysPrompt}\n\n【指示】\n${initialInstruction}` },
+    ];
+  } else {
+    agentConversationHistory.push({ role: "user", content: `【ユーザーからの追加指示】\n${initialInstruction}` });
+    trimAgentHistory(agentConversationHistory);
+  }
 
-  let agentConversationId = null;
-  try {
-    const convData = await api("/api/conversations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: `Agent: ${initialInstruction.slice(0, 50)}`,
-        model: modelSelected,
-      }),
-    });
-    agentConversationId =
-      convData?.conversation?.uuid ||
-      convData?.uuid ||
-      convData?.aiRecord?.conversationId ||
-      convData?.conversationId ||
-      null;
-  } catch (e) {
-    addAgentTimelineStep("thought", "会話作成失敗", `会話履歴なしで続行します: ${e.message}`);
+  if (!agentChatId) {
+    try {
+      const convData = await api("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: `Agent: ${initialInstruction.slice(0, 50)}`,
+          model: modelSelected,
+          type: "CODE_GENERATOR"
+        }),
+      });
+      agentChatId =
+        convData?.conversation?.uuid ||
+        convData?.uuid ||
+        convData?.aiRecord?.conversationId ||
+        convData?.conversationId ||
+        null;
+    } catch (e) {
+      addAgentTimelineStep("thought", "会話作成失敗", `会話履歴なしで続行します: ${e.message}`);
+    }
   }
 
   let loopCount = 0;
@@ -1243,20 +1381,20 @@ ${workspaceFilesText}
 
     let chatRes;
     try {
-      chatRes = await api("/api/chat", {
+      chatRes = await api("/api/agent/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: lastMsg,
           model: modelSelected,
-          conversationId: agentConversationId,
+          conversationId: agentChatId,
           history: true,
           webSearch: false,
         }),
       });
 
-      if (!agentConversationId) {
-        agentConversationId =
+      if (!agentChatId) {
+        agentChatId =
           chatRes?.aiRecord?.conversationId ||
           chatRes?.conversationId ||
           null;
@@ -1522,6 +1660,7 @@ $("resetAgentBtn").onclick = () => {
   }
   agentSessionId = null;
   agentConversationHistory = [];
+  agentChatId = null;
 
   const log = $("agentActivityLog");
   if (log) {
@@ -1722,7 +1861,11 @@ function initFolderPicker() {
         body.appendChild(row);
       });
     } catch (err) {
-      body.innerHTML = `<div class="folder-picker-error-text">フォルダを読み込めませんでした: ${err.message}</div>`;
+      body.textContent = "";
+      const error = document.createElement("div");
+      error.className = "folder-picker-error-text";
+      error.textContent = `フォルダを読み込めませんでした: ${err?.message || "Unknown error"}`;
+      body.appendChild(error);
     }
   };
 

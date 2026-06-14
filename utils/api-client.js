@@ -21,14 +21,31 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = serverConfig.apiT
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
+  let onAbort;
+  if (options.signal) {
+    if (options.signal.aborted) {
+      controller.abort();
+    } else {
+      onAbort = () => controller.abort();
+      options.signal.addEventListener('abort', onAbort);
+    }
+  }
+
   try {
+    const { signal, ...fetchOpts } = options;
     const response = await fetch(url, {
-      ...options,
+      ...fetchOpts,
       signal: controller.signal,
     });
     return response;
   } catch (error) {
     if (error.name === 'AbortError') {
+      if (options.signal && options.signal.aborted) {
+        const err = new Error('Request aborted by client');
+        err.name = 'AbortError';
+        err.status = 499;
+        throw err;
+      }
       const err = new Error(`Request timeout after ${timeoutMs}ms`);
       err.status = 408;
       throw err;
@@ -36,6 +53,9 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = serverConfig.apiT
     throw error;
   } finally {
     clearTimeout(timeoutId);
+    if (options.signal && onAbort) {
+      options.signal.removeEventListener('abort', onAbort);
+    }
   }
 }
 
@@ -49,7 +69,7 @@ function delay(ms) {
 /**
  * Calls the 1min.ai API with retry logic for 429 errors and timeout support.
  */
-export async function callOneMin(pathname, { method = 'POST', body, headers = {}, raw = false } = {}) {
+export async function callOneMin(pathname, { method = 'POST', body, headers = {}, raw = false, signal } = {}) {
   const apiKey = requireApiKey();
   const maxRetries = serverConfig.apiRetryAttempts;
   const retryDelay = serverConfig.apiRetryDelay;
@@ -62,6 +82,7 @@ export async function callOneMin(pathname, { method = 'POST', body, headers = {}
         ...headers,
       },
       body,
+      signal,
     });
   };
 

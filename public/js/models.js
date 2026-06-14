@@ -7,36 +7,36 @@ let _activeTag = 'all';
 
 async function loadModels() {
   try {
-    const data = await fetch('/api/models').then(r => r.json());
-    _allChatModels  = data.chatModels  || [];
-    _allCodeModels  = data.codeModels  || [];
-    _allImageModels = data.imageModels || [];
-  } catch(e) {
+    const data = await api('/api/models');
+    _allChatModels = Array.isArray(data.chatModels) ? data.chatModels : [];
+    _allCodeModels = Array.isArray(data.codeModels) ? data.codeModels : [];
+    _allImageModels = Array.isArray(data.imageModels) ? data.imageModels : [];
+  } catch (e) {
     console.warn('モデルリストの取得に失敗:', e);
     if (typeof toast !== 'undefined') {
-      toast.warning('モデルリストの取得に失敗しました。デフォルトモデルが使用されます。');
+      toast.error(`モデルリストの取得に失敗しました: ${e?.message || e}`);
     }
   }
 }
 
 function getProviderColor(provider) {
   const map = {
-    'OpenAI':     '#10a37f',
-    'Anthropic':  '#d4793c',
-    'Google':     '#4285f4',
-    'DeepSeek':   '#5b6cf9',
-    'xAI':        '#e7e7e7',
-    'Mistral':    '#ff7000',
-    'Alibaba':    '#ff6a00',
+    'OpenAI': '#10a37f',
+    'Anthropic': '#d4793c',
+    'Google': '#4285f4',
+    'DeepSeek': '#5b6cf9',
+    'xAI': '#e7e7e7',
+    'Mistral': '#ff7000',
+    'Alibaba': '#ff6a00',
     'Perplexity': '#20b2aa',
-    'Cohere':     '#39d3aa',
-    'Meta':       '#0866ff',
-    'Flux':       '#a855f7',
-    'Magic Art':  '#ec4899',
-    'Stability':  '#7c3aed',
-    'Leonardo':   '#f59e0b',
-    'Ideogram':   '#06b6d4',
-    'Recraft':    '#84cc16',
+    'Cohere': '#39d3aa',
+    'Meta': '#0866ff',
+    'Flux': '#a855f7',
+    'Magic Art': '#ec4899',
+    'Stability': '#7c3aed',
+    'Leonardo': '#f59e0b',
+    'Ideogram': '#06b6d4',
+    'Recraft': '#84cc16',
   };
   return map[provider] || 'var(--accent)';
 }
@@ -79,7 +79,7 @@ function renderPickerList(models, search = '', tag = 'all') {
     for (const m of items) {
       const item = document.createElement('button');
       item.className = 'model-picker-item';
-      item.dataset.id    = m.id;
+      item.dataset.id = m.id;
       item.dataset.label = m.label;
       item.setAttribute('role', 'option');
       item.setAttribute('aria-selected', 'false');
@@ -122,16 +122,16 @@ function renderPickerList(models, search = '', tag = 'all') {
 
 function selectModel(m) {
   if (!_activePickerBtn) return;
-  const targetId    = _activePickerBtn.dataset.targetInput;
+  const targetId = _activePickerBtn.dataset.targetInput;
   const hiddenInput = document.getElementById(targetId);
-  const labelSpan   = _activePickerBtn.querySelector('span:first-of-type');
+  const labelSpan = _activePickerBtn.querySelector('span:first-of-type');
   if (hiddenInput) hiddenInput.value = m.id;
-  if (labelSpan)   labelSpan.textContent = m.label;
+  if (labelSpan) labelSpan.textContent = m.label;
   closeModelPicker();
 }
 
 function openModelPicker(btn, type) {
-  _activePickerBtn  = btn;
+  _activePickerBtn = btn;
   _activePickerType = type;
   _activeTag = 'all';
 
@@ -139,7 +139,7 @@ function openModelPicker(btn, type) {
   const models = type === 'image' ? _allImageModels : type === 'code' ? _allCodeModels : _allChatModels;
 
   const dropdown = document.getElementById('modelPickerDropdown');
-  const search   = document.getElementById('modelPickerSearch');
+  const search = document.getElementById('modelPickerSearch');
 
   // Reset tabs
   document.querySelectorAll('.picker-tab').forEach(tab => {
@@ -169,9 +169,9 @@ function openModelPicker(btn, type) {
     topPx = rect.top + window.scrollY - Math.min(dropH, availH) - 6;
   }
 
-  dropdown.style.top    = topPx + 'px';
-  dropdown.style.left   = Math.min(rect.left, window.innerWidth - dropW - 8) + 'px';
-  dropdown.style.width  = dropW + 'px';
+  dropdown.style.top = topPx + 'px';
+  dropdown.style.left = Math.min(rect.left, window.innerWidth - dropW - 8) + 'px';
+  dropdown.style.width = dropW + 'px';
   dropdown.style.visibility = '';
 
   search.focus();
@@ -208,7 +208,7 @@ function closeModelPicker() {
   const dropdown = document.getElementById('modelPickerDropdown');
   if (dropdown) dropdown.style.display = 'none';
   if (_activePickerBtn) _activePickerBtn.setAttribute('aria-expanded', 'false');
-  _activePickerBtn  = null;
+  _activePickerBtn = null;
   _activePickerType = null;
 }
 

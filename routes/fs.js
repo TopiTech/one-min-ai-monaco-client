@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
-import { validatePath, PROJECT_ROOT, getAllowedRoots, getDefaultRoot } from '../utils/fs-guard.js';
+import { validatePath, PROJECT_ROOT, getAllowedRoots, getDefaultRoot, assertNotProtectedPath } from '../utils/fs-guard.js';
 
 const MAX_READ_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_LIST_ENTRIES = 5000;
@@ -178,6 +178,7 @@ router.post('/write', async (req, res, next) => {
     if (content === undefined) return res.status(400).json({ error: 'content is required' });
 
     const resolvedPath = validatePath(String(filePath));
+    assertNotProtectedPath(resolvedPath);
 
     const dir = path.dirname(resolvedPath);
     await fs.mkdir(dir, { recursive: true });
@@ -198,6 +199,7 @@ router.post('/create', async (req, res, next) => {
     if (!targetPath) return res.status(400).json({ error: 'path is required' });
 
     const resolvedPath = validatePath(String(targetPath));
+    assertNotProtectedPath(resolvedPath);
 
     if (type === 'directory') {
       await fs.mkdir(resolvedPath, { recursive: true });
@@ -222,6 +224,7 @@ router.post('/delete', async (req, res, next) => {
     if (!targetPath) return res.status(400).json({ error: 'path is required' });
 
     const resolvedPath = validatePath(String(targetPath));
+    assertNotProtectedPath(resolvedPath);
 
     const stat = await fs.stat(resolvedPath);
     if (stat.isDirectory()) {
@@ -248,6 +251,8 @@ router.post('/rename', async (req, res, next) => {
 
     const resolvedOld = validatePath(String(oldPath));
     const resolvedNew = validatePath(String(newPath));
+    assertNotProtectedPath(resolvedOld);
+    assertNotProtectedPath(resolvedNew);
 
     await fs.rename(resolvedOld, resolvedNew);
     res.json({ ok: true, oldPath: resolvedOld, newPath: resolvedNew });
