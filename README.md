@@ -1,25 +1,33 @@
 # 1min.ai Monaco Client
 
-Monaco Editor + 自前UI + 1min.ai API で構成した、ブラウザで動くAIクライアントMVPです。
+Monaco Editor + カスタムUI + 1min.ai API で構成した、ブラウザで動くAIクライアントMVPです。  
+1min.ai APIキーをフロントエンドに露出せず、ExpressサーバーをBFFとして中継する構成になっています。
 
-## 機能
+## 主な機能
 
 - 通常チャット
-- 会話作成 / conversationId指定
+- モデルピッカーのカテゴリ分け（フラグシップ、思考・論理、高速・軽量）
+- 会話作成 / `conversationId` 指定による会話再開
+- Web Search チェックによるチャット拡張
 - 画像生成
+- 画像テキストエディタ
 - Asset APIによる画像アップロード
-- i2i / 画像バリエーション
 - Monaco Editor統合
 - コード説明・生成・リファクタリング補助
+- インラインチャット（適用/破棄のプレビュー機能付き）
+- 高機能AI Codingエージェント（詳細な思考プロセス表示、承認フロー付き）
+- プロジェクト内ファイルの閲覧・保存
+- 機能強化実装計画: [docs/implementation-plan.md](docs/implementation-plan.md)
 - APIキーをフロントエンドに出さないサーバー中継構成
+- 堅牢なファイルパス・セキュリティガード (`fs-guard`)
 
 ## 必要環境
 
 - Node.js 18以上
 - 1min.ai API Key
-- Monaco Editor CDNを読み込むため、初回表示時はインターネット接続が必要です
+- Monaco Editor / marked のCDN読み込みのため、初回表示時はインターネット接続が必要です
 
-## 起動方法
+## クイックスタート
 
 ```bash
 cp .env.example .env
@@ -28,42 +36,127 @@ npm install
 npm start
 ```
 
-ブラウザで以下を開きます。
+または開発用ウォッチ起動:
+
+```bash
+npm run dev
+```
+
+起動後、以下を開きます。
 
 ```text
 http://localhost:3000
 ```
 
-## .env
+## 環境変数
 
-```env
-ONE_MIN_AI_API_KEY=your_1min_ai_api_key_here
-PORT=3000
-DEFAULT_CHAT_MODEL=gpt-4o-mini
-DEFAULT_IMAGE_MODEL=black-forest-labs/flux-schnell
-DEFAULT_VARIATION_MODEL=magic-art
-```
+| 変数 | 必須 | デフォルト | 説明 |
+| --- | --- | --- | --- |
+| `ONE_MIN_AI_API_KEY` | はい | なし | 1min.ai APIキー。`.env` にのみ保存してください。 |
+| `PORT` | いいえ | `3000` | ローカルExpressサーバーの待ち受けポート。 |
+| `DEFAULT_CHAT_MODEL` | いいえ | `gpt-4o-mini` | チャットとコード生成のデフォルトモデル。 |
+| `DEFAULT_IMAGE_MODEL` | いいえ | `black-forest-labs/flux-schnell` | 画像生成のデフォルトモデル。 |
+| `DEFAULT_IMAGE_EDITOR_MODEL` | いいえ | `gpt-image-2` | 画像テキストエディタのデフォルトモデル。 |
+| `ALLOWED_ROOTS` | いいえ | 現在のプロジェクトルート | 参照・編集可能なルート一覧。カンマ区切り。 |
+| `ENABLE_COMMAND_EXECUTION` | いいえ | `false` | エージェントのコマンド実行を有効化します。 |
+| `COMMAND_TIMEOUT_MS` | いいえ | `30000` | コマンド実行のタイムアウト時間。 |
+| `AGENT_AUTO_APPROVE` | いいえ | `false` | 承認なし実行の可否。原則 false。 |
 
 ## 構成
 
 ```text
-server.js                  # Express BFF / 1min.ai API proxy
+server.js                  # Express BFF / 1min.ai API proxy / asset upload
+routes/ai.js               # チャット・画像生成・コード生成API
+routes/fs.js               # プロジェクト内ファイルの閲覧・保存API
+utils/api-client.js        # 1min.ai API呼び出し・レスポンス抽出
+utils/fs-guard.js          # ファイルパスのプロジェクト内限定チェック
+config/models.js           # UIで選択できるモデル一覧
 public/index.html          # UI
 public/app.js              # フロントエンドロジック
+public/js/api.js           # フロントエンド共通API関数
+public/js/models.js        # モデルピッカーロジック
 public/styles.css          # スタイル
+docs/implementation-plan.md # 画像チャット・フォルダ選択・AIコーディングエージェント強化の計画
 package.json
-.env.example
 ```
 
-## 実装メモ
+開発手順やAPIマッピングの詳細は [docs/development.md](./docs/development.md) を参照してください。
 
-- チャットは `/api/chat-with-ai` に `type: "UNIFY_CHAT_WITH_AI"` で中継します。
-- 画像生成と画像バリエーションは `/api/features` に中継します。
-- 画像アップロードは `/api/assets` に中継します。
-- 1min.ai APIのレスポンス形式がモデル/機能により異なる可能性があるため、フロント側では柔軟にテキスト・画像URLを抽出しています。
+## ローカルAPI
+
+| メソッド | パス | 説明 |
+| --- | --- | --- |
+| `GET` | `/api/health` | サーバー起動状態とAPIキー設定有無を確認。 |
+| `GET` | `/api/models` | チャット・コード・画像モデル一覧を返す。 |
+| `POST` | `/api/chat` | 1min.ai Chat with AI APIへ中継。 |
+| `POST` | `/api/conversations` | 会話履歴用の conversation を作成。 |
+| `POST` | `/api/images/generate` | 1min.ai AI Feature APIの `IMAGE_GENERATOR` へ中継。 |
+| `POST` | `/api/images/text-editor` | 1min.ai AI Feature APIの `IMAGE_EDITOR` へ中継。 |
+| `POST` | `/api/assets/upload` | ローカルから受け取った画像を 1min.ai Asset APIへアップロード。 |
+| `POST` | `/api/code/generate` | 選択中のコード全体に対する生成・修正依頼。 |
+| `POST` | `/api/code/autocomplete` | Monaco Editorのインライン補完候補を生成。 |
+| `POST` | `/api/code/inline-chat` | カーソル位置でのインライン編集を生成。 |
+| `GET` | `/api/fs/config` | プロジェクトルートを返す。 |
+| `GET` | `/api/fs/list?dir=...` | 指定ディレクトリのファイル一覧を返す。 |
+| `GET` | `/api/fs/read?path=...` | 指定ファイルを読む。 |
+| `POST` | `/api/fs/write` | 指定ファイルを書き込む。 |
+
+## 使い方
+
+### チャット
+
+1. 左メニューの「通常チャット」を開く。
+2. モデルを選択する。
+3. メッセージを入力して送信する。
+4. 会話履歴を使いたい場合は「会話を新規作成」を実行し、返されたIDを `conversationId` に入力する。
+
+### 画像生成 / テキスト編集
+
+1. 左メニューの「画像生成 / テキスト編集」を開く。
+2. 画像生成ではプロンプト・モデル・アスペクト比・枚数を入力する。
+3. 画像テキストエディタでは、元画像をアップロードして返された asset key、または既存の画像 URL を入力します。
+4. 編集プロンプト・モデル・出力サイズ・品質・枚数などを指定して「画像を編集」を実行します。
+
+### コーディング補助
+
+1. 左メニューの「コーディング」を開く。
+2. ファイルツリーからファイルを開く。
+3. 右側のAI Codingで指示を入力し、「実行」を押す。
+4. 必要に応じて「最初のコードブロックをエディタに適用」で結果をエディタに反映する。
+5. `Ctrl+S` で保存、`Ctrl+I` でインラインチャットを開けます。
+
+## 1min.ai APIとの連携
+
+このアプリは以下の1min.ai APIを利用します。
+
+- Base URL: `https://api.1min.ai`
+- 認証: 現在のクライアント実装では `API-KEY` ヘッダーを使用します。
+- Chat with AI API: `POST /api/chat-with-ai`
+- AI Feature API: `POST /api/features`
+- Asset API: `POST /api/assets`
+- Conversation API: `POST /api/conversations`
+
+参考:
+
+- [1min.AI API Reference](https://docs.1min.ai/docs/api/intro)
+- [Chat with AI API](https://docs.1min.ai/docs/api/chat-with-ai-api)
+- [AI Feature API](https://docs.1min.ai/docs/api/ai-feature-api)
+- [Asset API](https://docs.1min.ai/docs/api/asset-api)
+- [Image Text Editor API](https://docs.1min.ai/docs/api/ai-for-image/image-text-editor/image-text-editor-tag)
+- [Rate Limits](https://docs.1min.ai/docs/api/specifications/rate-limits)
 
 ## 注意
 
 - `.env` をGitにコミットしないでください。
+- `/api/fs/*` はプロジェクト配下のファイルを読み書きできます。公開サーバーで動かさないでください。
+- Asset uploadは現在のローカル実装では `25MB` までです。1min.ai公式のAsset APIドキュメントでは上限例として `50MB` が記載されています。
+- 公式ドキュメントではレート制限のデフォルトは `180 requests per minute` とされています。Asset APIページには `100 requests per minute` / `5 simultaneous uploads` の記載もあるため、実際のプラン制限は1min.ai側で確認してください。
 - 生成画像のURL表示は、1min.ai側の返却形式・権限設定に依存します。画像が直接表示されない場合でも、Raw JSON内の `resultObject` やAsset情報を確認してください。
 - これはMVPです。実運用では認証、レート制限、監査ログ、サンドボックス実行、CSRF対策などを追加してください。
+
+## 既知の改善候補
+
+- 詳細な実装計画は [docs/implementation-plan.md](docs/implementation-plan.md) を参照してください。
+- Chat with AI APIの `webSearch` / `history` は、現在の実装ではトップレベルで送信しています。公式ドキュメントでは `settings.webSearchSettings` / `settings.historySettings` 配下での指定が推奨されています。
+- 1min.ai APIのレスポンス形式は機能・モデルによって異なるため、フロント側で複数のフィールドからテキストや画像URLを抽出しています。
+- Asset uploadのフィールド名は、1min.ai公式ドキュメントに従い `asset` を使用しています。
