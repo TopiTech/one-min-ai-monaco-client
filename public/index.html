@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>1min.ai Monaco Client</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">1m</div>
+        <div>
+          <h1>1min.ai Client</h1>
+          <p>Monaco + Custom UI</p>
+        </div>
+      </div>
+      <button class="nav active" data-view="chat">通常チャット</button>
+      <button class="nav" data-view="image">画像生成 / i2i</button>
+      <button class="nav" data-view="coding">コーディング</button>
+      <button class="nav" data-view="settings">設定</button>
+      <div class="hint">APIキーはサーバー側の <code>.env</code> に保存します。</div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <strong id="viewTitle">通常チャット</strong>
+          <span id="status" class="status">準備完了</span>
+        </div>
+        <button id="healthBtn" class="ghost">Health Check</button>
+      </header>
+
+      <section id="chat" class="view active">
+        <div class="panel two">
+          <div class="card grow">
+            <h2>Chat</h2>
+            <div id="chatLog" class="log"></div>
+            <textarea id="chatPrompt" placeholder="メッセージを入力..." rows="5"></textarea>
+            <div class="row">
+              <input id="chatModel" value="gpt-4o-mini" placeholder="model" />
+              <button id="sendChat">送信</button>
+            </div>
+          </div>
+          <div class="card side">
+            <h2>Conversation</h2>
+            <input id="conversationTitle" value="My AI Conversation" />
+            <button id="createConversation">会話を作成</button>
+            <label>conversationId</label>
+            <input id="conversationId" placeholder="任意" />
+            <label class="check"><input type="checkbox" id="webSearch" /> Web Search</label>
+          </div>
+        </div>
+      </section>
+
+      <section id="image" class="view">
+        <div class="panel two">
+          <div class="card grow">
+            <h2>画像生成</h2>
+            <textarea id="imagePrompt" rows="4" placeholder="例: a minimal futuristic workspace, soft light"></textarea>
+            <div class="row">
+              <input id="imageModel" value="black-forest-labs/flux-schnell" />
+              <select id="aspectRatio"><option>1:1</option><option>16:9</option><option>9:16</option><option>4:3</option><option>3:4</option></select>
+              <input id="numOutputs" type="number" min="1" max="4" value="1" />
+              <button id="generateImage">生成</button>
+            </div>
+            <div id="imageGallery" class="gallery"></div>
+          </div>
+          <div class="card side">
+            <h2>i2i / Variation</h2>
+            <input id="assetInput" type="file" accept="image/*" />
+            <button id="uploadAsset">Asset Upload</button>
+            <label>imageUrl / asset key</label>
+            <input id="variationImageUrl" placeholder="images/... or https://..." />
+            <div class="row">
+              <input id="variationModel" value="magic-art" />
+              <input id="variationN" type="number" min="1" max="4" value="4" />
+            </div>
+            <button id="variationBtn">Variation生成</button>
+            <pre id="assetResult" class="json"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section id="coding" class="view">
+        <div class="ide">
+          <div class="files card">
+            <h2>Files</h2>
+            <button class="file active" data-file="index.ts">index.ts</button>
+            <button class="file" data-file="app.py">app.py</button>
+            <button class="file" data-file="README.md">README.md</button>
+            <p class="muted">MVP版の仮想ファイルです。</p>
+          </div>
+          <div class="editorWrap card"><div id="editor"></div></div>
+          <div class="assistant card">
+            <h2>AI Coding</h2>
+            <textarea id="codeInstruction" rows="5" placeholder="例: この関数をリファクタリングして"></textarea>
+            <div class="row"><input id="codeModel" value="gpt-4o-mini" /><button id="assistCode">実行</button></div>
+            <button id="applyFirstCode" class="ghost">最初のコードブロックを適用</button>
+            <pre id="codeResult" class="result"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section id="settings" class="view">
+        <div class="card settings">
+          <h2>設定</h2>
+          <p>このアプリはブラウザからローカルサーバーへアクセスし、ローカルサーバーが1min.ai APIへ中継します。</p>
+          <ol>
+            <li><code>.env.example</code> を <code>.env</code> にコピー</li>
+            <li><code>ONE_MIN_AI_API_KEY</code> を設定</li>
+            <li><code>npm install</code></li>
+            <li><code>npm start</code></li>
+          </ol>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/min/vs/loader.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
