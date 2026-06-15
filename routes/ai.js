@@ -97,7 +97,7 @@ router.post("/chat/stream", async (req, res, next) => {
     };
 
     const controller = new AbortController();
-    req.on("close", () => {
+    res.on("close", () => {
       if (!res.writableEnded) {
         logger.info("Client closed the connection. Aborting stream request.");
         controller.abort();
