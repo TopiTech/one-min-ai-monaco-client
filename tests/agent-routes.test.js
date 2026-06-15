@@ -25,7 +25,7 @@ describe('Agent Directory and Patch Routes', () => {
         const response = await request(app)
             .post('/api/agent/sessions')
             .send({ cwd: process.cwd(), task: 'Test task' });
-        
+
         sessionId = response.body.session.id;
     });
 
@@ -74,7 +74,7 @@ describe('Agent Directory and Patch Routes', () => {
         afterEach(async () => {
             try {
                 await fs.unlink(testFile);
-            } catch {}
+            } catch { }
         });
 
         test('should apply diff with search-and-replace block', async () => {
