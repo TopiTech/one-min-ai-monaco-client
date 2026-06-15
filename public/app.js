@@ -1738,12 +1738,14 @@ async function showDiffDialog(filePath, oldContent, newContent) {
   return new Promise((resolve) => {
     $("diffApply").onclick = () => {
       modal.classList.add("u-hidden");
+      if (diffEditor) diffEditor.setModel(null);
       originalModel.dispose();
       modifiedModel.dispose();
       resolve(true);
     };
     $("diffCancel").onclick = () => {
       modal.classList.add("u-hidden");
+      if (diffEditor) diffEditor.setModel(null);
       originalModel.dispose();
       modifiedModel.dispose();
       resolve(false);
