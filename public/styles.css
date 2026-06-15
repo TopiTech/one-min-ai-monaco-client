@@ -1092,6 +1092,32 @@ select:focus-visible {
 /* ============================================================
    Model Picker Button
    ============================================================ */
+.agent-step-result-box {
+  margin-top: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 12px;
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: #e2e8f0;
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Diff Editor specific */
+#diffEditorContainer .monaco-editor .margin,
+#diffEditorContainer .monaco-editor .monaco-editor-background {
+  background-color: rgba(10, 15, 30, 0.4) !important;
+}
+
+.diff-added {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+}
+
+.diff-removed {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+}
+
 .model-picker-btn {
   display: inline-flex;
   align-items: center;
@@ -2182,7 +2208,9 @@ select:focus-visible {
 }
 
 @keyframes blink {
-  50% { opacity: 0; }
+  50% {
+    opacity: 0;
+  }
 }
 
 .attachment-file-icon {
@@ -2276,44 +2304,114 @@ select:focus-visible {
 }
 
 /* Utility classes */
-.u-hidden { display: none; }
-.u-flex-1 { flex: 1; }
-.u-flex-2 { flex: 2; }
-.u-w-full { width: 100%; }
-.u-mb-8 { margin-bottom: 8px; }
-.u-mb-10 { margin-bottom: 10px; }
-.u-mb-12 { margin-bottom: 12px; }
-.u-mb-16 { margin-bottom: 16px; }
-.u-mb-18 { margin-bottom: 18px; }
-.u-mt-10 { margin-top: 10px; }
-.u-mt-12 { margin-top: 12px; }
-.u-mt-16 { margin-top: 16px; }
-.u-mt-18 { margin-top: 18px; }
-.u-gap-8 { gap: 8px; }
-.u-gap-10 { gap: 10px; }
-.u-gap-12 { gap: 12px; }
-.u-p-8 { padding: 8px; }
-.u-p-12 { padding: 12px; }
-.u-text-xs { font-size: 0.75rem; }
-.u-text-sm { font-size: 0.8rem; }
-.u-text-base { font-size: 0.85rem; }
-.u-fw-600 { font-weight: 600; }
-.u-fw-700 { font-weight: 700; }
-.u-ov-y-auto { overflow-y: auto; }
-.u-max-h-200 { max-height: 200px; }
-.u-red { color: #f87171; }
-.u-red-border { border-color: rgba(248, 113, 113, 0.3); }
-.u-border-radius-10 { border-radius: 10px; }
-.u-h-36 { height: 36px; }
-.u-p-x-8 { padding-left: 8px; padding-right: 8px; }
+.u-hidden {
+  display: none;
+}
+.u-flex-1 {
+  flex: 1;
+}
+.u-flex-2 {
+  flex: 2;
+}
+.u-w-full {
+  width: 100%;
+}
+.u-mb-8 {
+  margin-bottom: 8px;
+}
+.u-mb-10 {
+  margin-bottom: 10px;
+}
+.u-mb-12 {
+  margin-bottom: 12px;
+}
+.u-mb-16 {
+  margin-bottom: 16px;
+}
+.u-mb-18 {
+  margin-bottom: 18px;
+}
+.u-mt-10 {
+  margin-top: 10px;
+}
+.u-mt-12 {
+  margin-top: 12px;
+}
+.u-mt-16 {
+  margin-top: 16px;
+}
+.u-mt-18 {
+  margin-top: 18px;
+}
+.u-gap-8 {
+  gap: 8px;
+}
+.u-gap-10 {
+  gap: 10px;
+}
+.u-gap-12 {
+  gap: 12px;
+}
+.u-p-8 {
+  padding: 8px;
+}
+.u-p-12 {
+  padding: 12px;
+}
+.u-text-xs {
+  font-size: 0.75rem;
+}
+.u-text-sm {
+  font-size: 0.8rem;
+}
+.u-text-base {
+  font-size: 0.85rem;
+}
+.u-fw-600 {
+  font-weight: 600;
+}
+.u-fw-700 {
+  font-weight: 700;
+}
+.u-ov-y-auto {
+  overflow-y: auto;
+}
+.u-max-h-200 {
+  max-height: 200px;
+}
+.u-red {
+  color: #f87171;
+}
+.u-red-border {
+  border-color: rgba(248, 113, 113, 0.3);
+}
+.u-border-radius-10 {
+  border-radius: 10px;
+}
+.u-h-36 {
+  height: 36px;
+}
+.u-p-x-8 {
+  padding-left: 8px;
+  padding-right: 8px;
+}
 
 /* Skeleton loading animations */
 @keyframes skeleton-shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 .skeleton {
-  background: linear-gradient(90deg, var(--glass-bg, rgba(255,255,255,0.1)) 25%, rgba(255,255,255,0.2) 50%, var(--glass-bg, rgba(255,255,255,0.1)) 75%);
+  background: linear-gradient(
+    90deg,
+    var(--glass-bg, rgba(255, 255, 255, 0.1)) 25%,
+    rgba(255, 255, 255, 0.2) 50%,
+    var(--glass-bg, rgba(255, 255, 255, 0.1)) 75%
+  );
   background-size: 200% 100%;
   animation: skeleton-shimmer 1.5s ease-in-out infinite;
   border-radius: 6px;
@@ -2322,9 +2420,15 @@ select:focus-visible {
   height: 12px;
   margin-bottom: 8px;
 }
-.skeleton-line.w-75 { width: 75%; }
-.skeleton-line.w-50 { width: 50%; }
-.skeleton-line.w-90 { width: 90%; }
+.skeleton-line.w-75 {
+  width: 75%;
+}
+.skeleton-line.w-50 {
+  width: 50%;
+}
+.skeleton-line.w-90 {
+  width: 90%;
+}
 .skeleton-node {
   display: flex;
   align-items: center;

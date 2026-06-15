@@ -1,48 +1,59 @@
-import { spawn } from 'child_process';
-import { platform } from 'os';
+import { spawn } from "child_process";
+import { platform } from "os";
 
 /**
  * Command execution service with timeout, output collection, and safety checks.
  */
 
 // Default timeout from environment or 30 seconds
-const DEFAULT_TIMEOUT_MS = parseInt(process.env.COMMAND_TIMEOUT_MS || '30000', 10);
+const DEFAULT_TIMEOUT_MS = parseInt(process.env.COMMAND_TIMEOUT_MS || "30000", 10);
 
 // Dangerous patterns that are blocked by default
 const DANGEROUS_PATTERNS = [
-    /rm\s+-rf\s+\//,
-    /rm\s+-rf\s+\*/,
-    /rm\s+-rf\s+~/,
-    /del\s+\/s\s+\/q/,
-    /format\s+[a-z]:/i,
-    /sudo\s+/,
-    /curl\s+.*\|\s*(ba)?sh/,
-    /wget\s+.*\|\s*(ba)?sh/,
-    />\s*\/dev\/(sda|hd[a-z])/,
-    /dd\s+if=.*of=\/dev/,
-    /mkfs\./,
-    /:\(\)\s*\{.*\}\s*;/,  // Fork bomb
-    // Additional injection patterns
-    /;\s*rm\s+/,
-    /\|\s*rm\s+/,
-    /`\s*rm\s+/,
-    /\$\(.*rm\s+/,
-    /eval\s*\(/,
-    /exec\s*\(/,
-    /child_process/,
-    /require\s*\(\s*['"]child_process['"]\s*\)/,
-    /process\.env/,
-    /Buffer\.from\s*\(/,
-    // PowerShell & Windows dangerous patterns
-    /Remove-Item\s+-Recurse/i,
-    /Invoke-Expression/i,
-    /iex\s+/i,
-    /Invoke-WebRequest/i,
-    /iwr\s+/i,
-    /Start-Process/i,
-    /Set-ExecutionPolicy/i,
-    /powershell\s+-enc/i,
-    /wmic\s+/i,
+  /rm\s+-rf\s+\//,
+  /rm\s+-rf\s+\*/,
+  /rm\s+-rf\s+~/,
+  /del\s+\/s\s+\/q/,
+  /format\s+[a-z]:/i,
+  /sudo\s+/,
+  /curl\s+.*\|\s*(ba)?sh/,
+  /wget\s+.*\|\s*(ba)?sh/,
+  />\s*\/dev\/(sda|hd[a-z])/,
+  /dd\s+if=.*of=\/dev/,
+  /mkfs\./,
+  /:\(\)\s*\{.*\}\s*;/, // Fork bomb
+  // Additional injection patterns
+  /;\s*rm\s+/,
+  /\|\s*rm\s+/,
+  /`\s*rm\s+/,
+  /\$\(.*rm\s+/,
+  /eval\s*\(/,
+  /exec\s*\(/,
+  /child_process/,
+  /require\s*\(\s*['"]child_process['"]\s*\)/,
+  /process\.env/,
+  /Buffer\.from\s*\(/,
+  // PowerShell & Windows dangerous patterns
+  /Remove-Item\s+-Recurse/i,
+  /Invoke-Expression/i,
+  /iex\s+/i,
+  /Invoke-WebRequest/i,
+  /iwr\s+/i,
+  /Start-Process/i,
+  /Set-ExecutionPolicy/i,
+  /powershell\s+-enc/i,
+  /wmic\s+/i,
+  // Sensitive file access
+  /cat\s+.*\.env/,
+  /grep\s+.*\.env/,
+  /type\s+.*\.env/i,
+  /ssh-add\s+-L/,
+  /cat\s+~?\/(\.ssh|\.aws|\.kube)/,
+  // Network exploration
+  /nmap\s+/,
+  /netstat\s+/,
+  /nc\s+-l/,
+  /curl\s+-X\s*POST\s*.*localhost/,
 ];
 
 /**
@@ -51,25 +62,25 @@ const DANGEROUS_PATTERNS = [
  * @returns {object} { safe: boolean, reason?: string }
  */
 export function checkCommandSafety(command) {
-    if (!command || typeof command !== 'string') {
-        return { safe: false, reason: 'Command is empty or invalid' };
-    }
+  if (!command || typeof command !== "string") {
+    return { safe: false, reason: "Command is empty or invalid" };
+  }
 
-    const trimmed = command.trim();
-    if (!trimmed) {
-        return { safe: false, reason: 'Command is empty' };
-    }
+  const trimmed = command.trim();
+  if (!trimmed) {
+    return { safe: false, reason: "Command is empty" };
+  }
 
-    for (const pattern of DANGEROUS_PATTERNS) {
-        if (pattern.test(trimmed)) {
-            return {
-                safe: false,
-                reason: `Command matches dangerous pattern: ${pattern.toString()}`
-            };
-        }
+  for (const pattern of DANGEROUS_PATTERNS) {
+    if (pattern.test(trimmed)) {
+      return {
+        safe: false,
+        reason: `Command matches dangerous pattern: ${pattern.toString()}`,
+      };
     }
+  }
 
-    return { safe: true };
+  return { safe: true };
 }
 
 /**
@@ -82,94 +93,90 @@ export function checkCommandSafety(command) {
  * @returns {Promise<{ exitCode: number, stdout: string, stderr: string, timedOut: boolean }>}
  */
 export async function executeCommand(command, options = {}) {
-    const {
-        cwd = process.cwd(),
-        timeoutMs = DEFAULT_TIMEOUT_MS,
-        onOutput = null,
-    } = options;
+  const { cwd = process.cwd(), timeoutMs = DEFAULT_TIMEOUT_MS, onOutput = null } = options;
 
-    // Safety check
-    const safety = checkCommandSafety(command);
-    if (!safety.safe) {
-        throw new Error(`Command blocked: ${safety.reason}`);
-    }
+  // Safety check
+  const safety = checkCommandSafety(command);
+  if (!safety.safe) {
+    throw new Error(`Command blocked: ${safety.reason}`);
+  }
 
-    return new Promise((resolve, reject) => {
-        const isWindows = platform() === 'win32';
-        const shell = isWindows ? 'cmd.exe' : '/bin/sh';
-        const shellFlag = isWindows ? '/c' : '-c';
+  return new Promise((resolve, reject) => {
+    const isWindows = platform() === "win32";
+    const shell = isWindows ? "cmd.exe" : "/bin/sh";
+    const shellFlag = isWindows ? "/c" : "-c";
 
-        const child = spawn(shell, [shellFlag, command], {
-            cwd,
-            env: {
-                ...process.env,
-                // Remove potentially dangerous env vars
-                LD_PRELOAD: '',
-                LD_LIBRARY_PATH: '',
-            },
-            stdio: ['pipe', 'pipe', 'pipe'],
-            windowsHide: true, // Hide window on Windows
-        });
-
-        let stdout = '';
-        let stderr = '';
-        let timedOut = false;
-        let killed = false;
-
-        // Collect stdout
-        child.stdout.on('data', (data) => {
-            const text = data.toString();
-            stdout += text;
-            if (onOutput) {
-                onOutput('stdout', text);
-            }
-        });
-
-        // Collect stderr
-        child.stderr.on('data', (data) => {
-            const text = data.toString();
-            stderr += text;
-            if (onOutput) {
-                onOutput('stderr', text);
-            }
-        });
-
-        // Timeout handler
-        const timeoutId = setTimeout(() => {
-            timedOut = true;
-            killed = true;
-            child.kill(isWindows ? 'SIGKILL' : 'SIGTERM');
-
-            // Force kill after grace period
-            setTimeout(() => {
-                if (!child.killed) {
-                    child.kill('SIGKILL');
-                }
-            }, 5000);
-        }, timeoutMs);
-
-        // Process completion
-        child.on('close', (exitCode) => {
-            clearTimeout(timeoutId);
-
-            if (killed && exitCode === null) {
-                exitCode = timedOut ? 124 : 1; // 124 = timeout exit code
-            }
-
-            resolve({
-                exitCode: exitCode ?? 1,
-                stdout: stdout.trim(),
-                stderr: stderr.trim(),
-                timedOut,
-            });
-        });
-
-        // Process error
-        child.on('error', (err) => {
-            clearTimeout(timeoutId);
-            reject(new Error(`Failed to execute command: ${err.message}`));
-        });
+    const child = spawn(shell, [shellFlag, command], {
+      cwd,
+      env: {
+        ...process.env,
+        // Remove potentially dangerous env vars
+        LD_PRELOAD: "",
+        LD_LIBRARY_PATH: "",
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true, // Hide window on Windows
     });
+
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    let killed = false;
+
+    // Collect stdout
+    child.stdout.on("data", (data) => {
+      const text = data.toString();
+      stdout += text;
+      if (onOutput) {
+        onOutput("stdout", text);
+      }
+    });
+
+    // Collect stderr
+    child.stderr.on("data", (data) => {
+      const text = data.toString();
+      stderr += text;
+      if (onOutput) {
+        onOutput("stderr", text);
+      }
+    });
+
+    // Timeout handler
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      killed = true;
+      child.kill(isWindows ? "SIGKILL" : "SIGTERM");
+
+      // Force kill after grace period
+      setTimeout(() => {
+        if (!child.killed) {
+          child.kill("SIGKILL");
+        }
+      }, 5000);
+    }, timeoutMs);
+
+    // Process completion
+    child.on("close", (exitCode) => {
+      clearTimeout(timeoutId);
+
+      if (killed && exitCode === null) {
+        exitCode = timedOut ? 124 : 1; // 124 = timeout exit code
+      }
+
+      resolve({
+        exitCode: exitCode ?? 1,
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
+        timedOut,
+      });
+    });
+
+    // Process error
+    child.on("error", (err) => {
+      clearTimeout(timeoutId);
+      reject(new Error(`Failed to execute command: ${err.message}`));
+    });
+  });
 }
 
 /**
@@ -178,9 +185,9 @@ export async function executeCommand(command, options = {}) {
  * @param {boolean} force Whether to force kill (SIGKILL).
  */
 export function killProcess(process, force = false) {
-    if (process && !process.killed) {
-        process.kill(force ? 'SIGKILL' : 'SIGTERM');
-    }
+  if (process && !process.killed) {
+    process.kill(force ? "SIGKILL" : "SIGTERM");
+  }
 }
 
 export { DEFAULT_TIMEOUT_MS };

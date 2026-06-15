@@ -73,6 +73,13 @@ export function validatePath(targetPath) {
     throw new Error("Path is required");
   }
 
+  // Prevent null byte injection and other common attack patterns
+  if (targetPath.includes("\0")) {
+    const err = new Error("Access denied: Invalid path (null byte detected)");
+    err.status = 403;
+    throw err;
+  }
+
   const isAbsolute = path.isAbsolute(targetPath);
   const resolvedPath = isAbsolute
     ? path.resolve(targetPath)
@@ -164,7 +171,9 @@ function isPathProtectedByRoot(resolvedPath, root, prefixes) {
  * @returns {boolean} True if the path is protected.
  */
 export function isProtectedPath(resolvedPath) {
-  return getAllowedRoots().some((root) => isPathProtectedByRoot(resolvedPath, root, PROTECTED_PATH_PREFIXES));
+  return getAllowedRoots().some((root) =>
+    isPathProtectedByRoot(resolvedPath, root, PROTECTED_PATH_PREFIXES),
+  );
 }
 
 /**
@@ -174,7 +183,9 @@ export function isProtectedPath(resolvedPath) {
  * @returns {boolean} True if the path is protected from destructive operations.
  */
 export function isWriteProtectedPath(resolvedPath) {
-  return getAllowedRoots().some((root) => isPathProtectedByRoot(resolvedPath, root, WRITE_PROTECTED_PATH_PREFIXES));
+  return getAllowedRoots().some((root) =>
+    isPathProtectedByRoot(resolvedPath, root, WRITE_PROTECTED_PATH_PREFIXES),
+  );
 }
 
 /**
@@ -199,7 +210,9 @@ export function assertNotProtectedPath(resolvedPath) {
 export function assertNotWriteProtectedPath(resolvedPath) {
   if (isWriteProtectedPath(resolvedPath)) {
     const relativePath = path.relative(PROJECT_ROOT, resolvedPath).replace(/\\/g, "/");
-    const err = new Error(`Access denied: Path is protected from write operations: ${relativePath}`);
+    const err = new Error(
+      `Access denied: Path is protected from write operations: ${relativePath}`,
+    );
     err.status = 403;
     throw err;
   }

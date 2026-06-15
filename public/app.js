@@ -7,7 +7,89 @@
 loadModels().then(() => initModelPickers());
 
 // ============================================================
-const $ = (id) => document.getElementById(id);
+// ============================================================
+// DOM Elements Cache
+// ============================================================
+const dom = {
+  chatLog: $("chatLog"),
+  chatPrompt: $("chatPrompt"),
+  sendChatBtn: $("sendChat"),
+  abortChatBtn: $("abortChat"),
+  chatModel: $("chatModel"),
+  chatModelLabel: $("chatModelLabel"),
+  conversationId: $("conversationId"),
+  conversationTitle: $("conversationTitle"),
+  webSearch: $("webSearch"),
+  chatNumOfSite: $("chatNumOfSite"),
+  chatMaxWord: $("chatMaxWord"),
+  withMemories: $("withMemories"),
+  isMixed: $("isMixed"),
+  brandVoiceId: $("brandVoiceId"),
+  chatAttachments: $("chatAttachments"),
+  attachmentPreviews: $("attachmentPreviews"),
+  chatImageInput: $("chatImageInput"),
+
+  imagePrompt: $("imagePrompt"),
+  imageModel: $("imageModel"),
+  imageModelLabel: $("imageModelLabel"),
+  imageGallery: $("imageGallery"),
+  assetResult: $("assetResult"),
+  editorImageUrl: $("editorImageUrl"),
+  editorImagePreview: $("editorImagePreview"),
+  clearImageBtn: $("clearImageBtn"),
+
+  explorerPath: $("explorerPath"),
+  fileTree: $("fileTree"),
+  currentFileName: $("currentFileName"),
+  saveFileBtn: $("saveFileBtn"),
+  editorTabsBar: $("editorTabsBar"),
+  rootSelector: $("rootSelector"),
+
+  agentInstruction: $("agentInstruction"),
+  agentStatus: $("agentStatus"),
+  agentActivityLog: $("agentActivityLog"),
+  startAgentBtn: $("startAgentBtn"),
+  stopAgentBtn: $("stopAgentBtn"),
+  resetAgentBtn: $("resetAgentBtn"),
+  agentFeedbackInput: $("agentFeedbackInput"),
+  sendAgentFeedbackBtn: $("sendAgentFeedbackBtn"),
+  codeModel: $("codeModel"),
+  codeWebSearch: $("codeWebSearch"),
+  codeNumOfSite: $("codeNumOfSite"),
+  codeMaxWord: $("codeMaxWord"),
+};
+
+// ============================================================
+// Application State
+// ============================================================
+const state = {
+  chat: {
+    attachments: [],
+    abortController: null,
+    maxMessages: 200,
+  },
+  image: {
+    maxCards: 50,
+  },
+  editor: {
+    activeFilePath: null,
+    openTabs: [],
+    maxOpenModels: 20,
+    isInlineChatOpen: false,
+    inlineChatDom: null,
+  },
+  agent: {
+    active: false,
+    sessionId: null,
+    history: [],
+    chatId: null,
+    resolver: null,
+  },
+  theme: {
+    current: "dark",
+  },
+};
+
 const getBffToken = () => document.querySelector('meta[name="local-bff-token"]')?.content || "";
 
 // LocalStorage keys
@@ -187,18 +269,18 @@ const MAX_CHAT_MESSAGES = 200;
 const MAX_IMAGE_CARDS = 50;
 
 // chat
-const chatAttachments = []; // { file, previewUrl, assetKey, assetUrl }
-
 function pruneChatLog() {
-  const log = $("chatLog");
-  while (log.children.length > MAX_CHAT_MESSAGES) {
+  const log = dom.chatLog;
+  if (!log) return;
+  while (log.children.length > state.chat.maxMessages) {
     log.removeChild(log.firstChild);
   }
 }
 
 function pruneImageGallery() {
-  const gallery = $("imageGallery");
-  while (gallery.children.length > MAX_IMAGE_CARDS) {
+  const gallery = dom.imageGallery;
+  if (!gallery) return;
+  while (gallery.children.length > state.image.maxCards) {
     gallery.removeChild(gallery.lastChild);
   }
 }
@@ -231,29 +313,29 @@ function addMsg(role, content, images = []) {
   }
 
   // Add text content
+  const contentDiv = document.createElement("div");
+  contentDiv.className = "msg-content";
   if (role === "ai") {
-    const contentDiv = document.createElement("div");
-    contentDiv.className = "msg-content";
     renderMarkdownSafely(contentDiv, content);
-    div.appendChild(contentDiv);
   } else {
-    const contentDiv = document.createElement("div");
-    contentDiv.className = "msg-content";
     contentDiv.textContent = content;
-    div.appendChild(contentDiv);
   }
+  div.appendChild(contentDiv);
 
-  $("chatLog").appendChild(div);
-  $("chatLog").scrollTop = $("chatLog").scrollHeight;
+  dom.chatLog.appendChild(div);
+  dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
   pruneChatLog();
 }
 
 // Image attachment handling
 function updateAttachmentPreview() {
-  const container = $("attachmentPreviews");
-  const attachmentsArea = $("chatAttachments");
+  const container = dom.attachmentPreviews;
+  const attachmentsArea = dom.chatAttachments;
+  const attachments = state.chat.attachments;
 
-  if (chatAttachments.length === 0) {
+  if (!container || !attachmentsArea) return;
+
+  if (attachments.length === 0) {
     attachmentsArea.style.display = "none";
     container.textContent = "";
     return;
@@ -262,7 +344,7 @@ function updateAttachmentPreview() {
   attachmentsArea.style.display = "block";
   container.textContent = "";
 
-  chatAttachments.forEach((att, index) => {
+  attachments.forEach((att, index) => {
     const thumb = document.createElement("div");
     thumb.className = "attachment-thumb";
 
@@ -285,8 +367,9 @@ function updateAttachmentPreview() {
 
       const icon = document.createElement("div");
       icon.className = "attachment-file-icon";
-      icon.innerHTML =
-        '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>';
+      // Trusted SVG icon
+      const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
+      icon.innerHTML = svgIcon;
 
       const extSpan = document.createElement("span");
       extSpan.className = "attachment-file-ext";
@@ -317,47 +400,53 @@ function updateAttachmentPreview() {
   container.querySelectorAll(".remove-attachment").forEach((btn) => {
     btn.onclick = () => {
       const idx = parseInt(btn.dataset.index);
-      if (chatAttachments[idx].previewUrl) URL.revokeObjectURL(chatAttachments[idx].previewUrl);
-      chatAttachments.splice(idx, 1);
+      const attachments = state.chat.attachments;
+      if (attachments[idx].previewUrl) URL.revokeObjectURL(attachments[idx].previewUrl);
+      attachments.splice(idx, 1);
       updateAttachmentPreview();
     };
   });
 }
 
 // Attach image button
-$("attachImageBtn").onclick = () => {
-  $("chatImageInput").click();
-};
+if (dom.attachImageBtn) {
+  dom.attachImageBtn.onclick = () => {
+    dom.chatImageInput.click();
+  };
+}
 
 // File input change
-$("chatImageInput").onchange = async (e) => {
-  const files = Array.from(e.target.files);
-  if (files.length === 0) return;
+if (dom.chatImageInput) {
+  dom.chatImageInput.onchange = async (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
 
-  for (const file of files) {
-    const isImage = file.type.startsWith("image/");
-    const previewUrl = isImage ? URL.createObjectURL(file) : null;
-    const att = {
-      file,
-      previewUrl,
-      assetKey: null,
-      assetUrl: null,
-      uploading: false,
-      type: isImage ? "image" : "file",
-    };
-    chatAttachments.push(att);
-  }
+    for (const file of files) {
+      const isImage = file.type.startsWith("image/");
+      const previewUrl = isImage ? URL.createObjectURL(file) : null;
+      const att = {
+        file,
+        previewUrl,
+        assetKey: null,
+        assetUrl: null,
+        uploading: false,
+        type: isImage ? "image" : "file",
+      };
+      state.chat.attachments.push(att);
+    }
 
-  updateAttachmentPreview();
-  e.target.value = "";
-};
+    updateAttachmentPreview();
+    e.target.value = "";
+  };
+}
 
 // Upload attachments to 1min.ai Asset API (parallel)
 async function uploadAttachments() {
-  const pending = chatAttachments.filter((att) => !att.assetKey);
+  const attachments = state.chat.attachments;
+  const pending = attachments.filter((att) => !att.assetKey);
 
   if (pending.length === 0) {
-    return chatAttachments.map((att) => ({
+    return attachments.map((att) => ({
       type: att.type || "image",
       assetKey: att.assetKey,
       url: att.assetUrl,
@@ -397,7 +486,7 @@ async function uploadAttachments() {
   }
 
   updateAttachmentPreview();
-  return chatAttachments
+  return attachments
     .filter((att) => att.assetKey)
     .map((att) => ({ type: att.type || "image", assetKey: att.assetKey, url: att.assetUrl }));
 }
@@ -405,27 +494,28 @@ async function uploadAttachments() {
 let currentChatAbortController = null;
 
 $("abortChat").onclick = () => {
-  if (currentChatAbortController) {
-    currentChatAbortController.abort();
-    currentChatAbortController = null;
+  if (state.chat.abortController) {
+    state.chat.abortController.abort();
+    state.chat.abortController = null;
   }
 };
 
-$("sendChat").onclick = async () => {
-  const prompt = $("chatPrompt").value.trim();
-  if (!prompt && chatAttachments.length === 0) return;
+dom.sendChatBtn.onclick = async () => {
+  const prompt = dom.chatPrompt.value.trim();
+  const attachments = state.chat.attachments;
+  if (!prompt && attachments.length === 0) return;
 
-  const sendBtn = $("sendChat");
-  const abortBtn = $("abortChat");
+  const sendBtn = dom.sendChatBtn;
+  const abortBtn = dom.abortChatBtn;
   sendBtn.disabled = true;
   sendBtn.style.display = "none";
   abortBtn.style.display = "inline-flex";
 
-  currentChatAbortController = new AbortController();
+  state.chat.abortController = new AbortController();
 
-  const imagePreviews = chatAttachments.map((att) => ({ url: att.previewUrl }));
+  const imagePreviews = attachments.map((att) => ({ url: att.previewUrl }));
   addMsg("user", prompt || "(画像のみ)", imagePreviews);
-  $("chatPrompt").value = "";
+  dom.chatPrompt.value = "";
 
   const aiMsgDiv = document.createElement("div");
   aiMsgDiv.className = "msg ai";
@@ -437,8 +527,8 @@ $("sendChat").onclick = async () => {
   aiContentDiv.className = "msg-content";
   aiContentDiv.innerHTML = '<span class="streaming-cursor">▊</span>';
   aiMsgDiv.appendChild(aiContentDiv);
-  $("chatLog").appendChild(aiMsgDiv);
-  $("chatLog").scrollTop = $("chatLog").scrollHeight;
+  dom.chatLog.appendChild(aiMsgDiv);
+  dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
 
   setStatus("通信中...", "warn");
   let fullText = "";
@@ -465,17 +555,17 @@ $("sendChat").onclick = async () => {
       headers,
       body: JSON.stringify({
         prompt,
-        model: $("chatModel").value,
-        conversationId: $("conversationId").value || undefined,
-        webSearch: $("webSearch").checked,
-        numOfSite: $("chatNumOfSite")?.value ? parseInt($("chatNumOfSite").value) : undefined,
-        maxWord: $("chatMaxWord")?.value ? parseInt($("chatMaxWord").value) : undefined,
-        withMemories: $("withMemories")?.checked || false,
-        isMixed: $("isMixed")?.checked || false,
-        brandVoiceId: $("brandVoiceId")?.value?.trim() || undefined,
+        model: dom.chatModel.value,
+        conversationId: dom.conversationId.value || undefined,
+        webSearch: dom.webSearch.checked,
+        numOfSite: dom.chatNumOfSite?.value ? parseInt(dom.chatNumOfSite.value) : undefined,
+        maxWord: dom.chatMaxWord?.value ? parseInt(dom.chatMaxWord.value) : undefined,
+        withMemories: dom.withMemories?.checked || false,
+        isMixed: dom.isMixed?.checked || false,
+        brandVoiceId: dom.brandVoiceId?.value?.trim() || undefined,
         attachments: Object.keys(apiAttachments).length > 0 ? apiAttachments : undefined,
       }),
-      signal: currentChatAbortController.signal,
+      signal: state.chat.abortController.signal,
     });
 
     if (!response.ok) {
@@ -533,7 +623,7 @@ $("sendChat").onclick = async () => {
             if (content) {
               fullText += content;
               renderMarkdownSafely(aiContentDiv, fullText);
-              $("chatLog").scrollTop = $("chatLog").scrollHeight;
+              dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
             }
           } catch {
             // Non-JSON data line, skip
@@ -549,7 +639,7 @@ $("sendChat").onclick = async () => {
     renderMarkdownSafely(aiContentDiv, fullText);
     pruneChatLog();
   } catch (e) {
-    if (e.name === 'AbortError') {
+    if (e.name === "AbortError") {
       fullText += "\n\n*(キャンセルされました)*";
       renderMarkdownSafely(aiContentDiv, fullText);
       setStatus("キャンセルしました", "warn");
@@ -560,14 +650,12 @@ $("sendChat").onclick = async () => {
       setStatus("エラー", "error");
     }
   } finally {
-    currentChatAbortController = null;
+    state.chat.abortController = null;
     sendBtn.disabled = false;
     sendBtn.style.display = "inline-flex";
     abortBtn.style.display = "none";
     setStatus("準備完了");
-    // We don't revoke previewUrls here because they are used in the chat log.
-    // They will be cleaned up when the page is reloaded.
-    chatAttachments.length = 0;
+    state.chat.attachments.length = 0;
     updateAttachmentPreview();
   }
 };
@@ -593,7 +681,7 @@ $("createConversation").onclick = async () => {
     const data = await api("/api/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: $("conversationTitle").value, model: $("chatModel").value }),
+      body: JSON.stringify({ title: dom.conversationTitle.value, model: dom.chatModel.value }),
     });
     const id =
       data?.conversation?.uuid ||
@@ -601,7 +689,7 @@ $("createConversation").onclick = async () => {
       data?.aiRecord?.conversationId ||
       data?.conversationId ||
       "";
-    $("conversationId").value = id;
+    dom.conversationId.value = id;
     toast.success("会話を作成しました", { duration: 5000 });
   } catch (e) {
     toast.error(`会話の作成に失敗しました: ${e.message}`);
@@ -615,7 +703,7 @@ function renderImages(data) {
     const pre = document.createElement("pre");
     pre.className = "json";
     pre.textContent = JSON.stringify(data, null, 2);
-    $("imageGallery").prepend(pre);
+    dom.imageGallery.prepend(pre);
     return;
   }
   for (const img of images) {
@@ -635,15 +723,15 @@ function renderImages(data) {
     link.rel = "noopener noreferrer";
     link.textContent = img;
     card.appendChild(link);
-    $("imageGallery").prepend(card);
+    dom.imageGallery.prepend(card);
     pruneImageGallery();
   }
 }
 
-$("generateImage").onclick = async () => {
-  const imageUrl = $("editorImageUrl").value.trim();
-  const prompt = $("imagePrompt").value.trim();
-  const model = $("imageModel").value;
+dom.generateImage.onclick = async () => {
+  const imageUrl = dom.editorImageUrl.value.trim();
+  const prompt = dom.imagePrompt.value.trim();
+  const model = dom.imageModel.value;
 
   if (!prompt) {
     toast.warning("プロンプトを入力してください");
@@ -685,14 +773,14 @@ $("generateImage").onclick = async () => {
       toast.success("画像を生成しました");
     }
 
-    $("assetResult").textContent = JSON.stringify(data, null, 2);
+    dom.assetResult.textContent = JSON.stringify(data, null, 2);
     renderImages(data);
   } catch (e) {
     toast.error(`処理に失敗しました: ${e.message}`);
   }
 };
 
-$("uploadAsset").onclick = async () => {
+dom.uploadAsset.onclick = async () => {
   const file = $("assetInput").files[0];
   if (!file) {
     toast.warning("画像ファイルを選択してください");
@@ -702,12 +790,12 @@ $("uploadAsset").onclick = async () => {
   fd.append("asset", file);
   try {
     const data = await api("/api/assets/upload", { method: "POST", body: fd });
-    $("assetResult").textContent = JSON.stringify(data, null, 2);
+    dom.assetResult.textContent = JSON.stringify(data, null, 2);
     const key =
       data?.key || data?.asset?.key || data?.fileContent?.path || data?.asset?.location || "";
     const url = data?.url || (key ? assetUrl(key) : "");
     if (key) {
-      $("editorImageUrl").value = url || key;
+      dom.editorImageUrl.value = url || key;
       updateEditorImagePreview(url || key);
     }
     toast.success("アップロード完了");
@@ -717,9 +805,9 @@ $("uploadAsset").onclick = async () => {
 };
 
 function updateEditorImagePreview(imageUrl) {
-  const input = $("editorImageUrl");
-  const preview = $("editorImagePreview");
-  const clearBtn = $("clearImageBtn");
+  const input = dom.editorImageUrl;
+  const preview = dom.editorImagePreview;
+  const clearBtn = dom.clearImageBtn;
   const imgToImgParams = $("imageToImageParams");
   const textToImgParams = $("textToImageParams");
   const btnText = $("generateImageBtnText");
@@ -744,33 +832,30 @@ function updateEditorImagePreview(imageUrl) {
   if (btnText) btnText.textContent = "画像を編集";
 }
 
-$("editorImageUrl").oninput = () => updateEditorImagePreview();
+dom.editorImageUrl.oninput = () => updateEditorImagePreview();
 
-$("clearImageBtn").onclick = () => {
-  $("editorImageUrl").value = "";
+dom.clearImageBtn.onclick = () => {
+  dom.editorImageUrl.value = "";
   $("assetInput").value = "";
   updateEditorImagePreview();
 };
 
 // Monaco editor
-let activeFilePath = null;
-const openTabs = []; // Array of absolute file paths
-
 function renderTabs() {
-  const container = $("editorTabsBar");
+  const container = dom.editorTabsBar;
   if (!container) return;
-  container.innerHTML = "";
+  container.textContent = "";
 
-  openTabs.forEach((pathVal) => {
+  state.editor.openTabs.forEach((pathVal) => {
     const fileName = pathVal.replace(/\\/g, "/").split("/").pop();
     const tabEl = document.createElement("div");
-    tabEl.className = `editor-tab ${pathVal === activeFilePath ? "active" : ""}`;
+    tabEl.className = `editor-tab ${pathVal === state.editor.activeFilePath ? "active" : ""}`;
     tabEl.title = pathVal;
 
     const nameSpan = document.createElement("span");
     nameSpan.textContent = fileName;
     nameSpan.onclick = () => {
-      if (pathVal !== activeFilePath) {
+      if (pathVal !== state.editor.activeFilePath) {
         switchToTab(pathVal);
       }
     };
@@ -796,10 +881,10 @@ async function switchToTab(filePath) {
   if (model) {
     if (window.editor) {
       window.editor.setModel(model);
-      activeFilePath = filePath;
-      $("currentFileName").textContent = filePath.replace(/\\/g, "/").split("/").pop();
-      $("currentFileName").title = filePath;
-      $("saveFileBtn").disabled = false;
+      state.editor.activeFilePath = filePath;
+      dom.currentFileName.textContent = filePath.replace(/\\/g, "/").split("/").pop();
+      dom.currentFileName.title = filePath;
+      dom.saveFileBtn.disabled = false;
 
       document.querySelectorAll(".tree-node.file").forEach((x) => {
         if (x.dataset.path === filePath) {
@@ -816,7 +901,7 @@ async function switchToTab(filePath) {
 }
 
 async function closeTab(filePath) {
-  const tabIndex = openTabs.indexOf(filePath);
+  const tabIndex = state.editor.openTabs.indexOf(filePath);
   if (tabIndex === -1) return;
 
   const accepted = await toast.confirm(`タブを閉じますか？未保存の変更は失われます。`, {
@@ -826,7 +911,7 @@ async function closeTab(filePath) {
   });
   if (!accepted) return;
 
-  openTabs.splice(tabIndex, 1);
+  state.editor.openTabs.splice(tabIndex, 1);
 
   const fileUri = monaco.Uri.file(filePath);
   const model = monaco.editor.getModel(fileUri);
@@ -834,18 +919,19 @@ async function closeTab(filePath) {
     model.dispose();
   }
 
-  if (activeFilePath === filePath) {
-    if (openTabs.length > 0) {
-      const nextActivePath = openTabs[Math.min(tabIndex, openTabs.length - 1)];
+  if (state.editor.activeFilePath === filePath) {
+    if (state.editor.openTabs.length > 0) {
+      const nextActivePath =
+        state.editor.openTabs[Math.min(tabIndex, state.editor.openTabs.length - 1)];
       await switchToTab(nextActivePath);
     } else {
-      activeFilePath = null;
+      state.editor.activeFilePath = null;
       if (window.editor) {
         window.editor.setModel(monaco.editor.createModel("", "plaintext"));
       }
-      $("currentFileName").textContent = "ファイルが選択されていません";
-      $("currentFileName").title = "";
-      $("saveFileBtn").disabled = true;
+      dom.currentFileName.textContent = "ファイルが選択されていません";
+      dom.currentFileName.title = "";
+      dom.saveFileBtn.disabled = true;
       document.querySelectorAll(".tree-node.file").forEach((x) => x.classList.remove("active"));
     }
   }
@@ -917,12 +1003,14 @@ require(["vs/editor/editor.main"], function () {
               code,
               line,
               column,
-              fileName: activeFilePath ? activeFilePath.split(/[\\/]/).pop() : "untitled",
+              fileName: state.editor.activeFilePath
+                ? state.editor.activeFilePath.split(/[\\/]/).pop()
+                : "untitled",
               language: model.getLanguageId(),
-              model: $("codeModel").value,
-              webSearch: $("codeWebSearch")?.checked || false,
-              numOfSite: $("codeNumOfSite")?.value ? parseInt($("codeNumOfSite").value) : undefined,
-              maxWord: $("codeMaxWord")?.value ? parseInt($("codeMaxWord").value) : undefined,
+              model: dom.codeModel.value,
+              webSearch: dom.codeWebSearch?.checked || false,
+              numOfSite: dom.codeNumOfSite?.value ? parseInt(dom.codeNumOfSite.value) : undefined,
+              maxWord: dom.codeMaxWord?.value ? parseInt(dom.codeMaxWord.value) : undefined,
             }),
           });
           if (!res.ok || token.isCancellationRequested) return;
@@ -946,26 +1034,40 @@ require(["vs/editor/editor.main"], function () {
   }
 });
 
-let isInlineChatOpen = false;
-let inlineChatDom = null;
-
 const inlineChatWidget = {
   getId: () => "inline.chat.widget",
   getDomNode: function () {
-    if (!inlineChatDom) {
-      inlineChatDom = document.createElement("div");
-      inlineChatDom.className = "inline-chat-widget";
-      inlineChatDom.style.width = "350px";
-      inlineChatDom.innerHTML = `
-        <div class="inline-chat-input-row">
-          <input type="text" id="inlineChatPrompt" placeholder="AIへの指示を入力 (例: ループを追加)..." />
-          <button type="button" id="inlineChatSubmit">送信</button>
-        </div>
-        <div id="inlineChatStatus" class="inline-chat-status" style="display: none;">生成中...</div>
-      `;
+    if (!state.editor.inlineChatDom) {
+      state.editor.inlineChatDom = document.createElement("div");
+      state.editor.inlineChatDom.className = "inline-chat-widget";
+      state.editor.inlineChatDom.style.width = "350px";
 
-      const input = inlineChatDom.querySelector("#inlineChatPrompt");
-      input.onkeydown = async (e) => {
+      const inputRow = document.createElement("div");
+      inputRow.className = "inline-chat-input-row";
+
+      const promptInput = document.createElement("input");
+      promptInput.type = "text";
+      promptInput.id = "inlineChatPrompt";
+      promptInput.placeholder = "AIへの指示を入力 (例: ループを追加)...";
+
+      const submitBtn = document.createElement("button");
+      submitBtn.type = "button";
+      submitBtn.id = "inlineChatSubmit";
+      submitBtn.textContent = "送信";
+
+      inputRow.appendChild(promptInput);
+      inputRow.appendChild(submitBtn);
+
+      const statusDiv = document.createElement("div");
+      statusDiv.id = "inlineChatStatus";
+      statusDiv.className = "inline-chat-status";
+      statusDiv.style.display = "none";
+      statusDiv.textContent = "生成中...";
+
+      state.editor.inlineChatDom.appendChild(inputRow);
+      state.editor.inlineChatDom.appendChild(statusDiv);
+
+      promptInput.onkeydown = async (e) => {
         if (e.key === "Enter") {
           e.preventDefault();
           await submitInlineChat();
@@ -974,12 +1076,11 @@ const inlineChatWidget = {
         }
       };
 
-      const button = inlineChatDom.querySelector("#inlineChatSubmit");
-      button.onclick = async () => {
+      submitBtn.onclick = async () => {
         await submitInlineChat();
       };
     }
-    return inlineChatDom;
+    return state.editor.inlineChatDom;
   },
   getPosition: function () {
     return {
@@ -993,9 +1094,10 @@ const inlineChatWidget = {
 };
 
 async function submitInlineChat() {
-  if (!activeFilePath || !window.editor) return;
-  const input = inlineChatDom.querySelector("#inlineChatPrompt");
-  const status = inlineChatDom.querySelector("#inlineChatStatus");
+  if (!state.editor.activeFilePath || !window.editor) return;
+  const domNode = state.editor.inlineChatDom;
+  const input = domNode.querySelector("#inlineChatPrompt");
+  const status = domNode.querySelector("#inlineChatStatus");
   const prompt = input.value.trim();
   if (!prompt) return;
 
@@ -1005,7 +1107,7 @@ async function submitInlineChat() {
 
   const code = window.editor.getValue();
   const position = window.editor.getPosition();
-  const fileName = activeFilePath.split(/[\\/]/).pop();
+  const fileName = state.editor.activeFilePath.split(/[\\/]/).pop();
   const language = window.editor.getModel()?.getLanguageId() || "plaintext";
 
   try {
@@ -1023,10 +1125,10 @@ async function submitInlineChat() {
         column: position.column,
         fileName,
         language,
-        model: $("codeModel").value,
-        webSearch: $("codeWebSearch")?.checked || false,
-        numOfSite: $("codeNumOfSite")?.value ? parseInt($("codeNumOfSite").value) : undefined,
-        maxWord: $("codeMaxWord")?.value ? parseInt($("codeMaxWord").value) : undefined,
+        model: dom.codeModel.value,
+        webSearch: dom.codeWebSearch?.checked || false,
+        numOfSite: dom.codeNumOfSite?.value ? parseInt(dom.codeNumOfSite.value) : undefined,
+        maxWord: dom.codeMaxWord?.value ? parseInt(dom.codeMaxWord.value) : undefined,
       }),
     });
 
@@ -1067,39 +1169,50 @@ async function submitInlineChat() {
 }
 
 function toggleInlineChat() {
-  if (!activeFilePath) {
+  if (!state.editor.activeFilePath) {
     toast.warning("ファイルを編集するには、左のツリーからファイルを開いてください。");
     return;
   }
-  if (isInlineChatOpen) {
+  if (state.editor.isInlineChatOpen) {
     closeInlineChat();
   } else {
     window.editor.addContentWidget(inlineChatWidget);
-    isInlineChatOpen = true;
+    state.editor.isInlineChatOpen = true;
     setTimeout(() => {
-      const input = inlineChatDom?.querySelector("#inlineChatPrompt");
+      const input = state.editor.inlineChatDom?.querySelector("#inlineChatPrompt");
       if (input) input.focus();
     }, 50);
   }
 }
 
 function closeInlineChat() {
-  if (isInlineChatOpen) {
+  if (state.editor.isInlineChatOpen) {
     window.editor.removeContentWidget(inlineChatWidget);
-    isInlineChatOpen = false;
+    state.editor.isInlineChatOpen = false;
     window.editor.focus();
   }
 }
 
 async function loadWorkspace(dirPath = null) {
   try {
-    const tree = $("fileTree");
-    tree.innerHTML = Array.from({ length: 6 }, () =>
-      `<div class="skeleton-node"><div class="skeleton skeleton-icon"></div><div class="skeleton skeleton-line w-75"></div></div>`
-    ).join("");
+    const tree = dom.fileTree;
+    tree.textContent = "";
+    // skeleton nodes with createElement
+    for (let i = 0; i < 6; i++) {
+      const skeleton = document.createElement("div");
+      skeleton.className = "skeleton-node";
+      const icon = document.createElement("div");
+      icon.className = "skeleton skeleton-icon";
+      const line = document.createElement("div");
+      line.className = "skeleton skeleton-line w-75";
+      skeleton.appendChild(icon);
+      skeleton.appendChild(line);
+      tree.appendChild(skeleton);
+    }
+
     const data = await api(`/api/fs/list${dirPath ? `?dir=${encodeURIComponent(dirPath)}` : ""}`);
-    $("explorerPath").value = data.dir;
-    tree.innerHTML = "";
+    dom.explorerPath.value = data.dir;
+    tree.textContent = "";
     await renderTreeNodes(data.items, tree, 0);
   } catch (e) {
     toast.error(`ワークスペースの読み込みに失敗しました: ${e.message}`);
@@ -1120,12 +1233,12 @@ async function renderTreeNodes(items, container, depth = 0) {
 
     const toggle = document.createElement("span");
     toggle.className = "node-toggle";
-    toggle.innerHTML = item.isDirectory ? "▶" : "";
+    toggle.textContent = item.isDirectory ? "▶" : "";
     node.appendChild(toggle);
 
     const icon = document.createElement("span");
     icon.className = "node-icon";
-    icon.innerHTML = item.isDirectory ? "📁" : "📄";
+    icon.textContent = item.isDirectory ? "📁" : "📄";
     node.appendChild(icon);
 
     const name = document.createElement("span");
@@ -1148,7 +1261,7 @@ async function renderTreeNodes(items, container, depth = 0) {
         node.setAttribute("aria-expanded", String(isExpanded));
         if (isExpanded) {
           childrenContainer.style.display = "flex";
-          toggle.innerHTML = "▼";
+          toggle.textContent = "▼";
           if (childrenContainer.childElementCount === 0) {
             try {
               const res = await api(`/api/fs/list?dir=${encodeURIComponent(item.path)}`);
@@ -1159,7 +1272,7 @@ async function renderTreeNodes(items, container, depth = 0) {
           }
         } else {
           childrenContainer.style.display = "none";
-          toggle.innerHTML = "▶";
+          toggle.textContent = "▶";
         }
       };
     } else {
@@ -1184,25 +1297,25 @@ async function openFile(filePath) {
       }
       window.editor.setModel(model);
 
-      if (!openTabs.includes(filePath)) {
-        openTabs.push(filePath);
+      if (!state.editor.openTabs.includes(filePath)) {
+        state.editor.openTabs.push(filePath);
       }
 
       // Dispose unused models (keep max 20 open, excluding active or open tab models)
       const allModels = monaco.editor.getModels();
-      if (allModels.length > 20) {
+      if (allModels.length > state.editor.maxOpenModels) {
         const unused = allModels.filter(
-          (m) => m !== window.editor.getModel() && !openTabs.includes(m.uri.fsPath),
+          (m) => m !== window.editor.getModel() && !state.editor.openTabs.includes(m.uri.fsPath),
         );
-        for (const m of unused.slice(0, allModels.length - 20)) {
+        for (const m of unused.slice(0, allModels.length - state.editor.maxOpenModels)) {
           m.dispose();
         }
       }
 
-      activeFilePath = filePath;
-      $("currentFileName").textContent = filePath.replace(/\\/g, "/").split("/").pop();
-      $("currentFileName").title = filePath;
-      $("saveFileBtn").disabled = false;
+      state.editor.activeFilePath = filePath;
+      dom.currentFileName.textContent = filePath.replace(/\\/g, "/").split("/").pop();
+      dom.currentFileName.title = filePath;
+      dom.saveFileBtn.disabled = false;
 
       document.querySelectorAll(".tree-node.file").forEach((x) => {
         if (x.dataset.path === filePath) {
@@ -1221,14 +1334,14 @@ async function openFile(filePath) {
 let _saveStatusTimer = null;
 
 async function saveFile() {
-  if (!activeFilePath || !window.editor) return;
+  if (!state.editor.activeFilePath || !window.editor) return;
   const content = window.editor.getValue();
   try {
     setStatus("保存中...", "warn");
     await api("/api/fs/write", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: activeFilePath, content }),
+      body: JSON.stringify({ path: state.editor.activeFilePath, content }),
     });
     setStatus("保存完了", "ok");
     toast.success("ファイルを保存しました");
@@ -1242,32 +1355,26 @@ async function saveFile() {
 }
 
 $("explorerRefresh").onclick = () => {
-  const pathVal = $("explorerPath").value.trim();
+  const pathVal = dom.explorerPath.value.trim();
   loadWorkspace(pathVal || null);
 };
 
-$("explorerPath").onkeydown = (e) => {
+dom.explorerPath.onkeydown = (e) => {
   if (e.key === "Enter") {
-    const pathVal = $("explorerPath").value.trim();
+    const pathVal = dom.explorerPath.value.trim();
     loadWorkspace(pathVal || null);
   }
 };
 
-$("saveFileBtn").onclick = () => {
+dom.saveFileBtn.onclick = () => {
   saveFile();
 };
 
 // ============================================================
 // AI Coding Agent Orchestration
 // ============================================================
-let agentActive = false;
-let agentSessionId = null;
-let agentConversationHistory = [];
-let agentChatId = null;
-let currentAgentResolver = null;
-
 function setAgentStatus(statusText, statusClass) {
-  const badge = $("agentStatus");
+  const badge = dom.agentStatus;
   if (!badge) return;
   badge.textContent = statusText;
   badge.className = `agent-status-badge ${statusClass}`;
@@ -1312,7 +1419,7 @@ function formatMarkdownLike(text) {
 }
 
 function addAgentTimelineStep(type, title, body, resultText = null) {
-  const log = $("agentActivityLog");
+  const log = dom.agentActivityLog;
   if (!log) return;
 
   // Remove placeholder if present
@@ -1324,21 +1431,6 @@ function addAgentTimelineStep(type, title, body, resultText = null) {
   const step = document.createElement("div");
   step.className = `agent-step ${type}`;
   step.id = stepId;
-
-  let iconHtml = "";
-  if (type === "thought") {
-    iconHtml =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><circle cx="12" cy="12" r="9"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>思考';
-  } else if (type === "action") {
-    iconHtml =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>ツール呼び出し';
-  } else if (type === "result") {
-    iconHtml =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg>実行結果';
-  } else if (type === "error") {
-    iconHtml =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>エラー';
-  }
 
   const time = new Date().toLocaleTimeString([], {
     hour: "2-digit",
@@ -1354,7 +1446,25 @@ function addAgentTimelineStep(type, title, body, resultText = null) {
 
   const iconSpan = document.createElement("span");
   iconSpan.className = "agent-step-icon";
-  iconSpan.innerHTML = iconHtml + ": " + escapeHtml(title); // iconHtml is static trusted SVG
+
+  // Use createElement for icon and title to avoid innerHTML on untrusted title
+  const iconImg = document.createElement("span");
+  if (type === "thought") {
+    iconImg.innerHTML =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><circle cx="12" cy="12" r="9"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>思考';
+  } else if (type === "action") {
+    iconImg.innerHTML =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>ツール呼び出し';
+  } else if (type === "result") {
+    iconImg.innerHTML =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg>実行結果';
+  } else if (type === "error") {
+    iconImg.innerHTML =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>エラー';
+  }
+
+  iconSpan.appendChild(iconImg);
+  iconSpan.appendChild(document.createTextNode(": " + title));
   header.appendChild(iconSpan);
 
   const timeSpan = document.createElement("span");
@@ -1399,17 +1509,18 @@ window.toggleTimelineResult = function (stepId) {
   const box = document.getElementById(`result-${stepId}`);
   if (!box) return;
   const toggle = box.previousElementSibling;
+  const toggleSpan = toggle.querySelector("span");
   if (box.style.display === "none") {
     box.style.display = "block";
-    toggle.querySelector("span").textContent = "▼ 実行出力を非表示";
+    if (toggleSpan) toggleSpan.textContent = "▼ 実行出力を非表示";
   } else {
     box.style.display = "none";
-    toggle.querySelector("span").textContent = "▶ 実行出力を表示";
+    if (toggleSpan) toggleSpan.textContent = "▶ 実行出力を表示";
   }
 };
 
 function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) {
-  const log = $("agentActivityLog");
+  const log = dom.agentActivityLog;
   if (!log) return;
   const placeholder = log.querySelector(".timeline-placeholder");
   if (placeholder) placeholder.remove();
@@ -1435,7 +1546,8 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
   const iconSpan = document.createElement("span");
   iconSpan.className = "agent-step-icon";
   iconSpan.style.color = "#facc15";
-  iconSpan.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
+  iconSpan.innerHTML =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
   iconSpan.appendChild(document.createTextNode("承認要求: コマンド実行"));
 
   const timeSpan = document.createElement("span");
@@ -1499,13 +1611,11 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
   card.appendChild(header);
   card.appendChild(body);
 
-  step.innerHTML = "";
+  step.textContent = "";
   step.appendChild(card);
 
   log.appendChild(step);
   log.scrollTop = log.scrollHeight;
-
-
 
   approveBtn.onclick = () => {
     approveBtn.disabled = true;
@@ -1538,7 +1648,11 @@ function parseXMLTags(text) {
 
   // 2. Remove accidental Markdown code block wrapping (e.g. ```xml ... ```) if the whole text is wrapped
   if (unescapedText.trim().startsWith("```")) {
-    unescapedText = unescapedText.trim().replace(/^```[a-zA-Z0-9+#-]*\s*\n?/, "").replace(/\n?```$/, "").trim();
+    unescapedText = unescapedText
+      .trim()
+      .replace(/^```[a-zA-Z0-9+#-]*\s*\n?/, "")
+      .replace(/\n?```$/, "")
+      .trim();
   }
 
   // Lenient tag matching allowing optional closing tags (using end of string $ as fallback)
@@ -1590,6 +1704,48 @@ function parseXMLTags(text) {
   };
 }
 
+let diffEditor = null;
+
+async function showDiffDialog(filePath, oldContent, newContent) {
+  const modal = $("diffModal");
+  const container = $("diffEditorContainer");
+  const pathLabel = $("diffFilePath");
+
+  pathLabel.textContent = `ファイル: ${filePath}`;
+  modal.classList.remove("u-hidden");
+
+  if (!diffEditor) {
+    diffEditor = monaco.editor.createDiffEditor(container, {
+      theme: document.documentElement.getAttribute("data-theme") === "light" ? "vs" : "vs-dark",
+      automaticLayout: true,
+      readOnly: true,
+      renderSideBySide: true,
+    });
+  }
+
+  const originalModel = monaco.editor.createModel(oldContent);
+  const modifiedModel = monaco.editor.createModel(newContent);
+  diffEditor.setModel({
+    original: originalModel,
+    modified: modifiedModel,
+  });
+
+  return new Promise((resolve) => {
+    $("diffApply").onclick = () => {
+      modal.classList.add("u-hidden");
+      originalModel.dispose();
+      modifiedModel.dispose();
+      resolve(true);
+    };
+    $("diffCancel").onclick = () => {
+      modal.classList.add("u-hidden");
+      originalModel.dispose();
+      modifiedModel.dispose();
+      resolve(false);
+    };
+  });
+}
+
 function resolvePathRelativeToWorkspace(workspaceRoot, filePath) {
   if (/^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith("/") || filePath.startsWith("\\")) {
     return filePath;
@@ -1620,10 +1776,10 @@ function trimAgentHistory(history, maxTokens = 90000) {
 }
 
 async function runAgentLoop(initialInstruction) {
-  const workspaceRoot = $("explorerPath").value || "";
+  const workspaceRoot = dom.explorerPath.value || "";
   setAgentStatus("初期化中...", "thinking");
 
-  if (!agentSessionId) {
+  if (!state.agent.sessionId) {
     try {
       const sessionData = await api("/api/agent/sessions", {
         method: "POST",
@@ -1633,7 +1789,7 @@ async function runAgentLoop(initialInstruction) {
           task: initialInstruction,
         }),
       });
-      agentSessionId = sessionData.session.id;
+      state.agent.sessionId = sessionData.session.id;
       addAgentTimelineStep(
         "thought",
         "セッション開始",
@@ -1652,7 +1808,7 @@ async function runAgentLoop(initialInstruction) {
     addAgentTimelineStep("thought", "セッション再開", `既存のセッションで追加指示を実行します。`);
   }
 
-  const sessionId = agentSessionId;
+  const sessionId = state.agent.sessionId;
 
   let workspaceFilesText = `ワークスペースパス: ${workspaceRoot}\n`;
   try {
@@ -1704,13 +1860,13 @@ async function runAgentLoop(initialInstruction) {
 =======
 [置換後の新しいコード]
 >>>>>>> REPLACE
-   <call_tool name="apply_diff"><parameter name="path">utils/helper.js</parameter><parameter name="diff">&lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH
-export const add = (a, b) =&gt; a + b;
+   <call_tool name="apply_diff"><parameter name="path">utils/helper.js</parameter><parameter name="diff"><<<<<<< SEARCH
+export const add = (a, b) => a + b;
 =======
-export const add = (a, b) =&gt; {
+export const add = (a, b) => {
   return a + b;
 };
-&gt;&gt;&gt;&gt;&gt;&gt;&gt; REPLACE</parameter></call_tool>
+>>>>>>> REPLACE</parameter></call_tool>
 
 4. list_directory
    - パラメータ: { "path": "ディレクトリパス" }
@@ -1740,30 +1896,30 @@ export const add = (a, b) =&gt; {
 ${workspaceFilesText}
 
 現在の Monaco エディタで開いているファイル:
-パス: ${activeFilePath || "なし"}
+パス: ${state.editor.activeFilePath || "なし"}
 `;
 
-  if (agentConversationHistory.length === 0) {
-    agentConversationHistory = [
+  if (state.agent.history.length === 0) {
+    state.agent.history = [
       { role: "user", content: `${sysPrompt}\n\n【指示】\n${initialInstruction}` },
     ];
   } else {
-    agentConversationHistory.push({
+    state.agent.history.push({
       role: "user",
       content: `【ユーザーからの追加指示】\n${initialInstruction}`,
     });
-    trimAgentHistory(agentConversationHistory);
+    trimAgentHistory(state.agent.history);
   }
 
   let loopCount = 0;
   const maxLoops = 20;
 
-  while (agentActive && loopCount < maxLoops) {
+  while (state.agent.active && loopCount < maxLoops) {
     loopCount++;
     setAgentStatus("思考中...", "thinking");
 
     // Compile full conversation history into a single prompt string for stateless execution
-    const compiledPrompt = agentConversationHistory.map((msg) => msg.content).join("\n\n");
+    const compiledPrompt = state.agent.history.map((msg) => msg.content).join("\n\n");
 
     let chatRes;
     try {
@@ -1855,15 +2011,36 @@ ${workspaceFilesText}
           if (diff === undefined) throw new Error("diff パラメータが必要です");
 
           const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
-          const patchRes = await api(`/api/agent/sessions/${sessionId}/diff`, {
+
+          // 既存の内容を取得してプレビューを表示
+          const currentFileData = await api(
+            `/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`,
+          );
+          const oldContent = currentFileData.content;
+
+          // サーバーサイドのロジックをシミュレートして新しい内容を生成（プレビュー用）
+          const patchResPreview = await api(`/api/agent/sessions/${sessionId}/diff`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ path: fullPath, diff }),
+            body: JSON.stringify({ path: fullPath, diff, dryRun: true }),
           });
-          toolResultText = patchRes.message || `ファイル ${filePath} の置換に成功しました。`;
-          toolSuccess = true;
+          const newContent = patchResPreview.newContent || oldContent;
 
-          await openFile(fullPath);
+          const accepted = await showDiffDialog(filePath, oldContent, newContent);
+
+          if (accepted) {
+            const patchRes = await api(`/api/agent/sessions/${sessionId}/diff`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ path: fullPath, diff }),
+            });
+            toolResultText = patchRes.message || `ファイル ${filePath} の置換に成功しました。`;
+            toolSuccess = true;
+            await openFile(fullPath);
+          } else {
+            toolResultText = "ユーザーによって変更が拒否されました。";
+            toolSuccess = false;
+          }
         } else if (toolName === "list_directory") {
           const dirPath = params.path || "";
           const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, dirPath);
@@ -1902,14 +2079,14 @@ ${workspaceFilesText}
           const runRes = await api(`/api/agent/sessions/${sessionId}/commands`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ command, cwd: workspaceRoot, requireApproval: true }),
+            body: JSON.stringify({ command, cwd: workspaceRoot }),
           });
 
           if (runRes.requiresApproval) {
             const approvalToken = runRes.approvalToken;
 
             const approvalPromise = new Promise((resolve) => {
-              currentAgentResolver = resolve;
+              state.agent.resolver = resolve;
 
               addAgentApprovalStep(
                 command,
@@ -1935,7 +2112,7 @@ ${workspaceFilesText}
             });
 
             const approvalResult = await approvalPromise;
-            currentAgentResolver = null;
+            state.agent.resolver = null;
 
             if (approvalResult.abort) {
               break;
@@ -1973,31 +2150,28 @@ ${workspaceFilesText}
         toolResultText,
       );
 
-      const feedbackMsg = `<tool_response>
-${toolResultText}
-</tool_response>`;
+      const feedbackMsg = `<tool_response>\n${toolResultText}\n</tool_response>`;
 
-      agentConversationHistory.push({ role: "assistant", content: aiText });
-      agentConversationHistory.push({ role: "user", content: feedbackMsg });
-      trimAgentHistory(agentConversationHistory);
+      state.agent.history.push({ role: "assistant", content: aiText });
+      state.agent.history.push({ role: "user", content: feedbackMsg });
+      trimAgentHistory(state.agent.history);
     } else {
-      const errMsg = `エラー: ツール呼び出しまたはタスク完了タグ (<call_tool> または <finish>) が見つかりませんでした。
-指示に従って、思考を <thought>タグで囲み、直後に呼び出すツールを <call_tool> タグで指定してください。`;
+      const errMsg = `エラー: ツール呼び出しまたはタスク完了タグ (<call_tool> または <finish>) が見つかりませんでした。\n指示に従って、思考を <thought>タグで囲み、直後に呼び出すツールを <call_tool> タグで指定してください。`;
       addAgentTimelineStep(
         "error",
         "パース失敗",
         "AIが定義されたXMLフォーマットに準拠していません。自動修正指示を送信します。",
       );
 
-      agentConversationHistory.push({ role: "assistant", content: aiText });
-      agentConversationHistory.push({ role: "user", content: errMsg });
-      trimAgentHistory(agentConversationHistory);
+      state.agent.history.push({ role: "assistant", content: aiText });
+      state.agent.history.push({ role: "user", content: errMsg });
+      trimAgentHistory(state.agent.history);
     }
 
     await new Promise((resolve) => setTimeout(resolve, 800));
   }
 
-  if (loopCount >= maxLoops && agentActive) {
+  if (loopCount >= maxLoops && state.agent.active) {
     addAgentTimelineStep(
       "error",
       "制限到達",
@@ -2005,26 +2179,28 @@ ${toolResultText}
     );
     setAgentStatus("エラー", "error");
   }
+
+  state.agent.active = false;
+  dom.startAgentBtn.style.display = "flex";
+  $("agentRunningControls").style.display = "none";
+  dom.agentInstruction.disabled = false;
+  if (dom.agentStatus.textContent !== "完了" && dom.agentStatus.textContent !== "エラー") {
+    setAgentStatus("待機中", "idle");
+  }
 }
 
-$("startAgentBtn").onclick = async () => {
-  if (agentActive) return;
-
-  const instruction = $("agentInstruction").value.trim();
+dom.startAgentBtn.onclick = async () => {
+  if (state.agent.active) return;
+  const instruction = dom.agentInstruction.value.trim();
   if (!instruction) {
-    toast.warning("指示を入力してください。");
+    toast.warning("エージェントへの指示を入力してください");
     return;
   }
 
-  $("startAgentBtn").disabled = true;
-  $("agentInstruction").disabled = true;
+  state.agent.active = true;
+  dom.startAgentBtn.style.display = "none";
   $("agentRunningControls").style.display = "flex";
-  $("agentFeedbackContainer").style.display = "block";
-
-  const log = $("agentActivityLog");
-  if (log) log.innerHTML = "";
-
-  agentActive = true;
+  dom.agentInstruction.disabled = true;
 
   try {
     await runAgentLoop(instruction);
@@ -2037,62 +2213,62 @@ $("startAgentBtn").onclick = async () => {
       `エージェントのループ処理中に問題が発生しました: ${err.message}`,
     );
   } finally {
-    agentActive = false;
-    $("startAgentBtn").disabled = false;
-    $("agentInstruction").disabled = false;
+    state.agent.active = false;
+    dom.startAgentBtn.style.display = "flex";
+    dom.agentInstruction.disabled = false;
     $("agentRunningControls").style.display = "none";
-    $("agentFeedbackContainer").style.display = "none";
   }
 };
 
-$("stopAgentBtn").onclick = () => {
-  if (!agentActive) return;
-
-  agentActive = false;
-  if (currentAgentResolver) {
-    currentAgentResolver({ abort: true });
+dom.stopAgentBtn.onclick = () => {
+  if (!state.agent.active) return;
+  state.agent.active = false;
+  if (state.agent.resolver) {
+    state.agent.resolver({ abort: true });
   }
   setAgentStatus("停止", "idle");
-  addAgentTimelineStep(
-    "thought",
-    "一時停止/終了",
-    "ユーザーの指示によりエージェントを停止しました。",
-  );
+  addAgentTimelineStep("thought", "停止", "ユーザーによって停止されました。");
 };
 
-$("resetAgentBtn").onclick = () => {
-  agentActive = false;
-  if (currentAgentResolver) {
-    currentAgentResolver({ abort: true });
+dom.resetAgentBtn.onclick = async () => {
+  const accepted = await toast.confirm("エージェントのセッション履歴をリセットしますか？", {
+    type: "warning",
+  });
+  if (accepted) {
+    if (state.agent.resolver) {
+      state.agent.resolver({ abort: true });
+    }
+    state.agent.sessionId = null;
+    state.agent.history = [];
+    const log = dom.agentActivityLog;
+    if (log) {
+      log.textContent = "";
+      const placeholder = document.createElement("div");
+      placeholder.className = "timeline-placeholder";
+      placeholder.style.cssText =
+        "color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 24px 8px; border: 1px dashed rgba(255,255,255,0.05); border-radius: 8px; background: rgba(255,255,255,0.01);";
+      placeholder.textContent =
+        "エージェントの実行を開始すると、思考や行動のログがここに表示されます。";
+      log.appendChild(placeholder);
+    }
+    setAgentStatus("待機中", "idle");
+    toast.success("セッションをリセットしました");
   }
-  agentSessionId = null;
-  agentConversationHistory = [];
-  agentChatId = null;
-
-  const log = $("agentActivityLog");
-  if (log) {
-    log.innerHTML = `<div class="timeline-placeholder" style="color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 24px 8px; border: 1px dashed rgba(255,255,255,0.05); border-radius: 8px; background: rgba(255,255,255,0.01);">エージェントの実行を開始すると、思考や行動のログがここに表示されます。</div>`;
-  }
-  $("agentInstruction").value = "";
-  setAgentStatus("待機中", "idle");
-  toast.success("セッションをリセットしました");
 };
 
-$("sendAgentFeedbackBtn").onclick = () => {
-  const input = $("agentFeedbackInput");
-  const text = input.value.trim();
-  if (!text) return;
+dom.sendAgentFeedbackBtn.onclick = () => {
+  const feedback = dom.agentFeedbackInput.value.trim();
+  if (!feedback) return;
+  dom.agentFeedbackInput.value = "";
 
-  input.value = "";
+  addAgentTimelineStep("thought", "フィードバック追加", feedback);
 
-  addAgentTimelineStep("thought", "フィードバック追加", text);
-
-  if (currentAgentResolver) {
-    currentAgentResolver({ approved: false, reason: `ユーザー指示: ${text}` });
+  if (state.agent.resolver) {
+    state.agent.resolver({ approved: false, reason: `ユーザー指示: ${feedback}` });
   } else {
-    agentConversationHistory.push({
+    state.agent.history.push({
       role: "user",
-      content: `【ユーザーの追加フィードバック】\n${text}`,
+      content: `【ユーザーの追加フィードバック】\n${feedback}`,
     });
   }
 };
@@ -2104,7 +2280,7 @@ async function initWorkspace() {
     // Populate root selector
     const rootSelector = $("rootSelector");
     if (rootSelector) {
-      rootSelector.innerHTML = "";
+      rootSelector.textContent = "";
 
       // Add default root
       const defaultOpt = document.createElement("option");
@@ -2191,13 +2367,17 @@ function initFolderPicker() {
   };
 
   const setLoading = () => {
-    body.innerHTML = '<div class="folder-picker-loading">フォルダを読み込み中...</div>';
+    body.textContent = "";
+    const loadingDiv = document.createElement("div");
+    loadingDiv.className = "folder-picker-loading";
+    loadingDiv.textContent = "フォルダを読み込み中...";
+    body.appendChild(loadingDiv);
   };
 
   const renderDrives = async () => {
     try {
       const data = await api("/api/fs/drives");
-      drives.innerHTML = "";
+      drives.textContent = "";
       data.drives.forEach((drive) => {
         const button = document.createElement("button");
         button.type = "button";
@@ -2211,7 +2391,7 @@ function initFolderPicker() {
       });
       updateDriveSelection();
     } catch (err) {
-      drives.innerHTML = "";
+      drives.textContent = "";
     }
   };
 
@@ -2235,11 +2415,14 @@ function initFolderPicker() {
 
     try {
       const data = await api(`/api/fs/list?dir=${encodeURIComponent(dir)}`);
-      body.innerHTML = "";
+      body.textContent = "";
 
       const directories = data.items.filter((item) => item.isDirectory);
       if (directories.length === 0) {
-        body.innerHTML = '<div class="folder-picker-empty">表示できるフォルダがありません</div>';
+        const emptyDiv = document.createElement("div");
+        emptyDiv.className = "folder-picker-empty";
+        emptyDiv.textContent = "表示できるフォルダがありません";
+        body.appendChild(emptyDiv);
         return;
       }
 
@@ -2271,7 +2454,7 @@ function initFolderPicker() {
       body.textContent = "";
       const error = document.createElement("div");
       error.className = "folder-picker-error-text";
-         error.textContent = `フォルダを読み込めませんでした: ${err?.message || "不明なエラー"}`;
+      error.textContent = `フォルダを読み込めませんでした: ${err?.message || "不明なエラー"}`;
       body.appendChild(error);
     }
   };
@@ -2300,7 +2483,9 @@ function initFolderPicker() {
 
   function trapFocus(e) {
     if (e.key !== "Tab") return;
-    const focusable = modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    const focusable = modal.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    );
     if (focusable.length === 0) return;
     const first = focusable[0];
     const last = focusable[focusable.length - 1];

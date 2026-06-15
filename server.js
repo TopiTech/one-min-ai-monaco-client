@@ -20,6 +20,8 @@ const __dirname = path.dirname(__filename);
 
 const ALLOWED_MIME_TYPES = [
   "image/",
+  "video/",
+  "audio/",
   "application/pdf",
   "text/",
   "application/json",
@@ -179,18 +181,21 @@ export function createApp(options = {}) {
 
   app.use(logger.requestLogger());
   app.use(express.json({ limit: serverConfig.maxJsonBodySize }));
-  
+
   app.get(["/", "/index.html"], (req, res) => {
     try {
       const htmlPath = path.join(__dirname, "public", "index.html");
       let html = fs.readFileSync(htmlPath, "utf8");
-      html = html.replace("<head>", `<head>\n    <meta name="local-bff-token" content="${localAuthToken}" />`);
+      html = html.replace(
+        "<head>",
+        `<head>\n    <meta name="local-bff-token" content="${localAuthToken}" />`,
+      );
       res.send(html);
     } catch (e) {
       res.status(500).send("Error loading index.html");
     }
   });
-  
+
   app.use(express.static(path.join(__dirname, "public")));
 
   const protectedApiAuth = localBffAuth({
@@ -243,8 +248,6 @@ export function createApp(options = {}) {
 
   return app;
 }
-
-
 
 if (process.env.NODE_ENV !== "test") {
   initModels().then(() => {

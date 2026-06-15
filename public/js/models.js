@@ -3,17 +3,17 @@ let _allCodeModels = [];
 let _allImageModels = [];
 let _activePickerBtn = null;
 let _activePickerType = null;
-let _activeTag = 'all';
+let _activeTag = "all";
 
 async function loadModels() {
   try {
-    const data = await api('/api/models');
+    const data = await api("/api/models");
     _allChatModels = Array.isArray(data.chatModels) ? data.chatModels : [];
     _allCodeModels = Array.isArray(data.codeModels) ? data.codeModels : [];
     _allImageModels = Array.isArray(data.imageModels) ? data.imageModels : [];
   } catch (e) {
-    console.warn('モデルリストの取得に失敗:', e);
-    if (typeof toast !== 'undefined') {
+    console.warn("モデルリストの取得に失敗:", e);
+    if (typeof toast !== "undefined") {
       toast.error(`モデルリストの取得に失敗しました: ${e?.message || e}`);
     }
   }
@@ -21,41 +21,43 @@ async function loadModels() {
 
 function getProviderColor(provider) {
   const map = {
-    'OpenAI': '#10a37f',
-    'Anthropic': '#d4793c',
-    'Google': '#4285f4',
-    'DeepSeek': '#5b6cf9',
-    'xAI': '#e7e7e7',
-    'Mistral': '#ff7000',
-    'Alibaba': '#ff6a00',
-    'Perplexity': '#20b2aa',
-    'Cohere': '#39d3aa',
-    'Meta': '#0866ff',
-    'Flux': '#a855f7',
-    'Magic Art': '#ec4899',
-    'Stability': '#7c3aed',
-    'Leonardo': '#f59e0b',
-    'Ideogram': '#06b6d4',
-    'Recraft': '#84cc16',
+    OpenAI: "#10a37f",
+    Anthropic: "#d4793c",
+    Google: "#4285f4",
+    DeepSeek: "#5b6cf9",
+    xAI: "#e7e7e7",
+    Mistral: "#ff7000",
+    Alibaba: "#ff6a00",
+    Perplexity: "#20b2aa",
+    Cohere: "#39d3aa",
+    Meta: "#0866ff",
+    Flux: "#a855f7",
+    "Magic Art": "#ec4899",
+    Stability: "#7c3aed",
+    Leonardo: "#f59e0b",
+    Ideogram: "#06b6d4",
+    Recraft: "#84cc16",
   };
-  return map[provider] || 'var(--accent)';
+  return map[provider] || "var(--accent)";
 }
 
-function renderPickerList(models, search = '', tag = 'all') {
-  const list = document.getElementById('modelPickerList');
+function renderPickerList(models, search = "", tag = "all") {
+  const list = document.getElementById("modelPickerList");
   if (!list) return;
-  list.innerHTML = '';
-  list.setAttribute('role', 'listbox');
+  list.textContent = "";
+  list.setAttribute("role", "listbox");
 
   const q = search.toLowerCase();
   let filtered = models;
 
-  if (tag !== 'all') {
-    filtered = filtered.filter(m => m.tags && m.tags.includes(tag));
+  if (tag !== "all") {
+    filtered = filtered.filter((m) => m.tags && m.tags.includes(tag));
   }
 
   if (q) {
-    filtered = filtered.filter(m => m.label.toLowerCase().includes(q) || m.provider.toLowerCase().includes(q));
+    filtered = filtered.filter(
+      (m) => m.label.toLowerCase().includes(q) || m.provider.toLowerCase().includes(q),
+    );
   }
 
   const groups = {};
@@ -65,41 +67,46 @@ function renderPickerList(models, search = '', tag = 'all') {
   }
 
   if (!Object.keys(groups).length) {
-    list.innerHTML = '<div class="model-picker-empty">見つかりませんでした</div>';
+    const emptyDiv = document.createElement("div");
+    emptyDiv.className = "model-picker-empty";
+    emptyDiv.textContent = "見つかりませんでした";
+    list.appendChild(emptyDiv);
     return;
   }
 
   for (const [provider, items] of Object.entries(groups)) {
-    const header = document.createElement('div');
-    header.className = 'model-picker-group-header';
-    header.style.setProperty('--provider-color', getProviderColor(provider));
+    const header = document.createElement("div");
+    header.className = "model-picker-group-header";
+    header.style.setProperty("--provider-color", getProviderColor(provider));
     header.textContent = provider;
     list.appendChild(header);
 
     for (const m of items) {
-      const item = document.createElement('button');
-      item.className = 'model-picker-item';
+      const item = document.createElement("button");
+      item.className = "model-picker-item";
       item.dataset.id = m.id;
       item.dataset.label = m.label;
-      item.setAttribute('role', 'option');
-      item.setAttribute('aria-selected', 'false');
-      const targetInput = _activePickerBtn ? document.getElementById(_activePickerBtn.dataset.targetInput) : null;
-      if (targetInput && targetInput.value === m.id) item.classList.add('selected');
+      item.setAttribute("role", "option");
+      item.setAttribute("aria-selected", "false");
+      const targetInput = _activePickerBtn
+        ? document.getElementById(_activePickerBtn.dataset.targetInput)
+        : null;
+      if (targetInput && targetInput.value === m.id) item.classList.add("selected");
 
-      const contentRow = document.createElement('div');
-      contentRow.className = 'model-picker-item-content';
+      const contentRow = document.createElement("div");
+      contentRow.className = "model-picker-item-content";
 
-      const labelSpan = document.createElement('span');
-      labelSpan.className = 'model-picker-item-label';
+      const labelSpan = document.createElement("span");
+      labelSpan.className = "model-picker-item-label";
       labelSpan.textContent = m.label;
       contentRow.appendChild(labelSpan);
 
       // Tags display
       if (m.tags && m.tags.length > 0) {
-        const tagsDiv = document.createElement('div');
-        tagsDiv.className = 'model-picker-item-tags';
+        const tagsDiv = document.createElement("div");
+        tagsDiv.className = "model-picker-item-tags";
         for (const t of m.tags) {
-          const tSpan = document.createElement('span');
+          const tSpan = document.createElement("span");
           tSpan.className = `model-tag tag-${t}`;
           tSpan.textContent = t;
           tagsDiv.appendChild(tSpan);
@@ -109,8 +116,8 @@ function renderPickerList(models, search = '', tag = 'all') {
 
       item.appendChild(contentRow);
 
-      const idSpan = document.createElement('span');
-      idSpan.className = 'model-picker-item-id';
+      const idSpan = document.createElement("span");
+      idSpan.className = "model-picker-item-id";
       idSpan.textContent = m.id;
       item.appendChild(idSpan);
 
@@ -124,39 +131,40 @@ function selectModel(m) {
   if (!_activePickerBtn) return;
   const targetId = _activePickerBtn.dataset.targetInput;
   const hiddenInput = document.getElementById(targetId);
-  const labelSpan = _activePickerBtn.querySelector('span:first-of-type');
+  const labelSpan = _activePickerBtn.querySelector("span:first-of-type");
   if (hiddenInput) hiddenInput.value = m.id;
   if (labelSpan) labelSpan.textContent = m.label;
   closeModelPicker();
 }
 
 function selectActivePickerItem() {
-  const list = document.getElementById('modelPickerList');
-  const active = list?.querySelector('.model-picker-item.selected');
+  const list = document.getElementById("modelPickerList");
+  const active = list?.querySelector(".model-picker-item.selected");
   if (active) active.click();
 }
 
 function openModelPicker(btn, type) {
   _activePickerBtn = btn;
   _activePickerType = type;
-  _activeTag = 'all';
+  _activeTag = "all";
 
-  btn.setAttribute('aria-expanded', 'true');
-  const models = type === 'image' ? _allImageModels : type === 'code' ? _allCodeModels : _allChatModels;
+  btn.setAttribute("aria-expanded", "true");
+  const models =
+    type === "image" ? _allImageModels : type === "code" ? _allCodeModels : _allChatModels;
 
-  const dropdown = document.getElementById('modelPickerDropdown');
-  const search = document.getElementById('modelPickerSearch');
+  const dropdown = document.getElementById("modelPickerDropdown");
+  const search = document.getElementById("modelPickerSearch");
 
   // Reset tabs
-  document.querySelectorAll('.picker-tab').forEach(tab => {
-    tab.classList.toggle('active', tab.dataset.tag === 'all');
+  document.querySelectorAll(".picker-tab").forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.tag === "all");
   });
 
-  search.value = '';
-  renderPickerList(models, '', 'all');
+  search.value = "";
+  renderPickerList(models, "", "all");
 
-  dropdown.style.visibility = 'hidden';
-  dropdown.style.display = 'flex';
+  dropdown.style.visibility = "hidden";
+  dropdown.style.display = "flex";
 
   const rect = btn.getBoundingClientRect();
   const dropH = dropdown.offsetHeight || 480;
@@ -168,17 +176,17 @@ function openModelPicker(btn, type) {
   let topPx;
   if (spaceBelow >= Math.min(dropH, 240) || spaceBelow >= spaceAbove) {
     topPx = rect.bottom + 6 + window.scrollY;
-    dropdown.style.maxHeight = Math.max(spaceBelow - 4, 120) + 'px';
+    dropdown.style.maxHeight = Math.max(spaceBelow - 4, 120) + "px";
   } else {
     const availH = Math.max(spaceAbove - 4, 120);
-    dropdown.style.maxHeight = availH + 'px';
+    dropdown.style.maxHeight = availH + "px";
     topPx = rect.top + window.scrollY - Math.min(dropH, availH) - 6;
   }
 
-  dropdown.style.top = topPx + 'px';
-  dropdown.style.left = Math.min(rect.left, window.innerWidth - dropW - 8) + 'px';
-  dropdown.style.width = dropW + 'px';
-  dropdown.style.visibility = '';
+  dropdown.style.top = topPx + "px";
+  dropdown.style.left = Math.min(rect.left, window.innerWidth - dropW - 8) + "px";
+  dropdown.style.width = dropW + "px";
+  dropdown.style.visibility = "";
 
   search.focus();
 
@@ -186,53 +194,52 @@ function openModelPicker(btn, type) {
 
   search.oninput = updateList;
 
-  document.querySelectorAll('.picker-tab').forEach(tab => {
+  document.querySelectorAll(".picker-tab").forEach((tab) => {
     tab.onclick = () => {
-      document.querySelectorAll('.picker-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
+      document.querySelectorAll(".picker-tab").forEach((t) => t.classList.remove("active"));
+      tab.classList.add("active");
       _activeTag = tab.dataset.tag;
       updateList();
     };
   });
 
-  document.removeEventListener('click', closePicker);
+  document.removeEventListener("click", closePicker);
   setTimeout(() => {
-    document.addEventListener('click', closePicker);
+    document.addEventListener("click", closePicker);
   }, 10);
 }
 
-
 function closePicker(e) {
-  const dropdown = document.getElementById('modelPickerDropdown');
+  const dropdown = document.getElementById("modelPickerDropdown");
   if (dropdown && !dropdown.contains(e.target)) {
     closeModelPicker();
-    document.removeEventListener('click', closePicker);
+    document.removeEventListener("click", closePicker);
   }
 }
 
 function closeModelPicker() {
-  const dropdown = document.getElementById('modelPickerDropdown');
-  if (dropdown) dropdown.style.display = 'none';
-  if (_activePickerBtn) _activePickerBtn.setAttribute('aria-expanded', 'false');
+  const dropdown = document.getElementById("modelPickerDropdown");
+  if (dropdown) dropdown.style.display = "none";
+  if (_activePickerBtn) _activePickerBtn.setAttribute("aria-expanded", "false");
   _activePickerBtn = null;
   _activePickerType = null;
 }
 
 function initModelPickers() {
-  document.querySelectorAll('.model-picker-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+  document.querySelectorAll(".model-picker-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      const dropdown = document.getElementById('modelPickerDropdown');
-      if (dropdown.style.display !== 'none' && _activePickerBtn === btn) {
+      const dropdown = document.getElementById("modelPickerDropdown");
+      if (dropdown.style.display !== "none" && _activePickerBtn === btn) {
         closeModelPicker();
       } else {
         openModelPicker(btn, btn.dataset.modelType);
       }
     });
   });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeModelPicker();
-    if (e.key === 'Enter' && _activePickerType) {
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeModelPicker();
+    if (e.key === "Enter" && _activePickerType) {
       e.preventDefault();
       selectActivePickerItem();
     }
