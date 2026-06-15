@@ -9,6 +9,7 @@ import crypto from "crypto";
 import { callOneMin, normalizeAssetResponse } from "./utils/api-client.js";
 import { serverConfig } from "./config/server.js";
 import logger from "./utils/logger.js";
+import { validateBufferMimeType } from "./utils/mime-guard.js";
 
 import aiRoutes from "./routes/ai.js";
 import fsRoutes from "./routes/fs.js";
@@ -127,6 +128,17 @@ async function handleAssetUpload(req, res, next) {
   try {
     if (!req.file) return res.status(400).json({ error: "asset file is required" });
 
+    // Validate real mime type using magic bytes check
+    if (!validateBufferMimeType(req.file.buffer, req.file.mimetype)) {
+      logger.warn("Asset upload rejected: MIME type signature mismatch", {
+        filename: req.file.originalname,
+        mimetype: req.file.mimetype,
+      });
+      return res.status(415).json({
+        error: `Unsupported file type or signature mismatch: ${req.file.mimetype}`,
+      });
+    }
+
     logger.info("Processing asset upload", {
       filename: req.file.originalname,
       size: req.file.size,
@@ -229,6 +241,29 @@ export function createApp(options = {}) {
   app.use("/api/fs", protectedApiAuth, fsRoutes);
   app.use("/api/agent", protectedApiAuth, agentRoutes);
 
+function sanitizePayload(payload) {
+  if (!payload) return null;
+  if (typeof payload !== "object") return payload;
+  try {
+    const sanitized = JSON.parse(JSON.stringify(payload));
+    const sensitiveKeys = ["api_key", "apikey", "key", "token", "auth", "authorization", "secret"];
+    const walk = (obj) => {
+      if (!obj || typeof obj !== "object") return;
+      for (const key in obj) {
+        if (typeof obj[key] === "object" && obj[key] !== null) {
+          walk(obj[key]);
+        } else if (sensitiveKeys.some(sk => key.toLowerCase().includes(sk))) {
+          obj[key] = "[MASKED]";
+        }
+      }
+    };
+    walk(sanitized);
+    return sanitized;
+  } catch (e) {
+    return "[Unable to sanitize details]";
+  }
+}
+
   app.use((err, req, res, _next) => {
     logger.error("Unhandled error", {
       error: err.message,
@@ -242,7 +277,7 @@ export function createApp(options = {}) {
     const isDev = process.env.NODE_ENV === "development";
     res.status(status).json({
       error: normalizePayloadError(err) || err.message || "Internal Server Error",
-      details: isDev ? err.payload || null : null,
+      details: isDev ? sanitizePayload(err.payload) || null : null,
     });
   });
 

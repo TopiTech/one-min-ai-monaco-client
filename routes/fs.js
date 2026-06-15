@@ -116,21 +116,34 @@ router.post('/workspace/select', async (req, res, next) => {
  */
 router.get('/list', async (req, res, next) => {
   try {
-    const dir = req.query.dir ? validatePath(String(req.query.dir)) : getDefaultRoot();
-    const entries = await fs.readdir(dir, { withFileTypes: true });
+    const dirPath = req.query.dir ? validatePath(String(req.query.dir)) : getDefaultRoot();
+    const dir = await fs.opendir(dirPath);
 
     const items = [];
-    for (const entry of entries) {
-      if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === '.venv') {
-        continue;
+    let entry;
+    let truncated = false;
+
+    try {
+      while ((entry = await dir.read()) !== null) {
+        if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === '.venv') {
+          continue;
+        }
+        const fullPath = path.join(dirPath, entry.name);
+        items.push({
+          name: entry.name,
+          path: fullPath,
+          isDirectory: entry.isDirectory()
+        });
+        if (items.length >= MAX_LIST_ENTRIES) {
+          const nextEntry = await dir.read();
+          if (nextEntry !== null) {
+            truncated = true;
+          }
+          break;
+        }
       }
-      const fullPath = path.join(dir, entry.name);
-      items.push({
-        name: entry.name,
-        path: fullPath,
-        isDirectory: entry.isDirectory()
-      });
-      if (items.length >= MAX_LIST_ENTRIES) break;
+    } finally {
+      await dir.close();
     }
 
     items.sort((a, b) => {
@@ -139,7 +152,7 @@ router.get('/list', async (req, res, next) => {
       return a.name.localeCompare(b.name);
     });
 
-    res.json({ dir, items, truncated: entries.length > MAX_LIST_ENTRIES + 5 });
+    res.json({ dir: dirPath, items, truncated });
   } catch (err) {
     next(err);
   }

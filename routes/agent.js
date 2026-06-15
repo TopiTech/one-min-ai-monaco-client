@@ -10,6 +10,7 @@ import {
 import { serverConfig } from "../config/server.js";
 import fs from "fs/promises";
 import path from "path";
+import logger from "../utils/logger.js";
 
 const router = express.Router();
 
@@ -166,6 +167,13 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
         createdAt: Date.now(),
       });
 
+      logger.info(`Command execution paused, awaiting user approval`, {
+        sessionId: req.params.id,
+        command,
+        cwd: workingDir,
+        approvalToken,
+      });
+
       return res.json({
         requiresApproval: true,
         approvalToken,
@@ -177,12 +185,23 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
 
     // Execute command
     session.status = "running";
+    logger.info(`Executing command (auto-approved or bypass-auth)`, {
+      sessionId: req.params.id,
+      command,
+      cwd: workingDir,
+    });
     const result = await executeCommand(command, {
       cwd: workingDir,
       timeoutMs: timeoutMs || serverConfig.commandTimeoutMs,
     });
 
     session.status = "idle";
+    logger.info(`Command execution finished`, {
+      sessionId: req.params.id,
+      command,
+      exitCode: result.exitCode,
+      timedOut: result.timedOut,
+    });
     addHistoryEntry(session, {
       type: "command",
       command,
@@ -238,12 +257,23 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
     validatePath(workingDir);
 
     session.status = "running";
+    logger.info(`Executing approved command`, {
+      sessionId: req.params.id,
+      command: pending.command,
+      cwd: workingDir,
+    });
     const result = await executeCommand(pending.command, {
       cwd: workingDir,
       timeoutMs: timeoutMs || serverConfig.commandTimeoutMs,
     });
 
     session.status = "idle";
+    logger.info(`Approved command finished`, {
+      sessionId: req.params.id,
+      command: pending.command,
+      exitCode: result.exitCode,
+      timedOut: result.timedOut,
+    });
     addHistoryEntry(session, {
       type: "command",
       command: pending.command,
@@ -503,57 +533,72 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
       });
     }
 
-    let newContent = content;
+    // Determine the original EOL format to preserve it
+    const hasCarriageReturn = content.includes("\r\n");
+    const eol = hasCarriageReturn ? "\r\n" : "\n";
+    let fileLines = content.split(/\r?\n/);
 
     for (const block of blocks) {
-      // Normalize line endings and trim trailing spaces for more robust matching
-      const normalize = (text) => text.replace(/\r\n/g, "\n").replace(/[ \t]+$/gm, "");
+      // Split search and replace blocks by line
+      const searchLines = block.search.split(/\r?\n/);
+      const replaceLines = block.replace.split(/\r?\n/);
 
-      const searchNorm = normalize(block.search);
-      const replaceNorm = block.replace.replace(/\r\n/g, "\n"); // Keep indent in replacement but normalize EOL
-      const currentContentNorm = normalize(newContent);
+      let matchedIndex = -1;
+      let matchCount = 0;
 
-      const index = currentContentNorm.indexOf(searchNorm);
-      if (index === -1) {
-        // Fallback: try without trimming if the exact match fails
-        const searchExact = block.search.replace(/\r\n/g, "\n");
-        const contentExact = newContent.replace(/\r\n/g, "\n");
-        const exactIndex = contentExact.indexOf(searchExact);
-
-        if (exactIndex === -1) {
-          return res.status(400).json({
-            error: `置換対象の SEARCH ブロックのコードが見つかりません。インデントや改行が既存ファイルの内容と完全に一致している必要があります：\n${block.search}`,
-          });
+      // 1. Try Exact Match (preserving exact indentation and trailing spaces)
+      for (let i = 0; i <= fileLines.length - searchLines.length; i++) {
+        let match = true;
+        for (let j = 0; j < searchLines.length; j++) {
+          if (fileLines[i + j] !== searchLines[j]) {
+            match = false;
+            break;
+          }
         }
-
-        if (contentExact.indexOf(searchExact, exactIndex + 1) !== -1) {
-          return res.status(400).json({
-            error: `置換対象の SEARCH ブロックのコードがファイル内に複数存在するため、一意に特定できません。前後の行も含めて指定してください：\n${block.search}`,
-          });
+        if (match) {
+          matchedIndex = i;
+          matchCount++;
         }
-
-        // Use exact index if found
-        newContent = contentExact.replace(searchExact, replaceNorm);
-      } else {
-        if (currentContentNorm.indexOf(searchNorm, index + 1) !== -1) {
-          return res.status(400).json({
-            error: `置換対象の SEARCH ブロックのコードがファイル内に複数存在するため、一意に特定できません。前後の行も含めて指定してください：\n${block.search}`,
-          });
-        }
-
-        // Re-construct the content using the normalized index
-        // This part is tricky because normalization might change lengths.
-        // A safer way is to find the exact raw string that matches the normalized search.
-
-        // Simple but effective: if normalized match works, we need to apply it to the original
-        // Let's use a regex-based approach for normalized matching if possible,
-        // or just apply the replace to the raw content by finding the raw equivalent.
-
-        // For simplicity in this refactor, we'll use the exact match as primary
-        // and normalized as fallback if they are very close.
-        newContent = currentContentNorm.replace(searchNorm, replaceNorm);
       }
+
+      // 2. Try Normalized Match (ignore trailing spaces) if exact match fails
+      if (matchCount === 0) {
+        const normFileLines = fileLines.map((l) => l.replace(/[ \t]+$/g, ""));
+        const normSearchLines = searchLines.map((l) => l.replace(/[ \t]+$/g, ""));
+
+        for (let i = 0; i <= normFileLines.length - normSearchLines.length; i++) {
+          let match = true;
+          for (let j = 0; j < normSearchLines.length; j++) {
+            if (normFileLines[i + j] !== normSearchLines[j]) {
+              match = false;
+              break;
+            }
+          }
+          if (match) {
+            matchedIndex = i;
+            matchCount++;
+          }
+        }
+      }
+
+      // Check results
+      if (matchCount === 0) {
+        return res.status(400).json({
+          error: `置換対象の SEARCH ブロックのコードが見つかりません。インデントや改行が既存ファイルの内容と完全に一致している必要があります：\n${block.search}`,
+        });
+      }
+
+      if (matchCount > 1) {
+        return res.status(400).json({
+          error: `置換対象の SEARCH ブロックのコードがファイル内に複数存在するため、一意に特定できません。前後の行も含めて指定してください：\n${block.search}`,
+        });
+      }
+
+      // Apply replacement directly to the line array slice
+      fileLines.splice(matchedIndex, searchLines.length, ...replaceLines);
     }
+
+    const newContent = fileLines.join(eol);
 
     if (!dryRun) {
       await fs.writeFile(resolvedPath, newContent, "utf-8");

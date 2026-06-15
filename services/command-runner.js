@@ -47,6 +47,15 @@ const DANGEROUS_PATTERNS = [
   /cat\s+.*\.env/,
   /grep\s+.*\.env/,
   /type\s+.*\.env/i,
+  /Get-Content\s+.*\.env/i,
+  /gc\s+.*\.env/i,
+  /more\s+.*\.env/i,
+  /less\s+.*\.env/i,
+  /head\s+.*\.env/i,
+  /tail\s+.*\.env/i,
+  /strings\s+.*\.env/i,
+  /awk\s+.*\.env/i,
+  /sed\s+.*\.env/i,
   /ssh-add\s+-L/,
   /cat\s+~?\/(\.ssh|\.aws|\.kube)/,
   // Network exploration
@@ -71,8 +80,11 @@ export function checkCommandSafety(command) {
     return { safe: false, reason: "Command is empty" };
   }
 
+  // Normalize command: remove quotes and standardize slashes to catch obfuscation
+  const normalized = trimmed.replace(/["'`]/g, "").replace(/\\/g, "/");
+
   for (const pattern of DANGEROUS_PATTERNS) {
-    if (pattern.test(trimmed)) {
+    if (pattern.test(trimmed) || pattern.test(normalized)) {
       return {
         safe: false,
         reason: `Command matches dangerous pattern: ${pattern.toString()}`,
@@ -106,10 +118,15 @@ export async function executeCommand(command, options = {}) {
     const shell = isWindows ? "cmd.exe" : "/bin/sh";
     const shellFlag = isWindows ? "/c" : "-c";
 
+    // Strip sensitive environment variables to prevent leakage
+    const cleanEnv = { ...process.env };
+    delete cleanEnv.ONE_MIN_AI_API_KEY;
+    delete cleanEnv.LOCAL_BFF_AUTH_TOKEN;
+
     const child = spawn(shell, [shellFlag, command], {
       cwd,
       env: {
-        ...process.env,
+        ...cleanEnv,
         // Remove potentially dangerous env vars
         LD_PRELOAD: "",
         LD_LIBRARY_PATH: "",
