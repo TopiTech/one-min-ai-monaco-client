@@ -8,6 +8,7 @@ loadModels().then(() => initModelPickers());
 
 // ============================================================
 const $ = (id) => document.getElementById(id);
+const getBffToken = () => document.querySelector('meta[name="local-bff-token"]')?.content || "";
 
 // LocalStorage keys
 const STORAGE_KEY_WEB_SEARCH = "monaco_client_code_web_search";
@@ -372,7 +373,10 @@ async function uploadAttachments() {
     pending.map(async (att) => {
       const fd = new FormData();
       fd.append("asset", att.file);
-      const res = await fetch("/api/assets/upload", { method: "POST", body: fd });
+      const headers = {};
+      const token = getBffToken();
+      if (token) headers["x-local-bff-token"] = token;
+      const res = await fetch("/api/assets/upload", { method: "POST", headers, body: fd });
       if (!res.ok) throw new Error(`アップロード失敗: ${res.status}`);
       const data = await res.json();
       const key =
@@ -452,9 +456,13 @@ $("sendChat").onclick = async () => {
     if (imageKeys.length > 0) apiAttachments.images = imageKeys;
     if (fileKeys.length > 0) apiAttachments.files = fileKeys;
 
+    const headers = { "Content-Type": "application/json" };
+    const token = getBffToken();
+    if (token) headers["x-local-bff-token"] = token;
+
     const response = await fetch("/api/chat/stream", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         prompt,
         model: $("chatModel").value,
@@ -898,9 +906,13 @@ require(["vs/editor/editor.main"], function () {
         const column = position.column;
 
         try {
+          const headers = { "Content-Type": "application/json" };
+          const token = getBffToken();
+          if (token) headers["x-local-bff-token"] = token;
+
           const res = await fetch("/api/code/autocomplete", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers,
             body: JSON.stringify({
               code,
               line,
@@ -997,9 +1009,13 @@ async function submitInlineChat() {
   const language = window.editor.getModel()?.getLanguageId() || "plaintext";
 
   try {
+    const headers = { "Content-Type": "application/json" };
+    const token = getBffToken();
+    if (token) headers["x-local-bff-token"] = token;
+
     const res = await fetch("/api/code/inline-chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         prompt,
         code,
