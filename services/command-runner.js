@@ -33,6 +33,16 @@ const DANGEROUS_PATTERNS = [
     /require\s*\(\s*['"]child_process['"]\s*\)/,
     /process\.env/,
     /Buffer\.from\s*\(/,
+    // PowerShell & Windows dangerous patterns
+    /Remove-Item\s+-Recurse/i,
+    /Invoke-Expression/i,
+    /iex\s+/i,
+    /Invoke-WebRequest/i,
+    /iwr\s+/i,
+    /Start-Process/i,
+    /Set-ExecutionPolicy/i,
+    /powershell\s+-enc/i,
+    /wmic\s+/i,
 ];
 
 /**

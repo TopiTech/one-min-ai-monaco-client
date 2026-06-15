@@ -13,6 +13,54 @@ const $ = (id) => document.getElementById(id);
 const STORAGE_KEY_WEB_SEARCH = "monaco_client_code_web_search";
 const STORAGE_KEY_NUM_OF_SITE = "monaco_client_code_num_of_site";
 const STORAGE_KEY_MAX_WORD = "monaco_client_code_max_word";
+const STORAGE_KEY_CHAT_WEB_SEARCH = "monaco_client_chat_web_search";
+const STORAGE_KEY_CHAT_NUM_OF_SITE = "monaco_client_chat_num_of_site";
+const STORAGE_KEY_CHAT_MAX_WORD = "monaco_client_chat_max_word";
+const STORAGE_KEY_THEME = "monaco_client_theme";
+
+function initTheme() {
+  const saved = localStorage.getItem(STORAGE_KEY_THEME);
+  if (saved) {
+    document.documentElement.setAttribute("data-theme", saved);
+  }
+  updateThemeUI();
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute("data-theme");
+  let next;
+  if (current === "light") {
+    next = "dark";
+  } else if (current === "dark") {
+    next = "light";
+  } else {
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    next = prefersDark ? "light" : "dark";
+  }
+  document.documentElement.setAttribute("data-theme", next);
+  localStorage.setItem(STORAGE_KEY_THEME, next);
+  updateThemeUI();
+  if (window.editor) {
+    window.editor.updateOptions({ theme: next === "light" ? "vs" : "vs-dark" });
+  }
+}
+
+function updateThemeUI() {
+  const theme = document.documentElement.getAttribute("data-theme");
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const isDark = theme === "dark" || (!theme && prefersDark);
+  const iconDark = $("themeIconDark");
+  const iconLight = $("themeIconLight");
+  const label = $("themeLabel");
+  if (iconDark) iconDark.style.display = isDark ? "none" : "block";
+  if (iconLight) iconLight.style.display = isDark ? "block" : "none";
+  if (label) label.textContent = isDark ? "ライトモード" : "ダークモード";
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  initTheme();
+  $("themeToggle")?.addEventListener("click", toggleTheme);
+});
 
 function initCodeGeneratorSettings() {
   const wsInput = $("codeWebSearch");
@@ -55,12 +103,63 @@ function initCodeGeneratorSettings() {
   });
 }
 
+function initChatSettings() {
+  const wsInput = $("webSearch");
+  const nosInput = $("chatNumOfSite");
+  const mwInput = $("chatMaxWord");
+  const settingsBox = $("chatWebSearchSettings");
+
+  if (!wsInput || !nosInput || !mwInput || !settingsBox) return;
+
+  const updateVisibility = () => {
+    settingsBox.style.display = wsInput.checked ? "block" : "none";
+  };
+
+  // Restore
+  const savedWebSearch = localStorage.getItem(STORAGE_KEY_CHAT_WEB_SEARCH);
+  if (savedWebSearch !== null) {
+    wsInput.checked = savedWebSearch === "true";
+  }
+  const savedNumOfSite = localStorage.getItem(STORAGE_KEY_CHAT_NUM_OF_SITE);
+  if (savedNumOfSite !== null) {
+    nosInput.value = savedNumOfSite;
+  }
+  const savedMaxWord = localStorage.getItem(STORAGE_KEY_CHAT_MAX_WORD);
+  if (savedMaxWord !== null) {
+    mwInput.value = savedMaxWord;
+  }
+
+  updateVisibility();
+
+  // Save on change
+  wsInput.addEventListener("change", () => {
+    localStorage.setItem(STORAGE_KEY_CHAT_WEB_SEARCH, wsInput.checked);
+    updateVisibility();
+  });
+  nosInput.addEventListener("change", () => {
+    let val = parseInt(nosInput.value);
+    if (isNaN(val) || val < 1) val = 1;
+    if (val > 10) val = 10;
+    nosInput.value = val;
+    localStorage.setItem(STORAGE_KEY_CHAT_NUM_OF_SITE, val);
+  });
+  mwInput.addEventListener("change", () => {
+    let val = parseInt(mwInput.value);
+    if (isNaN(val) || val < 100) val = 100;
+    if (val > 10000) val = 10000;
+    mwInput.value = val;
+    localStorage.setItem(STORAGE_KEY_CHAT_MAX_WORD, val);
+  });
+}
+
 // Call on startup
 document.addEventListener("DOMContentLoaded", () => {
   initCodeGeneratorSettings();
+  initChatSettings();
 });
 if (document.readyState === "complete" || document.readyState === "interactive") {
   initCodeGeneratorSettings();
+  initChatSettings();
 }
 
 // navigation
@@ -79,7 +178,7 @@ $("healthBtn").onclick = async () => {
     const data = await api("/api/health");
     toast.success(JSON.stringify(data, null, 2), { duration: 8000 });
   } catch (e) {
-    toast.error(`Health check failed: ${e.message}`);
+    toast.error(`ヘルスチェック失敗: ${e.message}`);
   }
 };
 
@@ -185,7 +284,8 @@ function updateAttachmentPreview() {
 
       const icon = document.createElement("div");
       icon.className = "attachment-file-icon";
-      icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>';
+      icon.innerHTML =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>';
 
       const extSpan = document.createElement("span");
       extSpan.className = "attachment-file-ext";
@@ -194,7 +294,8 @@ function updateAttachmentPreview() {
 
       const nameSpan = document.createElement("span");
       nameSpan.className = "attachment-file-name";
-      nameSpan.textContent = att.file.name.length > 20 ? att.file.name.slice(0, 17) + "..." : att.file.name;
+      nameSpan.textContent =
+        att.file.name.length > 20 ? att.file.name.slice(0, 17) + "..." : att.file.name;
       nameSpan.title = att.file.name;
 
       thumb.appendChild(icon);
@@ -272,10 +373,11 @@ async function uploadAttachments() {
       const fd = new FormData();
       fd.append("asset", att.file);
       const res = await fetch("/api/assets/upload", { method: "POST", body: fd });
-      if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+      if (!res.ok) throw new Error(`アップロード失敗: ${res.status}`);
       const data = await res.json();
-      const key = data?.asset?.key || data?.fileContent?.path || data?.asset?.location || "";
-      const url = key ? assetUrl(key) : "";
+      const key =
+        data?.key || data?.asset?.key || data?.fileContent?.path || data?.asset?.location || "";
+      const url = data?.url || (key ? assetUrl(key) : "");
       att.assetKey = key;
       att.assetUrl = url;
       att.uploading = false;
@@ -286,7 +388,7 @@ async function uploadAttachments() {
   for (let i = 0; i < results.length; i++) {
     if (results[i].status === "rejected") {
       pending[i].uploading = false;
-      toast.error(`アップロード失敗: ${results[i].reason?.message || "Unknown error"}`);
+      toast.error(`アップロード失敗: ${results[i].reason?.message || "不明なエラー"}`);
     }
   }
 
@@ -296,12 +398,26 @@ async function uploadAttachments() {
     .map((att) => ({ type: att.type || "image", assetKey: att.assetKey, url: att.assetUrl }));
 }
 
+let currentChatAbortController = null;
+
+$("abortChat").onclick = () => {
+  if (currentChatAbortController) {
+    currentChatAbortController.abort();
+    currentChatAbortController = null;
+  }
+};
+
 $("sendChat").onclick = async () => {
   const prompt = $("chatPrompt").value.trim();
   if (!prompt && chatAttachments.length === 0) return;
 
   const sendBtn = $("sendChat");
+  const abortBtn = $("abortChat");
   sendBtn.disabled = true;
+  sendBtn.style.display = "none";
+  abortBtn.style.display = "inline-flex";
+
+  currentChatAbortController = new AbortController();
 
   const imagePreviews = chatAttachments.map((att) => ({ url: att.previewUrl }));
   addMsg("user", prompt || "(画像のみ)", imagePreviews);
@@ -344,18 +460,21 @@ $("sendChat").onclick = async () => {
         model: $("chatModel").value,
         conversationId: $("conversationId").value || undefined,
         webSearch: $("webSearch").checked,
+        numOfSite: $("chatNumOfSite")?.value ? parseInt($("chatNumOfSite").value) : undefined,
+        maxWord: $("chatMaxWord")?.value ? parseInt($("chatMaxWord").value) : undefined,
         withMemories: $("withMemories")?.checked || false,
         isMixed: $("isMixed")?.checked || false,
         brandVoiceId: $("brandVoiceId")?.value?.trim() || undefined,
         attachments: Object.keys(apiAttachments).length > 0 ? apiAttachments : undefined,
       }),
+      signal: currentChatAbortController.signal,
     });
 
     if (!response.ok) {
       if (response.status === 422) {
-        throw new Error("Invalid request format");
+        throw new Error("無効なリクエスト形式");
       } else if (response.status >= 500) {
-        throw new Error("Server error");
+        throw new Error("サーバーエラー");
       } else {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -364,6 +483,7 @@ $("sendChat").onclick = async () => {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let currentEvent = "content";
 
     while (true) {
       const { done, value } = await reader.read();
@@ -374,14 +494,36 @@ $("sendChat").onclick = async () => {
       buffer = lines.pop();
 
       for (const line of lines) {
+        if (line.startsWith("event: ")) {
+          currentEvent = line.slice(7).trim();
+          continue;
+        }
+
         if (line.startsWith("data: ")) {
           const dataStr = line.slice(6).trim();
           if (!dataStr || dataStr === "[DONE]") continue;
 
           try {
             const data = JSON.parse(dataStr);
-            if (data.content) {
-              fullText += data.content;
+
+            if (currentEvent === "error") {
+              const errorMsg = data?.error || data?.message || "Stream error";
+              throw new Error(errorMsg);
+            }
+
+            if (currentEvent === "done") {
+              break;
+            }
+
+            const content =
+              data?.content ||
+              data?.choices?.[0]?.delta?.content ||
+              data?.choices?.[0]?.message?.content ||
+              data?.message?.content ||
+              data?.delta?.content ||
+              data?.text;
+            if (content) {
+              fullText += content;
               renderMarkdownSafely(aiContentDiv, fullText);
               $("chatLog").scrollTop = $("chatLog").scrollHeight;
             }
@@ -397,23 +539,46 @@ $("sendChat").onclick = async () => {
     }
 
     renderMarkdownSafely(aiContentDiv, fullText);
-
     pruneChatLog();
   } catch (e) {
-    const message = e?.message || "Unknown error";
-    aiContentDiv.textContent = `Error: ${message}`;
-    toast.error(`Chat error: ${message}`);
-    setStatus("エラー", "error");
-  } finally {
-    sendBtn.disabled = false;
-    setStatus("準備完了");
-    for (const att of chatAttachments) {
-      if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
+    if (e.name === 'AbortError') {
+      fullText += "\n\n*(キャンセルされました)*";
+      renderMarkdownSafely(aiContentDiv, fullText);
+      setStatus("キャンセルしました", "warn");
+    } else {
+      const message = e?.message || "不明なエラー";
+      aiContentDiv.textContent = `エラー: ${message}`;
+      toast.error(`チャットエラー: ${message}`);
+      setStatus("エラー", "error");
     }
+  } finally {
+    currentChatAbortController = null;
+    sendBtn.disabled = false;
+    sendBtn.style.display = "inline-flex";
+    abortBtn.style.display = "none";
+    setStatus("準備完了");
+    // We don't revoke previewUrls here because they are used in the chat log.
+    // They will be cleaned up when the page is reloaded.
     chatAttachments.length = 0;
     updateAttachmentPreview();
   }
 };
+
+// Check health and API key on startup
+async function checkHealth() {
+  try {
+    const data = await api("/api/health");
+    if (!data.hasApiKey) {
+      toast.error("サーバーに 1min.ai APIキーが設定されていません。.env を確認してください。", {
+        duration: 10000,
+      });
+      setStatus("APIキー未設定", "err");
+    }
+  } catch (e) {
+    console.error("Health check failed:", e);
+  }
+}
+checkHealth();
 
 $("createConversation").onclick = async () => {
   try {
@@ -431,7 +596,7 @@ $("createConversation").onclick = async () => {
     $("conversationId").value = id;
     toast.success("会話を作成しました", { duration: 5000 });
   } catch (e) {
-    toast.error(`Failed to create conversation: ${e.message}`);
+    toast.error(`会話の作成に失敗しました: ${e.message}`);
   }
 };
 
@@ -530,14 +695,16 @@ $("uploadAsset").onclick = async () => {
   try {
     const data = await api("/api/assets/upload", { method: "POST", body: fd });
     $("assetResult").textContent = JSON.stringify(data, null, 2);
-    const key = data?.asset?.key || data?.fileContent?.path || data?.asset?.location || "";
+    const key =
+      data?.key || data?.asset?.key || data?.fileContent?.path || data?.asset?.location || "";
+    const url = data?.url || (key ? assetUrl(key) : "");
     if (key) {
-      $("editorImageUrl").value = key;
-      updateEditorImagePreview(key);
+      $("editorImageUrl").value = url || key;
+      updateEditorImagePreview(url || key);
     }
     toast.success("アップロード完了");
   } catch (e) {
-    toast.error(`Asset upload failed: ${e.message}`);
+    toast.error(`アセットのアップロードに失敗しました: ${e.message}`);
   }
 };
 
@@ -579,13 +746,114 @@ $("clearImageBtn").onclick = () => {
 
 // Monaco editor
 let activeFilePath = null;
+const openTabs = []; // Array of absolute file paths
+
+function renderTabs() {
+  const container = $("editorTabsBar");
+  if (!container) return;
+  container.innerHTML = "";
+
+  openTabs.forEach((pathVal) => {
+    const fileName = pathVal.replace(/\\/g, "/").split("/").pop();
+    const tabEl = document.createElement("div");
+    tabEl.className = `editor-tab ${pathVal === activeFilePath ? "active" : ""}`;
+    tabEl.title = pathVal;
+
+    const nameSpan = document.createElement("span");
+    nameSpan.textContent = fileName;
+    nameSpan.onclick = () => {
+      if (pathVal !== activeFilePath) {
+        switchToTab(pathVal);
+      }
+    };
+    tabEl.appendChild(nameSpan);
+
+    const closeBtn = document.createElement("span");
+    closeBtn.className = "close-tab-btn";
+    closeBtn.textContent = "×";
+    closeBtn.onclick = (e) => {
+      e.stopPropagation();
+      closeTab(pathVal);
+    };
+    tabEl.appendChild(closeBtn);
+
+    container.appendChild(tabEl);
+  });
+}
+
+async function switchToTab(filePath) {
+  const fileUri = monaco.Uri.file(filePath);
+  let model = monaco.editor.getModel(fileUri);
+
+  if (model) {
+    if (window.editor) {
+      window.editor.setModel(model);
+      activeFilePath = filePath;
+      $("currentFileName").textContent = filePath.replace(/\\/g, "/").split("/").pop();
+      $("currentFileName").title = filePath;
+      $("saveFileBtn").disabled = false;
+
+      document.querySelectorAll(".tree-node.file").forEach((x) => {
+        if (x.dataset.path === filePath) {
+          x.classList.add("active");
+        } else {
+          x.classList.remove("active");
+        }
+      });
+      renderTabs();
+    }
+  } else {
+    await openFile(filePath);
+  }
+}
+
+async function closeTab(filePath) {
+  const tabIndex = openTabs.indexOf(filePath);
+  if (tabIndex === -1) return;
+
+  const accepted = await toast.confirm(`タブを閉じますか？未保存の変更は失われます。`, {
+    confirmText: "閉じる",
+    cancelText: "キャンセル",
+    type: "warning",
+  });
+  if (!accepted) return;
+
+  openTabs.splice(tabIndex, 1);
+
+  const fileUri = monaco.Uri.file(filePath);
+  const model = monaco.editor.getModel(fileUri);
+  if (model) {
+    model.dispose();
+  }
+
+  if (activeFilePath === filePath) {
+    if (openTabs.length > 0) {
+      const nextActivePath = openTabs[Math.min(tabIndex, openTabs.length - 1)];
+      await switchToTab(nextActivePath);
+    } else {
+      activeFilePath = null;
+      if (window.editor) {
+        window.editor.setModel(monaco.editor.createModel("", "plaintext"));
+      }
+      $("currentFileName").textContent = "ファイルが選択されていません";
+      $("currentFileName").title = "";
+      $("saveFileBtn").disabled = true;
+      document.querySelectorAll(".tree-node.file").forEach((x) => x.classList.remove("active"));
+    }
+  }
+  renderTabs();
+}
 
 require.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/min/vs" } });
 require(["vs/editor/editor.main"], function () {
+  const savedTheme = localStorage.getItem(STORAGE_KEY_THEME);
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const isDark = savedTheme === "dark" || (!savedTheme && prefersDark);
+
   window.editor = monaco.editor.create($("editor"), {
     value: `/* ⬅ 左のツリーからファイルを選択するか、パスを入力して読み込んでください */\n`,
     language: "plaintext",
-    theme: "vs-dark",
+    theme: isDark ? "vs-dark" : "vs",
     automaticLayout: true,
     minimap: { enabled: true },
     fontSize: 14,
@@ -661,7 +929,7 @@ require(["vs/editor/editor.main"], function () {
           console.error("Autocomplete error:", e);
         }
       },
-      freeInlineCompletions: function () { },
+      freeInlineCompletions: function () {},
     });
   }
 });
@@ -809,10 +1077,14 @@ function closeInlineChat() {
 
 async function loadWorkspace(dirPath = null) {
   try {
+    const tree = $("fileTree");
+    tree.innerHTML = Array.from({ length: 6 }, () =>
+      `<div class="skeleton-node"><div class="skeleton skeleton-icon"></div><div class="skeleton skeleton-line w-75"></div></div>`
+    ).join("");
     const data = await api(`/api/fs/list${dirPath ? `?dir=${encodeURIComponent(dirPath)}` : ""}`);
     $("explorerPath").value = data.dir;
-    $("fileTree").innerHTML = "";
-    await renderTreeNodes(data.items, $("fileTree"), 0);
+    tree.innerHTML = "";
+    await renderTreeNodes(data.items, tree, 0);
   } catch (e) {
     toast.error(`ワークスペースの読み込みに失敗しました: ${e.message}`);
   }
@@ -824,6 +1096,11 @@ async function renderTreeNodes(items, container, depth = 0) {
     node.className = `tree-node ${item.isDirectory ? "folder" : "file"}`;
     node.dataset.path = item.path;
     node.dataset.depth = depth;
+    node.setAttribute("role", "treeitem");
+    node.setAttribute("tabindex", "0");
+    if (item.isDirectory) {
+      node.setAttribute("aria-expanded", "false");
+    }
 
     const toggle = document.createElement("span");
     toggle.className = "node-toggle";
@@ -846,11 +1123,13 @@ async function renderTreeNodes(items, container, depth = 0) {
       const childrenContainer = document.createElement("div");
       childrenContainer.className = "tree-children";
       childrenContainer.style.display = "none";
+      childrenContainer.setAttribute("role", "group");
       container.appendChild(childrenContainer);
 
       node.onclick = async (e) => {
         e.stopPropagation();
         const isExpanded = node.classList.toggle("expanded");
+        node.setAttribute("aria-expanded", String(isExpanded));
         if (isExpanded) {
           childrenContainer.style.display = "flex";
           toggle.innerHTML = "▼";
@@ -889,10 +1168,16 @@ async function openFile(filePath) {
       }
       window.editor.setModel(model);
 
-      // Dispose unused models (keep max 20 open)
+      if (!openTabs.includes(filePath)) {
+        openTabs.push(filePath);
+      }
+
+      // Dispose unused models (keep max 20 open, excluding active or open tab models)
       const allModels = monaco.editor.getModels();
       if (allModels.length > 20) {
-        const unused = allModels.filter((m) => m !== window.editor.getModel());
+        const unused = allModels.filter(
+          (m) => m !== window.editor.getModel() && !openTabs.includes(m.uri.fsPath),
+        );
         for (const m of unused.slice(0, allModels.length - 20)) {
           m.dispose();
         }
@@ -910,6 +1195,7 @@ async function openFile(filePath) {
           x.classList.remove("active");
         }
       });
+      renderTabs();
     }
   } catch (e) {
     toast.error(`ファイルの読み込みに失敗しました: ${e.message}`);
@@ -1044,26 +1330,49 @@ function addAgentTimelineStep(type, title, body, resultText = null) {
     second: "2-digit",
   });
 
-  let cardHtml = `
-    <div class="agent-step-card">
-      <div class="agent-step-header">
-        <span class="agent-step-icon">${iconHtml}: ${escapeHtml(title)}</span>
-        <span class="agent-step-time">${time}</span>
-      </div>
-      <div class="agent-step-body">${formatMarkdownLike(body)}</div>
-  `;
+  const card = document.createElement("div");
+  card.className = "agent-step-card";
+
+  const header = document.createElement("div");
+  header.className = "agent-step-header";
+
+  const iconSpan = document.createElement("span");
+  iconSpan.className = "agent-step-icon";
+  iconSpan.innerHTML = iconHtml + ": " + escapeHtml(title); // iconHtml is static trusted SVG
+  header.appendChild(iconSpan);
+
+  const timeSpan = document.createElement("span");
+  timeSpan.className = "agent-step-time";
+  timeSpan.textContent = time;
+  header.appendChild(timeSpan);
+
+  card.appendChild(header);
+
+  const bodyEl = document.createElement("div");
+  bodyEl.className = "agent-step-body";
+  card.appendChild(bodyEl);
 
   if (resultText !== null) {
-    cardHtml += `
-      <div class="agent-step-result-toggle" onclick="toggleTimelineResult('${stepId}')">
-        <span>▶ 実行出力を表示</span>
-      </div>
-      <pre id="result-${stepId}" class="agent-step-result-box" style="display: none;">${escapeHtml(resultText)}</pre>
-    `;
+    const toggleDiv = document.createElement("div");
+    toggleDiv.className = "agent-step-result-toggle";
+    const toggleSpan = document.createElement("span");
+    toggleSpan.textContent = "▶ 実行出力を表示";
+    toggleDiv.appendChild(toggleSpan);
+    toggleDiv.onclick = () => toggleTimelineResult(stepId);
+    card.appendChild(toggleDiv);
+
+    const resultPre = document.createElement("pre");
+    resultPre.id = "result-" + stepId;
+    resultPre.className = "agent-step-result-box";
+    resultPre.style.display = "none";
+    resultPre.textContent = resultText;
+    card.appendChild(resultPre);
   }
 
-  cardHtml += `</div>`;
-  step.innerHTML = cardHtml;
+  step.appendChild(card);
+  if (bodyEl) {
+    renderMarkdownSafely(bodyEl, body);
+  }
 
   log.appendChild(step);
   log.scrollTop = log.scrollHeight;
@@ -1101,36 +1410,86 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
     second: "2-digit",
   });
 
-  step.innerHTML = `
-    <div class="agent-step-card">
-      <div class="agent-step-header">
-        <span class="agent-step-icon" style="color: #facc15;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-          承認要求: コマンド実行
-        </span>
-        <span class="agent-step-time">${time}</span>
-      </div>
-      <div class="agent-step-body">
-        エージェントが以下のコマンドを実行しようとしています。
-        <div class="approval-details">
-          <strong>コマンド:</strong> <code>${escapeHtml(command)}</code><br>
-          <strong>実行ディレクトリ:</strong> <code>${escapeHtml(cwd)}</code>
-        </div>
-        <input type="text" id="feedback-${stepId}" class="approval-feedback-input" placeholder="却下する場合は理由を入力してください..." />
-        <div class="approval-actions">
-          <button type="button" class="approval-btn approve" id="approve-${stepId}">許可</button>
-          <button type="button" class="approval-btn reject" id="reject-${stepId}">却下</button>
-        </div>
-      </div>
-    </div>
-  `;
+  const card = document.createElement("div");
+  card.className = "agent-step-card";
+
+  const header = document.createElement("div");
+  header.className = "agent-step-header";
+
+  const iconSpan = document.createElement("span");
+  iconSpan.className = "agent-step-icon";
+  iconSpan.style.color = "#facc15";
+  iconSpan.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
+  iconSpan.appendChild(document.createTextNode("承認要求: コマンド実行"));
+
+  const timeSpan = document.createElement("span");
+  timeSpan.className = "agent-step-time";
+  timeSpan.textContent = time;
+
+  header.appendChild(iconSpan);
+  header.appendChild(timeSpan);
+
+  const body = document.createElement("div");
+  body.className = "agent-step-body";
+  body.textContent = "エージェントが以下のコマンドを実行しようとしています。";
+
+  const details = document.createElement("div");
+  details.className = "approval-details";
+
+  const cmdLabel = document.createElement("strong");
+  cmdLabel.textContent = "コマンド: ";
+  const cmdCode = document.createElement("code");
+  cmdCode.textContent = command;
+
+  const dirLabel = document.createElement("strong");
+  dirLabel.textContent = "実行ディレクトリ: ";
+  const dirCode = document.createElement("code");
+  dirCode.textContent = cwd;
+
+  details.appendChild(cmdLabel);
+  details.appendChild(cmdCode);
+  details.appendChild(document.createElement("br"));
+  details.appendChild(dirLabel);
+  details.appendChild(dirCode);
+
+  const feedbackInput = document.createElement("input");
+  feedbackInput.type = "text";
+  feedbackInput.id = `feedback-${stepId}`;
+  feedbackInput.className = "approval-feedback-input";
+  feedbackInput.placeholder = "却下する場合は理由を入力してください...";
+
+  const actions = document.createElement("div");
+  actions.className = "approval-actions";
+
+  const approveBtn = document.createElement("button");
+  approveBtn.type = "button";
+  approveBtn.className = "approval-btn approve";
+  approveBtn.id = `approve-${stepId}`;
+  approveBtn.textContent = "許可";
+
+  const rejectBtn = document.createElement("button");
+  rejectBtn.type = "button";
+  rejectBtn.className = "approval-btn reject";
+  rejectBtn.id = `reject-${stepId}`;
+  rejectBtn.textContent = "却下";
+
+  actions.appendChild(approveBtn);
+  actions.appendChild(rejectBtn);
+
+  body.appendChild(details);
+  body.appendChild(feedbackInput);
+  body.appendChild(actions);
+
+  card.appendChild(header);
+  card.appendChild(body);
+
+  step.innerHTML = "";
+  step.appendChild(card);
 
   log.appendChild(step);
   log.scrollTop = log.scrollHeight;
 
-  const approveBtn = step.querySelector(`#approve-${stepId}`);
-  const rejectBtn = step.querySelector(`#reject-${stepId}`);
-  const feedbackInput = step.querySelector(`#feedback-${stepId}`);
+
 
   approveBtn.onclick = () => {
     approveBtn.disabled = true;
@@ -1153,9 +1512,25 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
 }
 
 function parseXMLTags(text) {
-  const thoughtMatch = text.match(/<thought>([\s\S]*?)<\/thought>/i);
-  const finishMatch = text.match(/<finish>([\s\S]*?)<\/finish>/i);
-  const toolMatch = text.match(/<call_tool\s+name=["']?(\w+)["']?\s*>([\s\S]*?)<\/call_tool>/i);
+  // 1. Unescape common XML entities from the entire text in case the API escaped them
+  let unescapedText = text
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+
+  // 2. Remove accidental Markdown code block wrapping (e.g. ```xml ... ```) if the whole text is wrapped
+  if (unescapedText.trim().startsWith("```")) {
+    unescapedText = unescapedText.trim().replace(/^```[a-zA-Z0-9+#-]*\s*\n?/, "").replace(/\n?```$/, "").trim();
+  }
+
+  // Lenient tag matching allowing optional closing tags (using end of string $ as fallback)
+  const thoughtMatch = unescapedText.match(/<thought>([\s\S]*?)(?:<\/thought>|$)/i);
+  const finishMatch = unescapedText.match(/<finish>([\s\S]*?)(?:<\/finish>|$)/i);
+  const toolMatch = unescapedText.match(
+    /<call_tool\s+name=["']?([\w-]+)["']?\s*>([\s\S]*?)(?:<\/call_tool>|$)/i,
+  );
 
   let toolCall = null;
   if (toolMatch) {
@@ -1163,7 +1538,9 @@ function parseXMLTags(text) {
     const innerContent = toolMatch[2];
     const params = {};
 
-    const paramRegex = /<parameter\s+name=["']?([^"\'\s>]+)["']?\s*>([\s\S]*?)<\/parameter>/gi;
+    // Allow optional closing parameter tags
+    const paramRegex =
+      /<parameter\s+name=["']?([^"\'\s>]+)["']?\s*>([\s\S]*?)(?:<\/parameter>|$)/gi;
     let match;
     while ((match = paramRegex.exec(innerContent)) !== null) {
       let val = match[2];
@@ -1173,16 +1550,6 @@ function parseXMLTags(text) {
       if (cleanedVal.startsWith("```")) {
         cleanedVal = cleanedVal.replace(/^```[a-zA-Z0-9+#-]*\s*\n?/, "");
         cleanedVal = cleanedVal.replace(/\n?```$/, "");
-      }
-
-      // 2. Decode common XML entities if they were escaped (e.g. &lt;, &gt;)
-      if (cleanedVal.includes("&lt;") || cleanedVal.includes("&gt;") || cleanedVal.includes("&amp;")) {
-        cleanedVal = cleanedVal
-          .replace(/&lt;/g, "<")
-          .replace(/&gt;/g, ">")
-          .replace(/&quot;/g, '"')
-          .replace(/&apos;/g, "'")
-          .replace(/&amp;/g, "&");
       }
 
       params[match[1]] = cleanedVal;
@@ -1266,11 +1633,7 @@ async function runAgentLoop(initialInstruction) {
       return;
     }
   } else {
-    addAgentTimelineStep(
-      "thought",
-      "セッション再開",
-      `既存のセッションで追加指示を実行します。`,
-    );
+    addAgentTimelineStep("thought", "セッション再開", `既存のセッションで追加指示を実行します。`);
   }
 
   const sessionId = agentSessionId;
@@ -1306,19 +1669,44 @@ async function runAgentLoop(initialInstruction) {
 
 2. write_file
    - パラメータ: { "path": "ファイルパス", "content": "完全なコード内容" }
-   - 目的: ファイルを新規作成または上書きする。変更は最小限ではなく、ファイル全体の正解コードを送ること。
+   - 目的: 新規ファイルを作成するか、既存ファイル全体を上書きする。
    - **注意点**:
      - \`content\` パラメータには、絶対にマークダウンのコードブロック（例: \`\`\`js ... \`\`\`）を含めず、**プログラムの生テキストのみ**を直接記述してください。
      - HTML/XMLの実体参照エスケープ（\`&lt;\`や\`&gt;\`、\`&amp;\`など）は**一切行わず**、そのままの記号（\`<\`, \`>\`, \`&\`）で記述してください。
      - コードの途中で省略（例: \`// ... 残りのコード ...\`）せず、完全な内容を出力してください。
    <call_tool name="write_file"><parameter name="path">utils/helper.js</parameter><parameter name="content">export const add = (a, b) => a + b;</parameter></call_tool>
 
-3. search_files
+3. apply_diff
+   - パラメータ: { "path": "ファイルパス", "diff": "SEARCH/REPLACEブロック形式の差分" }
+   - 目的: ファイルの特定箇所のみを置換（編集）する。全文を書き換える write_file よりも軽量で安全なため、既存ファイルの編集にはこちらを使用すること。複数の箇所の置換（マルチブロック）も同時に実行可能です。
+   - **注意点**:
+     - \`diff\` パラメータには、絶対にマークダウンのコードブロック（例: \`\`\`diff ... \`\`\`）を含めず、かつ実体参照エスケープを行わずに、**以下のSEARCH/REPLACE形式のみ**を記述してください。
+     - SEARCHブロックの内容は、ファイル内の対象コード（インデント・改行等含む）と完全に一致する必要があります。一意に特定できるように、十分な長さ（前後の行を含む）で指定してください。
+     - 形式見本:
+<<<<<<< SEARCH
+[置換前の元のコード]
+=======
+[置換後の新しいコード]
+>>>>>>> REPLACE
+   <call_tool name="apply_diff"><parameter name="path">utils/helper.js</parameter><parameter name="diff">&lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH
+export const add = (a, b) =&gt; a + b;
+=======
+export const add = (a, b) =&gt; {
+  return a + b;
+};
+&gt;&gt;&gt;&gt;&gt;&gt;&gt; REPLACE</parameter></call_tool>
+
+4. list_directory
+   - パラメータ: { "path": "ディレクトリパス" }
+   - 目的: 指定したディレクトリの直下にあるファイルやフォルダの一覧を取得する。フォルダ構成や中身を把握する際に最初に使用すること。
+   <call_tool name="list_directory"><parameter name="path">src</parameter></call_tool>
+
+5. search_files
    - パラメータ: { "query": "検索文字列" }
    - 目的: プロジェクト全体から特定のシンボルや文字列を検索する。
    <call_tool name="search_files"><parameter name="query">app.listen</parameter></call_tool>
 
-4. run_command
+6. run_command
    - パラメータ: { "command": "シェルコマンド" }
    - 目的: テストの実行、依存関係の確認など。破壊的な操作は控え、実行前にユーザーの承認を求めることを想定すること。
    <call_tool name="run_command"><parameter name="command">npm test</parameter></call_tool>
@@ -1329,8 +1717,8 @@ async function runAgentLoop(initialInstruction) {
 【重要な注意】
 - 出力は必ず <thought> と <call_tool> (または <finish>) のペアのみにしてください。
 - 余計な挨拶、マークダウンのコードブロック、解説文をタグの外側に含めないでください。
-- \`content\` パラメータの中身は生のソースコードそのものでなければなりません。
-- すでに存在するファイルを変更する場合、まず read_file で現在の内容を確認することが必須です。
+- \`content\`, \`diff\` パラメータの中身は生のコードそのものでなければなりません（マークダウンのコードブロックで囲わないでください）。
+- すでに存在するファイルを変更する場合、まず read_file で現在の内容を確認するか、または search_files や list_directory でファイル構成を把握することが必須です。
 
 現在のワークスペース構造:
 ${workspaceFilesText}
@@ -1344,30 +1732,11 @@ ${workspaceFilesText}
       { role: "user", content: `${sysPrompt}\n\n【指示】\n${initialInstruction}` },
     ];
   } else {
-    agentConversationHistory.push({ role: "user", content: `【ユーザーからの追加指示】\n${initialInstruction}` });
+    agentConversationHistory.push({
+      role: "user",
+      content: `【ユーザーからの追加指示】\n${initialInstruction}`,
+    });
     trimAgentHistory(agentConversationHistory);
-  }
-
-  if (!agentChatId) {
-    try {
-      const convData = await api("/api/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: `Agent: ${initialInstruction.slice(0, 50)}`,
-          model: modelSelected,
-          type: "CODE_GENERATOR"
-        }),
-      });
-      agentChatId =
-        convData?.conversation?.uuid ||
-        convData?.uuid ||
-        convData?.aiRecord?.conversationId ||
-        convData?.conversationId ||
-        null;
-    } catch (e) {
-      addAgentTimelineStep("thought", "会話作成失敗", `会話履歴なしで続行します: ${e.message}`);
-    }
   }
 
   let loopCount = 0;
@@ -1377,7 +1746,8 @@ ${workspaceFilesText}
     loopCount++;
     setAgentStatus("思考中...", "thinking");
 
-    const lastMsg = agentConversationHistory[agentConversationHistory.length - 1].content;
+    // Compile full conversation history into a single prompt string for stateless execution
+    const compiledPrompt = agentConversationHistory.map((msg) => msg.content).join("\n\n");
 
     let chatRes;
     try {
@@ -1385,27 +1755,18 @@ ${workspaceFilesText}
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: lastMsg,
+          prompt: compiledPrompt,
           model: modelSelected,
-          conversationId: agentChatId,
-          history: true,
           webSearch: false,
         }),
       });
-
-      if (!agentChatId) {
-        agentChatId =
-          chatRes?.aiRecord?.conversationId ||
-          chatRes?.conversationId ||
-          null;
-      }
     } catch (e) {
       addAgentTimelineStep("error", "AI通信失敗", `AIとの通信に失敗しました: ${e.message}`);
       setAgentStatus("エラー", "error");
       break;
     }
 
-    const aiText = extractText(chatRes);
+    const aiText = chatRes.text || "";
     if (!aiText) {
       addAgentTimelineStep("error", "応答空", "AIからの応答が空でした。");
       setAgentStatus("エラー", "error");
@@ -1471,6 +1832,36 @@ ${workspaceFilesText}
           toolSuccess = true;
 
           await openFile(fullPath);
+        } else if (toolName === "apply_diff") {
+          const filePath = params.path;
+          const diff = params.diff;
+          if (!filePath) throw new Error("path パラメータが必要です");
+          if (diff === undefined) throw new Error("diff パラメータが必要です");
+
+          const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
+          const patchRes = await api(`/api/agent/sessions/${sessionId}/diff`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: fullPath, diff }),
+          });
+          toolResultText = patchRes.message || `ファイル ${filePath} の置換に成功しました。`;
+          toolSuccess = true;
+
+          await openFile(fullPath);
+        } else if (toolName === "list_directory") {
+          const dirPath = params.path || "";
+          const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, dirPath);
+          const dirData = await api(
+            `/api/agent/sessions/${sessionId}/dir?path=${encodeURIComponent(fullPath)}`,
+          );
+          if (dirData.items && dirData.items.length > 0) {
+            toolResultText = dirData.items
+              .map((item) => `- ${item.isDirectory ? "[Dir] " : "[File] "}${item.name}`)
+              .join("\n");
+          } else {
+            toolResultText = "ディレクトリは空、または存在しません。";
+          }
+          toolSuccess = true;
         } else if (toolName === "search_files") {
           const query = params.query;
           if (!query) throw new Error("query パラメータが必要です");
@@ -1864,7 +2255,7 @@ function initFolderPicker() {
       body.textContent = "";
       const error = document.createElement("div");
       error.className = "folder-picker-error-text";
-      error.textContent = `フォルダを読み込めませんでした: ${err?.message || "Unknown error"}`;
+         error.textContent = `フォルダを読み込めませんでした: ${err?.message || "不明なエラー"}`;
       body.appendChild(error);
     }
   };
@@ -1877,12 +2268,38 @@ function initFolderPicker() {
     renderDrives();
     renderFolderPickerList(initial);
     setTimeout(() => pathInput.focus(), 0);
+
+    modal._previousFocus = document.activeElement;
+    modal.addEventListener("keydown", trapFocus);
   };
 
   window.closeFolderPicker = () => {
     modal.style.display = "none";
     hideError();
+    modal.removeEventListener("keydown", trapFocus);
+    if (modal._previousFocus) {
+      modal._previousFocus.focus();
+    }
   };
+
+  function trapFocus(e) {
+    if (e.key !== "Tab") return;
+    const focusable = modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      if (document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  }
 
   upButton.onclick = () => {
     const normalized = folderPickerCurrentPath.replace(/[\\/]$/, "");

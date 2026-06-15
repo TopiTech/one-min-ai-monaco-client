@@ -130,6 +130,12 @@ function selectModel(m) {
   closeModelPicker();
 }
 
+function selectActivePickerItem() {
+  const list = document.getElementById('modelPickerList');
+  const active = list?.querySelector('.model-picker-item.selected');
+  if (active) active.click();
+}
+
 function openModelPicker(btn, type) {
   _activePickerBtn = btn;
   _activePickerType = type;
@@ -226,5 +232,9 @@ function initModelPickers() {
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeModelPicker();
+    if (e.key === 'Enter' && _activePickerType) {
+      e.preventDefault();
+      selectActivePickerItem();
+    }
   });
 }

@@ -3,7 +3,7 @@
  * Run with: node --experimental-vm-modules node_modules/.bin/jest
  */
 
-import { extractText } from '../utils/api-client.js';
+import { extractText, normalizeAssetResponse } from '../utils/api-client.js';
 
 // Mock environment variable
 process.env.ONE_MIN_AI_API_KEY = 'test-api-key';
@@ -87,6 +87,36 @@ describe('api-client', () => {
 
         test('should handle empty object', () => {
             expect(extractText({})).toBe('{}');
+        });
+    });
+
+    describe('normalizeAssetResponse', () => {
+        test('should normalize asset key and build asset URL', () => {
+            const data = {
+                asset: {
+                    key: 'uploads/example.png',
+                },
+            };
+
+            expect(normalizeAssetResponse(data)).toEqual({
+                key: 'uploads/example.png',
+                url: 'https://asset.1min.ai/uploads/example.png',
+                raw: data,
+            });
+        });
+
+        test('should preserve absolute asset URLs', () => {
+            const data = {
+                fileContent: {
+                    path: 'https://asset.1min.ai/uploads/example.png',
+                },
+            };
+
+            expect(normalizeAssetResponse(data)).toEqual({
+                key: 'https://asset.1min.ai/uploads/example.png',
+                url: 'https://asset.1min.ai/uploads/example.png',
+                raw: data,
+            });
         });
     });
 });

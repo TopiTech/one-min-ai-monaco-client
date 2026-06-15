@@ -17,6 +17,12 @@ const PROTECTED_PATH_PREFIXES = [
   "node_modules/",
   "package.json",
   "package-lock.json",
+  ".gitignore",
+  ".env.example",
+];
+
+const WRITE_PROTECTED_PATH_PREFIXES = [
+  ...PROTECTED_PATH_PREFIXES,
   "server.js",
   "utils/",
   "routes/",
@@ -25,8 +31,6 @@ const PROTECTED_PATH_PREFIXES = [
   "tests/",
   "docs/",
   "README.md",
-  ".gitignore",
-  ".env.example",
 ];
 
 function uniquePaths(paths) {
@@ -40,7 +44,7 @@ function getDefaultAllowedRoots() {
 /**
  * Returns the list of allowed root directories.
  * If ALLOWED_ROOTS env var is set, it is split by comma and resolved.
- * Otherwise, PROJECT_ROOT, its parent directory, and the user home directory are allowed.
+ * Otherwise, PROJECT_ROOT is allowed.
  */
 export function getAllowedRoots() {
   const raw = (process.env.ALLOWED_ROOTS || "").trim();
@@ -49,10 +53,9 @@ export function getAllowedRoots() {
   }
   const roots = raw
     .split(",")
-    .map((s) => s.trim().replace(/^["']|["']$/g, "")) // Remove quotes if present
+    .map((s) => s.trim().replace(/^["']|["']$/g, ""))
     .filter(Boolean)
     .map((r) => path.resolve(r));
-  // Always include PROJECT_ROOT as a fallback
   if (!roots.includes(PROJECT_ROOT)) {
     roots.unshift(PROJECT_ROOT);
   }
@@ -70,20 +73,16 @@ export function validatePath(targetPath) {
     throw new Error("Path is required");
   }
 
-  // Resolve relative paths against PROJECT_ROOT (not process.cwd())
-  // This ensures consistent behavior regardless of where the server is started from
   const isAbsolute = path.isAbsolute(targetPath);
   const resolvedPath = isAbsolute
     ? path.resolve(targetPath)
     : path.resolve(PROJECT_ROOT, targetPath);
   const allowedRoots = getAllowedRoots();
 
-  // Resolve symlinks for both target and allowed roots to prevent traversal
   let realPath;
   try {
     realPath = fs.realpathSync(resolvedPath);
   } catch {
-    // File doesn't exist yet, walk up to find the first existing ancestor and resolve that
     let current = resolvedPath;
     let existingAncestor = null;
     while (current !== path.dirname(current)) {
@@ -94,7 +93,6 @@ export function validatePath(targetPath) {
         current = path.dirname(current);
       }
     }
-    // Reconstruct the path from the resolved ancestor + remaining relative parts
     if (existingAncestor) {
       const remaining = resolvedPath.substring(current.length);
       realPath = path.join(existingAncestor, remaining);
@@ -128,45 +126,59 @@ function normalizePathForMatching(targetPath) {
   return targetPath.replace(/\\/g, "/").toLowerCase();
 }
 
+function isProtectedByPrefixes(relativePath, prefixes) {
+  const normalizedRelativePath = normalizePathForMatching(relativePath);
+  return prefixes.some((prefix) => {
+    const normalizedPrefix = normalizePathForMatching(prefix).replace(/\/$/, "");
+    return (
+      normalizedRelativePath === normalizedPrefix ||
+      normalizedRelativePath.startsWith(`${normalizedPrefix}/`)
+    );
+  });
+}
+
+function isPathProtectedByRoot(resolvedPath, root, prefixes) {
+  let realRoot;
+  try {
+    realRoot = fs.realpathSync(root);
+  } catch {
+    realRoot = root;
+  }
+
+  const isSubPath = resolvedPath === realRoot || resolvedPath.startsWith(realRoot + path.sep);
+  if (!isSubPath) {
+    return false;
+  }
+
+  const relativePath = path.relative(realRoot, resolvedPath);
+  if (!relativePath) {
+    return false;
+  }
+
+  return isProtectedByPrefixes(relativePath, prefixes);
+}
+
 /**
- * Checks whether a validated path is protected from destructive filesystem operations.
+ * Checks whether a validated path is protected from all filesystem operations.
  * @param {string} resolvedPath The resolved absolute path to check.
  * @returns {boolean} True if the path is protected.
  */
 export function isProtectedPath(resolvedPath) {
-  const allowedRoots = getAllowedRoots();
-
-  return allowedRoots.some((root) => {
-    let realRoot;
-    try {
-      realRoot = fs.realpathSync(root);
-    } catch {
-      realRoot = root;
-    }
-
-    const isSubPath = resolvedPath === realRoot || resolvedPath.startsWith(realRoot + path.sep);
-    if (!isSubPath) {
-      return false;
-    }
-
-    const relativePath = path.relative(realRoot, resolvedPath);
-    if (!relativePath) {
-      return false;
-    }
-
-    const normalizedRelativePath = normalizePathForMatching(relativePath);
-    return PROTECTED_PATH_PREFIXES.some((prefix) => {
-      const normalizedPrefix = normalizePathForMatching(prefix).replace(/\/$/, "");
-      return (
-        normalizedRelativePath === normalizedPrefix ||
-        normalizedRelativePath.startsWith(`${normalizedPrefix}/`)
-      );
-    });
-  });
+  return getAllowedRoots().some((root) => isPathProtectedByRoot(resolvedPath, root, PROTECTED_PATH_PREFIXES));
 }
 
 /**
- * Ensures a validated path is not protected from destructive filesystem operations.
+ * Checks whether a validated path is protected from destructive filesystem operations.
+ * Write/create/delete/rename operations use this stricter policy.
+ * @param {string} resolvedPath The resolved absolute path to check.
+ * @returns {boolean} True if the path is protected from destructive operations.
+ */
+export function isWriteProtectedPath(resolvedPath) {
+  return getAllowedRoots().some((root) => isPathProtectedByRoot(resolvedPath, root, WRITE_PROTECTED_PATH_PREFIXES));
+}
+
+/**
+ * Ensures a validated path is not protected from all filesystem operations.
  * @param {string} resolvedPath The resolved absolute path to check.
  * @throws {Error} If the path is protected.
  */
@@ -180,9 +192,21 @@ export function assertNotProtectedPath(resolvedPath) {
 }
 
 /**
+ * Ensures a validated path is not protected from destructive filesystem operations.
+ * @param {string} resolvedPath The resolved absolute path to check.
+ * @throws {Error} If the path is protected from write/create/delete/rename operations.
+ */
+export function assertNotWriteProtectedPath(resolvedPath) {
+  if (isWriteProtectedPath(resolvedPath)) {
+    const relativePath = path.relative(PROJECT_ROOT, resolvedPath).replace(/\\/g, "/");
+    const err = new Error(`Access denied: Path is protected from write operations: ${relativePath}`);
+    err.status = 403;
+    throw err;
+  }
+}
+
+/**
  * Returns the default workspace root.
- * If ALLOWED_ROOTS is set, returns the first custom root.
- * Otherwise, returns PROJECT_ROOT.
  */
 export function getDefaultRoot() {
   const raw = (process.env.ALLOWED_ROOTS || "").trim();
@@ -191,7 +215,6 @@ export function getDefaultRoot() {
   }
 
   const roots = getAllowedRoots();
-  // If user set custom roots, prefer the first non-project-root if available
   const customRoots = roots.filter((r) => r !== PROJECT_ROOT);
   return customRoots.length > 0 ? customRoots[0] : PROJECT_ROOT;
 }

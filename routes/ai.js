@@ -6,11 +6,56 @@ import logger from "../utils/logger.js";
 
 const router = express.Router();
 
+import { serverConfig } from "../config/server.js";
+
+function getDefaultModel(type) {
+  if (type === "CODE_GENERATOR") return serverConfig.defaultCodeModel;
+  if (type === "IMAGE_GENERATOR") return serverConfig.defaultImageModel;
+  if (type === "IMAGE_EDITOR") return serverConfig.defaultImageEditorModel;
+  return serverConfig.defaultChatModel;
+}
+
+function buildChatPayload({
+  prompt,
+  model,
+  conversationId,
+  attachments,
+  webSearch,
+  numOfSite,
+  maxWord,
+  history,
+  withMemories,
+  brandVoiceId,
+  isMixed,
+}) {
+  return {
+    type: "UNIFY_CHAT_WITH_AI",
+    model: model || getDefaultModel("CHAT"),
+    promptObject: {
+      prompt: String(prompt),
+      settings: {
+        webSearchSettings: {
+          webSearch: Boolean(webSearch),
+          ...(numOfSite !== undefined ? { numOfSite: Number(numOfSite) } : {}),
+          ...(maxWord !== undefined ? { maxWord: Number(maxWord) } : {}),
+        },
+        historySettings: {
+          isMixed: Boolean(isMixed),
+          historyMessageLimit: history ? 10 : 0,
+        },
+        withMemories: Boolean(withMemories),
+      },
+      ...(conversationId ? { conversationId } : {}),
+      ...(attachments ? { attachments } : {}),
+    },
+    ...(brandVoiceId ? { brandVoiceId } : {}),
+  };
+}
+
 // Available models endpoint
 router.get("/models", (_req, res) => {
   res.json({ chatModels, codeModels, imageModels });
 });
-
 
 router.post("/chat", async (req, res, next) => {
   try {
@@ -20,6 +65,8 @@ router.post("/chat", async (req, res, next) => {
       conversationId,
       attachments,
       webSearch = false,
+      numOfSite,
+      maxWord,
       history = true,
       withMemories = false,
       brandVoiceId,
@@ -28,26 +75,19 @@ router.post("/chat", async (req, res, next) => {
     if (!prompt || !String(prompt).trim())
       return res.status(400).json({ error: "prompt is required" });
 
-    const payload = {
-      type: "UNIFY_CHAT_WITH_AI",
-      model: model || process.env.DEFAULT_CHAT_MODEL || "gpt-4o-mini",
-      promptObject: {
-        prompt: String(prompt),
-        settings: {
-          webSearchSettings: {
-            webSearch: Boolean(webSearch),
-          },
-          historySettings: {
-            isMixed: Boolean(isMixed),
-            historyMessageLimit: history ? 10 : 0,
-          },
-          withMemories: Boolean(withMemories),
-        },
-        ...(conversationId ? { conversationId } : {}),
-        ...(attachments ? { attachments } : {}),
-      },
-      ...(brandVoiceId ? { brandVoiceId } : {}),
-    };
+    const payload = buildChatPayload({
+      prompt,
+      model,
+      conversationId,
+      attachments,
+      webSearch,
+      numOfSite,
+      maxWord,
+      history,
+      withMemories,
+      brandVoiceId,
+      isMixed,
+    });
 
     const data = await callOneMin("/api/chat-with-ai", {
       headers: { "Content-Type": "application/json" },
@@ -67,6 +107,8 @@ router.post("/chat/stream", async (req, res, next) => {
       conversationId,
       attachments,
       webSearch = false,
+      numOfSite,
+      maxWord,
       history = true,
       withMemories = false,
       brandVoiceId,
@@ -75,26 +117,19 @@ router.post("/chat/stream", async (req, res, next) => {
     if (!prompt || !String(prompt).trim())
       return res.status(400).json({ error: "prompt is required" });
 
-    const payload = {
-      type: "UNIFY_CHAT_WITH_AI",
-      model: model || process.env.DEFAULT_CHAT_MODEL || "gpt-4o-mini",
-      promptObject: {
-        prompt: String(prompt),
-        settings: {
-          webSearchSettings: {
-            webSearch: Boolean(webSearch),
-          },
-          historySettings: {
-            isMixed: Boolean(isMixed),
-            historyMessageLimit: history ? 10 : 0,
-          },
-          withMemories: Boolean(withMemories),
-        },
-        ...(conversationId ? { conversationId } : {}),
-        ...(attachments ? { attachments } : {}),
-      },
-      ...(brandVoiceId ? { brandVoiceId } : {}),
-    };
+    const payload = buildChatPayload({
+      prompt,
+      model,
+      conversationId,
+      attachments,
+      webSearch,
+      numOfSite,
+      maxWord,
+      history,
+      withMemories,
+      brandVoiceId,
+      isMixed,
+    });
 
     const controller = new AbortController();
     res.on("close", () => {
@@ -111,6 +146,14 @@ router.post("/chat/stream", async (req, res, next) => {
       signal: controller.signal,
     });
 
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({
+        error: `1min.ai API error: ${response.status}`,
+        details: errorText,
+      });
+    }
+
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -118,6 +161,11 @@ router.post("/chat/stream", async (req, res, next) => {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    const heartbeatInterval = setInterval(() => {
+      if (!res.writableEnded) {
+        res.write(":\n\n");
+      }
+    }, 30_000);
 
     try {
       while (true) {
@@ -127,16 +175,22 @@ router.post("/chat/stream", async (req, res, next) => {
         res.write(chunk);
       }
     } catch (streamErr) {
-      if (controller.signal.aborted || streamErr.name === 'AbortError') {
+      if (controller.signal.aborted || streamErr.name === "AbortError") {
         logger.info("Stream reading aborted due to client disconnection.");
       } else {
         logger.warn("Stream interrupted", { error: streamErr.message });
       }
     } finally {
+      clearInterval(heartbeatInterval);
+      try {
+        reader.releaseLock();
+      } catch (lockErr) {
+        // ignore
+      }
       res.end();
     }
   } catch (err) {
-    if (err.name === 'AbortError' || err.status === 499) {
+    if (err.name === "AbortError" || err.status === 499) {
       logger.info("Stream request aborted as client disconnected.");
       if (!res.headersSent) {
         res.status(499).json({ error: "Client Closed Request" });
@@ -159,7 +213,7 @@ router.post("/conversations", async (req, res, next) => {
     const payload = {
       type,
       title,
-      model: model || (type === "CODE_GENERATOR" ? process.env.DEFAULT_CODE_MODEL : process.env.DEFAULT_CHAT_MODEL) || "gpt-4o-mini",
+      model: model || getDefaultModel(type),
     };
     const data = await callOneMin("/api/conversations", {
       headers: { "Content-Type": "application/json" },
@@ -198,7 +252,7 @@ router.post("/images/generate", async (req, res, next) => {
     if (!prompt || !String(prompt).trim())
       return res.status(400).json({ error: "prompt is required" });
 
-    const selectedModel = model || process.env.DEFAULT_IMAGE_MODEL || "gpt-image-2";
+    const selectedModel = model || getDefaultModel("IMAGE_GENERATOR");
     const isGptImage = selectedModel.startsWith("gpt-image");
 
     const promptObject = {
@@ -256,7 +310,7 @@ router.post("/images/text-editor", async (req, res, next) => {
       return res.status(400).json({ error: "prompt is required" });
     }
 
-    const selectedModel = model || process.env.DEFAULT_IMAGE_EDITOR_MODEL || "gpt-image-2";
+    const selectedModel = model || getDefaultModel("IMAGE_EDITOR");
     const isGptImage = selectedModel.startsWith("gpt-image");
 
     if (isGptImage) {
@@ -270,7 +324,9 @@ router.post("/images/text-editor", async (req, res, next) => {
         return res.status(400).json({ error: "width and height must be divisible by 16" });
       }
       if (w * h < 655360 || w * h > 8294400) {
-        return res.status(400).json({ error: "total pixels must be between 655,360 and 8,294,400" });
+        return res
+          .status(400)
+          .json({ error: "total pixels must be between 655,360 and 8,294,400" });
       }
       if (Math.max(w, h) > 3840) {
         return res.status(400).json({ error: "max edge must be <= 3840px" });
@@ -335,11 +391,21 @@ router.post("/code/generate", async (req, res, next) => {
     if (String(code).length > MAX_CODE_LENGTH)
       return res.status(400).json({ error: `code exceeds ${MAX_CODE_LENGTH} characters` });
 
-    const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({ webSearch, numOfSite, maxWord });
+    const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({
+      webSearch,
+      numOfSite,
+      maxWord,
+    });
 
     const prompt = `あなたは熟練のソフトウェアエンジニアです。以下のコードに対してユーザー指示を実行してください。\n\n出力ルール:\n- 変更コードが必要な場合は完全なコードブロックで返す\n- 変更理由を短く説明する\n- 可能なら注意点も述べる\n\nファイル名: ${fileName}\n言語: ${language}\n\nユーザー指示:\n${instruction}\n\n現在のコード:\n\`\`\`${language}\n${code}\n\`\`\``;
 
-    const payload = buildCodePayload({ prompt, model, webSearch: parsedWebSearch, parsedNumOfSite, parsedMaxWord });
+    const payload = buildCodePayload({
+      prompt,
+      model,
+      webSearch: parsedWebSearch,
+      parsedNumOfSite,
+      parsedMaxWord,
+    });
     const data = await callOneMin("/api/features", {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -352,14 +418,28 @@ router.post("/code/generate", async (req, res, next) => {
 
 router.post("/code/autocomplete", async (req, res, next) => {
   try {
-    const { code, line, column, fileName, language, model, webSearch = false, numOfSite, maxWord } = req.body;
+    const {
+      code,
+      line,
+      column,
+      fileName,
+      language,
+      model,
+      webSearch = false,
+      numOfSite,
+      maxWord,
+    } = req.body;
     if (code === undefined || !line || !column) {
       return res.status(400).json({ error: "code, line, and column are required" });
     }
     if (String(code).length > MAX_CODE_LENGTH)
       return res.status(400).json({ error: `code exceeds ${MAX_CODE_LENGTH} characters` });
 
-    const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({ webSearch, numOfSite, maxWord });
+    const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({
+      webSearch,
+      numOfSite,
+      maxWord,
+    });
 
     const lines = code.split(/\r?\n/);
     const lineIndex = line - 1;
@@ -390,7 +470,13 @@ ${afterCode}
 
 提案コード:`;
 
-    const payload = buildCodePayload({ prompt, model, webSearch: parsedWebSearch, parsedNumOfSite, parsedMaxWord });
+    const payload = buildCodePayload({
+      prompt,
+      model,
+      webSearch: parsedWebSearch,
+      parsedNumOfSite,
+      parsedMaxWord,
+    });
 
     const data = await callOneMin("/api/features", {
       headers: { "Content-Type": "application/json" },
@@ -408,7 +494,18 @@ ${afterCode}
 
 router.post("/code/inline-chat", async (req, res, next) => {
   try {
-    const { prompt: userPrompt, code, line, column, fileName, language, model, webSearch = false, numOfSite, maxWord } = req.body;
+    const {
+      prompt: userPrompt,
+      code,
+      line,
+      column,
+      fileName,
+      language,
+      model,
+      webSearch = false,
+      numOfSite,
+      maxWord,
+    } = req.body;
     if (!userPrompt || code === undefined || !line || !column) {
       return res.status(400).json({ error: "prompt, code, line, and column are required" });
     }
@@ -417,7 +514,11 @@ router.post("/code/inline-chat", async (req, res, next) => {
     if (String(code).length > MAX_CODE_LENGTH)
       return res.status(400).json({ error: `code exceeds ${MAX_CODE_LENGTH} characters` });
 
-    const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({ webSearch, numOfSite, maxWord });
+    const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({
+      webSearch,
+      numOfSite,
+      maxWord,
+    });
 
     const lines = code.split(/\r?\n/);
     const lineIndex = line - 1;
@@ -448,7 +549,13 @@ ${afterCode}
 
 挿入/変更コード:`;
 
-    const payload = buildCodePayload({ prompt, model, webSearch: parsedWebSearch, parsedNumOfSite, parsedMaxWord });
+    const payload = buildCodePayload({
+      prompt,
+      model,
+      webSearch: parsedWebSearch,
+      parsedNumOfSite,
+      parsedMaxWord,
+    });
 
     const data = await callOneMin("/api/features", {
       headers: { "Content-Type": "application/json" },
@@ -466,25 +573,30 @@ ${afterCode}
 
 router.post("/agent/chat", async (req, res, next) => {
   try {
-    const { prompt, model, conversationId, webSearch = false, history = true } = req.body;
+    const { prompt, model, webSearch = false, numOfSite, maxWord } = req.body;
     if (!prompt || !String(prompt).trim())
       return res.status(400).json({ error: "prompt is required" });
 
-    const payload = {
-      type: "CODE_GENERATOR",
-      model: model || process.env.DEFAULT_CODE_MODEL || "qwen3-coder-plus",
-      ...(conversationId ? { conversationId } : {}),
-      promptObject: {
-        prompt: String(prompt),
-        webSearch: Boolean(webSearch),
-      },
-    };
+    const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({
+      webSearch,
+      numOfSite,
+      maxWord,
+    });
+
+    const payload = buildCodePayload({
+      prompt: String(prompt),
+      model,
+      webSearch: parsedWebSearch,
+      parsedNumOfSite,
+      parsedMaxWord,
+    });
 
     const data = await callOneMin("/api/features", {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    res.json(data);
+    const text = extractText(data);
+    res.json({ text, raw: data });
   } catch (err) {
     next(err);
   }

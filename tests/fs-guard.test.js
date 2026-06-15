@@ -2,7 +2,7 @@
  * Unit tests for fs-guard utility
  */
 
-import { validatePath, PROJECT_ROOT, getAllowedRoots, getDefaultRoot, isProtectedPath, assertNotProtectedPath } from '../utils/fs-guard.js';
+import { validatePath, PROJECT_ROOT, getAllowedRoots, getDefaultRoot, isProtectedPath, isWriteProtectedPath, assertNotProtectedPath, assertNotWriteProtectedPath } from '../utils/fs-guard.js';
 import path from 'path';
 
 describe('fs-guard', () => {
@@ -75,13 +75,15 @@ describe('fs-guard', () => {
     describe('isProtectedPath', () => {
         test('should identify protected project files and directories', () => {
             expect(isProtectedPath(path.join(PROJECT_ROOT, '.env'))).toBe(true);
-            expect(isProtectedPath(path.join(PROJECT_ROOT, 'server.js'))).toBe(true);
-            expect(isProtectedPath(path.join(PROJECT_ROOT, 'utils', 'fs-guard.js'))).toBe(true);
-            expect(isProtectedPath(path.join(PROJECT_ROOT, 'public', 'app.js'))).toBe(true);
             expect(isProtectedPath(path.join(PROJECT_ROOT, 'node_modules', 'left-pad'))).toBe(true);
+            expect(isProtectedPath(path.join(PROJECT_ROOT, 'package.json'))).toBe(true);
+            expect(isProtectedPath(path.join(PROJECT_ROOT, '.gitignore'))).toBe(true);
         });
 
-        test('should allow normal writable project paths', () => {
+        test('should allow reading normal project source paths', () => {
+            expect(isProtectedPath(path.join(PROJECT_ROOT, 'server.js'))).toBe(false);
+            expect(isProtectedPath(path.join(PROJECT_ROOT, 'utils', 'fs-guard.js'))).toBe(false);
+            expect(isProtectedPath(path.join(PROJECT_ROOT, 'public', 'app.js'))).toBe(false);
             expect(isProtectedPath(path.join(PROJECT_ROOT, 'src', 'app.js'))).toBe(false);
             expect(isProtectedPath(path.join(PROJECT_ROOT, 'workspace', 'notes.txt'))).toBe(false);
         });
@@ -90,10 +92,10 @@ describe('fs-guard', () => {
             const originalEnv = process.env.ALLOWED_ROOTS;
             process.env.ALLOWED_ROOTS = '/tmp-custom-root';
             const customRoot = path.resolve('/tmp-custom-root');
-            
+
             expect(isProtectedPath(path.join(customRoot, '.env'))).toBe(true);
-            expect(isProtectedPath(path.join(customRoot, 'server.js'))).toBe(true);
             expect(isProtectedPath(path.join(customRoot, 'node_modules', 'foo'))).toBe(true);
+            expect(isProtectedPath(path.join(customRoot, 'package.json'))).toBe(true);
             expect(isProtectedPath(path.join(customRoot, 'src', 'app.js'))).toBe(false);
 
             if (originalEnv === undefined) {
@@ -106,6 +108,47 @@ describe('fs-guard', () => {
         test('should throw 403 for protected paths', () => {
             try {
                 assertNotProtectedPath(path.join(PROJECT_ROOT, 'package.json'));
+            } catch (err) {
+                expect(err.status).toBe(403);
+            }
+        });
+    });
+
+    describe('isWriteProtectedPath', () => {
+        test('should protect source and project infrastructure from destructive operations', () => {
+            expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'server.js'))).toBe(true);
+            expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'utils', 'fs-guard.js'))).toBe(true);
+            expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'routes', 'fs.js'))).toBe(true);
+            expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'public', 'app.js'))).toBe(true);
+            expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'tests', 'fs-guard.test.js'))).toBe(true);
+        });
+
+        test('should allow normal writable project paths', () => {
+            expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'src', 'app.js'))).toBe(false);
+            expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'workspace', 'notes.txt'))).toBe(false);
+        });
+
+        test('should identify write-protected files within custom allowed roots', () => {
+            const originalEnv = process.env.ALLOWED_ROOTS;
+            process.env.ALLOWED_ROOTS = '/tmp-custom-root';
+            const customRoot = path.resolve('/tmp-custom-root');
+
+            expect(isWriteProtectedPath(path.join(customRoot, '.env'))).toBe(true);
+            expect(isWriteProtectedPath(path.join(customRoot, 'server.js'))).toBe(true);
+            expect(isWriteProtectedPath(path.join(customRoot, 'utils', 'fs-guard.js'))).toBe(true);
+            expect(isWriteProtectedPath(path.join(customRoot, 'node_modules', 'foo'))).toBe(true);
+            expect(isWriteProtectedPath(path.join(customRoot, 'src', 'app.js'))).toBe(false);
+
+            if (originalEnv === undefined) {
+                delete process.env.ALLOWED_ROOTS;
+            } else {
+                process.env.ALLOWED_ROOTS = originalEnv;
+            }
+        });
+
+        test('should throw 403 for write-protected paths', () => {
+            try {
+                assertNotWriteProtectedPath(path.join(PROJECT_ROOT, 'server.js'));
             } catch (err) {
                 expect(err.status).toBe(403);
             }

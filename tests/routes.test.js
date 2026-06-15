@@ -10,6 +10,7 @@ jest.unstable_mockModule('../utils/api-client.js', () => ({
     if (data.aiRecord?.aiRecordDetail?.resultObject) return data.aiRecord.aiRecordDetail.resultObject;
     return JSON.stringify(data);
   }),
+  normalizeAssetResponse: jest.fn((data) => ({ key: data?.asset?.key || '', url: '', raw: data })),
 }));
 
 // Re-import mocked client and other helpers after mocking

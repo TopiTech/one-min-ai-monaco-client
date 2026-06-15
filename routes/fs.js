@@ -3,10 +3,11 @@ import fs from 'fs/promises';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
-import { validatePath, PROJECT_ROOT, getAllowedRoots, getDefaultRoot, assertNotProtectedPath } from '../utils/fs-guard.js';
+import { validatePath, PROJECT_ROOT, getAllowedRoots, getDefaultRoot, assertNotProtectedPath, assertNotWriteProtectedPath } from '../utils/fs-guard.js';
 
 const MAX_READ_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_LIST_ENTRIES = 5000;
+const BINARY_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.pdf', '.zip', '.tar', '.gz', '.mp4', '.exe', '.dll', '.bin', '.db']);
 
 const router = express.Router();
 const execAsync = promisify(exec);
@@ -41,9 +42,9 @@ router.get('/drives', async (_req, res) => {
 
   if (process.platform === 'win32') {
     try {
-      // Use wmic to get logical drives
-      const { stdout } = await execAsync('wmic logicaldisk get name 2>nul', { timeout: 5000 });
-      const lines = stdout.split('\n').map(l => l.trim()).filter(l => l && l !== 'Name');
+      // Use powershell to get logical drives
+      const { stdout } = await execAsync('powershell -NoProfile -Command "Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Name"', { timeout: 5000 });
+      const lines = stdout.split('\n').map(l => l.trim()).filter(l => l);
       for (const line of lines) {
         const driveLetter = line.replace(':', '').trim();
         if (driveLetter) {
@@ -152,6 +153,7 @@ router.get('/read', async (req, res, next) => {
     const filePath = req.query.path;
     if (!filePath) return res.status(400).json({ error: 'path is required' });
     const resolvedPath = validatePath(String(filePath));
+    assertNotProtectedPath(resolvedPath);
 
     const stat = await fs.stat(resolvedPath);
     if (stat.isDirectory()) {
@@ -159,6 +161,11 @@ router.get('/read', async (req, res, next) => {
     }
     if (stat.size > MAX_READ_SIZE) {
       return res.status(413).json({ error: `File size (${stat.size} bytes) exceeds maximum read size (${MAX_READ_SIZE} bytes)` });
+    }
+
+    const ext = path.extname(resolvedPath).toLowerCase();
+    if (BINARY_EXTENSIONS.has(ext)) {
+      return res.status(400).json({ error: 'Cannot read binary files as text in the editor.' });
     }
 
     const content = await fs.readFile(resolvedPath, 'utf-8');
@@ -178,7 +185,7 @@ router.post('/write', async (req, res, next) => {
     if (content === undefined) return res.status(400).json({ error: 'content is required' });
 
     const resolvedPath = validatePath(String(filePath));
-    assertNotProtectedPath(resolvedPath);
+    assertNotWriteProtectedPath(resolvedPath);
 
     const dir = path.dirname(resolvedPath);
     await fs.mkdir(dir, { recursive: true });
@@ -199,7 +206,7 @@ router.post('/create', async (req, res, next) => {
     if (!targetPath) return res.status(400).json({ error: 'path is required' });
 
     const resolvedPath = validatePath(String(targetPath));
-    assertNotProtectedPath(resolvedPath);
+    assertNotWriteProtectedPath(resolvedPath);
 
     if (type === 'directory') {
       await fs.mkdir(resolvedPath, { recursive: true });
@@ -224,7 +231,7 @@ router.post('/delete', async (req, res, next) => {
     if (!targetPath) return res.status(400).json({ error: 'path is required' });
 
     const resolvedPath = validatePath(String(targetPath));
-    assertNotProtectedPath(resolvedPath);
+    assertNotWriteProtectedPath(resolvedPath);
 
     const stat = await fs.stat(resolvedPath);
     if (stat.isDirectory()) {
@@ -251,8 +258,8 @@ router.post('/rename', async (req, res, next) => {
 
     const resolvedOld = validatePath(String(oldPath));
     const resolvedNew = validatePath(String(newPath));
-    assertNotProtectedPath(resolvedOld);
-    assertNotProtectedPath(resolvedNew);
+    assertNotWriteProtectedPath(resolvedOld);
+    assertNotWriteProtectedPath(resolvedNew);
 
     await fs.rename(resolvedOld, resolvedNew);
     res.json({ ok: true, oldPath: resolvedOld, newPath: resolvedNew });

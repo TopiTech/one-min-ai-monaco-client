@@ -12,7 +12,7 @@ export const serverConfig = {
     maxJsonBodySize: process.env.MAX_JSON_BODY_SIZE || '2mb',
 
     // API settings
-    apiTimeout: Number(process.env.API_TIMEOUT || 30000), // 30 seconds
+    apiTimeout: Number(process.env.API_TIMEOUT || 60000), // 60 seconds
     apiRetryAttempts: Number(process.env.API_RETRY_ATTEMPTS || 3),
     apiRetryDelay: Number(process.env.API_RETRY_DELAY || 2000), // 2 seconds
 

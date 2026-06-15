@@ -1,6 +1,9 @@
 // Source: https://docs.1min.ai/
 
-export const chatModels = [
+import { callOneMin } from '../utils/api-client.js';
+import logger from '../utils/logger.js';
+
+export let chatModels = [
   // OpenAI
   { id: "gpt-4o-mini", label: "GPT-4o mini", provider: "OpenAI", tags: ["fast"] },
   { id: "gpt-4o", label: "GPT-4o", provider: "OpenAI", tags: ["flagship"] },
@@ -123,7 +126,7 @@ export const chatModels = [
   { id: "meta/meta-llama-3-70b-instruct", label: "Llama 3 70B", provider: "Meta" },
 ];
 
-export const codeModels = [
+export let codeModels = [
   // Alibaba Cloud (Qwen Coder)
   {
     id: "qwen3-coder-plus",
@@ -244,7 +247,7 @@ export const codeModels = [
   { id: "grok-code-fast-1", label: "Grok Code Fast 1", provider: "xAI", tags: ["code", "fast"] },
 ];
 
-export const imageModels = [
+export let imageModels = [
   // OpenAI image generation
   { id: "gpt-image-2", label: "GPT Image 2", provider: "OpenAI", tags: ["image", "flagship"] },
   { id: "gpt-image-1", label: "GPT Image 1", provider: "OpenAI", tags: ["image"] },
@@ -337,3 +340,27 @@ export const imageModels = [
   // Other image text editor
   { id: "qwen-image-edit-plus", label: "Qwen Image Edit Plus", provider: "Alibaba", tags: ["image", "editor"] },
 ];
+
+export async function initModels() {
+  await fetchModels();
+  setInterval(fetchModels, 30 * 60 * 1000).unref();
+}
+
+async function fetchModels() {
+  try {
+    const data = await callOneMin('/api/models');
+    if (data && Array.isArray(data.models)) {
+      const newChatModels = data.models.filter(m => m.type === 'CHAT');
+      const newCodeModels = data.models.filter(m => m.type === 'CODE_GENERATOR');
+      const newImageModels = data.models.filter(m => m.type === 'IMAGE_GENERATOR' || m.type === 'IMAGE_EDITOR');
+
+      if (newChatModels.length > 0) chatModels = newChatModels;
+      if (newCodeModels.length > 0) codeModels = newCodeModels;
+      if (newImageModels.length > 0) imageModels = newImageModels;
+      
+      logger.info('Models dynamically fetched and updated from 1min.ai API.');
+    }
+  } catch (err) {
+    logger.debug('Failed to fetch models dynamically. Using hardcoded fallback models.', { error: err.message });
+  }
+}

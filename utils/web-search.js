@@ -29,7 +29,26 @@ export function parseWebSearchParams({ webSearch = false, numOfSite, maxWord } =
 }
 
 /**
- * Builds a CODE_GENERATOR payload with web search parameters.
+ * Builds web search settings in the shape currently used by Chat with AI.
+ * @param {object} opts
+ * @param {boolean} opts.webSearch
+ * @param {number} [opts.parsedNumOfSite]
+ * @param {number} [opts.parsedMaxWord]
+ * @returns {object}
+ */
+export function buildWebSearchSettings({ webSearch, parsedNumOfSite, parsedMaxWord }) {
+  return {
+    webSearch,
+    ...(parsedNumOfSite !== undefined ? { numOfSite: parsedNumOfSite } : {}),
+    ...(parsedMaxWord !== undefined ? { maxWord: parsedMaxWord } : {}),
+  };
+}
+
+import crypto from 'crypto';
+import { serverConfig } from '../config/server.js';
+
+/**
+ * Builds a CODE_GENERATOR payload with web search settings.
  * @param {object} opts
  * @param {string} opts.prompt - The prompt text.
  * @param {string} [opts.model] - The model to use.
@@ -41,13 +60,17 @@ export function parseWebSearchParams({ webSearch = false, numOfSite, maxWord } =
 export function buildCodePayload({ prompt, model, webSearch, parsedNumOfSite, parsedMaxWord }) {
   return {
     type: "CODE_GENERATOR",
-    model: model || process.env.DEFAULT_CODE_MODEL || "qwen3-coder-plus",
-    conversationId: "CODE_GENERATOR",
+    model: model || serverConfig.defaultCodeModel,
+    conversationId: `CODE_GEN_${crypto.randomUUID()}`,
     promptObject: {
       prompt,
-      webSearch,
-      ...(parsedNumOfSite !== undefined ? { numOfSite: parsedNumOfSite } : {}),
-      ...(parsedMaxWord !== undefined ? { maxWord: parsedMaxWord } : {}),
+      settings: {
+        webSearchSettings: {
+          webSearch: Boolean(webSearch),
+          ...(parsedNumOfSite !== undefined ? { numOfSite: parsedNumOfSite } : {}),
+          ...(parsedMaxWord !== undefined ? { maxWord: parsedMaxWord } : {}),
+        },
+      },
     },
   };
 }

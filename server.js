@@ -5,18 +5,19 @@ import rateLimit from "express-rate-limit";
 import multer from "multer";
 import path from "path";
 import { fileURLToPath } from "url";
-import { callOneMin } from "./utils/api-client.js";
+import crypto from "crypto";
+import { callOneMin, normalizeAssetResponse } from "./utils/api-client.js";
 import { serverConfig } from "./config/server.js";
 import logger from "./utils/logger.js";
 
 import aiRoutes from "./routes/ai.js";
 import fsRoutes from "./routes/fs.js";
 import agentRoutes from "./routes/agent.js";
+import { initModels } from "./config/models.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const app = express();
 const ALLOWED_MIME_TYPES = [
   "image/",
   "application/pdf",
@@ -43,69 +44,84 @@ const upload = multer({
   },
 });
 
-// Security middleware: Helmet
-// Note: 'unsafe-inline' for scriptSrc is required by Monaco Editor's AMD loader.
-// Consider nonce-based CSP if Monaco is replaced with a non-AMD editor.
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "https://cdn.jsdelivr.net", "'unsafe-inline'", "blob:"],
-        styleSrc: [
-          "'self'",
-          "'unsafe-inline'",
-          "https://cdn.jsdelivr.net",
-          "https://fonts.googleapis.com",
-        ],
-        imgSrc: ["'self'", "data:", "https:", "blob:"],
-        connectSrc: ["'self'", "https://cdn.jsdelivr.net", "https://api.1min.ai"],
-        fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net", "https://fonts.gstatic.com"],
-        objectSrc: ["'none'"],
-        mediaSrc: ["'self'"],
-        frameSrc: ["'none'"],
-        workerSrc: ["'self'", "blob:"],
-      },
-    },
-    crossOriginEmbedderPolicy: false, // Required for Monaco web workers
-  }),
-);
+function createLocalAuthToken() {
+  return crypto.randomBytes(24).toString("hex");
+}
 
-// Rate limiting
-const generalLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 180, // 180 requests per minute
-  message: { error: "Too many requests, please try again later." },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+function compareAuthToken(a, b) {
+  if (!a || !b || typeof a !== "string" || typeof b !== "string") return false;
 
-const uploadLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 100, // 100 upload requests per minute
-  message: { error: "Too many upload requests, please try again later." },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
 
-app.use(generalLimiter);
+  return crypto.timingSafeEqual(aBuf, bBuf);
+}
 
-// Request logging middleware
-app.use(logger.requestLogger());
+function localBffAuth({
+  requireToken = true,
+  authToken = process.env.LOCAL_BFF_AUTH_TOKEN || createLocalAuthToken(),
+} = {}) {
+  return (req, res, next) => {
+    if (!requireToken) return next();
 
-app.use(express.json({ limit: serverConfig.maxJsonBodySize }));
-app.use(express.static(path.join(__dirname, "public")));
+    const headerToken = req.get("x-local-bff-token");
+    if (headerToken && compareAuthToken(headerToken, authToken)) {
+      return next();
+    }
 
-app.get("/api/health", (_req, res) => {
-  res.json({
-    ok: true,
-    service: "one-min-ai-monaco-client",
-    hasApiKey: Boolean(process.env.ONE_MIN_AI_API_KEY),
+    const err = new Error("Local BFF authentication required or invalid token");
+    err.status = 403;
+    next(err);
+  };
+}
+
+function buildRateLimit(config) {
+  return rateLimit({
+    windowMs: 1 * 60 * 1000,
+    max: 180,
+    message: { error: "Too many requests, please try again later." },
+    standardHeaders: true,
+    legacyHeaders: false,
+    ...config,
   });
-});
+}
 
-// Assets upload endpoint (with stricter rate limit)
-app.post("/api/assets/upload", uploadLimiter, upload.single("asset"), async (req, res, next) => {
+function normalizePayloadError(err) {
+  if (!err?.payload) return null;
+  if (typeof err.payload === "string") return err.payload;
+  if (typeof err.payload === "object") {
+    return err.payload.error || err.payload.message || JSON.stringify(err.payload);
+  }
+  return null;
+}
+
+function buildCspDirectives() {
+  // NOTE: 'unsafe-inline' in scriptSrc is required for Monaco Editor's AMD loader.
+  // For production, consider using nonces or self-hosting Monaco to remove this.
+  // styleSrc 'unsafe-inline' is needed for dynamic theme toggling.
+  return {
+    defaultSrc: ["'self'"],
+    scriptSrc: ["'self'", "https://cdn.jsdelivr.net", "'unsafe-inline'", "blob:"],
+    styleSrc: [
+      "'self'",
+      "'unsafe-inline'",
+      "https://cdn.jsdelivr.net",
+      "https://fonts.googleapis.com",
+    ],
+    imgSrc: ["'self'", "data:", "https:", "blob:"],
+    connectSrc: ["'self'", "https://cdn.jsdelivr.net", "https://api.1min.ai"],
+    fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net", "https://fonts.gstatic.com"],
+    objectSrc: ["'none'"],
+    mediaSrc: ["'self'"],
+    frameSrc: ["'none'"],
+    workerSrc: ["'self'", "blob:"],
+  };
+}
+
+import fs from "fs";
+
+async function handleAssetUpload(req, res, next) {
   try {
     if (!req.file) return res.status(400).json({ error: "asset file is required" });
 
@@ -123,54 +139,123 @@ app.post("/api/assets/upload", uploadLimiter, upload.single("asset"), async (req
     formData.append("asset", blob, req.file.originalname || "upload.bin");
 
     const data = await callOneMin("/api/assets", { method: "POST", body: formData });
+    const normalized = normalizeAssetResponse(data);
 
     logger.info("Asset upload successful", { filename: req.file.originalname });
-    res.json(data);
+    res.json({
+      ...normalized,
+      raw: data,
+    });
   } catch (err) {
     logger.error("Asset upload failed", { error: err.message });
     next(err);
   }
-});
+}
 
-// Use Routers
-app.use("/api", aiRoutes);
-app.use("/api/fs", fsRoutes);
-app.use("/api/agent", agentRoutes);
+export function createApp(options = {}) {
+  const {
+    requireLocalAuth = process.env.NODE_ENV !== "test",
+    authToken,
+    localAuthToken: localAuthTokenOption,
+    enableRateLimit = process.env.NODE_ENV !== "test",
+  } = options;
+  const localAuthToken =
+    localAuthTokenOption ?? authToken ?? process.env.LOCAL_BFF_AUTH_TOKEN ?? createLocalAuthToken();
 
-// Error handling middleware
-app.use((err, req, res, _next) => {
-  logger.error("Unhandled error", {
-    error: err.message,
-    status: err.status,
-    method: req.method,
-    url: req.originalUrl,
-    stack: err.stack,
-  });
+  const app = express();
 
-  const status = err.status || 500;
-  let errorMessage = err.message || "Internal Server Error";
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: buildCspDirectives(),
+      },
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
 
-  if (err.payload) {
-    if (typeof err.payload === "object") {
-      errorMessage = err.payload.error || err.payload.message || errorMessage;
-    } else if (typeof err.payload === "string") {
-      errorMessage = err.payload;
-    }
+  if (enableRateLimit) {
+    app.use(buildRateLimit());
   }
 
-  const isDev = process.env.NODE_ENV === "development";
-  res.status(status).json({
-    error: errorMessage,
-    details: isDev ? err.payload || null : null,
+  app.use(logger.requestLogger());
+  app.use(express.json({ limit: serverConfig.maxJsonBodySize }));
+  
+  app.get(["/", "/index.html"], (req, res) => {
+    try {
+      const htmlPath = path.join(__dirname, "public", "index.html");
+      let html = fs.readFileSync(htmlPath, "utf8");
+      html = html.replace("<head>", `<head>\n    <meta name="local-bff-token" content="${localAuthToken}" />`);
+      res.send(html);
+    } catch (e) {
+      res.status(500).send("Error loading index.html");
+    }
   });
-});
+  
+  app.use(express.static(path.join(__dirname, "public")));
 
-app.listen(serverConfig.port, "127.0.0.1", () => {
-  logger.info(`1min.ai Monaco client running: http://127.0.0.1:${serverConfig.port}`);
-  logger.info("Server configuration", {
-    port: serverConfig.port,
-    maxFileSize: serverConfig.maxFileSize,
-    apiTimeout: serverConfig.apiTimeout,
-    apiRetryAttempts: serverConfig.apiRetryAttempts,
+  const protectedApiAuth = localBffAuth({
+    requireToken: requireLocalAuth,
+    authToken: localAuthToken,
   });
-});
+  app.use("/api/health", (_req, res) => {
+    res.json({
+      ok: true,
+      service: "one-min-ai-monaco-client",
+      hasApiKey: Boolean(process.env.ONE_MIN_AI_API_KEY),
+      localAuthEnabled: requireLocalAuth,
+    });
+  });
+
+  app.post(
+    "/api/assets/upload",
+    protectedApiAuth,
+    (req, res, next) => {
+      upload.single("asset")(req, res, (err) => {
+        if (err) return next(err);
+        handleAssetUpload(req, res, next);
+      });
+    },
+    (err, _req, res, next) => {
+      next(err);
+    },
+  );
+
+  app.use("/api", protectedApiAuth, aiRoutes);
+  app.use("/api/fs", protectedApiAuth, fsRoutes);
+  app.use("/api/agent", protectedApiAuth, agentRoutes);
+
+  app.use((err, req, res, _next) => {
+    logger.error("Unhandled error", {
+      error: err.message,
+      status: err.status,
+      method: req.method,
+      url: req.originalUrl,
+      stack: err.stack,
+    });
+
+    const status = err.status || 500;
+    const isDev = process.env.NODE_ENV === "development";
+    res.status(status).json({
+      error: normalizePayloadError(err) || err.message || "Internal Server Error",
+      details: isDev ? err.payload || null : null,
+    });
+  });
+
+  return app;
+}
+
+
+
+if (process.env.NODE_ENV !== "test") {
+  initModels().then(() => {
+    createApp().listen(serverConfig.port, "127.0.0.1", () => {
+      logger.info(`1min.ai Monaco client running: http://127.0.0.1:${serverConfig.port}`);
+      logger.info("Server configuration", {
+        port: serverConfig.port,
+        maxFileSize: serverConfig.maxFileSize,
+        apiTimeout: serverConfig.apiTimeout,
+        apiRetryAttempts: serverConfig.apiRetryAttempts,
+      });
+    });
+  });
+}

@@ -78,6 +78,7 @@ export async function callOneMin(pathname, { method = 'POST', body, headers = {}
     return fetchWithTimeout(`${API_BASE}${pathname}`, {
       method,
       headers: {
+        'Authorization': `Bearer ${apiKey}`,
         'API-KEY': apiKey,
         ...headers,
       },
@@ -91,14 +92,13 @@ export async function callOneMin(pathname, { method = 'POST', body, headers = {}
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       if (attempt > 0) {
-        const waitTime = retryDelay * Math.pow(2, attempt - 1); // Exponential backoff
+        const waitTime = retryDelay * Math.pow(2, attempt - 1);
         logger.warn(`Retry attempt ${attempt}/${maxRetries} for ${pathname} after ${waitTime}ms`);
         await delay(waitTime);
       }
 
       const response = await makeRequest();
 
-      // Handle 429 Too Many Requests with retry
       if (response.status === 429 && attempt < maxRetries) {
         const retryAfter = response.headers.get('Retry-After');
         let waitTime = retryDelay * Math.pow(2, attempt);
@@ -136,12 +136,10 @@ export async function callOneMin(pathname, { method = 'POST', body, headers = {}
     } catch (error) {
       lastError = error;
 
-      // Don't retry on client errors (4xx except 429)
       if (error.status >= 400 && error.status < 500 && error.status !== 429) {
         throw error;
       }
 
-      // Log retryable errors
       if (attempt < maxRetries) {
         logger.warn(`Request failed for ${pathname}, will retry: ${error.message}`);
       }
@@ -152,10 +150,7 @@ export async function callOneMin(pathname, { method = 'POST', body, headers = {}
   throw lastError;
 }
 
-/**
- * Extracts text content from a 1min.ai API response.
- */
-export function extractText(data) {
+function firstTextCandidate(data) {
   const candidates = [
     data?.aiRecord?.aiRecordDetail?.resultObject,
     data?.aiRecord?.aiRecordDetail?.result,
@@ -165,10 +160,50 @@ export function extractText(data) {
     data?.text,
     data?.content,
   ];
+
   for (const c of candidates) {
     if (typeof c === 'string') return c;
     if (Array.isArray(c)) return c.map(x => typeof x === 'string' ? x : JSON.stringify(x, null, 2)).join('\n');
     if (c && typeof c === 'object') return JSON.stringify(c, null, 2);
   }
-  return JSON.stringify(data, null, 2);
+  return undefined;
+}
+
+/**
+ * Extracts text content from a 1min.ai API response.
+ */
+export function extractText(data) {
+  return firstTextCandidate(data) ?? JSON.stringify(data, null, 2);
+}
+
+/**
+ * Normalizes common 1min.ai response shapes for frontend consumers.
+ */
+export function normalizeOneMinResponse(data) {
+  const resultObject = data?.aiRecord?.aiRecordDetail?.resultObject
+    ?? data?.aiRecord?.resultObject
+    ?? data?.resultObject;
+
+  return {
+    text: firstTextCandidate(data),
+    resultObject,
+    conversationId: data?.aiRecord?.conversationId
+      ?? data?.aiRecord?.aiRecordDetail?.conversationId
+      ?? data?.conversationId,
+    uuid: data?.uuid ?? data?.aiRecord?.uuid,
+    raw: data,
+  };
+}
+
+/**
+ * Normalizes asset API responses into a stable key/url shape.
+ */
+export function normalizeAssetResponse(data) {
+  const asset = data?.asset || {};
+  const key = asset.key || data?.fileContent?.path || asset.location || data?.path || '';
+  return {
+    key,
+    url: key && !/^https?:\/\//.test(key) ? `https://asset.1min.ai/${key.replace(/^\//, '')}` : key,
+    raw: data,
+  };
 }

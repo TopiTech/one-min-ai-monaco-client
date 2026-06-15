@@ -1,7 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import { executeCommand, checkCommandSafety } from '../services/command-runner.js';
-import { validatePath, assertNotProtectedPath, getAllowedRoots } from '../utils/fs-guard.js';
+import { validatePath, assertNotProtectedPath, assertNotWriteProtectedPath, getAllowedRoots } from '../utils/fs-guard.js';
 import { serverConfig } from '../config/server.js';
 import fs from 'fs/promises';
 import path from 'path';
@@ -11,6 +11,23 @@ const router = express.Router();
 // In-memory session store (replace with persistent store in production)
 const sessions = new Map();
 const pendingCommands = new Map();
+
+const MAX_HISTORY_ENTRIES = 100;
+const MAX_HISTORY_RESULT_SIZE = 10000; // chars
+
+function addHistoryEntry(session, entry) {
+    if (entry.result) {
+        entry.result = {
+            ...entry.result,
+            stdout: entry.result.stdout ? entry.result.stdout.slice(0, MAX_HISTORY_RESULT_SIZE) : '',
+            stderr: entry.result.stderr ? entry.result.stderr.slice(0, MAX_HISTORY_RESULT_SIZE) : '',
+        };
+    }
+    session.history.push(entry);
+    if (session.history.length > MAX_HISTORY_ENTRIES) {
+        session.history.shift();
+    }
+}
 
 const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -30,26 +47,41 @@ function cleanupExpiredSessions() {
     }
 }
 
-setInterval(cleanupExpiredSessions, CLEANUP_INTERVAL_MS);
+const cleanupTimer = setInterval(cleanupExpiredSessions, CLEANUP_INTERVAL_MS);
+cleanupTimer.unref();
 
 /**
  * Create a new agent session.
  */
-router.post('/sessions', (req, res) => {
-    const { id, cwd, task } = req.body;
-    const sessionId = id || crypto.randomUUID();
+router.post('/sessions', (req, res, next) => {
+    try {
+        const { id, cwd, task } = req.body;
+        const sessionId = id || crypto.randomUUID();
 
-    const session = {
-        id: sessionId,
-        cwd: cwd || process.cwd(),
-        task: task || '',
-        history: [],
-        status: 'idle',
-        createdAt: new Date().toISOString(),
-    };
+        let validatedCwd = cwd || process.cwd();
+        if (cwd) {
+            try {
+                validatedCwd = validatePath(cwd);
+                assertNotProtectedPath(validatedCwd);
+            } catch (e) {
+                return res.status(400).json({ error: `Invalid cwd: ${e.message}` });
+            }
+        }
 
-    sessions.set(sessionId, session);
-    res.json({ session });
+        const session = {
+            id: sessionId,
+            cwd: validatedCwd,
+            task: task || '',
+            history: [],
+            status: 'idle',
+            createdAt: new Date().toISOString(),
+        };
+
+        sessions.set(sessionId, session);
+        res.json({ session });
+    } catch (err) {
+        next(err);
+    }
 });
 
 /**
@@ -142,7 +174,7 @@ router.post('/sessions/:id/commands', async (req, res, next) => {
         });
 
         session.status = 'idle';
-        session.history.push({
+        addHistoryEntry(session, {
             type: 'command',
             command,
             cwd: workingDir,
@@ -203,7 +235,7 @@ router.post('/sessions/:id/approve', async (req, res, next) => {
         });
 
         session.status = 'idle';
-        session.history.push({
+        addHistoryEntry(session, {
             type: 'command',
             command: pending.command,
             cwd: workingDir,
@@ -265,14 +297,17 @@ router.post('/sessions/:id/files', async (req, res, next) => {
         if (!filePath) {
             return res.status(400).json({ error: 'path is required' });
         }
+        if (content !== undefined && typeof content !== 'string') {
+            return res.status(400).json({ error: 'content must be a string' });
+        }
 
         const resolvedPath = validatePath(filePath);
-        assertNotProtectedPath(resolvedPath);
+        assertNotWriteProtectedPath(resolvedPath);
         const dir = path.dirname(resolvedPath);
         await fs.mkdir(dir, { recursive: true });
         await fs.writeFile(resolvedPath, content || '', 'utf-8');
 
-        session.history.push({
+        addHistoryEntry(session, {
             type: 'write',
             path: resolvedPath,
             timestamp: new Date().toISOString(),
@@ -369,6 +404,120 @@ async function searchInDirectory(dir, query, results, maxResults, depth = 0) {
         // Skip inaccessible directories
     }
 }
+
+/**
+ * List directory contents within session context.
+ */
+router.get('/sessions/:id/dir', async (req, res, next) => {
+    try {
+        const session = sessions.get(req.params.id);
+        if (!session) {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+
+        const dirPath = req.query.path || session.cwd;
+        const resolvedPath = validatePath(dirPath);
+        assertNotProtectedPath(resolvedPath);
+
+        const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
+        const items = entries
+            .filter(entry => entry.name !== '.git' && entry.name !== 'node_modules' && entry.name !== '.venv')
+            .map(entry => ({
+                name: entry.name,
+                isDirectory: entry.isDirectory(),
+                path: path.join(resolvedPath, entry.name),
+            }));
+
+        res.json({
+            path: resolvedPath,
+            items,
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * Apply a SEARCH/REPLACE diff to a file within session context.
+ */
+router.post('/sessions/:id/diff', async (req, res, next) => {
+    try {
+        const session = sessions.get(req.params.id);
+        if (!session) {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+
+        const { path: filePath, diff } = req.body;
+        if (!filePath) {
+            return res.status(400).json({ error: 'path is required' });
+        }
+        if (diff === undefined) {
+            return res.status(400).json({ error: 'diff is required' });
+        }
+
+        const resolvedPath = validatePath(filePath);
+        assertNotWriteProtectedPath(resolvedPath);
+
+        const content = await fs.readFile(resolvedPath, 'utf-8');
+
+        // Parse SEARCH/REPLACE blocks
+        const blockRegex = /<<<<<<< SEARCH\r?\n([\s\S]*?)\r?\n=======\r?\n([\s\S]*?)\r?\n>>>>>>> REPLACE/g;
+        const blocks = [];
+        let match;
+        while ((match = blockRegex.exec(diff)) !== null) {
+            blocks.push({
+                search: match[1],
+                replace: match[2]
+            });
+        }
+
+        if (blocks.length === 0) {
+            return res.status(400).json({
+                error: '有効な SEARCH/REPLACE ブロックが見つかりませんでした。フォーマット（<<<<<<< SEARCH、=======、>>>>>>> REPLACE）を確認してください。'
+            });
+        }
+
+        let newContent = content;
+
+        for (const block of blocks) {
+            // Normalize CRLF to LF for robust search
+            const searchNorm = block.search.replace(/\r\n/g, '\n');
+            const replaceNorm = block.replace.replace(/\r\n/g, '\n');
+            const currentNormContent = newContent.replace(/\r\n/g, '\n');
+
+            const index = currentNormContent.indexOf(searchNorm);
+            if (index === -1) {
+                return res.status(400).json({
+                    error: `置換対象の SEARCH ブロックのコードが見つかりません。インデントや改行が既存ファイルの内容と完全に一致している必要があります：\n${block.search}`
+                });
+            }
+
+            if (currentNormContent.indexOf(searchNorm, index + 1) !== -1) {
+                return res.status(400).json({
+                    error: `置換対象の SEARCH ブロックのコードがファイル内に複数存在するため、一意に特定できません。前後の行も含めて指定してください：\n${block.search}`
+                });
+            }
+
+            newContent = currentNormContent.replace(searchNorm, replaceNorm);
+        }
+
+        await fs.writeFile(resolvedPath, newContent, 'utf-8');
+
+        addHistoryEntry(session, {
+            type: 'diff',
+            path: resolvedPath,
+            timestamp: new Date().toISOString(),
+        });
+
+        res.json({
+            ok: true,
+            path: resolvedPath,
+            message: `${blocks.length}個のブロックの置換に成功しました。`
+        });
+    } catch (err) {
+        next(err);
+    }
+});
 
 /**
  * Get allowed roots.

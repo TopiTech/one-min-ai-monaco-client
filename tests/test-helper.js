@@ -1,41 +1,14 @@
-import express from 'express';
-import { jest } from '@jest/globals';
-import aiRoutes from '../routes/ai.js';
-import fsRoutes from '../routes/fs.js';
-import agentRoutes from '../routes/agent.js';
+import { createApp } from '../server.js';
 
 /**
  * Creates and configures a clean Express application instance for route testing.
- * Includes JSON parsing middleware and mounts all API routers.
+ * Uses the production app factory with test-specific auth/rate-limit options.
  */
 export function createTestApp() {
-  const app = express();
-  app.use(express.json({ limit: '2mb' }));
-
-  // Mount routers
-  app.use('/api', aiRoutes);
-  app.use('/api/fs', fsRoutes);
-  app.use('/api/agent', agentRoutes);
-
-  // Health check endpoint (matching server.js)
-  app.get('/api/health', (_req, res) => {
-    res.json({
-      ok: true,
-      service: 'one-min-ai-monaco-client',
-      hasApiKey: Boolean(process.env.ONE_MIN_AI_API_KEY),
-    });
+  return createApp({
+    requireLocalAuth: false,
+    enableRateLimit: false,
   });
-
-  // Error handling middleware
-  app.use((err, req, res, _next) => {
-    const status = err.status || 500;
-    res.status(status).json({
-      error: err.message || 'Internal Server Error',
-      details: err.payload || null,
-    });
-  });
-
-  return app;
 }
 
 /**
