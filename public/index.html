@@ -94,7 +94,7 @@
           <div class="panel two">
             <div class="card grow">
               <h2>Chat</h2>
-              <div id="chatLog" class="log"></div>
+              <div id="chatLog" class="log" role="log" aria-live="polite" aria-label="チャットメッセージ"></div>
 
               <!-- Image attachments area -->
               <div id="chatAttachments" class="chat-attachments" style="display: none">
@@ -106,6 +106,7 @@
                   id="chatPrompt"
                   placeholder="メッセージを入力... (YouTube URLも対応)"
                   rows="5"
+                  aria-label="チャットメッセージ入力"
                 ></textarea>
                 <button type="button" id="attachImageBtn" class="ghost small" title="ファイルを添付">
                   <svg
@@ -260,6 +261,7 @@
                 id="imagePrompt"
                 rows="4"
                 placeholder="生成または編集のプロンプトを入力してください... (例: a minimal futuristic workspace, soft light または 背景を夕焼けに変えて、など)"
+                aria-label="画像生成プロンプト"
               ></textarea>
 
               <div class="image-input-source" style="margin-top: 16px; margin-bottom: 16px">
@@ -622,7 +624,7 @@
                   </svg>
                 </button>
               </div>
-              <div id="fileTree" class="file-tree"></div>
+              <div id="fileTree" class="file-tree" role="tree" aria-label="ファイルツリー"></div>
               <p class="muted">※ 実際のフォルダやファイルを開いて編集できます。</p>
             </div>
 
@@ -889,6 +891,9 @@
                 <div
                   id="agentActivityLog"
                   class="agent-timeline"
+                  role="log"
+                  aria-live="polite"
+                  aria-label="エージェントアクティビティログ"
                   style="
                     flex: 1;
                     overflow-y: auto;

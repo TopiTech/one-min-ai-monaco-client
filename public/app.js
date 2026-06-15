@@ -451,7 +451,7 @@ function renderImages(data) {
     const url = assetUrl(img);
     const imgEl = document.createElement("img");
     imgEl.src = url;
-    imgEl.alt = "generated";
+    imgEl.alt = "AI生成画像";
     imgEl.onerror = function () {
       this.style.display = "none";
     };

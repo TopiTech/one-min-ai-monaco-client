@@ -1,7 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import { executeCommand, checkCommandSafety } from '../services/command-runner.js';
-import { validatePath, getAllowedRoots } from '../utils/fs-guard.js';
+import { validatePath, assertNotProtectedPath, getAllowedRoots } from '../utils/fs-guard.js';
 import { serverConfig } from '../config/server.js';
 import fs from 'fs/promises';
 import path from 'path';
@@ -11,6 +11,26 @@ const router = express.Router();
 // In-memory session store (replace with persistent store in production)
 const sessions = new Map();
 const pendingCommands = new Map();
+
+const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
+function cleanupExpiredSessions() {
+    const now = Date.now();
+    for (const [id, session] of sessions) {
+        const createdAt = new Date(session.createdAt).getTime();
+        if (now - createdAt > SESSION_TTL_MS) {
+            sessions.delete(id);
+        }
+    }
+    for (const [token, pending] of pendingCommands) {
+        if (now - pending.createdAt > 5 * 60 * 1000) {
+            pendingCommands.delete(token);
+        }
+    }
+}
+
+setInterval(cleanupExpiredSessions, CLEANUP_INTERVAL_MS);
 
 /**
  * Create a new agent session.
@@ -104,14 +124,6 @@ router.post('/sessions/:id/commands', async (req, res, next) => {
                 sessionId: req.params.id,
                 createdAt: Date.now(),
             });
-
-            // Clean up expired pending commands (older than 5 minutes)
-            const now = Date.now();
-            for (const [token, pending] of pendingCommands) {
-                if (now - pending.createdAt > 5 * 60 * 1000) {
-                    pendingCommands.delete(token);
-                }
-            }
 
             return res.json({
                 requiresApproval: true,
@@ -227,6 +239,7 @@ router.get('/sessions/:id/files', async (req, res, next) => {
         }
 
         const resolvedPath = validatePath(filePath);
+        assertNotProtectedPath(resolvedPath);
         const content = await fs.readFile(resolvedPath, 'utf-8');
 
         res.json({
@@ -254,6 +267,7 @@ router.post('/sessions/:id/files', async (req, res, next) => {
         }
 
         const resolvedPath = validatePath(filePath);
+        assertNotProtectedPath(resolvedPath);
         const dir = path.dirname(resolvedPath);
         await fs.mkdir(dir, { recursive: true });
         await fs.writeFile(resolvedPath, content || '', 'utf-8');

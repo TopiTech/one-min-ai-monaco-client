@@ -44,6 +44,8 @@ const upload = multer({
 });
 
 // Security middleware: Helmet
+// Note: 'unsafe-inline' for scriptSrc is required by Monaco Editor's AMD loader.
+// Consider nonce-based CSP if Monaco is replaced with a non-AMD editor.
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -57,7 +59,7 @@ app.use(
           "https://fonts.googleapis.com",
         ],
         imgSrc: ["'self'", "data:", "https:", "blob:"],
-        connectSrc: ["'self'", "https://cdn.jsdelivr.net"],
+        connectSrc: ["'self'", "https://cdn.jsdelivr.net", "https://api.1min.ai"],
         fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net", "https://fonts.gstatic.com"],
         objectSrc: ["'none'"],
         mediaSrc: ["'self'"],

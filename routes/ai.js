@@ -1,6 +1,7 @@
 import express from "express";
 import { callOneMin, extractText } from "../utils/api-client.js";
 import { chatModels, codeModels, imageModels } from "../config/models.js";
+import { parseWebSearchParams, buildCodePayload } from "../utils/web-search.js";
 import logger from "../utils/logger.js";
 
 const router = express.Router();
@@ -334,35 +335,11 @@ router.post("/code/generate", async (req, res, next) => {
     if (String(code).length > MAX_CODE_LENGTH)
       return res.status(400).json({ error: `code exceeds ${MAX_CODE_LENGTH} characters` });
 
-    const parsedWebSearch = Boolean(webSearch);
-    let parsedNumOfSite;
-    if (numOfSite !== undefined && numOfSite !== "") {
-      parsedNumOfSite = Number(numOfSite);
-      if (isNaN(parsedNumOfSite) || parsedNumOfSite < 1 || parsedNumOfSite > 10) {
-        return res.status(400).json({ error: "numOfSite must be a number between 1 and 10" });
-      }
-    }
-    let parsedMaxWord;
-    if (maxWord !== undefined && maxWord !== "") {
-      parsedMaxWord = Number(maxWord);
-      if (isNaN(parsedMaxWord) || parsedMaxWord < 100 || parsedMaxWord > 10000) {
-        return res.status(400).json({ error: "maxWord must be a number between 100 and 10000" });
-      }
-    }
+    const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({ webSearch, numOfSite, maxWord });
 
     const prompt = `あなたは熟練のソフトウェアエンジニアです。以下のコードに対してユーザー指示を実行してください。\n\n出力ルール:\n- 変更コードが必要な場合は完全なコードブロックで返す\n- 変更理由を短く説明する\n- 可能なら注意点も述べる\n\nファイル名: ${fileName}\n言語: ${language}\n\nユーザー指示:\n${instruction}\n\n現在のコード:\n\`\`\`${language}\n${code}\n\`\`\``;
 
-    const payload = {
-      type: "CODE_GENERATOR",
-      model: model || process.env.DEFAULT_CODE_MODEL || "qwen3-coder-plus",
-      conversationId: "CODE_GENERATOR",
-      promptObject: {
-        prompt,
-        webSearch: parsedWebSearch,
-        ...(parsedNumOfSite !== undefined ? { numOfSite: parsedNumOfSite } : {}),
-        ...(parsedMaxWord !== undefined ? { maxWord: parsedMaxWord } : {}),
-      },
-    };
+    const payload = buildCodePayload({ prompt, model, webSearch: parsedWebSearch, parsedNumOfSite, parsedMaxWord });
     const data = await callOneMin("/api/features", {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -382,21 +359,7 @@ router.post("/code/autocomplete", async (req, res, next) => {
     if (String(code).length > MAX_CODE_LENGTH)
       return res.status(400).json({ error: `code exceeds ${MAX_CODE_LENGTH} characters` });
 
-    const parsedWebSearch = Boolean(webSearch);
-    let parsedNumOfSite;
-    if (numOfSite !== undefined && numOfSite !== "") {
-      parsedNumOfSite = Number(numOfSite);
-      if (isNaN(parsedNumOfSite) || parsedNumOfSite < 1 || parsedNumOfSite > 10) {
-        return res.status(400).json({ error: "numOfSite must be a number between 1 and 10" });
-      }
-    }
-    let parsedMaxWord;
-    if (maxWord !== undefined && maxWord !== "") {
-      parsedMaxWord = Number(maxWord);
-      if (isNaN(parsedMaxWord) || parsedMaxWord < 100 || parsedMaxWord > 10000) {
-        return res.status(400).json({ error: "maxWord must be a number between 100 and 10000" });
-      }
-    }
+    const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({ webSearch, numOfSite, maxWord });
 
     const lines = code.split(/\r?\n/);
     const lineIndex = line - 1;
@@ -427,17 +390,7 @@ ${afterCode}
 
 提案コード:`;
 
-    const payload = {
-      type: "CODE_GENERATOR",
-      model: model || process.env.DEFAULT_CODE_MODEL || "qwen3-coder-plus",
-      conversationId: "CODE_GENERATOR",
-      promptObject: {
-        prompt,
-        webSearch: parsedWebSearch,
-        ...(parsedNumOfSite !== undefined ? { numOfSite: parsedNumOfSite } : {}),
-        ...(parsedMaxWord !== undefined ? { maxWord: parsedMaxWord } : {}),
-      },
-    };
+    const payload = buildCodePayload({ prompt, model, webSearch: parsedWebSearch, parsedNumOfSite, parsedMaxWord });
 
     const data = await callOneMin("/api/features", {
       headers: { "Content-Type": "application/json" },
@@ -464,21 +417,7 @@ router.post("/code/inline-chat", async (req, res, next) => {
     if (String(code).length > MAX_CODE_LENGTH)
       return res.status(400).json({ error: `code exceeds ${MAX_CODE_LENGTH} characters` });
 
-    const parsedWebSearch = Boolean(webSearch);
-    let parsedNumOfSite;
-    if (numOfSite !== undefined && numOfSite !== "") {
-      parsedNumOfSite = Number(numOfSite);
-      if (isNaN(parsedNumOfSite) || parsedNumOfSite < 1 || parsedNumOfSite > 10) {
-        return res.status(400).json({ error: "numOfSite must be a number between 1 and 10" });
-      }
-    }
-    let parsedMaxWord;
-    if (maxWord !== undefined && maxWord !== "") {
-      parsedMaxWord = Number(maxWord);
-      if (isNaN(parsedMaxWord) || parsedMaxWord < 100 || parsedMaxWord > 10000) {
-        return res.status(400).json({ error: "maxWord must be a number between 100 and 10000" });
-      }
-    }
+    const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({ webSearch, numOfSite, maxWord });
 
     const lines = code.split(/\r?\n/);
     const lineIndex = line - 1;
@@ -509,17 +448,7 @@ ${afterCode}
 
 挿入/変更コード:`;
 
-    const payload = {
-      type: "CODE_GENERATOR",
-      model: model || process.env.DEFAULT_CODE_MODEL || "qwen3-coder-plus",
-      conversationId: "CODE_GENERATOR",
-      promptObject: {
-        prompt,
-        webSearch: parsedWebSearch,
-        ...(parsedNumOfSite !== undefined ? { numOfSite: parsedNumOfSite } : {}),
-        ...(parsedMaxWord !== undefined ? { maxWord: parsedMaxWord } : {}),
-      },
-    };
+    const payload = buildCodePayload({ prompt, model, webSearch: parsedWebSearch, parsedNumOfSite, parsedMaxWord });
 
     const data = await callOneMin("/api/features", {
       headers: { "Content-Type": "application/json" },
