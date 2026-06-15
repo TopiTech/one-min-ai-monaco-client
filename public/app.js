@@ -3,6 +3,9 @@
  * Depends on: js/api.js, js/models.js, js/toast.js
  */
 
+// Helper to get element by ID
+const $ = (id) => document.getElementById(id);
+
 // Initialize Model Pickers
 loadModels().then(() => initModelPickers());
 
@@ -37,6 +40,8 @@ const dom = {
   editorImageUrl: $("editorImageUrl"),
   editorImagePreview: $("editorImagePreview"),
   clearImageBtn: $("clearImageBtn"),
+  generateImage: $("generateImage"),
+  uploadAsset: $("uploadAsset"),
 
   explorerPath: $("explorerPath"),
   fileTree: $("fileTree"),
