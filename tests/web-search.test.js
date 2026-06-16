@@ -51,7 +51,7 @@ describe('web-search payload helpers', () => {
     });
 
     describe('buildCodePayload', () => {
-        test('should build CODE_GENERATOR payload with webSearchSettings', () => {
+        test('should build CODE_GENERATOR payload matching 1min.ai API schema', () => {
             const payload = buildCodePayload({
                 prompt: 'Fix this bug',
                 model: 'qwen3-coder-plus',
@@ -66,13 +66,9 @@ describe('web-search payload helpers', () => {
                 conversationId: expect.stringMatching(/^CODE_GEN_.+/),
                 promptObject: {
                     prompt: 'Fix this bug',
-                    settings: {
-                        webSearchSettings: {
-                            webSearch: true,
-                            numOfSite: 3,
-                            maxWord: 500,
-                        },
-                    },
+                    webSearch: true,
+                    numOfSite: 3,
+                    maxWord: 500,
                 },
             });
         });

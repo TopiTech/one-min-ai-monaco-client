@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
-import { validatePath, PROJECT_ROOT, getAllowedRoots, getDefaultRoot, assertNotProtectedPath, assertNotWriteProtectedPath } from '../utils/fs-guard.js';
+import { validatePath, PROJECT_ROOT, getAllowedRoots, getDefaultRoot, assertNotProtectedPath, assertNotWriteProtectedPath, isProtectedPathForListing } from '../utils/fs-guard.js';
 
 const MAX_READ_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_LIST_ENTRIES = 5000;
@@ -88,14 +88,19 @@ router.get('/drives', async (_req, res) => {
  * Validates that the directory exists and is within allowed roots.
  */
 router.post('/workspace/select', async (req, res, next) => {
-  try {
-    const { dir } = req.body;
-    if (!dir) {
-      return res.status(400).json({ error: 'dir is required' });
-    }
+   try {
+     const { dir } = req.body;
+     if (!dir) {
+       return res.status(400).json({ error: 'dir is required' });
+     }
 
-    const resolvedDir = validatePath(dir);
-    const stat = await fs.stat(resolvedDir);
+     const resolvedDir = validatePath(dir);
+     if (isProtectedPathForListing(resolvedDir)) {
+       const relativePath = path.relative(PROJECT_ROOT, resolvedDir).replace(/\\/g, "/");
+       return res.status(403).json({ error: `Access denied: Cannot select protected path: ${relativePath}` });
+     }
+
+     const stat = await fs.stat(resolvedDir);
 
     if (!stat.isDirectory()) {
       return res.status(400).json({ error: 'Specified path is not a directory' });
@@ -115,33 +120,36 @@ router.post('/workspace/select', async (req, res, next) => {
  * List directory contents.
  */
 router.get('/list', async (req, res, next) => {
-  try {
-    const dirPath = req.query.dir ? validatePath(String(req.query.dir)) : getDefaultRoot();
-    const dir = await fs.opendir(dirPath);
+   try {
+     const dirPath = req.query.dir ? validatePath(String(req.query.dir)) : getDefaultRoot();
+     if (isProtectedPathForListing(dirPath)) {
+       return res.status(403).json({ error: "Access denied: Path is protected" });
+     }
+     const dir = await fs.opendir(dirPath);
 
     const items = [];
     let entry;
     let truncated = false;
 
     try {
-      while ((entry = await dir.read()) !== null) {
-        if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === '.venv') {
-          continue;
-        }
-        const fullPath = path.join(dirPath, entry.name);
-        items.push({
-          name: entry.name,
-          path: fullPath,
-          isDirectory: entry.isDirectory()
-        });
-        if (items.length >= MAX_LIST_ENTRIES) {
-          const nextEntry = await dir.read();
-          if (nextEntry !== null) {
-            truncated = true;
-          }
-          break;
-        }
-      }
+       while ((entry = await dir.read()) !== null) {
+         const fullPath = path.join(dirPath, entry.name);
+         if (isProtectedPathForListing(fullPath)) {
+           continue;
+         }
+         items.push({
+           name: entry.name,
+           path: fullPath,
+           isDirectory: entry.isDirectory()
+         });
+         if (items.length >= MAX_LIST_ENTRIES) {
+           const nextEntry = await dir.read();
+           if (nextEntry !== null) {
+             truncated = true;
+           }
+           break;
+         }
+       }
     } finally {
       await dir.close();
     }

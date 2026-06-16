@@ -1049,9 +1049,13 @@
                     text-transform: uppercase;
                     letter-spacing: 0.05em;
                     color: var(--text-muted);
-                    margin-bottom: 10px;
+                    cursor: pointer;
+                    user-select: none;
                   "
+                  id="agentActivityToggle"
+                  title="アクティビティログを展開/折りたたみ"
                 >
+                  <span id="agentActivityToggleIcon" style="display: inline-block; transition: transform 0.2s;">▼</span>
                   アクティビティログ
                 </h3>
                 <div

@@ -2,7 +2,7 @@
  * Unit tests for fs-guard utility
  */
 
-import { validatePath, PROJECT_ROOT, getAllowedRoots, getDefaultRoot, isProtectedPath, isWriteProtectedPath, assertNotProtectedPath, assertNotWriteProtectedPath } from '../utils/fs-guard.js';
+import { validatePath, PROJECT_ROOT, getAllowedRoots, getDefaultRoot, isProtectedPath, isWriteProtectedPath, isProtectedPathForListing, assertNotProtectedPath, assertNotWriteProtectedPath } from '../utils/fs-guard.js';
 import path from 'path';
 
 describe('fs-guard', () => {
@@ -111,6 +111,42 @@ describe('fs-guard', () => {
             } catch (err) {
                 expect(err.status).toBe(403);
             }
+        });
+    });
+
+    describe('isProtectedPathForListing', () => {
+        const originalEnv = process.env.ALLOWED_ROOTS;
+
+        afterEach(() => {
+            if (originalEnv === undefined) {
+                delete process.env.ALLOWED_ROOTS;
+            } else {
+                process.env.ALLOWED_ROOTS = originalEnv;
+            }
+        });
+
+        test('should allow listing the default allowed root itself', () => {
+            delete process.env.ALLOWED_ROOTS;
+            expect(isProtectedPathForListing(PROJECT_ROOT)).toBe(false);
+        });
+
+        test('should allow listing a custom allowed root itself', () => {
+            process.env.ALLOWED_ROOTS = '/custom/root';
+            const customRoot = path.resolve('/custom/root');
+            expect(isProtectedPathForListing(customRoot)).toBe(false);
+        });
+
+        test('should block listing protected prefixes inside allowed roots', () => {
+            delete process.env.ALLOWED_ROOTS;
+            expect(isProtectedPathForListing(path.join(PROJECT_ROOT, '.git'))).toBe(true);
+            expect(isProtectedPathForListing(path.join(PROJECT_ROOT, 'node_modules', 'pkg'))).toBe(true);
+        });
+
+        test('should block protected prefixes inside custom allowed roots', () => {
+            process.env.ALLOWED_ROOTS = '/custom/root';
+            const customRoot = path.resolve('/custom/root');
+            expect(isProtectedPathForListing(path.join(customRoot, '.env'))).toBe(true);
+            expect(isProtectedPathForListing(path.join(customRoot, 'src', 'app.js'))).toBe(false);
         });
     });
 

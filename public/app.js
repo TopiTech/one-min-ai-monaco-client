@@ -31,6 +31,7 @@ const dom = {
   chatAttachments: $("chatAttachments"),
   attachmentPreviews: $("attachmentPreviews"),
   chatImageInput: $("chatImageInput"),
+  attachImageBtn: $("attachImageBtn"),
 
   imagePrompt: $("imagePrompt"),
   imageModel: $("imageModel"),
@@ -1642,73 +1643,54 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
   };
 }
 
-function parseXMLTags(text) {
-  // 1. Unescape common XML entities from the entire text in case the API escaped them
-  let unescapedText = text
+function stripMarkdownCodeBlock(text) {
+  const trimmed = text.trim();
+  const match = trimmed.match(/^```(?:xml|js|javascript|json|text)?\s*\n?([\s\S]*?)\n?```$/i);
+  return match ? match[1].trim() : text;
+}
+
+function unescapeXmlText(value) {
+  return value
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, "&");
+}
 
-  // 2. Remove accidental Markdown code block wrapping (e.g. ```xml ... ```) if the whole text is wrapped
-  if (unescapedText.trim().startsWith("```")) {
-    unescapedText = unescapedText
-      .trim()
-      .replace(/^```[a-zA-Z0-9+#-]*\s*\n?/, "")
-      .replace(/\n?```$/, "")
-      .trim();
-  }
+function extractClosedTag(text, tagName) {
+  const escapedName = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = text.match(new RegExp(`<${escapedName}\\b[^>]*>([\\s\\S]*?)<\\/${escapedName}>`, "i"));
+  return match ? match[1].trim() : null;
+}
 
-  // Lenient tag matching allowing optional closing tags (using end of string $ as fallback)
-  const thoughtMatch = unescapedText.match(/<thought>([\s\S]*?)(?:<\/thought>|$)/i);
-  const finishMatch = unescapedText.match(/<finish>([\s\S]*?)(?:<\/finish>|$)/i);
-  const toolMatch = unescapedText.match(
-    /<call_tool\s+name=["']?([\w-]+)["']?\s*>([\s\S]*?)(?:<\/call_tool>|$)/i,
+function parseXMLTags(text) {
+  const normalizedText = stripMarkdownCodeBlock(text || "");
+
+  const toolMatch = normalizedText.match(
+    /<call_tool\s+name=["']?([\w-]+)["']?\s*>([\s\S]*?)<\/call_tool>/i,
   );
 
   let toolCall = null;
   if (toolMatch) {
-    const toolName = toolMatch[1];
-    const innerContent = toolMatch[2];
     const params = {};
-
-    // Allow optional closing parameter tags
-    const paramRegex =
-      /<parameter\s+name=["']?([^"\'\s>]+)["']?\s*>([\s\S]*?)(?:<\/parameter>|$)/gi;
+    const paramRegex = /<parameter\s+name=["']?([\w-]+)["']?\s*>([\s\S]*?)<\/parameter>/gi;
     let match;
-    while ((match = paramRegex.exec(innerContent)) !== null) {
-      let val = match[2];
-      let cleanedVal = val.trim();
-
-      // 1. Remove accidental Markdown code block wrapping (e.g. ```js ... ```)
-      if (cleanedVal.startsWith("```")) {
-        cleanedVal = cleanedVal.replace(/^```[a-zA-Z0-9+#-]*\s*\n?/, "");
-        cleanedVal = cleanedVal.replace(/\n?```$/, "");
-      }
-
-      params[match[1]] = cleanedVal;
+    while ((match = paramRegex.exec(toolMatch[2])) !== null) {
+      params[match[1]] = unescapeXmlText(match[2].trim());
     }
-    toolCall = { name: toolName, params };
-  }
 
-  let thought = null;
-  if (thoughtMatch) {
-    thought = thoughtMatch[1].trim();
-  } else {
-    const endIdx = text.search(/<(call_tool|finish)/i);
-    if (endIdx > 0) {
-      thought = text.substring(0, endIdx).trim();
+    if (Object.keys(params).length > 0) {
+      toolCall = { name: toolMatch[1], params };
     }
   }
 
   return {
-    thought,
-    finish: finishMatch ? finishMatch[1].trim() : null,
+    thought: extractClosedTag(normalizedText, "thought"),
+    finish: extractClosedTag(normalizedText, "finish"),
     toolCall,
   };
 }
-
 let diffEditor = null;
 
 async function showDiffDialog(filePath, oldContent, newContent) {
@@ -1834,19 +1816,12 @@ async function runAgentLoop(initialInstruction) {
 あなたの目的は、ユーザーの指示を「正確に」かつ「安全に」達成することです。
 あなたは現在、隔離されたワークスペース内のファイルを直接操作できる特権セッションにいます。
 
-【思考のルール】
-各ターンの最初には必ず <thought> タグ内で自身の現状分析、次に行うべきステップ、ツールの選択理由を詳細に論理的に説明してください。
-
-【ツール利用ルール】
-思考の直後に、以下のツールのいずれかを必ず1つだけ呼び出してください。
-複数のツールを同時に呼び出すことはできません。
-
-1. read_file
-   - パラメータ: { "path": "ファイルパス" }
-   - 目的: ファイルの内容を確認する。編集前には必ず実行すること。
-   <call_tool name="read_file"><parameter name="path">src/main.js</parameter></call_tool>
+【必須XML出力スキーマ】
+各ターンは必ず以下の形式だけを出力してください。Markdownコードブロック、JSON、自由形式の説明文は禁止です。
+<thought>...</thought><call_tool name="tool名"><parameter name="パラメータ名">値</parameter></call_tool>
 
 2. write_file
+    - 【必須】このツールの <parameter> 値は XML テキストなので、& < > はそれぞれ &amp; &lt; &gt; に、完全なコードは省略せずにエスケープして出力してください。
    - パラメータ: { "path": "ファイルパス", "content": "完全なコード内容" }
    - 目的: 新規ファイルを作成するか、既存ファイル全体を上書きする。
    - **注意点**:
@@ -1896,7 +1871,9 @@ export const add = (a, b) => {
 【重要な注意】
 - 出力は必ず <thought> と <call_tool> (または <finish>) のペアのみにしてください。
 - 余計な挨拶、マークダウンのコードブロック、解説文をタグの外側に含めないでください。
-- \`content\`, \`diff\` パラメータの中身は生のコードそのものでなければなりません（マークダウンのコードブロックで囲わないでください）。
+- parameter の値（特に content と diff）は XML テキストなので、& は &amp;、< は &lt;、> は &gt; に必ずエスケープしてください。
+- diff の SEARCH/REPLACE マーカー（<<<<<<<、=======、>>>>>>>）も XML 内では &lt;&lt;&lt;&lt;&lt;&lt;&lt;、&gt;&gt;&gt;&gt;&gt;&gt;&gt; にエスケープしてください。
+- 値の中身に Markdown のコードブロック記号は使わないでください。
 - すでに存在するファイルを変更する場合、まず read_file で現在の内容を確認するか、または search_files や list_directory でファイル構成を把握することが必須です。
 
 現在のワークスペース構造:

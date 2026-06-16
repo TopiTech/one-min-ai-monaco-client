@@ -179,13 +179,33 @@ export function isProtectedPath(resolvedPath) {
 /**
  * Checks whether a validated path is protected from destructive filesystem operations.
  * Write/create/delete/rename operations use this stricter policy.
+ * This also protects allowed roots themselves.
  * @param {string} resolvedPath The resolved absolute path to check.
  * @returns {boolean} True if the path is protected from destructive operations.
  */
 export function isWriteProtectedPath(resolvedPath) {
+  if (getAllowedRoots().some((root) => {
+    try {
+      return fs.realpathSync(root) === resolvedPath;
+    } catch {
+      return path.resolve(root) === resolvedPath;
+    }
+  })) {
+    return true;
+  }
   return getAllowedRoots().some((root) =>
     isPathProtectedByRoot(resolvedPath, root, WRITE_PROTECTED_PATH_PREFIXES),
   );
+}
+
+/**
+ * Checks whether a validated path is protected from listing operations.
+ * Allowed roots themselves are listable; protected prefixes inside them are not.
+ * @param {string} resolvedPath The resolved absolute path to check.
+ * @returns {boolean} True if the path is protected from listing.
+ */
+export function isProtectedPathForListing(resolvedPath) {
+  return isProtectedPath(resolvedPath);
 }
 
 /**

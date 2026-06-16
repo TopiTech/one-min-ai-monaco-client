@@ -24,7 +24,7 @@ export const serverConfig = {
 
     // Agent settings
     enableCommandExecution: String(process.env.ENABLE_COMMAND_EXECUTION || 'false').toLowerCase() === 'true',
-    commandTimeoutMs: Number(process.env.COMMAND_TIMEOUT_MS || 30000),
+    commandTimeoutMs: Math.max(1000, parseInt(process.env.COMMAND_TIMEOUT_MS || "30000", 10) || 30000),
     agentAutoApprove: String(process.env.AGENT_AUTO_APPROVE || 'false').toLowerCase() === 'true',
 
     // Logging

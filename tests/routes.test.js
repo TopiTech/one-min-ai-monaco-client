@@ -93,6 +93,21 @@ describe('AI Routes Integration Tests', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual(mockResponses.code);
+      expect(callOneMin).toHaveBeenCalledWith(
+        '/api/features',
+        expect.objectContaining({
+          body: expect.stringContaining('"type":"CODE_GENERATOR"'),
+        }),
+      );
+
+      const sentBody = JSON.parse(callOneMin.mock.calls.at(-1)[1].body);
+      expect(sentBody.promptObject).toEqual(
+        expect.objectContaining({
+          prompt: expect.stringContaining('ユーザー指示:'),
+          webSearch: false,
+        }),
+      );
+      expect(sentBody.promptObject).not.toHaveProperty('settings');
     });
 
     test('should return 400 if instruction is missing', async () => {

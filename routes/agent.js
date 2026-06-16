@@ -581,6 +581,26 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
         }
       }
 
+      // 3. Try Indentation-Insensitive Match (ignore leading and trailing spaces) if normalized match fails
+      if (matchCount === 0) {
+        const cleanFileLines = fileLines.map((l) => l.trim());
+        const cleanSearchLines = searchLines.map((l) => l.trim());
+
+        for (let i = 0; i <= cleanFileLines.length - cleanSearchLines.length; i++) {
+          let match = true;
+          for (let j = 0; j < cleanSearchLines.length; j++) {
+            if (cleanFileLines[i + j] !== cleanSearchLines[j]) {
+              match = false;
+              break;
+            }
+          }
+          if (match) {
+            matchedIndex = i;
+            matchCount++;
+          }
+        }
+      }
+
       // Check results
       if (matchCount === 0) {
         return res.status(400).json({
@@ -594,8 +614,39 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
         });
       }
 
+      // Determine indentation mapping from the first non-empty matched line
+      let fileIndent = "";
+      let searchIndent = "";
+      let foundIndentLine = false;
+
+      for (let j = 0; j < searchLines.length; j++) {
+        if (searchLines[j].trim() !== "") {
+          fileIndent = fileLines[matchedIndex + j].match(/^\s*/)[0];
+          searchIndent = searchLines[j].match(/^\s*/)[0];
+          foundIndentLine = true;
+          break;
+        }
+      }
+
+      if (!foundIndentLine) {
+        fileIndent = fileLines[matchedIndex].match(/^\s*/)[0];
+        searchIndent = searchLines[0].match(/^\s*/)[0];
+      }
+
+      // Adjust replacement lines to match the file's indentation level
+      const adjustedReplaceLines = replaceLines.map((line) => {
+        if (line.trim() === "") return "";
+        if (searchIndent && line.startsWith(searchIndent)) {
+          return fileIndent + line.slice(searchIndent.length);
+        }
+        if (!searchIndent && fileIndent) {
+          return fileIndent + line;
+        }
+        return line;
+      });
+
       // Apply replacement directly to the line array slice
-      fileLines.splice(matchedIndex, searchLines.length, ...replaceLines);
+      fileLines.splice(matchedIndex, searchLines.length, ...adjustedReplaceLines);
     }
 
     const newContent = fileLines.join(eol);

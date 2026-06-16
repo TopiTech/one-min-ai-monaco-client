@@ -133,6 +133,29 @@ fin.
             expect(fileContent).not.toContain('end of file');
         });
 
+        test('should apply diff even if leading indentation of search block is mismatched', async () => {
+            const diffContent = `
+<<<<<<< SEARCH
+  this is a test
+=======
+  this has been patched successfully with diff
+>>>>>>> REPLACE
+`;
+            const response = await request(app)
+                .post(`/api/agent/sessions/${sessionId}/diff`)
+                .send({
+                    path: testFile,
+                    diff: diffContent
+                });
+
+            expect(response.status).toBe(200);
+            expect(response.body.ok).toBe(true);
+
+            const fileContent = await fs.readFile(testFile, 'utf-8');
+            expect(fileContent).toContain('this has been patched successfully with diff');
+            expect(fileContent).not.toContain('  this has been patched successfully with diff');
+            expect(fileContent).not.toContain('this is a test');
+        });
         test('should return 400 if search block not found', async () => {
             const diffContent = `
 <<<<<<< SEARCH

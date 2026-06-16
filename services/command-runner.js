@@ -1,5 +1,6 @@
 import { spawn } from "child_process";
 import { platform } from "os";
+import { serverConfig } from "../config/server.js";
 
 /**
  * Command execution service with timeout, output collection, and safety checks.
@@ -31,6 +32,7 @@ const DANGEROUS_PATTERNS = [
   /exec\s*\(/,
   /child_process/,
   /require\s*\(\s*['"]child_process['"]\s*\)/,
+  /require\s*\(\s*['"]fs['"]\s*\)/,
   /process\.env/,
   /Buffer\.from\s*\(/,
   // PowerShell & Windows dangerous patterns
@@ -63,6 +65,14 @@ const DANGEROUS_PATTERNS = [
   /netstat\s+/,
   /nc\s+-l/,
   /curl\s+-X\s*POST\s*.*localhost/,
+  // Additional script execution patterns (node -e, python -c, etc.)
+  /node\s+-e\s*/i,
+  /node\s+-p\s*/i,
+  /python\s+-c\s*/i,
+  /python3\s+-c\s*/i,
+  /perl\s+-e\s*/i,
+  /ruby\s+-e\s*/i,
+  /php\s+-r\s*/i,
 ];
 
 /**
@@ -113,23 +123,40 @@ export async function executeCommand(command, options = {}) {
     throw new Error(`Command blocked: ${safety.reason}`);
   }
 
+  // Clamp timeout between 1 second and configured max
+  const rawTimeout = timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const clampedTimeout = Math.max(1000, Math.min(Number(rawTimeout) || DEFAULT_TIMEOUT_MS, serverConfig.commandTimeoutMs || DEFAULT_TIMEOUT_MS));
+
   return new Promise((resolve, reject) => {
     const isWindows = platform() === "win32";
     const shell = isWindows ? "cmd.exe" : "/bin/sh";
     const shellFlag = isWindows ? "/c" : "-c";
 
-    // Strip sensitive environment variables to prevent leakage
-    const cleanEnv = { ...process.env };
-    delete cleanEnv.ONE_MIN_AI_API_KEY;
-    delete cleanEnv.LOCAL_BFF_AUTH_TOKEN;
+    const SAFE_ENV_KEYS = new Set([
+      "PATH",
+      "PATHEXT",
+      "COMSPEC",
+      "SystemRoot",
+      "WINDIR",
+      "OS",
+      "PROCESSOR_ARCHITECTURE",
+      "NUMBER_OF_PROCESSORS",
+      "HOMEDRIVE",
+      "HOMEPATH",
+      "TMP",
+      "TEMP",
+    ]);
+    const safeEnv = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      if (SAFE_ENV_KEYS.has(key)) {
+        safeEnv[key] = value;
+      }
+    }
 
     const child = spawn(shell, [shellFlag, command], {
       cwd,
       env: {
-        ...cleanEnv,
-        // Remove potentially dangerous env vars
-        LD_PRELOAD: "",
-        LD_LIBRARY_PATH: "",
+        ...safeEnv,
       },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true, // Hide window on Windows
@@ -170,7 +197,7 @@ export async function executeCommand(command, options = {}) {
           child.kill("SIGKILL");
         }
       }, 5000);
-    }, timeoutMs);
+    }, clampedTimeout);
 
     // Process completion
     child.on("close", (exitCode) => {
@@ -203,7 +230,14 @@ export async function executeCommand(command, options = {}) {
  */
 export function killProcess(process, force = false) {
   if (process && !process.killed) {
-    process.kill(force ? "SIGKILL" : "SIGTERM");
+    try {
+      process.kill(force ? "SIGKILL" : "SIGTERM");
+    } catch (err) {
+      if (err.code === "ESRCH") {
+        return;
+      }
+      throw err;
+    }
   }
 }
 
