@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { executeCommand, checkCommandSafety } from "../services/command-runner.js";
 import {
   validatePath,
+  revalidateRealPath,
   assertNotProtectedPath,
   assertNotWriteProtectedPath,
   getAllowedRoots,
@@ -18,9 +19,52 @@ function resolveAgentPath(targetPath, sessionCwd = process.cwd()) {
 
 const router = express.Router();
 
-// In-memory session store (replace with persistent store in production)
-const sessions = new Map();
+// Persistent session storage
+const DATA_DIR = path.join(process.cwd(), ".mimocode", "data");
+const SESSIONS_FILE = path.join(DATA_DIR, "agent_sessions.json");
+
+let sessions = new Map();
 const pendingCommands = new Map();
+
+async function ensureDataDir() {
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+  } catch (err) {
+    logger.error("Failed to create data directory", { error: err.message });
+  }
+}
+
+async function loadSessions() {
+  try {
+    await ensureDataDir();
+    const data = await fs.readFile(SESSIONS_FILE, "utf-8");
+    const parsed = JSON.parse(data);
+    for (const [id, session] of Object.entries(parsed)) {
+      if (!sessions.has(id)) {
+        session.status = "idle"; // Ensure status is idle on load
+        sessions.set(id, session);
+      }
+    }
+    logger.info(`Loaded ${Object.keys(parsed).length} agent sessions from persistence`);
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      logger.error("Failed to load sessions from file", { error: err.message });
+    }
+  }
+}
+
+async function saveSessions() {
+  try {
+    await ensureDataDir();
+    const data = JSON.stringify(Object.fromEntries(sessions), null, 2);
+    await fs.writeFile(SESSIONS_FILE, data, "utf-8");
+  } catch (err) {
+    logger.error("Failed to save sessions to file", { error: err.message });
+  }
+}
+
+// Load sessions on startup
+loadSessions();
 
 const MAX_HISTORY_ENTRIES = 100;
 const MAX_HISTORY_RESULT_SIZE = 10000; // chars
@@ -37,6 +81,7 @@ function addHistoryEntry(session, entry) {
   if (session.history.length > MAX_HISTORY_ENTRIES) {
     session.history.shift();
   }
+  saveSessions(); // Persist after change
 }
 
 const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -62,7 +107,7 @@ cleanupTimer.unref();
 /**
  * Create a new agent session.
  */
-router.post("/sessions", (req, res, next) => {
+router.post("/sessions", async (req, res, next) => {
   try {
     const { id, cwd, task } = req.body;
     const sessionId = id || crypto.randomUUID();
@@ -80,11 +125,14 @@ router.post("/sessions", (req, res, next) => {
     };
 
     if (sessions.size >= 1000) {
-      const oldestId = Array.from(sessions.entries()).reduce((a, b) => a[1].lastAccessedAt < b[1].lastAccessedAt ? a : b)[0];
+      const oldestId = Array.from(sessions.entries()).reduce((a, b) =>
+        a[1].lastAccessedAt < b[1].lastAccessedAt ? a : b,
+      )[0];
       sessions.delete(oldestId);
     }
 
     sessions.set(sessionId, session);
+    await saveSessions();
     res.json({ session });
   } catch (err) {
     next(err);
@@ -441,17 +489,21 @@ async function searchInDirectory(dir, query, results, maxResults, depth = 0) {
           await searchInDirectory(fullPath, query, results, maxResults, depth + 1);
         } else if (entry.isFile()) {
           try {
+            // Re-resolve symlinks at the moment of read to mitigate
+            // TOCTOU attacks where an attacker swaps a regular file
+            // for a symlink pointing outside the allowed roots.
+            const revalidated = revalidateRealPath(fullPath);
             // Read only small files or first 1MB for performance
-            const stat = await fs.stat(fullPath);
+            const stat = await fs.stat(revalidated);
             if (stat.size > 1024 * 1024) return; // Skip files > 1MB
 
-            const content = await fs.readFile(fullPath, "utf-8");
+            const content = await fs.readFile(revalidated, "utf-8");
             const lines = content.split(/\r?\n/);
 
             for (let i = 0; i < lines.length; i++) {
               if (lines[i].toLowerCase().includes(lowerQuery)) {
                 results.push({
-                  file: fullPath,
+                  file: revalidated,
                   line: i + 1,
                   content: lines[i].trim(),
                 });
@@ -459,7 +511,7 @@ async function searchInDirectory(dir, query, results, maxResults, depth = 0) {
               }
             }
           } catch {
-            // Skip binary or unreadable files
+            // Skip binary or unreadable files, or paths that fail re-validation
           }
         }
       }),
@@ -623,9 +675,18 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
 
       // Check results
       if (matchCount === 0) {
-        return res.status(400).json({
-          error: `置換対象の SEARCH ブロックのコードが見つかりません。インデントや改行が既存ファイルの内容と完全に一致している必要があります：\n${block.search}`,
-        });
+        // Try to find a "fuzzy" match to provide a better error hint
+        const cleanSearch = searchLines.map((l) => l.trim()).join("");
+        const cleanFile = fileLines.map((l) => l.trim()).join("");
+        const isFuzzyMatch = cleanFile.includes(cleanSearch);
+
+        let errorMsg = `置換対象の SEARCH ブロックのコードが見つかりません。インデントや改行が既存ファイルの内容と完全に一致している必要があります。`;
+        if (isFuzzyMatch) {
+          errorMsg += `\nヒント: コードの内容は似ていますが、インデントや不可視文字（タブ/スペース）が異なっている可能性があります。`;
+        }
+        errorMsg += `\n\n対象のコード:\n${block.search}`;
+
+        return res.status(400).json({ error: errorMsg });
       }
 
       if (matchCount > 1) {

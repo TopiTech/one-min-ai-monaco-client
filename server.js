@@ -55,8 +55,8 @@ function createLocalAuthToken() {
 function compareAuthToken(a, b) {
   if (!a || !b || typeof a !== "string" || typeof b !== "string") return false;
 
-  const hashA = crypto.createHash('sha256').update(a).digest();
-  const hashB = crypto.createHash('sha256').update(b).digest();
+  const hashA = crypto.createHash("sha256").update(a).digest();
+  const hashB = crypto.createHash("sha256").update(b).digest();
 
   return crypto.timingSafeEqual(hashA, hashB);
 }
@@ -75,13 +75,10 @@ function parseCookies(cookieHeader) {
   return list;
 }
 
-function localBffAuth({
-  requireToken = true,
-  authToken,
-} = {}) {
+function localBffAuth({ requireToken = true, authToken } = {}) {
   // B-1: Require explicit authToken to prevent accidental re-evaluation of createLocalAuthToken()
   if (requireToken && !authToken) {
-    throw new Error('localBffAuth: authToken must be provided explicitly when requireToken=true');
+    throw new Error("localBffAuth: authToken must be provided explicitly when requireToken=true");
   }
 
   if (!requireToken) {
@@ -90,14 +87,56 @@ function localBffAuth({
 
   return (req, res, next) => {
     const cookies = parseCookies(req.headers.cookie);
-    const headerToken = req.get("x-local-bff-token") || cookies["__bff_session"];
-    if (headerToken && compareAuthToken(headerToken, authToken)) {
-      return next();
+    const headerToken = req.get("x-local-bff-token");
+    const cookieToken = cookies["__bff_session"];
+    const tokenOk =
+      headerToken &&
+      compareAuthToken(headerToken, authToken) &&
+      cookieToken &&
+      compareAuthToken(cookieToken, authToken);
+
+    if (!tokenOk) {
+      const err = new Error("Local BFF authentication required or invalid token");
+      err.status = 403;
+      return next(err);
     }
 
-    const err = new Error("Local BFF authentication required or invalid token");
-    err.status = 403;
-    next(err);
+    // Require explicit same-origin/request-from-host signal to mitigate CSRF.
+    // We deliberately do NOT trust the Origin header alone; combine it with
+    // either the Host header or the sec-fetch-site marker sent by browsers.
+    const origin = req.get("origin");
+    const host = req.get("host");
+    const secFetchSite = req.get("sec-fetch-site");
+    const referer = req.get("referer");
+
+    const isSameOrigin = (() => {
+      if (origin) {
+        try {
+          const parsed = new URL(origin);
+          if (host && parsed.host === host) return true;
+        } catch {
+          // fall through
+        }
+      }
+      if (secFetchSite === "same-origin") return true;
+      if (referer) {
+        try {
+          const parsedReferer = new URL(referer);
+          if (host && parsedReferer.host === host) return true;
+        } catch {
+          // fall through
+        }
+      }
+      return false;
+    })();
+
+    if (!isSameOrigin) {
+      const err = new Error("Cross-origin requests are not allowed without a valid token");
+      err.status = 403;
+      return next(err);
+    }
+
+    return next();
   };
 }
 
@@ -111,6 +150,10 @@ function buildRateLimit(config) {
     ...config,
   });
 }
+
+// L-1: Higher limit for autocomplete and streaming as they are triggered frequently
+const autocompleteRateLimit = buildRateLimit({ max: 600, windowMs: 1 * 60 * 1000 });
+const aiChatRateLimit = buildRateLimit({ max: 300, windowMs: 1 * 60 * 1000 });
 
 function normalizePayloadError(err) {
   if (!err?.payload) return null;
@@ -170,8 +213,9 @@ async function handleAssetUpload(req, res, next) {
       type: req.file.mimetype || "application/octet-stream",
     });
 
-    const safeName = path.basename(req.file.originalname || 'upload.bin')
-      .replace(/[^a-zA-Z0-9._-]/g, '_')
+    const safeName = path
+      .basename(req.file.originalname || "upload.bin")
+      .replace(/[^a-zA-Z0-9._-]/g, "_")
       .substring(0, 255);
     formData.append("asset", blob, safeName);
 
@@ -197,7 +241,7 @@ function sanitizePayload(payload) {
       for (const key in obj) {
         if (typeof obj[key] === "object" && obj[key] !== null) {
           walk(obj[key]);
-        } else if (sensitiveKeys.some(sk => key.toLowerCase().includes(sk))) {
+        } else if (sensitiveKeys.some((sk) => key.toLowerCase().includes(sk))) {
           obj[key] = "[MASKED]";
         }
       }
@@ -237,20 +281,33 @@ export function createApp(options = {}) {
   app.use(logger.requestLogger());
   app.use(express.json({ limit: serverConfig.maxJsonBodySize }));
 
+  // Apply specific rate limits for high-frequency API endpoints
+  app.use("/api/chat", aiChatRateLimit);
+  app.use("/api/code", autocompleteRateLimit);
+
   app.get(["/", "/index.html"], (req, res) => {
     try {
       const htmlPath = path.join(__dirname, "public", "index.html");
       const html = fs.readFileSync(htmlPath, "utf8");
 
-      // Set the token as HttpOnly cookie instead of embedding in HTML meta tag
+      // Set the token as HttpOnly cookie (CSRF mitigation) AND inject a
+      // data attribute on <body> so client-side JS can read it for the
+      // x-local-bff-token header. The body attribute is only ever
+      // readable from same-origin JS.
       if (requireLocalAuth) {
         const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-        res.cookie('__bff_session', localAuthToken, {
+        res.cookie("__bff_session", localAuthToken, {
           httpOnly: true,
           secure: process.env.NODE_ENV === "production",
-          sameSite: 'Strict',  // M-3: Strict prevents cross-site request forgery
-          maxAge: ONE_DAY_MS,  // B-2: Expire after 24h to limit session persistence
+          sameSite: "Strict", // M-3: Strict prevents cross-site request forgery
+          maxAge: ONE_DAY_MS, // B-2: Expire after 24h to limit session persistence
         });
+
+        const injected = html.replace(
+          /<body(\s*[^>]*)>/i,
+          (match, attrs) => `<body${attrs} data-bff-token="${localAuthToken}">`,
+        );
+        return res.send(injected);
       }
 
       res.send(html);
@@ -296,19 +353,22 @@ export function createApp(options = {}) {
   app.use("/api", protectedApiAuth, protectedRouter);
 
   app.use((err, req, res, _next) => {
-    logger.error("Unhandled error", {
-      error: err.message,
-      status: err.status,
-      method: req.method,
-      url: req.originalUrl,
-      stack: err.stack,
-    });
-
     const status = err.status || 500;
     const isDev = process.env.NODE_ENV === "development";
+
+    logger.error(`API Error: ${status}`, {
+      error: err.message,
+      status,
+      method: req.method,
+      url: req.originalUrl,
+      stack: isDev ? err.stack : undefined,
+    });
+
     res.status(status).json({
       error: normalizePayloadError(err) || err.message || "Internal Server Error",
+      code: err.code || "UNKNOWN_ERROR",
       details: isDev ? sanitizePayload(err.payload) || null : null,
+      stack: isDev ? err.stack : undefined,
     });
   });
 

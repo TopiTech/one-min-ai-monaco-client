@@ -100,8 +100,6 @@ const state = {
   creditSaving: false,
 };
 
-const getBffToken = () => document.querySelector('meta[name="local-bff-token"]')?.content || "";
-
 // LocalStorage keys
 const STORAGE_KEY_WEB_SEARCH = "monaco_client_code_web_search";
 const STORAGE_KEY_NUM_OF_SITE = "monaco_client_code_num_of_site";
@@ -378,8 +376,20 @@ function updateAttachmentPreview() {
       const icon = document.createElement("div");
       icon.className = "attachment-file-icon";
       // Trusted SVG icon
-      const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
-      icon.innerHTML = svgIcon;
+      const svgIcon = document.createElementNS(SVG_NS, "svg");
+      svgIcon.setAttribute("width", "24");
+      svgIcon.setAttribute("height", "24");
+      svgIcon.setAttribute("viewBox", "0 0 24 24");
+      svgIcon.setAttribute("fill", "none");
+      svgIcon.setAttribute("stroke", "currentColor");
+      svgIcon.setAttribute("stroke-width", "2");
+      const path = document.createElementNS(SVG_NS, "path");
+      path.setAttribute("d", "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z");
+      svgIcon.appendChild(path);
+      const poly = document.createElementNS(SVG_NS, "polyline");
+      poly.setAttribute("points", "14 2 14 8 20 8");
+      svgIcon.appendChild(poly);
+      icon.appendChild(svgIcon);
 
       const extSpan = document.createElement("span");
       extSpan.className = "attachment-file-ext";
@@ -472,12 +482,7 @@ async function uploadAttachments() {
     pending.map(async (att) => {
       const fd = new FormData();
       fd.append("asset", att.file);
-      const headers = {};
-      const token = getBffToken();
-      if (token) headers["x-local-bff-token"] = token;
-      const res = await fetch("/api/assets/upload", { method: "POST", headers, body: fd });
-      if (!res.ok) throw new Error(`アップロード失敗: ${res.status}`);
-      const data = await res.json();
+      const data = await api("/api/assets/upload", { method: "POST", body: fd });
       const key =
         data?.key || data?.asset?.key || data?.fileContent?.path || data?.asset?.location || "";
       const url = data?.url || (key ? assetUrl(key) : "");
@@ -556,13 +561,9 @@ dom.sendChatBtn.onclick = async () => {
     if (imageKeys.length > 0) apiAttachments.images = imageKeys;
     if (fileKeys.length > 0) apiAttachments.files = fileKeys;
 
-    const headers = { "Content-Type": "application/json" };
-    const token = getBffToken();
-    if (token) headers["x-local-bff-token"] = token;
-
-    const response = await fetch("/api/chat/stream", {
+    const response = await api("/api/chat/stream", {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         prompt,
         model: dom.chatModel.value,
@@ -576,6 +577,7 @@ dom.sendChatBtn.onclick = async () => {
         attachments: Object.keys(apiAttachments).length > 0 ? apiAttachments : undefined,
       }),
       signal: state.chat.abortController.signal,
+      raw: true,
     });
 
     if (!response.ok) {
@@ -592,8 +594,10 @@ dom.sendChatBtn.onclick = async () => {
     const decoder = new TextDecoder();
     let buffer = "";
     let currentEvent = "content";
+    let streamDone = false;
+    let streamError = null;
 
-    while (true) {
+    while (!streamDone) {
       const { done, value } = await reader.read();
       if (done) break;
 
@@ -607,40 +611,55 @@ dom.sendChatBtn.onclick = async () => {
           continue;
         }
 
-        if (line.startsWith("data: ")) {
-          const dataStr = line.slice(6).trim();
-          if (!dataStr || dataStr === "[DONE]") continue;
+        if (!line.startsWith("data: ")) continue;
+        const dataStr = line.slice(6).trim();
+        if (!dataStr || dataStr === "[DONE]") continue;
 
-          try {
-            const data = JSON.parse(dataStr);
+        try {
+          const data = JSON.parse(dataStr);
 
-            if (currentEvent === "error") {
-              const errorMsg = data?.error || data?.message || "Stream error";
-              throw new Error(errorMsg);
-            }
-
-            if (currentEvent === "done") {
-              break;
-            }
-
-            const content =
-              data?.content ||
-              data?.choices?.[0]?.delta?.content ||
-              data?.choices?.[0]?.message?.content ||
-              data?.message?.content ||
-              data?.delta?.content ||
-              data?.text;
-            if (content) {
-              fullText += content;
-              renderMarkdownSafely(aiContentDiv, fullText);
-              dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
-            }
-          } catch {
-            // Non-JSON data line, skip
+          if (currentEvent === "error") {
+            streamError = new Error(data?.error || data?.message || "Stream error");
+            streamDone = true;
+            break;
           }
+
+          if (currentEvent === "done") {
+            streamDone = true;
+            break;
+          }
+
+          if (currentEvent === "result") {
+            // 1min.ai streams may end with a final result event containing
+            // the entire aiRecord. Use it as a fallback if no content chunks
+            // were received.
+            const text = extractText(data?.aiRecord || data);
+            if (text && !fullText) {
+              fullText = text;
+              renderMarkdownSafely(aiContentDiv, fullText);
+            }
+            continue;
+          }
+
+          const content =
+            data?.content ||
+            data?.choices?.[0]?.delta?.content ||
+            data?.choices?.[0]?.message?.content ||
+            data?.message?.content ||
+            data?.delta?.content ||
+            data?.text;
+          if (content) {
+            fullText += content;
+            renderMarkdownSafely(aiContentDiv, fullText);
+            dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
+          }
+        } catch {
+          // Non-JSON data line, skip
         }
       }
     }
+
+    if (streamError) throw streamError;
 
     if (!fullText) {
       fullText = "(応答が空でした)";
@@ -724,26 +743,45 @@ function renderImages(data, sourceImageUrl = null) {
     if (sourceImageUrl) {
       // Create slider comparison card
       const sourceUrl = assetUrl(sourceImageUrl);
-      card.innerHTML = `
-        <div class="image-comparison-slider">
-          <img src="${url}" alt="After" class="image-after">
-          <img src="${sourceUrl}" alt="Before" class="image-before" style="clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%)">
-          <input type="range" min="0" max="100" value="50" class="slider-range" aria-label="画像比較スライダー">
-          <div class="slider-divider" style="left: 50%">
-            <div class="slider-handle"></div>
-          </div>
-        </div>
-      `;
+      const slider = document.createElement("div");
+      slider.className = "image-comparison-slider";
 
-      const range = card.querySelector(".slider-range");
-      const beforeImg = card.querySelector(".image-before");
-      const divider = card.querySelector(".slider-divider");
+      const afterImg = document.createElement("img");
+      afterImg.src = url;
+      afterImg.alt = "After";
+      afterImg.className = "image-after";
+      slider.appendChild(afterImg);
+
+      const beforeImg = document.createElement("img");
+      beforeImg.src = sourceUrl;
+      beforeImg.alt = "Before";
+      beforeImg.className = "image-before";
+      beforeImg.style.clipPath = "polygon(0 0, 50% 0, 50% 100%, 0 100%)";
+      slider.appendChild(beforeImg);
+
+      const range = document.createElement("input");
+      range.type = "range";
+      range.min = "0";
+      range.max = "100";
+      range.value = "50";
+      range.className = "slider-range";
+      range.setAttribute("aria-label", "画像比較スライダー");
+      slider.appendChild(range);
+
+      const divider = document.createElement("div");
+      divider.className = "slider-divider";
+      divider.style.left = "50%";
+      const handle = document.createElement("div");
+      handle.className = "slider-handle";
+      divider.appendChild(handle);
+      slider.appendChild(divider);
 
       range.addEventListener("input", (e) => {
         const val = e.target.value;
         beforeImg.style.clipPath = `polygon(0 0, ${val}% 0, ${val}% 100%, 0 100%)`;
         divider.style.left = val + "%";
       });
+      card.appendChild(slider);
     } else {
       const imgEl = document.createElement("img");
       imgEl.src = url;
@@ -772,7 +810,8 @@ function renderImages(data, sourceImageUrl = null) {
     infoRow.appendChild(link);
 
     if (sourceImageUrl) {
-      const modelName = document.getElementById("imageModelLabel")?.textContent?.trim() || "AI Model";
+      const modelName =
+        document.getElementById("imageModelLabel")?.textContent?.trim() || "AI Model";
       const modelLabel = document.createElement("span");
       modelLabel.textContent = `編集モデル: ${modelName}`;
       modelLabel.style.fontSize = "0.7rem";
@@ -898,7 +937,10 @@ function updateEditorImagePreview(imageUrl) {
   const value = (imageUrl || input?.value || "").trim();
 
   const currentModelId = dom.imageModel.value;
-  const modelObj = (typeof _allImageModels !== "undefined") ? _allImageModels.find(m => m.id === currentModelId) : null;
+  const modelObj =
+    typeof _allImageModels !== "undefined"
+      ? _allImageModels.find((m) => m.id === currentModelId)
+      : null;
 
   if (!value) {
     if (preview) preview.style.display = "none";
@@ -908,8 +950,16 @@ function updateEditorImagePreview(imageUrl) {
     if (btnText) btnText.textContent = "画像を生成";
 
     // Switch model if current model is editor-only
-    if (modelObj && modelObj.tags && modelObj.tags.includes("editor") && !modelObj.tags.includes("image")) {
-      const defaultGen = (typeof _allImageModels !== "undefined" && _allImageModels.find(m => !m.tags || !m.tags.includes("editor") || m.id.startsWith("gpt-image"))) || { id: "gpt-image-2", label: "GPT Image 2" };
+    if (
+      modelObj &&
+      modelObj.tags &&
+      modelObj.tags.includes("editor") &&
+      !modelObj.tags.includes("image")
+    ) {
+      const defaultGen = (typeof _allImageModels !== "undefined" &&
+        _allImageModels.find(
+          (m) => !m.tags || !m.tags.includes("editor") || m.id.startsWith("gpt-image"),
+        )) || { id: "gpt-image-2", label: "GPT Image 2" };
       dom.imageModel.value = defaultGen.id;
       dom.imageModelLabel.textContent = defaultGen.label;
     }
@@ -928,7 +978,11 @@ function updateEditorImagePreview(imageUrl) {
   // Switch model if current model doesn't support editing
   const isEditorModel = modelObj && modelObj.tags && modelObj.tags.includes("editor");
   if (!isEditorModel) {
-    const defaultEditor = (typeof _allImageModels !== "undefined" && _allImageModels.find(m => m.tags && m.tags.includes("editor"))) || { id: "gpt-image-2", label: "GPT Image 2" };
+    const defaultEditor = (typeof _allImageModels !== "undefined" &&
+      _allImageModels.find((m) => m.tags && m.tags.includes("editor"))) || {
+      id: "gpt-image-2",
+      label: "GPT Image 2",
+    };
     dom.imageModel.value = defaultEditor.id;
     dom.imageModelLabel.textContent = defaultEditor.label;
   }
@@ -1094,13 +1148,9 @@ require(["vs/editor/editor.main"], function () {
         const column = position.column;
 
         try {
-          const headers = { "Content-Type": "application/json" };
-          const token = getBffToken();
-          if (token) headers["x-local-bff-token"] = token;
-
-          const res = await fetch("/api/code/autocomplete", {
+          const data = await api("/api/code/autocomplete", {
             method: "POST",
-            headers,
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               code,
               line,
@@ -1114,9 +1164,8 @@ require(["vs/editor/editor.main"], function () {
               numOfSite: dom.codeNumOfSite?.value ? parseInt(dom.codeNumOfSite.value) : undefined,
               maxWord: dom.codeMaxWord?.value ? parseInt(dom.codeMaxWord.value) : undefined,
             }),
+            signal: token.signal,
           });
-          if (!res.ok || token.isCancellationRequested) return;
-          const data = await res.json();
           if (!data.suggestion || token.isCancellationRequested) return;
 
           return {
@@ -1128,10 +1177,10 @@ require(["vs/editor/editor.main"], function () {
             ],
           };
         } catch (e) {
-          console.error("Autocomplete error:", e);
+          if (e.name !== "AbortError") console.error("Autocomplete error:", e);
         }
       },
-      freeInlineCompletions: function () { },
+      freeInlineCompletions: function () {},
     });
   }
 });
@@ -1213,13 +1262,9 @@ async function submitInlineChat() {
   const language = window.editor.getModel()?.getLanguageId() || "plaintext";
 
   try {
-    const headers = { "Content-Type": "application/json" };
-    const token = getBffToken();
-    if (token) headers["x-local-bff-token"] = token;
-
-    const res = await fetch("/api/code/inline-chat", {
+    const data = await api("/api/code/inline-chat", {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         prompt,
         code,
@@ -1233,9 +1278,6 @@ async function submitInlineChat() {
         maxWord: dom.codeMaxWord?.value ? parseInt(dom.codeMaxWord.value) : undefined,
       }),
     });
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
 
     if (data.code) {
       const accepted = await toast.confirm("AIがコードを生成しました。適用しますか？", {
@@ -1520,6 +1562,64 @@ function formatMarkdownLike(text) {
   return html;
 }
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function createSvgIcon(viewBox, paths) {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("xmlns", SVG_NS);
+  svg.setAttribute("width", "12");
+  svg.setAttribute("height", "12");
+  svg.setAttribute("viewBox", viewBox);
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.style.verticalAlign = "middle";
+  svg.style.marginRight = "4px";
+
+  const path = document.createElementNS(SVG_NS, "path");
+  path.setAttribute("d", paths);
+  svg.appendChild(path);
+  return svg;
+}
+
+function appendStepIcon(container, type) {
+  const iconMap = {
+    thought: {
+      label: "思考",
+      viewBox: "0 0 24 24",
+      paths: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01M12 21a9 9 0 1 0-9-9",
+    },
+    action: {
+      label: "ツール呼び出し",
+      viewBox: "0 0 24 24",
+      paths:
+        "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm8.94-2.83 1.72 2.99a1 1 0 0 1-.41 1.36l-3.06 1.49a1 1 0 0 1-1.26-.27l-1.15-1.4a8 8 0 0 1-1.86.78l-.34 1.65A1 1 0 0 1 14 19h-4a1 1 0 0 1-1-.83l-.34-1.65a8 8 0 0 1-1.86-.78l-1.15 1.4a1 1 0 0 1-1.26.27L1.33 16.5a1 1 0 0 1-.41-1.36l1.72-2.99A8 8 0 0 1 3 10.5c0-.6.07-1.18.21-1.74L1.5 6.5a1 1 0 0 1 .41-1.36l3.06-1.49a1 1 0 0 1 1.26.27l1.15 1.4a8 8 0 0 1 1.86-.78L9.58 3a1 1 0 0 1 1-.83h4a1 1 0 0 1 1 .83l.34 1.65a8 8 0 0 1 1.86.78l1.15-1.4a1 1 0 0 1 1.26-.27l3.06 1.49a1 1 0 0 1 .41 1.36l-1.72 2.99c.14.56.21 1.14.21 1.74z",
+    },
+    result: {
+      label: "実行結果",
+      viewBox: "0 0 24 24",
+      paths: "M20 6 9 17l-5-5",
+    },
+    error: {
+      label: "エラー",
+      viewBox: "0 0 24 24",
+      paths: "M12 9v4m0 4h.01M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z",
+    },
+    approval: {
+      label: "承認要求",
+      viewBox: "0 0 24 24",
+      paths:
+        "M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4m0 4h.01",
+    },
+  };
+
+  const cfg = iconMap[type] || iconMap.thought;
+  container.appendChild(createSvgIcon(cfg.viewBox, cfg.paths));
+  container.appendChild(document.createTextNode(cfg.label + ": "));
+}
+
 function addAgentTimelineStep(type, title, body, resultText = null) {
   const log = dom.agentActivityLog;
   if (!log) return;
@@ -1548,25 +1648,8 @@ function addAgentTimelineStep(type, title, body, resultText = null) {
 
   const iconSpan = document.createElement("span");
   iconSpan.className = "agent-step-icon";
-
-  // Use createElement for icon and title to avoid innerHTML on untrusted title
-  const iconImg = document.createElement("span");
-  if (type === "thought") {
-    iconImg.innerHTML =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><circle cx="12" cy="12" r="9"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>思考';
-  } else if (type === "action") {
-    iconImg.innerHTML =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>ツール呼び出し';
-  } else if (type === "result") {
-    iconImg.innerHTML =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg>実行結果';
-  } else if (type === "error") {
-    iconImg.innerHTML =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>エラー';
-  }
-
-  iconSpan.appendChild(iconImg);
-  iconSpan.appendChild(document.createTextNode(": " + title));
+  appendStepIcon(iconSpan, type);
+  iconSpan.appendChild(document.createTextNode(title));
   header.appendChild(iconSpan);
 
   const timeSpan = document.createElement("span");
@@ -1676,9 +1759,8 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
   const iconSpan = document.createElement("span");
   iconSpan.className = "agent-step-icon";
   iconSpan.style.color = "#facc15";
-  iconSpan.innerHTML =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
-  iconSpan.appendChild(document.createTextNode("承認要求: コマンド実行"));
+  appendStepIcon(iconSpan, "approval");
+  iconSpan.appendChild(document.createTextNode("コマンド実行"));
 
   const timeSpan = document.createElement("span");
   timeSpan.className = "agent-step-time";
@@ -1782,99 +1864,65 @@ function unescapeXmlText(value) {
     .replace(/&amp;/g, "&");
 }
 
-function extractClosedTag(text, tagName) {
-  const escapedName = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = text.match(new RegExp(`<${escapedName}\\b[^>]*>([\\s\\S]*?)<\\/${escapedName}>`, "i"));
-  return match ? match[1].trim() : null;
-}
-
 function parseXMLTags(text) {
-  const normalizedText = stripMarkdownCodeBlock(text || "");
+  if (!text || typeof text !== "string") return { thought: null, finish: null, toolCall: null };
+  const normalizedText = stripMarkdownCodeBlock(text);
 
-  // 1. Try strict XML parsing with space-agnostic attributes
-  let toolMatch = normalizedText.match(
-    /<call_tool\s+name\s*=\s*["']?([\w-]+)["']?\s*>([\s\S]*?)<\/call_tool>/i,
-  );
+  // Helper to extract by tag name (handles loose/unclosed tags)
+  const extractTag = (input, tag) => {
+    const startTag = `<${tag}>`;
+    const endTag = `</${tag}>`;
+    const startIdx = input.indexOf(startTag);
+    if (startIdx === -1) return null;
 
-  // Fallback: match even if closing </call_tool> is missing at the end of the text
-  if (!toolMatch) {
-    toolMatch = normalizedText.match(
-      /<call_tool\s+name\s*=\s*["']?([\w-]+)["']?\s*>([\s\S]*?)$/i,
-    );
-  }
+    const contentStart = startIdx + startTag.length;
+    const endIdx = input.indexOf(endTag, contentStart);
+    return endIdx !== -1
+      ? input.substring(contentStart, endIdx).trim()
+      : input.substring(contentStart).trim();
+  };
 
+  // 1. Try Tool Call Parsing
   let toolCall = null;
+  const toolMatch = normalizedText.match(
+    /<call_tool\s+name\s*=\s*["']?([\w-]+)["']?\s*>([\s\S]*?)(?:<\/call_tool>|$)/i,
+  );
   if (toolMatch) {
     const params = {};
-    const paramRegex = /<parameter\s+name\s*=\s*["']?([\w-]+)["']?\s*>([\s\S]*?)<\/parameter>/gi;
-    let match;
-    while ((match = paramRegex.exec(toolMatch[2])) !== null) {
-      params[match[1]] = unescapeXmlText(match[2].trim());
+    const paramRegex =
+      /<parameter\s+name\s*=\s*["']?([\w-]+)["']?\s*>([\s\S]*?)(?:<\/parameter>|$)/gi;
+    let pMatch;
+    while ((pMatch = paramRegex.exec(toolMatch[2])) !== null) {
+      params[pMatch[1]] = unescapeXmlText(pMatch[2].trim());
     }
-
-    // Always create toolCall if we matched a tool, even if params are empty
     toolCall = { name: toolMatch[1], params };
   }
 
-  let thought = extractClosedTag(normalizedText, "thought");
-  let finish = extractClosedTag(normalizedText, "finish");
+  const thought = extractTag(normalizedText, "thought");
+  const finish = extractTag(normalizedText, "finish");
 
-  // 2. Try JSON parsing fallback if no XML tags found
+  // 2. JSON Fallback
   if (!toolCall && !finish) {
     const jsonMatch = normalizedText.match(/\{[\s\S]*?\}/);
     if (jsonMatch) {
       try {
         const data = JSON.parse(jsonMatch[0]);
-        if (data.thought && !thought) {
-          thought = data.thought;
-        }
-        if (data.finish) {
-          finish = data.finish;
-        } else if (data.status === "success" && data.summary) {
-          finish = data.summary;
-        }
+        const jsonTool =
+          data.tool || data.toolName || data.call_tool || data.toolCall?.name || data.action;
+        const jsonParams =
+          data.parameters || data.params || data.toolCall?.params || data.arguments || data.args;
 
-        let jsonToolName = data.tool || data.toolName || data.call_tool || (data.toolCall && data.toolCall.name) || data.action;
-        let jsonParams = data.parameters || data.params || (data.toolCall && data.toolCall.params) || data.arguments || data.args;
-
-        if (jsonToolName && typeof jsonToolName === "string") {
-          toolCall = {
-            name: jsonToolName,
-            params: jsonParams || {}
-          };
-        }
-      } catch (e) {
-        // ignore
+        if (jsonTool) toolCall = { name: String(jsonTool), params: jsonParams || {} };
+        if (data.thought && !thought)
+          return { thought: data.thought, finish: data.finish || null, toolCall };
+        if (data.finish && !finish) return { thought, finish: data.finish, toolCall };
+      } catch {
+        /* ignore */
       }
     }
   }
 
-  // 3. Last resort fallback: Check for loose unclosed tags
-  if (!thought && normalizedText.includes("<thought>")) {
-    const idx = normalizedText.indexOf("<thought>");
-    const endIdx = normalizedText.indexOf("</thought>");
-    if (endIdx > idx) {
-      thought = normalizedText.substring(idx + 9, endIdx).trim();
-    } else {
-      thought = normalizedText.substring(idx + 9).trim();
-    }
-  }
-
-  if (!finish && normalizedText.includes("<finish>")) {
-    const idx = normalizedText.indexOf("<finish>");
-    const endIdx = normalizedText.indexOf("</finish>");
-    if (endIdx > idx) {
-      finish = normalizedText.substring(idx + 8, endIdx).trim();
-    } else {
-      finish = normalizedText.substring(idx + 8).trim();
-    }
-  }
-
-  return {
-    thought,
-    finish,
-    toolCall,
-  };
+  return { thought, finish, toolCall };
 }
 let diffEditor = null;
 
@@ -1894,11 +1942,7 @@ async function showDiffDialog(filePath, oldContent, newContent) {
       inlineToggle.onchange = (e) => {
         const inline = e.target.checked;
         localStorage.setItem("diffRenderInline", inline);
-        if (diffEditor) {
-          diffEditor.updateOptions({
-            renderSideBySide: !inline,
-          });
-        }
+        if (diffEditor) diffEditor.updateOptions({ renderSideBySide: !inline });
       };
     }
 
@@ -1916,10 +1960,12 @@ async function showDiffDialog(filePath, oldContent, newContent) {
       });
     }
 
-    // 拡張子とファイル名を取得し、スペースやコロン、日本語などの非ASCII文字を排除した安全なパスを構築する
-    const ext = filePath.includes('.') ? filePath.split('.').pop() : 'txt';
-    const baseName = filePath.split(/[\\/]/).pop().replace(/[^a-zA-Z0-9_.-]/g, '_');
-    const safePath = '/' + baseName;
+    const baseName =
+      filePath
+        .split(/[\\/]/)
+        .pop()
+        .replace(/[^a-zA-Z0-9_.-]/g, "_") || "file";
+    const safePath = "/" + baseName;
     const originalUri = monaco.Uri.from({ scheme: "diff-original", path: safePath });
     const modifiedUri = monaco.Uri.from({ scheme: "diff-modified", path: safePath });
 
@@ -1930,43 +1976,31 @@ async function showDiffDialog(filePath, oldContent, newContent) {
 
     originalModel = monaco.editor.createModel(oldContent, undefined, originalUri);
     modifiedModel = monaco.editor.createModel(newContent, undefined, modifiedUri);
-    diffEditor.setModel({
-      original: originalModel,
-      modified: modifiedModel,
-    });
+    diffEditor.setModel({ original: originalModel, modified: modifiedModel });
 
-    // Force layout calculation since container was hidden.
-    // Use double-rAF to wait for the CSS modal animation (180ms) to finish
-    // and for the browser to complete its layout pass.
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (diffEditor) {
-          diffEditor.layout();
-        }
-      });
+    // Precise layout calculation when modal becomes visible
+    const observer = new ResizeObserver(() => {
+      if (diffEditor && modal.offsetParent !== null) {
+        diffEditor.layout();
+      }
     });
+    observer.observe(container);
 
     return new Promise((resolve) => {
-      $("diffApply").onclick = () => {
+      const cleanup = (val) => {
+        observer.disconnect();
         modal.classList.add("u-hidden");
         if (diffEditor) diffEditor.setModel(null);
         originalModel.dispose();
         modifiedModel.dispose();
-        resolve(true);
+        resolve(val);
       };
-      $("diffCancel").onclick = () => {
-        modal.classList.add("u-hidden");
-        if (diffEditor) diffEditor.setModel(null);
-        originalModel.dispose();
-        modifiedModel.dispose();
-        resolve(false);
-      };
+      $("diffApply").onclick = () => cleanup(true);
+      $("diffCancel").onclick = () => cleanup(false);
     });
   } catch (error) {
-    console.error("showDiffDialogでエラーが発生しました:", error);
-    if (window.toast) {
-      window.toast.error("差分ダイアログの表示中にエラーが発生しました: " + error.message);
-    }
+    console.error("showDiffDialog error:", error);
+    toast.error("差分表示エラー: " + error.message);
     $("diffModal").classList.add("u-hidden");
     return false;
   }
@@ -1983,7 +2017,13 @@ function resolvePathRelativeToWorkspace(workspaceRoot, filePath) {
 }
 
 function estimateTokens(text) {
-  return Math.ceil(text.length / 3);
+  if (!text) return 0;
+  // Better heuristic for English vs Japanese:
+  // Latin characters are ~4 per token. Japanese/CJK characters are ~1.2 per token.
+  const latinMatch = text.match(/[a-zA-Z0-9\s!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/g);
+  const latinCount = latinMatch ? latinMatch.length : 0;
+  const multiByteCount = text.length - latinCount;
+  return Math.ceil(latinCount / 4 + multiByteCount * 1.2);
 }
 
 function trimAgentHistory(history, maxTokens) {
@@ -2003,6 +2043,133 @@ function trimAgentHistory(history, maxTokens) {
     }
   }
 }
+
+const AGENT_TOOL_HANDLERS = {
+  read_file: async ({ sessionId, workspaceRoot, params }) => {
+    const { path: filePath } = params;
+    if (!filePath) throw new Error("path パラメータが必要です");
+    const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
+    const data = await api(
+      `/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`,
+    );
+    await openFile(fullPath);
+    return { text: data.content, success: true };
+  },
+  write_file: async ({ sessionId, workspaceRoot, params }) => {
+    const { path: filePath, content } = params;
+    if (!filePath) throw new Error("path パラメータが必要です");
+    const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
+    await api(`/api/agent/sessions/${sessionId}/files`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: fullPath, content }),
+    });
+    await openFile(fullPath);
+    return { text: `ファイル ${filePath} の書き込みに成功しました。`, success: true };
+  },
+  apply_diff: async ({ sessionId, workspaceRoot, params }) => {
+    const { path: filePath, diff } = params;
+    if (!filePath) throw new Error("path パラメータが必要です");
+    if (diff === undefined) throw new Error("diff パラメータが必要です");
+    const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
+
+    const current = await api(
+      `/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`,
+    );
+    const preview = await api(`/api/agent/sessions/${sessionId}/diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: fullPath, diff, dryRun: true }),
+    });
+
+    if (await showDiffDialog(filePath, current.content, preview.newContent || current.content)) {
+      const res = await api(`/api/agent/sessions/${sessionId}/diff`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: fullPath, diff }),
+      });
+      await openFile(fullPath);
+      return { text: res.message || "置換成功", success: true };
+    }
+    return { text: "ユーザーによって拒否されました", success: false };
+  },
+  list_directory: async ({ sessionId, workspaceRoot, params }) => {
+    const dirPath = params.path || "";
+    const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, dirPath);
+    const data = await api(
+      `/api/agent/sessions/${sessionId}/dir?path=${encodeURIComponent(fullPath)}`,
+    );
+    const text = data.items?.length
+      ? data.items.map((i) => `- ${i.isDirectory ? "[Dir] " : "[File] "}${i.name}`).join("\n")
+      : "ディレクトリは空または存在しません。";
+    return { text, success: true };
+  },
+  search_files: async ({ sessionId, workspaceRoot, params }) => {
+    const { query } = params;
+    if (!query) throw new Error("query パラメータが必要です");
+    const data = await api(
+      `/api/agent/sessions/${sessionId}/search?query=${encodeURIComponent(query)}`,
+    );
+    const text = data.results?.length
+      ? data.results.map((r) => `${r.file}:${r.line}: ${r.content}`).join("\n")
+      : "検索結果なし";
+    return { text, success: true };
+  },
+  run_command: async ({ sessionId, workspaceRoot, params }) => {
+    const { command } = params;
+    if (!command) throw new Error("command パラメータが必要です");
+
+    setAgentStatus("承認待ち...", "awaiting_approval");
+    const runRes = await api(`/api/agent/sessions/${sessionId}/commands`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command, cwd: workspaceRoot }),
+    });
+
+    if (!runRes.requiresApproval) {
+      return {
+        text: `Exit Code: ${runRes.exitCode}\n\nSTDOUT:\n${runRes.stdout}\n\nSTDERR:\n${runRes.stderr}`,
+        success: runRes.exitCode === 0,
+      };
+    }
+
+    const approvalResult = await new Promise((resolve) => {
+      state.agent.resolver = resolve;
+      addAgentApprovalStep(
+        command,
+        workspaceRoot,
+        runRes.approvalToken,
+        async () => {
+          setAgentStatus("実行中...", "executing");
+          try {
+            const res = await api(`/api/agent/sessions/${sessionId}/approve`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ approvalToken: runRes.approvalToken }),
+            });
+            resolve({ approved: true, result: res });
+          } catch (e) {
+            resolve({ approved: true, error: e });
+          }
+        },
+        (reason) => resolve({ approved: false, reason }),
+      );
+    });
+
+    state.agent.resolver = null;
+    if (approvalResult.abort) return { text: "ABORTED", success: false, abort: true };
+    if (!approvalResult.approved)
+      return { text: `拒否されました: ${approvalResult.reason}`, success: false };
+    if (approvalResult.error)
+      return { text: `エラー: ${approvalResult.error.message}`, success: false };
+
+    const { result } = approvalResult;
+    return {
+      text: `Exit Code: ${result.exitCode}\n\nSTDOUT:\n${result.stdout}\n\nSTDERR:\n${result.stderr}`,
+      success: result.exitCode === 0,
+    };
+  },
+};
 
 async function runAgentLoop(initialInstruction) {
   const workspaceRoot = dom.explorerPath.value || "";
@@ -2204,167 +2371,19 @@ ${workspaceFilesText}
       let toolSuccess = false;
 
       try {
-        if (toolName === "read_file") {
-          const filePath = params.path;
-          if (!filePath) throw new Error("path パラメータが必要です");
+        const handler = AGENT_TOOL_HANDLERS[toolName];
+        if (!handler) throw new Error(`未知のツール: ${toolName}`);
 
-          const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
-          const fileData = await api(
-            `/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`,
-          );
-          toolResultText = fileData.content;
-          toolSuccess = true;
+        const result = await handler({
+          sessionId,
+          workspaceRoot,
+          params,
+        });
 
-          await openFile(fullPath);
-        } else if (toolName === "write_file") {
-          const filePath = params.path;
-          const content = params.content;
-          if (!filePath) throw new Error("path パラメータが必要です");
+        if (result.abort) break;
 
-          const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
-          await api(`/api/agent/sessions/${sessionId}/files`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ path: fullPath, content }),
-          });
-          toolResultText = `ファイル ${filePath} の書き込みに成功しました。`;
-          toolSuccess = true;
-
-          await openFile(fullPath);
-        } else if (toolName === "apply_diff") {
-          const filePath = params.path;
-          const diff = params.diff;
-          if (!filePath) throw new Error("path パラメータが必要です");
-          if (diff === undefined) throw new Error("diff パラメータが必要です");
-
-          const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
-
-          // 既存の内容を取得してプレビューを表示
-          const currentFileData = await api(
-            `/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`,
-          );
-          const oldContent = currentFileData.content;
-
-          // サーバーサイドのロジックをシミュレートして新しい内容を生成（プレビュー用）
-          const patchResPreview = await api(`/api/agent/sessions/${sessionId}/diff`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ path: fullPath, diff, dryRun: true }),
-          });
-          const newContent = patchResPreview.newContent || oldContent;
-
-          const accepted = await showDiffDialog(filePath, oldContent, newContent);
-
-          if (accepted) {
-            const patchRes = await api(`/api/agent/sessions/${sessionId}/diff`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ path: fullPath, diff }),
-            });
-            toolResultText = patchRes.message || `ファイル ${filePath} の置換に成功しました。`;
-            toolSuccess = true;
-            await openFile(fullPath);
-          } else {
-            toolResultText = "ユーザーによって変更が拒否されました。";
-            toolSuccess = false;
-          }
-        } else if (toolName === "list_directory") {
-          const dirPath = params.path || "";
-          const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, dirPath);
-          const dirData = await api(
-            `/api/agent/sessions/${sessionId}/dir?path=${encodeURIComponent(fullPath)}`,
-          );
-          if (dirData.items && dirData.items.length > 0) {
-            toolResultText = dirData.items
-              .map((item) => `- ${item.isDirectory ? "[Dir] " : "[File] "}${item.name}`)
-              .join("\n");
-          } else {
-            toolResultText = "ディレクトリは空、または存在しません。";
-          }
-          toolSuccess = true;
-        } else if (toolName === "search_files") {
-          const query = params.query;
-          if (!query) throw new Error("query パラメータが必要です");
-
-          const searchData = await api(
-            `/api/agent/sessions/${sessionId}/search?query=${encodeURIComponent(query)}`,
-          );
-          if (searchData.results && searchData.results.length > 0) {
-            toolResultText = searchData.results
-              .map((r) => `${r.file}:${r.line}: ${r.content}`)
-              .join("\n");
-          } else {
-            toolResultText = "一致する検索結果が見つかりませんでした。";
-          }
-          toolSuccess = true;
-        } else if (toolName === "run_command") {
-          const command = params.command;
-          if (!command) throw new Error("command パラメータが必要です");
-
-          setAgentStatus("承認待ち...", "awaiting_approval");
-
-          const runRes = await api(`/api/agent/sessions/${sessionId}/commands`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ command, cwd: workspaceRoot }),
-          });
-
-          if (runRes.requiresApproval) {
-            const approvalToken = runRes.approvalToken;
-
-            const approvalPromise = new Promise((resolve) => {
-              state.agent.resolver = resolve;
-
-              addAgentApprovalStep(
-                command,
-                workspaceRoot,
-                approvalToken,
-                async () => {
-                  setAgentStatus("実行中...", "executing");
-                  try {
-                    const approveRes = await api(`/api/agent/sessions/${sessionId}/approve`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ approvalToken }),
-                    });
-                    resolve({ approved: true, result: approveRes });
-                  } catch (e) {
-                    resolve({ approved: true, error: e });
-                  }
-                },
-                (reason) => {
-                  resolve({ approved: false, reason });
-                },
-              );
-            });
-
-            const approvalResult = await approvalPromise;
-            state.agent.resolver = null;
-
-            if (approvalResult.abort) {
-              break;
-            }
-
-            if (approvalResult.approved) {
-              if (approvalResult.error) {
-                toolResultText = `コマンド実行エラー: ${approvalResult.error.message}`;
-                toolSuccess = false;
-              } else {
-                const resData = approvalResult.result;
-                toolResultText = `Exit Code: ${resData.exitCode}\n\nSTDOUT:\n${resData.stdout}\n\nSTDERR:\n${resData.stderr}`;
-                toolSuccess = resData.exitCode === 0;
-              }
-            } else {
-              toolResultText = `コマンド実行が却下されました。理由: ${approvalResult.reason}`;
-              toolSuccess = false;
-            }
-          } else {
-            toolResultText = `Exit Code: ${runRes.exitCode}\n\nSTDOUT:\n${runRes.stdout}\n\nSTDERR:\n${runRes.stderr}`;
-            toolSuccess = runRes.exitCode === 0;
-          }
-        } else {
-          throw new Error(`未知のツール: ${toolName}`);
-        }
+        toolResultText = result.text;
+        toolSuccess = result.success;
       } catch (err) {
         toolResultText = `エラー: ${err.message}`;
         toolSuccess = false;
@@ -2483,8 +2502,7 @@ dom.resetAgentBtn.onclick = async () => {
       placeholder.className = "timeline-placeholder";
       placeholder.style.cssText =
         "color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 24px 8px; border: 1px dashed rgba(255,255,255,0.05); border-radius: 8px; background: rgba(255,255,255,0.01);";
-      placeholder.textContent =
-        "指示を入力して、エージェントとのチャットを開始してください。";
+      placeholder.textContent = "指示を入力して、エージェントとのチャットを開始してください。";
       log.appendChild(placeholder);
     }
     setAgentStatus("待機中", "idle");
@@ -2909,8 +2927,13 @@ function applyCreditSavingMode() {
     if (typeof _allChatModels !== "undefined" && _allChatModels.length > 0) {
       const currentChat = $("chatModel")?.value;
       const currentModelObj = _allChatModels.find((m) => m.id === currentChat);
-      if (currentChat && (!currentModelObj || !currentModelObj.tags || !currentModelObj.tags.includes("fast"))) {
-        const fallback = _allChatModels.find((m) => m.id === "gpt-4o-mini") || _allChatModels.find((m) => m.tags && m.tags.includes("fast"));
+      if (
+        currentChat &&
+        (!currentModelObj || !currentModelObj.tags || !currentModelObj.tags.includes("fast"))
+      ) {
+        const fallback =
+          _allChatModels.find((m) => m.id === "gpt-4o-mini") ||
+          _allChatModels.find((m) => m.tags && m.tags.includes("fast"));
         if (fallback) selectModelForPicker("chatModel", fallback);
       }
     }
@@ -2918,8 +2941,13 @@ function applyCreditSavingMode() {
     if (typeof _allCodeModels !== "undefined" && _allCodeModels.length > 0) {
       const currentCode = $("codeModel")?.value;
       const currentModelObj = _allCodeModels.find((m) => m.id === currentCode);
-      if (currentCode && (!currentModelObj || !currentModelObj.tags || !currentModelObj.tags.includes("fast"))) {
-        const fallback = _allCodeModels.find((m) => m.id === "qwen3-coder-flash") || _allCodeModels.find((m) => m.tags && m.tags.includes("fast"));
+      if (
+        currentCode &&
+        (!currentModelObj || !currentModelObj.tags || !currentModelObj.tags.includes("fast"))
+      ) {
+        const fallback =
+          _allCodeModels.find((m) => m.id === "qwen3-coder-flash") ||
+          _allCodeModels.find((m) => m.tags && m.tags.includes("fast"));
         if (fallback) selectModelForPicker("codeModel", fallback);
       }
     }
@@ -2927,8 +2955,13 @@ function applyCreditSavingMode() {
     if (typeof _allImageModels !== "undefined" && _allImageModels.length > 0) {
       const currentImage = $("imageModel")?.value;
       const currentModelObj = _allImageModels.find((m) => m.id === currentImage);
-      if (currentImage && (!currentModelObj || !currentModelObj.tags || !currentModelObj.tags.includes("fast"))) {
-        const fallback = _allImageModels.find((m) => m.id === "gpt-image-1-mini") || _allImageModels.find((m) => m.tags && m.tags.includes("fast"));
+      if (
+        currentImage &&
+        (!currentModelObj || !currentModelObj.tags || !currentModelObj.tags.includes("fast"))
+      ) {
+        const fallback =
+          _allImageModels.find((m) => m.id === "gpt-image-1-mini") ||
+          _allImageModels.find((m) => m.tags && m.tags.includes("fast"));
         if (fallback) selectModelForPicker("imageModel", fallback);
       }
     }

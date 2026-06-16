@@ -1,5 +1,15 @@
 const statusEl = document.getElementById("status");
 
+function getBffToken() {
+  // Prefer explicit same-origin cookie; fall back to data attribute set in body.
+  const cookies = document.cookie.split(";").map((c) => c.trim());
+  for (const c of cookies) {
+    const [k, ...rest] = c.split("=");
+    if (k === "__bff_session") return decodeURIComponent(rest.join("="));
+  }
+  return document.body?.dataset?.bffToken || "";
+}
+
 function setStatus(text, cls = "") {
   if (statusEl) {
     statusEl.textContent = text;
@@ -12,24 +22,35 @@ let _activeRequests = 0;
 async function api(path, options = {}) {
   _activeRequests++;
   setStatus("通信中...", "warn");
+
+  const { timeout = 60_000, signal, ...fetchOptions } = options;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60_000);
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+
   try {
     const headers = options.headers || {};
+    const token = getBffToken();
+    if (token) headers["x-local-bff-token"] = token;
 
-    const res = await fetch(path, { ...options, headers, signal: controller.signal });
+    const res = await fetch(path, { ...fetchOptions, headers, signal: controller.signal });
     clearTimeout(timeoutId);
 
+    if (fetchOptions.raw) return res;
+
     const data = await parseJsonOrTextResponse(res);
-    if (!res.ok) {
-      throw new Error(data?.error || data?.message || res.statusText || `HTTP ${res.status}`);
-    }
-    if (_activeRequests > 0) _activeRequests--;
+    if (!res.ok) throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
+
+    _activeRequests = Math.max(0, _activeRequests - 1);
     if (_activeRequests === 0) setStatus("完了", "ok");
     return data;
   } catch (e) {
     clearTimeout(timeoutId);
-    if (_activeRequests > 0) _activeRequests--;
+    _activeRequests = Math.max(0, _activeRequests - 1);
     if (_activeRequests === 0) setStatus("エラー", "err");
     throw e;
   }
@@ -40,7 +61,11 @@ async function parseJsonOrTextResponse(res) {
   if (!text) return {};
 
   const contentType = res.headers.get("content-type") || "";
-  if (!contentType.includes("application/json") && !text.trim().startsWith("{") && !text.trim().startsWith("[")) {
+  if (
+    !contentType.includes("application/json") &&
+    !text.trim().startsWith("{") &&
+    !text.trim().startsWith("[")
+  ) {
     return { message: text };
   }
 
@@ -58,14 +83,47 @@ function assetUrl(path) {
 }
 
 function extractImages(data) {
-  const resultObject =
-    data?.aiRecord?.aiRecordDetail?.resultObject || data?.resultObject || data?.result;
-  const rawImages = resultObject?.images || data?.images || [];
-  const arr = Array.isArray(rawImages) ? rawImages : [rawImages].filter(Boolean);
+  // 1min.ai: resultObject is a string[] of URLs (most providers), but some
+  // Google/Flow providers wrap them in { images: [...] } or { output: [...] }.
+  const candidates = [
+    data?.aiRecord?.aiRecordDetail?.resultObject,
+    data?.aiRecord?.resultObject,
+    data?.resultObject,
+    data?.result,
+  ];
+  let raw = null;
+  for (const c of candidates) {
+    if (c == null) continue;
+    if (typeof c === "string" || Array.isArray(c)) {
+      raw = c;
+      break;
+    }
+    if (c && typeof c === "object") {
+      if (Array.isArray(c.images)) {
+        raw = c.images;
+        break;
+      }
+      if (Array.isArray(c.output)) {
+        raw = c.output;
+        break;
+      }
+      if (Array.isArray(c.urls)) {
+        raw = c.urls;
+        break;
+      }
+    }
+  }
+  if (raw == null && Array.isArray(data?.images)) raw = data.images;
+
+  const arr = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+
   return arr
     .map((x) => {
       if (typeof x === "string") return x;
-      return x?.url || x?.path || x?.key || JSON.stringify(x);
+      if (x && typeof x === "object") {
+        return x.url || x.path || x.key || x.location || null;
+      }
+      return null;
     })
     .filter(Boolean);
 }

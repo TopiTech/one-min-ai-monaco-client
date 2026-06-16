@@ -70,16 +70,20 @@ const DANGEROUS_PATTERNS = [
   /nc\s+-l/i,
   /curl\s+-X\s*POST\s*.*localhost/i,
   // Additional script execution patterns (node -e, python -c, etc.)
-  /(?:^|\s)node\s+-(e|p)\s*/i,
-  /(?:^|\s)python(?:3)?\s+-c\s*/i,
-  /(?:^|\s)perl\s+-e\s*/i,
-  /(?:^|\s)ruby\s+-e\s*/i,
-  /(?:^|\s)php\s+-r\s*/i,
+  /(?:^|\s)node\s+-{1,2}(e|p|eval|print|require|input-type|experimental|inspect|loader|conditions)(?:[\s=]|$)/i,
+  /(?:^|\s)python(?:3)?\s+-(c|m|command|module)\b/i,
+  /(?:^|\s)perl\s+-(e|M)\b/i,
+  /(?:^|\s)ruby\s+-(e|r)\b/i,
+  /(?:^|\s)php\s+-(r|f)\b/i,
+  /(?:^|\s)bash\s+-(c|l)\b/i,
+  /(?:^|\s)sh\s+-(c|l)\b/i,
+  /(?:^|\s)cmd\.exe\s+\/c\b/i,
+  /(?:^|\s)powershell(?:\.exe)?\s+-(c|enc|Command|EncodedCommand|File)\b/i,
 ];
 
 // B-3/B-4: Shell metacharacters that enable injection attacks.
 // These must be blocked regardless of the command prefix allowlist.
-const SHELL_INJECTION_PATTERN = /[\n\r;|`<>]|&&|\|\||\$\(|\$\{|%(?:0[aAdD]|\d{2})/;
+const SHELL_INJECTION_PATTERN = /[\n\r;|`<>&]|&&|\|\||\$\(|\$\{|%(?:0[aAdD]|\d{2})/;
 
 function normalizeCommandName(commandName) {
   if (!commandName) return "";

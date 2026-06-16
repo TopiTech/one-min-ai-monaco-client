@@ -7,6 +7,8 @@ import path from 'path';
 jest.unstable_mockModule('../utils/api-client.js', () => ({
     callOneMin: jest.fn(),
     extractText: jest.fn((data) => data?.result || JSON.stringify(data)),
+    isFailedResponse: jest.fn(() => false),
+    extractFailureMessage: jest.fn(() => 'mocked failure'),
     normalizeAssetResponse: jest.fn((data) => ({ key: data?.asset?.key || '', url: '', raw: data })),
 }));
 

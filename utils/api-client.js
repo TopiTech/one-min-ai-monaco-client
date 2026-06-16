@@ -76,11 +76,10 @@ export async function callOneMin(
   { method = "POST", body, headers = {}, raw = false, signal } = {},
 ) {
   const apiKey = requireApiKey();
-  const maxRetries = serverConfig.apiRetryAttempts;
-  const retryDelay = serverConfig.apiRetryDelay;
+  const { apiRetryAttempts: maxRetries, apiRetryDelay: retryDelay } = serverConfig;
 
-  const makeRequest = async () => {
-    return fetchWithTimeout(`${API_BASE}${pathname}`, {
+  const makeRequest = () =>
+    fetchWithTimeout(`${API_BASE}${pathname}`, {
       method,
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -90,81 +89,52 @@ export async function callOneMin(
       body,
       signal,
     });
-  };
 
   let lastError = new Error(`All ${maxRetries + 1} retry attempts failed for ${pathname}`);
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       if (attempt > 0) {
-        // Add jitter to prevent thundering herd (up to 20% randomness)
         const jitter = 1 + (Math.random() * 0.2 - 0.1);
         const waitTime = Math.round(retryDelay * Math.pow(2, attempt - 1) * jitter);
-        logger.warn(
-          `Retry attempt ${attempt}/${maxRetries} for ${pathname} after ${waitTime}ms (jitter applied)`,
-        );
+        logger.warn(`Retry ${attempt}/${maxRetries} for ${pathname} after ${waitTime}ms`);
         await delay(waitTime);
       }
 
       const response = await makeRequest();
 
-      if (response.status === 422) {
-        // Do not retry 422
-        const payload = await response.json().catch(() => ({}));
-        const err = new Error(`1min.ai request failed: 422`);
-        err.status = 422;
-        err.payload = payload;
-        throw err;
-      }
-
       if (response.status === 429 && attempt < maxRetries) {
         const retryAfter = response.headers.get("Retry-After");
-        const jitter = 1 + (Math.random() * 0.2 - 0.1);
-        let waitTime = Math.round(retryDelay * Math.pow(2, attempt) * jitter);
-        if (retryAfter) {
-          const parsed = parseInt(retryAfter, 10);
-          if (!isNaN(parsed) && parsed > 0) {
-            waitTime = Math.min(parsed * 1000 + Math.random() * 1000, 60_000);
-          }
-        }
+        const waitTime = retryAfter
+          ? Math.min(parseInt(retryAfter, 10) * 1000 + 1000, 60000)
+          : Math.round(retryDelay * Math.pow(2, attempt) * (1 + (Math.random() * 0.2 - 0.1)));
         logger.warn(`Rate limited (429) on ${pathname}. Retrying in ${waitTime}ms...`);
         await delay(waitTime);
         continue;
       }
 
-      const contentType = response.headers.get("content-type") || "";
-      if (raw) return response;
-
-      let payload;
-      if (contentType.includes("application/json")) {
-        payload = await response.json();
-      } else {
-        payload = { text: await response.text() };
-      }
-
       if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
         const err = new Error(`1min.ai request failed: ${response.status}`);
         err.status = response.status;
         err.payload = payload;
         throw err;
       }
 
-      logger.debug(`API call successful: ${pathname}`, { status: response.status });
-      return payload;
+      if (raw) return response;
+      const contentType = response.headers.get("content-type") || "";
+      return contentType.includes("application/json")
+        ? response.json()
+        : { text: await response.text() };
     } catch (error) {
       lastError = error;
-
-      if (error.status >= 400 && error.status < 500 && error.status !== 429) {
+      if (error.status && error.status >= 400 && error.status < 500 && error.status !== 429)
         throw error;
-      }
-
-      if (attempt < maxRetries) {
+      if (attempt < maxRetries)
         logger.warn(`Request failed for ${pathname}, will retry: ${error.message}`);
-      }
     }
   }
 
-  logger.error(`All retry attempts failed for ${pathname}`, { error: lastError.message });
   throw lastError;
 }
 
@@ -193,6 +163,30 @@ function firstTextCandidate(data) {
  */
 export function extractText(data) {
   return firstTextCandidate(data) ?? JSON.stringify(data, null, 2);
+}
+
+/**
+ * Returns true if the 1min.ai response indicates a logical failure
+ * (e.g. status: "FAILED"). The upstream may still return 200 OK with
+ * a payload describing the failure.
+ */
+export function isFailedResponse(data) {
+  if (!data || typeof data !== "object") return false;
+  const status = data?.aiRecord?.status ?? data?.status ?? data?.aiRecordDetail?.status;
+  if (!status) return false;
+  return String(status).toUpperCase() !== "SUCCESS" && String(status).toUpperCase() !== "COMPLETED";
+}
+
+export function extractFailureMessage(data) {
+  if (!data || typeof data !== "object") return "Upstream returned a failure status";
+  return (
+    data?.aiRecord?.aiRecordDetail?.errorMessage ||
+    data?.aiRecord?.errorMessage ||
+    data?.error?.message ||
+    data?.error ||
+    data?.message ||
+    "Upstream returned a failure status"
+  );
 }
 
 /**

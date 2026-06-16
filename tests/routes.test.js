@@ -10,6 +10,8 @@ jest.unstable_mockModule('../utils/api-client.js', () => ({
     if (data.aiRecord?.aiRecordDetail?.resultObject) return data.aiRecord.aiRecordDetail.resultObject;
     return JSON.stringify(data);
   }),
+  isFailedResponse: jest.fn(() => false),
+  extractFailureMessage: jest.fn(() => 'mocked failure'),
   normalizeAssetResponse: jest.fn((data) => {
     const key = data?.asset?.key || '';
     return { key, url: key ? `https://asset.1min.ai/${key}` : '' };

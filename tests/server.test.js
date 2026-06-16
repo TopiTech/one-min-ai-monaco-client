@@ -10,6 +10,8 @@ import request from "supertest";
 jest.unstable_mockModule("../utils/api-client.js", () => ({
   callOneMin: jest.fn(),
   extractText: jest.fn((data) => data?.result || JSON.stringify(data)),
+  isFailedResponse: jest.fn(() => false),
+  extractFailureMessage: jest.fn(() => "mocked failure"),
   normalizeAssetResponse: jest.fn((data) => ({ key: data?.asset?.key || "", url: "", raw: data })),
 }));
 
@@ -82,9 +84,9 @@ describe("Server Factory", () => {
       expect(response.body.error).toBe("Local BFF authentication required or invalid token");
     });
 
-    test("should accept valid local auth token for AI routes", async () => {
+    test("should accept valid local auth token + same-origin cookie + matching origin", async () => {
       const { callOneMin } = await import("../utils/api-client.js");
-      callOneMin.mockResolvedValue({ result: "ok" });
+      callOneMin.mockResolvedValue({ aiRecord: { status: "SUCCESS" }, result: "ok" });
 
       const protectedApp = createApp({
         requireLocalAuth: true,
@@ -95,12 +97,15 @@ describe("Server Factory", () => {
       const response = await request(protectedApp)
         .post("/api/chat")
         .set("x-local-bff-token", "secret-token")
+        .set("Cookie", "__bff_session=secret-token")
+        .set("host", "127.0.0.1")
+        .set("origin", "http://127.0.0.1")
         .send({ prompt: "test" });
 
       expect(response.status).toBe(200);
     });
 
-    test("should accept valid local auth token", async () => {
+    test("should accept valid local auth token with full credentials", async () => {
       const protectedApp = createApp({
         requireLocalAuth: true,
         authToken: "secret-token",
@@ -109,13 +114,16 @@ describe("Server Factory", () => {
 
       const response = await request(protectedApp)
         .get("/api/fs/config")
-        .set("x-local-bff-token", "secret-token");
+        .set("x-local-bff-token", "secret-token")
+        .set("Cookie", "__bff_session=secret-token")
+        .set("host", "127.0.0.1")
+        .set("origin", "http://127.0.0.1");
 
       expect(response.status).toBe(200);
       expect(response.body.allowedRoots).toBeDefined();
     });
 
-    test("should accept same-origin browser request marker", async () => {
+    test("should reject requests with only sec-fetch-site and no token", async () => {
       const protectedApp = createApp({
         requireLocalAuth: true,
         authToken: "secret-token",
@@ -129,7 +137,7 @@ describe("Server Factory", () => {
       expect(response.status).toBe(403);
     });
 
-    test("should reject non-local Origin without token", async () => {
+    test("should reject requests with a non-local Origin", async () => {
       const protectedApp = createApp({
         requireLocalAuth: true,
         authToken: "secret-token",
@@ -138,23 +146,33 @@ describe("Server Factory", () => {
 
       const response = await request(protectedApp)
         .get("/api/fs/config")
+        .set("x-local-bff-token", "secret-token")
+        .set("Cookie", "__bff_session=secret-token")
         .set("origin", "https://evil.example");
 
       expect(response.status).toBe(403);
     });
 
-    test("should accept trusted local Origin", async () => {
+    test("should accept trusted local Origin + token + same-origin cookie", async () => {
       const protectedApp = createApp({
         requireLocalAuth: true,
         authToken: "secret-token",
         enableRateLimit: false,
       });
 
-      const response = await request(protectedApp)
-        .get("/api/fs/config")
-        .set("origin", "http://localhost:3000");
+      const response = await protectedApp.request
+        ? await request(protectedApp)
+            .get("/api/fs/config")
+            .set("x-local-bff-token", "secret-token")
+            .set("Cookie", "__bff_session=secret-token")
+            .set("host", "127.0.0.1")
+            .set("origin", "http://127.0.0.1")
+        : await request(protectedApp)
+            .get("/api/fs/config")
+            .set("x-local-bff-token", "secret-token")
+            .set("Cookie", "__bff_session=secret-token");
 
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(200);
     });
   });
 

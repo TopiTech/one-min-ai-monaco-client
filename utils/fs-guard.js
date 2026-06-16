@@ -242,6 +242,47 @@ export function assertNotWriteProtectedPath(resolvedPath) {
 }
 
 /**
+ * Re-validates an existing real path by following symlinks at the time
+ * of the call. This is intended to be used between fs.stat and fs.readFile
+ * to mitigate TOCTOU symlink swap attacks. Returns the real path if valid;
+ * throws otherwise.
+ */
+export function revalidateRealPath(resolvedPath) {
+  let real;
+  try {
+    real = fs.realpathSync(resolvedPath);
+  } catch (err) {
+    const e = new Error(`Path not found: ${resolvedPath}`);
+    e.status = 404;
+    e.cause = err;
+    throw e;
+  }
+  // Re-run the allowed-roots check on the freshly resolved real path.
+  const allowedRoots = getAllowedRoots();
+  const realRoots = allowedRoots.map((root) => {
+    try {
+      return fs.realpathSync(root);
+    } catch {
+      return root;
+    }
+  });
+  const normalizedReal = process.platform === "win32" ? real.toLowerCase() : real;
+  const isAllowed = realRoots.some((root) => {
+    const normalizedRoot = process.platform === "win32" ? root.toLowerCase() : root;
+    return (
+      normalizedReal === normalizedRoot ||
+      normalizedReal.startsWith(normalizedRoot + path.sep)
+    );
+  });
+  if (!isAllowed) {
+    const err = new Error("Access denied: Path is outside the allowed directories");
+    err.status = 403;
+    throw err;
+  }
+  return real;
+}
+
+/**
  * Returns the default workspace root.
  */
 export function getDefaultRoot() {

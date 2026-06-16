@@ -20,15 +20,25 @@ export function validateBufferMimeType(buffer, declaredMimeType) {
 
   const mime = String(declaredMimeType).toLowerCase();
 
-  // Text types: Check for null bytes (binary marker) to prevent uploading executable binary as text
+  // Text types: Validate the buffer decodes as UTF-8 (or 7-bit ASCII)
+  // and contains no null bytes. This prevents uploading polyglot binaries
+  // (e.g. PDF/PE) disguised as text.
   if (
     mime.startsWith("text/") ||
     mime === "application/json" ||
     mime === "application/xml" ||
     mime === "application/javascript"
   ) {
-    // 0x00 is a null byte, which should not appear in typical text files
-    return !buffer.includes(0x00);
+    if (buffer.includes(0x00)) return false;
+    try {
+      const decoded = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+      // Reject control characters that are not whitespace (\t \n \r \f \v).
+      // eslint-disable-next-line no-control-regex
+      if (/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(decoded)) return false;
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   const hex = buffer.toString("hex", 0, 8).toUpperCase();

@@ -1,13 +1,37 @@
-import express from 'express';
-import fs from 'fs/promises';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import path from 'path';
-import { validatePath, PROJECT_ROOT, getAllowedRoots, getDefaultRoot, assertNotProtectedPath, assertNotWriteProtectedPath, isProtectedPathForListing } from '../utils/fs-guard.js';
+import express from "express";
+import fs from "fs/promises";
+import { exec } from "child_process";
+import { promisify } from "util";
+import path from "path";
+import {
+  validatePath,
+  PROJECT_ROOT,
+  getAllowedRoots,
+  getDefaultRoot,
+  assertNotProtectedPath,
+  assertNotWriteProtectedPath,
+  isProtectedPathForListing,
+} from "../utils/fs-guard.js";
 
 const MAX_READ_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_LIST_ENTRIES = 5000;
-const BINARY_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.pdf', '.zip', '.tar', '.gz', '.mp4', '.exe', '.dll', '.bin', '.db']);
+const BINARY_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".ico",
+  ".pdf",
+  ".zip",
+  ".tar",
+  ".gz",
+  ".mp4",
+  ".exe",
+  ".dll",
+  ".bin",
+  ".db",
+]);
 
 const router = express.Router();
 const execAsync = promisify(exec);
@@ -15,21 +39,22 @@ const execAsync = promisify(exec);
 /**
  * Get allowed roots from environment and resolve them.
  */
-router.get('/config', (_req, res) => {
+router.get("/config", (_req, res) => {
   const allowedRoots = getAllowedRoots();
   const defaultRoot = getDefaultRoot();
   res.json({
     root: PROJECT_ROOT,
     defaultRoot,
     allowedRoots,
-    enableCommandExecution: String(process.env.ENABLE_COMMAND_EXECUTION || 'false').toLowerCase() === 'true',
+    enableCommandExecution:
+      String(process.env.ENABLE_COMMAND_EXECUTION || "false").toLowerCase() === "true",
   });
 });
 
 /**
  * Get list of allowed root directories.
  */
-router.get('/roots', (_req, res) => {
+router.get("/roots", (_req, res) => {
   const allowedRoots = getAllowedRoots();
   res.json({ roots: allowedRoots });
 });
@@ -37,42 +62,70 @@ router.get('/roots', (_req, res) => {
 /**
  * Get available drives on Windows.
  */
-router.get('/drives', async (_req, res) => {
+router.get("/drives", async (_req, res) => {
   const drives = [];
 
-  if (process.platform === 'win32') {
-    let usedPowershell = false;
-    if (String(process.env.ENABLE_COMMAND_EXECUTION || 'false').toLowerCase() === 'true') {
+  if (process.platform === "win32") {
+    let success = false;
+    // Method 1: PowerShell (Modern, reliable if not blocked)
+    if (String(process.env.ENABLE_COMMAND_EXECUTION || "false").toLowerCase() === "true") {
       try {
-        // Use powershell to get logical drives
-        const { stdout } = await execAsync('powershell -NoProfile -Command "Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Name"', { timeout: 5000 });
-        const lines = stdout.split('\n').map(l => l.trim()).filter(l => l);
+        const { stdout } = await execAsync(
+          'powershell -NoProfile -Command "[System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady } | Select-Object -ExpandProperty Name"',
+          { timeout: 3000 },
+        );
+        const lines = stdout
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l);
         for (const line of lines) {
-          const driveLetter = line.replace(':', '').trim();
-          if (driveLetter) {
-            drives.push({
-              name: driveLetter + ':',
-              path: driveLetter + ':\\',
-              type: 'local'
-            });
-          }
+          const driveRoot = line.endsWith("\\") ? line : line + "\\";
+          drives.push({
+            name: line.replace("\\", ""),
+            path: driveRoot,
+            type: "local",
+          });
         }
-        usedPowershell = true;
+        success = drives.length > 0;
       } catch {
-        // Fallback to common drives below
+        // Fallback to next method
       }
     }
-    
-    if (!usedPowershell) {
-      // Fallback: check common drive letters
-      const commonDrives = ['C:', 'D:', 'E:', 'F:', 'G:'];
+
+    // Method 2: wmic (Legacy but often available)
+    if (
+      !success &&
+      String(process.env.ENABLE_COMMAND_EXECUTION || "false").toLowerCase() === "true"
+    ) {
+      try {
+        const { stdout } = await execAsync("wmic logicaldisk get name", { timeout: 3000 });
+        const lines = stdout
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l && l !== "Name");
+        for (const line of lines) {
+          drives.push({
+            name: line,
+            path: line + "\\",
+            type: "local",
+          });
+        }
+        success = drives.length > 0;
+      } catch {
+        // Fallback to manual check
+      }
+    }
+
+    // Method 3: Fallback manual check of common drive letters
+    if (!success) {
+      const commonDrives = ["C:", "D:", "E:", "F:", "G:", "H:", "I:", "Z:"];
       for (const drive of commonDrives) {
         try {
-          await fs.access(drive + '\\');
+          await fs.access(drive + "\\");
           drives.push({
             name: drive,
-            path: drive + '\\',
-            type: 'local'
+            path: drive + "\\",
+            type: "local",
           });
         } catch {
           // Drive not accessible
@@ -81,10 +134,10 @@ router.get('/drives', async (_req, res) => {
     }
   } else {
     // Unix-like: return root and home
-    drives.push({ name: '/', path: '/', type: 'root' });
+    drives.push({ name: "/", path: "/", type: "root" });
     const homeDir = process.env.HOME || process.env.USERPROFILE;
     if (homeDir) {
-      drives.push({ name: 'Home', path: homeDir, type: 'home' });
+      drives.push({ name: "Home", path: homeDir, type: "home" });
     }
   }
 
@@ -95,23 +148,25 @@ router.get('/drives', async (_req, res) => {
  * Select a workspace directory.
  * Validates that the directory exists and is within allowed roots.
  */
-router.post('/workspace/select', async (req, res, next) => {
-   try {
-     const { dir } = req.body;
-     if (!dir) {
-       return res.status(400).json({ error: 'dir is required' });
-     }
+router.post("/workspace/select", async (req, res, next) => {
+  try {
+    const { dir } = req.body;
+    if (!dir) {
+      return res.status(400).json({ error: "dir is required" });
+    }
 
-     const resolvedDir = validatePath(dir);
-     if (isProtectedPathForListing(resolvedDir)) {
-       const relativePath = path.relative(PROJECT_ROOT, resolvedDir).replace(/\\/g, "/");
-       return res.status(403).json({ error: `Access denied: Cannot select protected path: ${relativePath}` });
-     }
+    const resolvedDir = validatePath(dir);
+    if (isProtectedPathForListing(resolvedDir)) {
+      const relativePath = path.relative(PROJECT_ROOT, resolvedDir).replace(/\\/g, "/");
+      return res
+        .status(403)
+        .json({ error: `Access denied: Cannot select protected path: ${relativePath}` });
+    }
 
-     const stat = await fs.stat(resolvedDir);
+    const stat = await fs.stat(resolvedDir);
 
     if (!stat.isDirectory()) {
-      return res.status(400).json({ error: 'Specified path is not a directory' });
+      return res.status(400).json({ error: "Specified path is not a directory" });
     }
 
     res.json({
@@ -127,37 +182,37 @@ router.post('/workspace/select', async (req, res, next) => {
 /**
  * List directory contents.
  */
-router.get('/list', async (req, res, next) => {
-   try {
-     const dirPath = req.query.dir ? validatePath(String(req.query.dir)) : getDefaultRoot();
-     if (isProtectedPathForListing(dirPath)) {
-       return res.status(403).json({ error: "Access denied: Path is protected" });
-     }
-     const dir = await fs.opendir(dirPath);
+router.get("/list", async (req, res, next) => {
+  try {
+    const dirPath = req.query.dir ? validatePath(String(req.query.dir)) : getDefaultRoot();
+    if (isProtectedPathForListing(dirPath)) {
+      return res.status(403).json({ error: "Access denied: Path is protected" });
+    }
+    const dir = await fs.opendir(dirPath);
 
     const items = [];
     let entry;
     let truncated = false;
 
     try {
-       while ((entry = await dir.read()) !== null) {
-         const fullPath = path.join(dirPath, entry.name);
-         if (isProtectedPathForListing(fullPath)) {
-           continue;
-         }
-         items.push({
-           name: entry.name,
-           path: fullPath,
-           isDirectory: entry.isDirectory()
-         });
-         if (items.length >= MAX_LIST_ENTRIES) {
-           const nextEntry = await dir.read();
-           if (nextEntry !== null) {
-             truncated = true;
-           }
-           break;
-         }
-       }
+      while ((entry = await dir.read()) !== null) {
+        const fullPath = path.join(dirPath, entry.name);
+        if (isProtectedPathForListing(fullPath)) {
+          continue;
+        }
+        items.push({
+          name: entry.name,
+          path: fullPath,
+          isDirectory: entry.isDirectory(),
+        });
+        if (items.length >= MAX_LIST_ENTRIES) {
+          const nextEntry = await dir.read();
+          if (nextEntry !== null) {
+            truncated = true;
+          }
+          break;
+        }
+      }
     } finally {
       await dir.close();
     }
@@ -177,27 +232,31 @@ router.get('/list', async (req, res, next) => {
 /**
  * Read file contents.
  */
-router.get('/read', async (req, res, next) => {
+router.get("/read", async (req, res, next) => {
   try {
     const filePath = req.query.path;
-    if (!filePath) return res.status(400).json({ error: 'path is required' });
+    if (!filePath) return res.status(400).json({ error: "path is required" });
     const resolvedPath = validatePath(String(filePath));
     assertNotProtectedPath(resolvedPath);
 
     const stat = await fs.stat(resolvedPath);
     if (stat.isDirectory()) {
-      return res.status(400).json({ error: 'Specified path is a directory' });
+      return res.status(400).json({ error: "Specified path is a directory" });
     }
     if (stat.size > MAX_READ_SIZE) {
-      return res.status(413).json({ error: `File size (${stat.size} bytes) exceeds maximum read size (${MAX_READ_SIZE} bytes)` });
+      return res
+        .status(413)
+        .json({
+          error: `File size (${stat.size} bytes) exceeds maximum read size (${MAX_READ_SIZE} bytes)`,
+        });
     }
 
     const ext = path.extname(resolvedPath).toLowerCase();
     if (BINARY_EXTENSIONS.has(ext)) {
-      return res.status(400).json({ error: 'Cannot read binary files as text in the editor.' });
+      return res.status(400).json({ error: "Cannot read binary files as text in the editor." });
     }
 
-    const content = await fs.readFile(resolvedPath, 'utf-8');
+    const content = await fs.readFile(resolvedPath, "utf-8");
     res.json({ path: resolvedPath, content });
   } catch (err) {
     next(err);
@@ -207,11 +266,11 @@ router.get('/read', async (req, res, next) => {
 /**
  * Write file contents.
  */
-router.post('/write', async (req, res, next) => {
+router.post("/write", async (req, res, next) => {
   try {
     const { path: filePath, content } = req.body;
-    if (!filePath) return res.status(400).json({ error: 'path is required' });
-    if (content === undefined) return res.status(400).json({ error: 'content is required' });
+    if (!filePath) return res.status(400).json({ error: "path is required" });
+    if (content === undefined) return res.status(400).json({ error: "content is required" });
 
     const resolvedPath = validatePath(String(filePath));
     assertNotWriteProtectedPath(resolvedPath);
@@ -219,7 +278,7 @@ router.post('/write', async (req, res, next) => {
     const dir = path.dirname(resolvedPath);
     await fs.mkdir(dir, { recursive: true });
 
-    await fs.writeFile(resolvedPath, content, 'utf-8');
+    await fs.writeFile(resolvedPath, content, "utf-8");
     res.json({ ok: true, path: resolvedPath });
   } catch (err) {
     next(err);
@@ -229,20 +288,20 @@ router.post('/write', async (req, res, next) => {
 /**
  * Create a new file or directory.
  */
-router.post('/create', async (req, res, next) => {
+router.post("/create", async (req, res, next) => {
   try {
-    const { path: targetPath, type = 'file', content = '' } = req.body;
-    if (!targetPath) return res.status(400).json({ error: 'path is required' });
+    const { path: targetPath, type = "file", content = "" } = req.body;
+    if (!targetPath) return res.status(400).json({ error: "path is required" });
 
     const resolvedPath = validatePath(String(targetPath));
     assertNotWriteProtectedPath(resolvedPath);
 
-    if (type === 'directory') {
+    if (type === "directory") {
       await fs.mkdir(resolvedPath, { recursive: true });
     } else {
       const dir = path.dirname(resolvedPath);
       await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(resolvedPath, content, 'utf-8');
+      await fs.writeFile(resolvedPath, content, "utf-8");
     }
 
     res.json({ ok: true, path: resolvedPath, type });
@@ -254,10 +313,10 @@ router.post('/create', async (req, res, next) => {
 /**
  * Delete a file or directory.
  */
-router.post('/delete', async (req, res, next) => {
+router.post("/delete", async (req, res, next) => {
   try {
     const { path: targetPath } = req.body;
-    if (!targetPath) return res.status(400).json({ error: 'path is required' });
+    if (!targetPath) return res.status(400).json({ error: "path is required" });
 
     const resolvedPath = validatePath(String(targetPath));
     assertNotWriteProtectedPath(resolvedPath);
@@ -278,11 +337,11 @@ router.post('/delete', async (req, res, next) => {
 /**
  * Rename/move a file or directory.
  */
-router.post('/rename', async (req, res, next) => {
+router.post("/rename", async (req, res, next) => {
   try {
     const { oldPath, newPath } = req.body;
     if (!oldPath || !newPath) {
-      return res.status(400).json({ error: 'oldPath and newPath are required' });
+      return res.status(400).json({ error: "oldPath and newPath are required" });
     }
 
     const resolvedOld = validatePath(String(oldPath));

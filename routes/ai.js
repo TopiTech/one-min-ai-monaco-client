@@ -1,5 +1,10 @@
 import express from "express";
-import { callOneMin, extractText } from "../utils/api-client.js";
+import {
+  callOneMin,
+  extractText,
+  isFailedResponse,
+  extractFailureMessage,
+} from "../utils/api-client.js";
 import { chatModels, codeModels, imageModels } from "../config/models.js";
 import { parseWebSearchParams, buildCodePayload } from "../utils/web-search.js";
 import logger from "../utils/logger.js";
@@ -13,6 +18,48 @@ function getDefaultModel(type) {
   if (type === "IMAGE_GENERATOR") return serverConfig.defaultImageModel;
   if (type === "IMAGE_EDITOR") return serverConfig.defaultImageEditorModel;
   return serverConfig.defaultChatModel;
+}
+
+function validateAttachments(attachments) {
+  if (attachments == null) return undefined;
+  if (typeof attachments !== "object" || Array.isArray(attachments)) {
+    const err = new Error("attachments must be an object");
+    err.status = 400;
+    throw err;
+  }
+  const out = {};
+  if (attachments.images !== undefined) {
+    if (
+      !Array.isArray(attachments.images) ||
+      attachments.images.some((x) => typeof x !== "string")
+    ) {
+      const err = new Error("attachments.images must be an array of strings");
+      err.status = 400;
+      throw err;
+    }
+    if (attachments.images.length > 16) {
+      const err = new Error("attachments.images exceeds 16 entries");
+      err.status = 400;
+      throw err;
+    }
+    const cleaned = attachments.images.map((x) => x.slice(0, 1024)).filter(Boolean);
+    if (cleaned.length) out.images = cleaned;
+  }
+  if (attachments.files !== undefined) {
+    if (!Array.isArray(attachments.files) || attachments.files.some((x) => typeof x !== "string")) {
+      const err = new Error("attachments.files must be an array of strings");
+      err.status = 400;
+      throw err;
+    }
+    if (attachments.files.length > 16) {
+      const err = new Error("attachments.files exceeds 16 entries");
+      err.status = 400;
+      throw err;
+    }
+    const cleaned = attachments.files.map((x) => x.slice(0, 1024)).filter(Boolean);
+    if (cleaned.length) out.files = cleaned;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 function buildChatPayload({
@@ -48,6 +95,7 @@ function buildChatPayload({
       ...(conversationId ? { conversationId } : {}),
       ...(attachments ? { attachments } : {}),
     },
+    // attachments is intentionally NOT included at top level (it must be nested in promptObject)
     ...(brandVoiceId ? { brandVoiceId } : {}),
   };
 }
@@ -75,11 +123,18 @@ router.post("/chat", async (req, res, next) => {
     if (!prompt || !String(prompt).trim())
       return res.status(400).json({ error: "prompt is required" });
 
+    let safeAttachments;
+    try {
+      safeAttachments = validateAttachments(attachments);
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
+    }
+
     const payload = buildChatPayload({
       prompt,
       model,
       conversationId,
-      attachments,
+      attachments: safeAttachments,
       webSearch,
       numOfSite,
       maxWord,
@@ -93,6 +148,12 @@ router.post("/chat", async (req, res, next) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    if (isFailedResponse(data)) {
+      const err = new Error(`1min.ai chat failed: ${extractFailureMessage(data)}`);
+      err.status = 502;
+      err.payload = data;
+      throw err;
+    }
     res.json(data);
   } catch (err) {
     next(err);
@@ -117,11 +178,18 @@ router.post("/chat/stream", async (req, res, next) => {
     if (!prompt || !String(prompt).trim())
       return res.status(400).json({ error: "prompt is required" });
 
+    let safeAttachments;
+    try {
+      safeAttachments = validateAttachments(attachments);
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
+    }
+
     const payload = buildChatPayload({
       prompt,
       model,
       conversationId,
-      attachments,
+      attachments: safeAttachments,
       webSearch,
       numOfSite,
       maxWord,
@@ -146,6 +214,20 @@ router.post("/chat/stream", async (req, res, next) => {
       signal: controller.signal,
     });
 
+    if (response.headers.get("content-type")?.includes("application/json")) {
+      // Non-streaming fallback (server didn't honor isStreaming). Inspect status.
+      const data = await response
+        .clone()
+        .json()
+        .catch(() => null);
+      if (isFailedResponse(data)) {
+        const err = new Error(`1min.ai chat failed: ${extractFailureMessage(data)}`);
+        err.status = 502;
+        err.payload = data;
+        throw err;
+      }
+    }
+
     if (!response.ok) {
       const errorText = await response.text();
       const isDev = process.env.NODE_ENV === "development";
@@ -162,11 +244,12 @@ router.post("/chat/stream", async (req, res, next) => {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    // B-1: Shortened heartbeat interval (15s) for better proxy compatibility
     const heartbeatInterval = setInterval(() => {
       if (!res.writableEnded) {
         res.write(":\n\n");
       }
-    }, 30_000);
+    }, 15_000);
 
     try {
       while (true) {
@@ -270,6 +353,14 @@ router.post("/images/generate", async (req, res, next) => {
         promptObject.output_compression = Number(output_compression);
       }
     } else {
+      // Reject gpt-image-only parameters for non-gpt-image models to avoid
+      // silent 422 from the upstream API.
+      if (quality !== "medium" || background !== "auto" || output_compression !== undefined) {
+        return res.status(400).json({
+          error:
+            "quality, background, and output_compression are only supported by gpt-image-* models",
+        });
+      }
       promptObject.num_outputs = Number(num_outputs) || 1;
       promptObject.aspect_ratio = aspect_ratio;
       promptObject.output_format = output_format;
@@ -284,6 +375,12 @@ router.post("/images/generate", async (req, res, next) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    if (isFailedResponse(data)) {
+      const err = new Error(`1min.ai image generation failed: ${extractFailureMessage(data)}`);
+      err.status = 502;
+      err.payload = data;
+      throw err;
+    }
     res.json(data);
   } catch (err) {
     next(err);
@@ -358,6 +455,12 @@ router.post("/images/text-editor", async (req, res, next) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    if (isFailedResponse(data)) {
+      const err = new Error(`1min.ai image edit failed: ${extractFailureMessage(data)}`);
+      err.status = 502;
+      err.payload = data;
+      throw err;
+    }
     res.json(data);
   } catch (err) {
     next(err);
@@ -375,8 +478,8 @@ const MAX_PROMPT_LENGTH = 50_000;
 function sanitizeForPrompt(value, maxLen = 256) {
   if (typeof value !== "string") return "";
   return value
-    .replace(/[\x00-\x1f\x7f]/g, "")  // strip control characters
-    .replace(/`{3}/g, "'''")            // neutralize markdown code fence markers
+    .replace(/[\x00-\x1f\x7f]/g, "") // strip control characters
+    .replace(/`{3}/g, "'''") // neutralize markdown code fence markers
     .slice(0, maxLen);
 }
 
@@ -424,6 +527,12 @@ router.post("/code/generate", async (req, res, next) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    if (isFailedResponse(data)) {
+      const err = new Error(`1min.ai code generate failed: ${extractFailureMessage(data)}`);
+      err.status = 502;
+      err.payload = data;
+      throw err;
+    }
     res.json(data);
   } catch (err) {
     next(err);
@@ -497,6 +606,12 @@ ${afterCode}
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    if (isFailedResponse(data)) {
+      const err = new Error(`1min.ai code autocomplete failed: ${extractFailureMessage(data)}`);
+      err.status = 502;
+      err.payload = data;
+      throw err;
+    }
 
     let suggestion = extractText(data);
     suggestion = stripCodeFences(suggestion);
@@ -577,6 +692,12 @@ ${afterCode}
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    if (isFailedResponse(data)) {
+      const err = new Error(`1min.ai inline chat failed: ${extractFailureMessage(data)}`);
+      err.status = 502;
+      err.payload = data;
+      throw err;
+    }
 
     let codeResult = extractText(data);
     codeResult = stripCodeFences(codeResult);
@@ -611,6 +732,12 @@ router.post("/agent/chat", async (req, res, next) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    if (isFailedResponse(data)) {
+      const err = new Error(`1min.ai agent chat failed: ${extractFailureMessage(data)}`);
+      err.status = 502;
+      err.payload = data;
+      throw err;
+    }
     const text = extractText(data);
     res.json({ text, raw: data });
   } catch (err) {
