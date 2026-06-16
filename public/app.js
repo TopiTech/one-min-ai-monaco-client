@@ -2230,6 +2230,11 @@ async function runAgentLoop(initialInstruction) {
 各ターンは必ず以下の形式だけを出力してください。Markdownコードブロック、JSON、自由形式の説明文は禁止です。
 <thought>...</thought><call_tool name="tool名"><parameter name="パラメータ名">値</parameter></call_tool>
 
+1. read_file
+   - パラメータ: { "path": "ファイルパス" }
+   - 目的: 指定したファイルの内容を読み取る。ファイルを変更する前にすべて現在の内容を確認するために使用すること。
+   <call_tool name="read_file"><parameter name="path">utils/helper.js</parameter></call_tool>
+
 2. write_file
     - 【必須】このツールの <parameter> 値は XML テキストなので、& < > はそれぞれ &amp; &lt; &gt; に、完全なコードは省略せずにエスケープして出力してください。
    - パラメータ: { "path": "ファイルパス", "content": "完全なコード内容" }
