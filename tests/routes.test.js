@@ -109,14 +109,12 @@ describe('AI Routes Integration Tests', () => {
       expect(sentBody.promptObject).toEqual(
         expect.objectContaining({
           prompt: expect.stringContaining('ユーザー指示:'),
-          settings: expect.objectContaining({
-            webSearchSettings: expect.objectContaining({
-              webSearch: false,
-            }),
-          }),
+          webSearch: false,
         }),
       );
-      expect(sentBody.promptObject).not.toHaveProperty('webSearch');
+      // Per 1min.ai CODE_GENERATOR docs, webSearch/numOfSite/maxWord live
+      // directly on promptObject — there should be no `settings` wrapper.
+      expect(sentBody.promptObject).not.toHaveProperty('settings');
     });
 
     test('should return 400 if instruction is missing', async () => {

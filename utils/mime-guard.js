@@ -15,7 +15,9 @@ export function validateBufferMimeType(buffer, declaredMimeType) {
   }
 
   if (buffer.length === 0) {
-    return false; // Empty files are handled separately but signature-wise invalid
+    // Empty buffers are signature-valid for any declared type (no bytes to contradict it).
+    // Empty files are a legitimate use case (e.g. creating a new empty source file).
+    return Boolean(declaredMimeType);
   }
 
   const mime = String(declaredMimeType).toLowerCase();

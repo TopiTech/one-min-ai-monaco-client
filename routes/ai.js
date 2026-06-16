@@ -215,17 +215,15 @@ router.post("/chat/stream", async (req, res, next) => {
     });
 
     if (response.headers.get("content-type")?.includes("application/json")) {
-      // Non-streaming fallback (server didn't honor isStreaming). Inspect status.
-      const data = await response
-        .clone()
-        .json()
-        .catch(() => null);
+      // Non-streaming fallback (server didn't honor isStreaming).
+      const data = await response.json().catch(() => null);
       if (isFailedResponse(data)) {
         const err = new Error(`1min.ai chat failed: ${extractFailureMessage(data)}`);
         err.status = 502;
         err.payload = data;
         throw err;
       }
+      return res.json(data);
     }
 
     if (!response.ok) {
@@ -303,6 +301,14 @@ router.post("/conversations", async (req, res, next) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    if (isFailedResponse(data)) {
+      const err = new Error(
+        `1min.ai conversation creation failed: ${extractFailureMessage(data)}`,
+      );
+      err.status = 502;
+      err.payload = data;
+      throw err;
+    }
     res.json(data);
   } catch (err) {
     next(err);
@@ -472,15 +478,16 @@ const MAX_PROMPT_LENGTH = 50_000;
 
 /**
  * M-2: Sanitize a value before embedding it into an AI prompt.
- * Strips control characters and truncates to prevent prompt injection
- * via crafted fileName or language fields.
+ * Strips control characters (except HT/LF/CR needed for code formatting)
+ * and truncates to prevent prompt injection via crafted fileName or language fields.
  */
 function sanitizeForPrompt(value, maxLen = 256) {
   if (typeof value !== "string") return "";
   return value
-    .replace(/[\x00-\x1f\x7f]/g, "") // strip control characters
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "") // strip control chars, keep HT(\x09) LF(\x0a) CR(\x0d)
     .replace(/`{3}/g, "'''") // neutralize markdown code fence markers
-    .slice(0, maxLen);
+    .slice(0, maxLen)
+    .trim();
 }
 
 function stripCodeFences(text) {

@@ -78,14 +78,24 @@ export async function callOneMin(
   const apiKey = requireApiKey();
   const { apiRetryAttempts: maxRetries, apiRetryDelay: retryDelay } = serverConfig;
 
+  // 1min.ai documents both `API-KEY` (used in endpoint examples) and
+  // `Authorization: Bearer` (shown on the intro page). Send both so the
+  // client works regardless of which header the API chooses to enforce.
+  // Callers can still override via the `headers` argument.
+  const baseHeaders = {
+    "API-KEY": apiKey,
+    Authorization: `Bearer ${apiKey}`,
+  };
+  // Don't let caller-provided headers clobber our auth headers unless explicit
+  for (const k of Object.keys(headers)) {
+    if (k.toLowerCase() === "api-key" || k.toLowerCase() === "authorization") continue;
+    baseHeaders[k] = headers[k];
+  }
+
   const makeRequest = () =>
     fetchWithTimeout(`${API_BASE}${pathname}`, {
       method,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "API-KEY": apiKey,
-        ...headers,
-      },
+      headers: baseHeaders,
       body,
       signal,
     });
@@ -150,9 +160,13 @@ function firstTextCandidate(data) {
   ];
 
   for (const c of candidates) {
-    if (typeof c === "string") return c;
-    if (Array.isArray(c))
-      return c.map((x) => (typeof x === "string" ? x : JSON.stringify(x, null, 2))).join("\n");
+    if (typeof c === "string") return c || undefined;
+    if (Array.isArray(c)) {
+      const joined = c
+        .map((x) => (typeof x === "string" ? x : JSON.stringify(x, null, 2)))
+        .join("\n");
+      return joined || undefined;
+    }
     if (c && typeof c === "object") return JSON.stringify(c, null, 2);
   }
   return undefined;

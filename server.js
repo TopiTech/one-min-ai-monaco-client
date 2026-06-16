@@ -140,6 +140,49 @@ function localBffAuth({ requireToken = true, authToken } = {}) {
   };
 }
 
+function escapeHtmlAttr(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * Map multer/multer-like errors to proper HTTP status codes.
+ * - LIMIT_FILE_SIZE       -> 413 Payload Too Large
+ * - LIMIT_UNEXPECTED_FILE -> 400 Bad Request
+ * - LIMIT_FIELD_COUNT     -> 400 Bad Request
+ * - other 4xx             -> pass through
+ * - everything else       -> 500 (handled by global error handler)
+ */
+function mapMulterError(err) {
+  if (!err) return err;
+  const code = err.code;
+  if (code === "LIMIT_FILE_SIZE") {
+    const e = new Error(err.message || "File too large");
+    e.status = 413;
+    e.code = code;
+    e.field = err.field;
+    return e;
+  }
+  if (
+    code === "LIMIT_UNEXPECTED_FILE" ||
+    code === "LIMIT_FIELD_COUNT" ||
+    code === "LIMIT_FIELD_KEY" ||
+    code === "LIMIT_FIELD_VALUE" ||
+    code === "LIMIT_PART_COUNT" ||
+    code === "LIMIT_FILE_COUNT"
+  ) {
+    const e = new Error(err.message || "Invalid multipart payload");
+    e.status = 400;
+    e.code = code;
+    e.field = err.field;
+    return e;
+  }
+  return err;
+}
+
 function buildRateLimit(config) {
   return rateLimit({
     windowMs: 1 * 60 * 1000,
@@ -191,8 +234,8 @@ async function handleAssetUpload(req, res, next) {
   try {
     if (!req.file) return res.status(400).json({ error: "asset file is required" });
 
-    // Validate real mime type using magic bytes check
-    if (!validateBufferMimeType(req.file.buffer, req.file.mimetype)) {
+    // Validate real mime type using magic bytes check (empty files are permitted)
+    if (req.file.size > 0 && !validateBufferMimeType(req.file.buffer, req.file.mimetype)) {
       logger.warn("Asset upload rejected: MIME type signature mismatch", {
         filename: req.file.originalname,
         mimetype: req.file.mimetype,
@@ -275,15 +318,16 @@ export function createApp(options = {}) {
   );
 
   if (enableRateLimit) {
+    // Apply specific (higher) rate limits for high-frequency API endpoints first
+    // so they take precedence over the global default limit.
+    app.use("/api/chat", aiChatRateLimit);
+    app.use("/api/code", autocompleteRateLimit);
+    // Global default limit for all other routes (including non-API static)
     app.use(buildRateLimit());
   }
 
   app.use(logger.requestLogger());
   app.use(express.json({ limit: serverConfig.maxJsonBodySize }));
-
-  // Apply specific rate limits for high-frequency API endpoints
-  app.use("/api/chat", aiChatRateLimit);
-  app.use("/api/code", autocompleteRateLimit);
 
   app.get(["/", "/index.html"], (req, res) => {
     try {
@@ -305,7 +349,7 @@ export function createApp(options = {}) {
 
         const injected = html.replace(
           /<body(\s*[^>]*)>/i,
-          (match, attrs) => `<body${attrs} data-bff-token="${localAuthToken}">`,
+          (match, attrs) => `<body${attrs} data-bff-token="${escapeHtmlAttr(localAuthToken)}">`,
         );
         return res.send(injected);
       }
@@ -316,7 +360,7 @@ export function createApp(options = {}) {
     }
   });
 
-  app.use(express.static(path.join(__dirname, "public")));
+  app.use(express.static(path.join(__dirname, "public"), { index: false }));
 
   const protectedApiAuth = localBffAuth({
     requireToken: requireLocalAuth,
@@ -335,7 +379,7 @@ export function createApp(options = {}) {
     protectedApiAuth,
     (req, res, next) => {
       upload.single("asset")(req, res, (err) => {
-        if (err) return next(err);
+        if (err) return next(mapMulterError(err));
         handleAssetUpload(req, res, next);
       });
     },

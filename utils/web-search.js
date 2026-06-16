@@ -47,10 +47,9 @@ export function buildWebSearchSettings({ webSearch, parsedNumOfSite, parsedMaxWo
   };
 }
 
-
 /**
  * Builds a CODE_GENERATOR payload matching the 1min.ai API schema:
- * promptObject.prompt, promptObject.settings.webSearchSettings.
+ * promptObject.prompt + flat webSearch/numOfSite/maxWord on promptObject.
  * @param {object} opts
  * @param {string} opts.prompt - The prompt text.
  * @param {string} [opts.model] - The model to use.
@@ -66,13 +65,9 @@ export function buildCodePayload({ prompt, model, webSearch, parsedNumOfSite, pa
     conversationId: `CODE_GEN_${crypto.randomUUID()}`,
     promptObject: {
       prompt,
-      settings: {
-        webSearchSettings: {
-          webSearch: Boolean(webSearch),
-          ...(parsedNumOfSite !== undefined ? { numOfSite: parsedNumOfSite } : {}),
-          ...(parsedMaxWord !== undefined ? { maxWord: parsedMaxWord } : {}),
-        },
-      },
+      webSearch: Boolean(webSearch),
+      ...(parsedNumOfSite !== undefined ? { numOfSite: parsedNumOfSite } : {}),
+      ...(parsedMaxWord !== undefined ? { maxWord: parsedMaxWord } : {}),
     },
   };
 }

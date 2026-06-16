@@ -71,10 +71,17 @@ const MAX_HISTORY_RESULT_SIZE = 10000; // chars
 
 function addHistoryEntry(session, entry) {
   if (entry.result) {
+    const stdoutRaw = entry.result.stdout || "";
+    const stderrRaw = entry.result.stderr || "";
+    const stdoutTruncated = stdoutRaw.length > MAX_HISTORY_RESULT_SIZE;
+    const stderrTruncated = stderrRaw.length > MAX_HISTORY_RESULT_SIZE;
     entry.result = {
       ...entry.result,
-      stdout: entry.result.stdout ? entry.result.stdout.slice(0, MAX_HISTORY_RESULT_SIZE) : "",
-      stderr: entry.result.stderr ? entry.result.stderr.slice(0, MAX_HISTORY_RESULT_SIZE) : "",
+      stdout: stdoutRaw ? stdoutRaw.slice(0, MAX_HISTORY_RESULT_SIZE) : "",
+      stderr: stderrRaw ? stderrRaw.slice(0, MAX_HISTORY_RESULT_SIZE) : "",
+      truncated: stdoutTruncated || stderrTruncated,
+      stdoutTruncated,
+      stderrTruncated,
     };
   }
   session.history.push(entry);
@@ -112,7 +119,17 @@ router.post("/sessions", async (req, res, next) => {
     const { id, cwd, task } = req.body;
     const sessionId = id || crypto.randomUUID();
 
-    const validatedCwd = cwd ? path.resolve(cwd) : process.cwd();
+    let validatedCwd;
+    if (cwd) {
+      try {
+        validatedCwd = validatePath(path.resolve(cwd));
+        assertNotProtectedPath(validatedCwd);
+      } catch (err) {
+        return res.status(400).json({ error: `Invalid working directory: ${err.message}` });
+      }
+    } else {
+      validatedCwd = process.cwd();
+    }
 
     const session = {
       id: sessionId,
