@@ -10,6 +10,7 @@ import { callOneMin, normalizeAssetResponse } from "./utils/api-client.js";
 import { serverConfig } from "./config/server.js";
 import logger from "./utils/logger.js";
 import { validateBufferMimeType } from "./utils/mime-guard.js";
+import fs from "fs";
 
 import aiRoutes from "./routes/ai.js";
 import fsRoutes from "./routes/fs.js";
@@ -54,11 +55,24 @@ function createLocalAuthToken() {
 function compareAuthToken(a, b) {
   if (!a || !b || typeof a !== "string" || typeof b !== "string") return false;
 
-  const aBuf = Buffer.from(a);
-  const bBuf = Buffer.from(b);
-  if (aBuf.length !== bBuf.length) return false;
+  const hashA = crypto.createHash('sha256').update(a).digest();
+  const hashB = crypto.createHash('sha256').update(b).digest();
 
-  return crypto.timingSafeEqual(aBuf, bBuf);
+  return crypto.timingSafeEqual(hashA, hashB);
+}
+
+function parseCookies(cookieHeader) {
+  const list = {};
+  if (!cookieHeader) return list;
+  cookieHeader.split(`;`).forEach(function(cookie) {
+    let [name, ...rest] = cookie.split(`=`);
+    name = name?.trim();
+    if (!name) return;
+    const value = rest.join(`=`).trim();
+    if (!value) return;
+    list[name] = decodeURIComponent(value);
+  });
+  return list;
 }
 
 function localBffAuth({
@@ -68,7 +82,8 @@ function localBffAuth({
   return (req, res, next) => {
     if (!requireToken) return next();
 
-    const headerToken = req.get("x-local-bff-token");
+    const cookies = parseCookies(req.headers.cookie);
+    const headerToken = req.get("x-local-bff-token") || cookies["__bff_session"];
     if (headerToken && compareAuthToken(headerToken, authToken)) {
       return next();
     }
@@ -113,7 +128,7 @@ function buildCspDirectives() {
       "https://fonts.googleapis.com",
     ],
     imgSrc: ["'self'", "data:", "https:", "blob:"],
-    connectSrc: ["'self'", "https://cdn.jsdelivr.net", "https://api.1min.ai"],
+    connectSrc: ["'self'", "https://cdn.jsdelivr.net"],
     fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net", "https://fonts.gstatic.com"],
     objectSrc: ["'none'"],
     mediaSrc: ["'self'"],
@@ -121,8 +136,6 @@ function buildCspDirectives() {
     workerSrc: ["'self'", "blob:"],
   };
 }
-
-import fs from "fs";
 
 async function handleAssetUpload(req, res, next) {
   try {
@@ -150,7 +163,10 @@ async function handleAssetUpload(req, res, next) {
       type: req.file.mimetype || "application/octet-stream",
     });
 
-    formData.append("asset", blob, req.file.originalname || "upload.bin");
+    const safeName = path.basename(req.file.originalname || 'upload.bin')
+      .replace(/[^a-zA-Z0-9._-]/g, '_')
+      .substring(0, 255);
+    formData.append("asset", blob, safeName);
 
     const data = await callOneMin("/api/assets", { method: "POST", body: formData });
     const normalized = normalizeAssetResponse(data);
@@ -163,6 +179,29 @@ async function handleAssetUpload(req, res, next) {
   } catch (err) {
     logger.error("Asset upload failed", { error: err.message });
     next(err);
+  }
+}
+
+function sanitizePayload(payload) {
+  if (!payload) return null;
+  if (typeof payload !== "object") return payload;
+  try {
+    const sanitized = JSON.parse(JSON.stringify(payload));
+    const sensitiveKeys = ["api_key", "apikey", "key", "token", "auth", "authorization", "secret"];
+    const walk = (obj) => {
+      if (!obj || typeof obj !== "object") return;
+      for (const key in obj) {
+        if (typeof obj[key] === "object" && obj[key] !== null) {
+          walk(obj[key]);
+        } else if (sensitiveKeys.some(sk => key.toLowerCase().includes(sk))) {
+          obj[key] = "[MASKED]";
+        }
+      }
+    };
+    walk(sanitized);
+    return sanitized;
+  } catch (e) {
+    return "[Unable to sanitize details]";
   }
 }
 
@@ -197,11 +236,17 @@ export function createApp(options = {}) {
   app.get(["/", "/index.html"], (req, res) => {
     try {
       const htmlPath = path.join(__dirname, "public", "index.html");
-      let html = fs.readFileSync(htmlPath, "utf8");
-      html = html.replace(
-        "<head>",
-        `<head>\n    <meta name="local-bff-token" content="${localAuthToken}" />`,
-      );
+      const html = fs.readFileSync(htmlPath, "utf8");
+      
+      // Set the token as HttpOnly cookie instead of embedding in HTML meta tag
+      if (requireLocalAuth) {
+        res.cookie('__bff_session', localAuthToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: 'Lax'
+        });
+      }
+      
       res.send(html);
     } catch (e) {
       res.status(500).send("Error loading index.html");
@@ -218,8 +263,8 @@ export function createApp(options = {}) {
     res.json({
       ok: true,
       service: "one-min-ai-monaco-client",
-      hasApiKey: Boolean(process.env.ONE_MIN_AI_API_KEY),
       localAuthEnabled: requireLocalAuth,
+      hasApiKey: !!process.env.ONE_MIN_AI_API_KEY,
     });
   });
 
@@ -240,29 +285,6 @@ export function createApp(options = {}) {
   app.use("/api", protectedApiAuth, aiRoutes);
   app.use("/api/fs", protectedApiAuth, fsRoutes);
   app.use("/api/agent", protectedApiAuth, agentRoutes);
-
-function sanitizePayload(payload) {
-  if (!payload) return null;
-  if (typeof payload !== "object") return payload;
-  try {
-    const sanitized = JSON.parse(JSON.stringify(payload));
-    const sensitiveKeys = ["api_key", "apikey", "key", "token", "auth", "authorization", "secret"];
-    const walk = (obj) => {
-      if (!obj || typeof obj !== "object") return;
-      for (const key in obj) {
-        if (typeof obj[key] === "object" && obj[key] !== null) {
-          walk(obj[key]);
-        } else if (sensitiveKeys.some(sk => key.toLowerCase().includes(sk))) {
-          obj[key] = "[MASKED]";
-        }
-      }
-    };
-    walk(sanitized);
-    return sanitized;
-  } catch (e) {
-    return "[Unable to sanitize details]";
-  }
-}
 
   app.use((err, req, res, _next) => {
     logger.error("Unhandled error", {

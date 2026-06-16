@@ -148,9 +148,10 @@ router.post("/chat/stream", async (req, res, next) => {
 
     if (!response.ok) {
       const errorText = await response.text();
+      const isDev = process.env.NODE_ENV === "development";
       return res.status(response.status).json({
         error: `1min.ai API error: ${response.status}`,
-        details: errorText,
+        details: isDev ? errorText : "Upstream API Error",
       });
     }
 

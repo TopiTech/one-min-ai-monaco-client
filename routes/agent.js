@@ -41,8 +41,7 @@ const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 function cleanupExpiredSessions() {
   const now = Date.now();
   for (const [id, session] of sessions) {
-    const createdAt = new Date(session.createdAt).getTime();
-    if (now - createdAt > SESSION_TTL_MS) {
+    if (now - session.lastAccessedAt > SESSION_TTL_MS) {
       sessions.delete(id);
     }
   }
@@ -81,7 +80,13 @@ router.post("/sessions", (req, res, next) => {
       history: [],
       status: "idle",
       createdAt: new Date().toISOString(),
+      lastAccessedAt: Date.now(),
     };
+
+    if (sessions.size >= 1000) {
+      const oldestId = Array.from(sessions.entries()).reduce((a, b) => a[1].lastAccessedAt < b[1].lastAccessedAt ? a : b)[0];
+      sessions.delete(oldestId);
+    }
 
     sessions.set(sessionId, session);
     res.json({ session });
@@ -98,6 +103,7 @@ router.get("/sessions/:id", (req, res) => {
   if (!session) {
     return res.status(404).json({ error: "Session not found" });
   }
+  session.lastAccessedAt = Date.now();
   res.json({ session });
 });
 
@@ -123,6 +129,7 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
+    session.lastAccessedAt = Date.now();
 
     // Check if command execution is enabled
     if (!serverConfig.enableCommandExecution) {
@@ -230,6 +237,7 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
+    session.lastAccessedAt = Date.now();
 
     const { approvalToken, timeoutMs } = req.body;
     if (!approvalToken || !pendingCommands.has(approvalToken)) {
@@ -303,6 +311,7 @@ router.get("/sessions/:id/files", async (req, res, next) => {
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
+    session.lastAccessedAt = Date.now();
 
     const filePath = req.query.path;
     if (!filePath) {
@@ -331,6 +340,7 @@ router.post("/sessions/:id/files", async (req, res, next) => {
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
+    session.lastAccessedAt = Date.now();
 
     const { path: filePath, content } = req.body;
     if (!filePath) {
@@ -370,6 +380,7 @@ router.get("/sessions/:id/search", async (req, res, next) => {
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
+    session.lastAccessedAt = Date.now();
 
     const { query, dir, maxResults = 20 } = req.query;
     if (!query) {
@@ -377,11 +388,14 @@ router.get("/sessions/:id/search", async (req, res, next) => {
     }
 
     const searchDir = dir || session.cwd;
-    validatePath(searchDir);
+    const resolvedSearchDir = validatePath(searchDir);
+    assertNotProtectedPath(resolvedSearchDir);
+
+    const limit = Math.max(1, Math.min(parseInt(maxResults) || 20, 100));
 
     // Simple recursive search (for production, use ripgrep or similar)
     const results = [];
-    await searchInDirectory(searchDir, query, results, parseInt(maxResults));
+    await searchInDirectory(resolvedSearchDir, query, results, limit);
 
     res.json({
       query,
@@ -466,6 +480,7 @@ router.get("/sessions/:id/dir", async (req, res, next) => {
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
+    session.lastAccessedAt = Date.now();
 
     const dirPath = req.query.path || session.cwd;
     const resolvedPath = validatePath(dirPath);
@@ -500,6 +515,7 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
+    session.lastAccessedAt = Date.now();
 
     const { path: filePath, diff, dryRun = false } = req.body;
     if (!filePath) {

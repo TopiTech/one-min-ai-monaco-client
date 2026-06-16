@@ -703,7 +703,7 @@ $("createConversation").onclick = async () => {
 };
 
 // images
-function renderImages(data) {
+function renderImages(data, sourceImageUrl = null) {
   const images = extractImages(data);
   if (!images.length) {
     const pre = document.createElement("pre");
@@ -716,19 +716,68 @@ function renderImages(data) {
     const card = document.createElement("div");
     card.className = "imageCard";
     const url = assetUrl(img);
-    const imgEl = document.createElement("img");
-    imgEl.src = url;
-    imgEl.alt = "AI生成画像";
-    imgEl.onerror = function () {
-      this.style.display = "none";
-    };
-    card.appendChild(imgEl);
+
+    if (sourceImageUrl) {
+      // Create slider comparison card
+      const sourceUrl = assetUrl(sourceImageUrl);
+      card.innerHTML = `
+        <div class="image-comparison-slider">
+          <img src="${url}" alt="After" class="image-after">
+          <img src="${sourceUrl}" alt="Before" class="image-before" style="clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%)">
+          <input type="range" min="0" max="100" value="50" class="slider-range" aria-label="画像比較スライダー">
+          <div class="slider-divider" style="left: 50%">
+            <div class="slider-handle"></div>
+          </div>
+        </div>
+      `;
+
+      const range = card.querySelector(".slider-range");
+      const beforeImg = card.querySelector(".image-before");
+      const divider = card.querySelector(".slider-divider");
+
+      range.addEventListener("input", (e) => {
+        const val = e.target.value;
+        beforeImg.style.clipPath = `polygon(0 0, ${val}% 0, ${val}% 100%, 0 100%)`;
+        divider.style.left = val + "%";
+      });
+    } else {
+      const imgEl = document.createElement("img");
+      imgEl.src = url;
+      imgEl.alt = "AI生成画像";
+      imgEl.onerror = function () {
+        this.style.display = "none";
+      };
+      card.appendChild(imgEl);
+    }
+
+    // Info row under the image/slider
+    const infoRow = document.createElement("div");
+    infoRow.style.marginTop = "10px";
+    infoRow.style.display = "flex";
+    infoRow.style.flexDirection = "column";
+    infoRow.style.gap = "4px";
+
     const link = document.createElement("a");
     link.href = url;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
-    link.textContent = img;
-    card.appendChild(link);
+    link.textContent = img.length > 30 ? img.slice(0, 27) + "..." : img;
+    link.title = img;
+    link.style.display = "block";
+    link.style.textAlign = "center";
+    infoRow.appendChild(link);
+
+    if (sourceImageUrl) {
+      const modelName = document.getElementById("imageModelLabel")?.textContent?.trim() || "AI Model";
+      const modelLabel = document.createElement("span");
+      modelLabel.textContent = `編集モデル: ${modelName}`;
+      modelLabel.style.fontSize = "0.7rem";
+      modelLabel.style.color = "var(--text-muted)";
+      modelLabel.style.textAlign = "center";
+      infoRow.appendChild(modelLabel);
+    }
+
+    card.appendChild(infoRow);
     dom.imageGallery.prepend(card);
     pruneImageGallery();
   }
@@ -765,6 +814,8 @@ dom.generateImage.onclick = async () => {
         }),
       });
       toast.success("画像を編集しました");
+      dom.assetResult.textContent = JSON.stringify(data, null, 2);
+      renderImages(data, imageUrl);
     } else {
       data = await api("/api/images/generate", {
         method: "POST",
@@ -777,21 +828,23 @@ dom.generateImage.onclick = async () => {
         }),
       });
       toast.success("画像を生成しました");
+      dom.assetResult.textContent = JSON.stringify(data, null, 2);
+      renderImages(data);
     }
-
-    dom.assetResult.textContent = JSON.stringify(data, null, 2);
-    renderImages(data);
   } catch (e) {
     toast.error(`処理に失敗しました: ${e.message}`);
   }
 };
 
-dom.uploadAsset.onclick = async () => {
-  const file = $("assetInput").files[0];
-  if (!file) {
-    toast.warning("画像ファイルを選択してください");
-    return;
-  }
+async function performAssetUpload(file) {
+  if (!file) return;
+  const generateBtn = dom.generateImage;
+  const assetInput = $("assetInput");
+
+  if (generateBtn) generateBtn.disabled = true;
+  if (assetInput) assetInput.disabled = true;
+  setStatus("アップロード中...", "warn");
+
   const fd = new FormData();
   fd.append("asset", file);
   try {
@@ -807,7 +860,28 @@ dom.uploadAsset.onclick = async () => {
     toast.success("アップロード完了");
   } catch (e) {
     toast.error(`アセットのアップロードに失敗しました: ${e.message}`);
+  } finally {
+    if (generateBtn) generateBtn.disabled = false;
+    if (assetInput) assetInput.disabled = false;
+    setStatus("準備完了", "ok");
   }
+}
+
+// Auto-upload on file selection
+$("assetInput").onchange = async (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    await performAssetUpload(file);
+  }
+};
+
+dom.uploadAsset.onclick = async () => {
+  const file = $("assetInput").files[0];
+  if (!file) {
+    toast.warning("画像ファイルを選択してください");
+    return;
+  }
+  await performAssetUpload(file);
 };
 
 function updateEditorImagePreview(imageUrl) {
@@ -819,12 +893,22 @@ function updateEditorImagePreview(imageUrl) {
   const btnText = $("generateImageBtnText");
   const value = (imageUrl || input?.value || "").trim();
 
+  const currentModelId = dom.imageModel.value;
+  const modelObj = (typeof _allImageModels !== "undefined") ? _allImageModels.find(m => m.id === currentModelId) : null;
+
   if (!value) {
     if (preview) preview.style.display = "none";
     if (clearBtn) clearBtn.style.display = "none";
     if (imgToImgParams) imgToImgParams.style.display = "none";
     if (textToImgParams) textToImgParams.style.display = "block";
     if (btnText) btnText.textContent = "画像を生成";
+
+    // Switch model if current model is editor-only
+    if (modelObj && modelObj.tags && modelObj.tags.includes("editor") && !modelObj.tags.includes("image")) {
+      const defaultGen = (typeof _allImageModels !== "undefined" && _allImageModels.find(m => !m.tags || !m.tags.includes("editor") || m.id.startsWith("gpt-image"))) || { id: "gpt-image-2", label: "GPT Image 2" };
+      dom.imageModel.value = defaultGen.id;
+      dom.imageModelLabel.textContent = defaultGen.label;
+    }
     return;
   }
 
@@ -836,6 +920,14 @@ function updateEditorImagePreview(imageUrl) {
   if (imgToImgParams) imgToImgParams.style.display = "block";
   if (textToImgParams) textToImgParams.style.display = "none";
   if (btnText) btnText.textContent = "画像を編集";
+
+  // Switch model if current model doesn't support editing
+  const isEditorModel = modelObj && modelObj.tags && modelObj.tags.includes("editor");
+  if (!isEditorModel) {
+    const defaultEditor = (typeof _allImageModels !== "undefined" && _allImageModels.find(m => m.tags && m.tags.includes("editor"))) || { id: "gpt-image-2", label: "GPT Image 2" };
+    dom.imageModel.value = defaultEditor.id;
+    dom.imageModelLabel.textContent = defaultEditor.label;
+  }
 }
 
 dom.editorImageUrl.oninput = () => updateEditorImagePreview();

@@ -149,8 +149,35 @@ function openModelPicker(btn, type) {
   _activeTag = "all";
 
   btn.setAttribute("aria-expanded", "true");
-  const models =
+  let models =
     type === "image" ? _allImageModels : type === "code" ? _allCodeModels : _allChatModels;
+
+  if (type === "image") {
+    const isEditMode = !!(document.getElementById("editorImageUrl")?.value?.trim());
+    if (isEditMode) {
+      const allowedIds = [
+        "gpt-image-2",
+        "gpt-image-1-mini",
+        "black-forest-labs/flux-2-max",
+        "black-forest-labs/flux-2-max-editor",
+        "gemini-2.5-flash-image",
+        "gemini-2.5-flash-image-preview",
+        "gemini-3.1-flash-image-preview",
+        "gemini-3.1-flash-image-preview-editor",
+        "qwen-image-edit-plus"
+      ];
+      models = _allImageModels.filter(m => allowedIds.includes(m.id));
+    } else {
+      const allowedIds = [
+        "gpt-image-2",
+        "gpt-image-1-mini",
+        "black-forest-labs/flux-2-max",
+        "gemini-2.5-flash-image",
+        "gemini-3.1-flash-image-preview"
+      ];
+      models = _allImageModels.filter(m => allowedIds.includes(m.id));
+    }
+  }
 
   const dropdown = document.getElementById("modelPickerDropdown");
   const search = document.getElementById("modelPickerSearch");

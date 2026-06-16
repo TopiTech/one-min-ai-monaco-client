@@ -15,11 +15,7 @@ async function api(path, options = {}) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 60_000);
   try {
-    const metaToken = document.querySelector('meta[name="local-bff-token"]');
     const headers = options.headers || {};
-    if (metaToken) {
-      headers["x-local-bff-token"] = metaToken.content;
-    }
     
     const res = await fetch(path, { ...options, headers, signal: controller.signal });
     clearTimeout(timeoutId);

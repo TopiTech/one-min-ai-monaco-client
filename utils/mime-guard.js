@@ -15,7 +15,7 @@ export function validateBufferMimeType(buffer, declaredMimeType) {
   }
 
   if (buffer.length === 0) {
-    return true; // Empty files are handled separately but signature-wise valid
+    return false; // Empty files are handled separately but signature-wise invalid
   }
 
   const mime = String(declaredMimeType).toLowerCase();

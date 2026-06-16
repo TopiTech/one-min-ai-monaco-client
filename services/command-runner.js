@@ -9,6 +9,12 @@ import { serverConfig } from "../config/server.js";
 // Default timeout from environment or 30 seconds
 const DEFAULT_TIMEOUT_MS = parseInt(process.env.COMMAND_TIMEOUT_MS || "30000", 10);
 
+const ALLOWED_COMMAND_PREFIXES = [
+  "npm ", "npx ", "node ", "git ", "jest ", "tsc ", "dir ", "ls ",
+  "echo ", "cat ", "grep ", "pwd ", "whoami ", "python ", "pip ", "pipenv ",
+  "ping ", "sleep ", "exit "
+];
+
 // Dangerous patterns that are blocked by default
 const DANGEROUS_PATTERNS = [
   /rm\s+-rf\s+\//,
@@ -88,6 +94,10 @@ export function checkCommandSafety(command) {
   const trimmed = command.trim();
   if (!trimmed) {
     return { safe: false, reason: "Command is empty" };
+  }
+
+  if (!ALLOWED_COMMAND_PREFIXES.some(p => trimmed.startsWith(p))) {
+    return { safe: false, reason: "Command not in allowlist" };
   }
 
   // Normalize command: remove quotes and standardize slashes to catch obfuscation

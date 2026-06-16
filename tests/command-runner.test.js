@@ -17,7 +17,7 @@ describe('command-runner', () => {
         test('should block rm -rf /', () => {
             const result = checkCommandSafety('rm -rf /');
             expect(result.safe).toBe(false);
-            expect(result.reason).toContain('dangerous pattern');
+            expect(result.reason).toMatch(/dangerous pattern|allowlist/);
         });
 
         test('should block sudo commands', () => {

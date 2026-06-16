@@ -49,8 +49,16 @@ class Logger {
 
     _formatMessage(level, message, meta = {}) {
         const timestamp = new Date().toISOString();
-        const metaStr = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : '';
-        return `[${timestamp}] [${level.toUpperCase()}] ${message}${metaStr}`;
+        let metaStr = '';
+        if (Object.keys(meta).length) {
+            try {
+                metaStr = ` ${JSON.stringify(meta).replace(/\r?\n/g, '\\n')}`;
+            } catch {
+                metaStr = ' [Invalid Meta]';
+            }
+        }
+        const safeMessage = String(message).replace(/\r?\n/g, '\\n');
+        return `[${timestamp}] [${level.toUpperCase()}] ${safeMessage}${metaStr}`;
     }
 
     _writeToFile(formattedMessage) {

@@ -249,13 +249,13 @@ export let codeModels = [
 
 export let imageModels = [
   // OpenAI image generation
-  { id: "gpt-image-2", label: "GPT Image 2", provider: "OpenAI", tags: ["image", "flagship"] },
-  { id: "gpt-image-1", label: "GPT Image 1", provider: "OpenAI", tags: ["image"] },
+  { id: "gpt-image-2", label: "GPT Image 2", provider: "OpenAI", tags: ["image", "flagship", "editor"] },
+  { id: "gpt-image-1", label: "GPT Image 1", provider: "OpenAI", tags: ["image", "editor"] },
   {
     id: "gpt-image-1-mini",
     label: "GPT Image 1 Mini",
     provider: "OpenAI",
-    tags: ["image", "fast"],
+    tags: ["image", "fast", "editor"],
   },
   // Flux image generation
   { id: "black-forest-labs/flux-2-pro", label: "Flux 2 Pro", provider: "Flux", tags: ["image", "flagship"] },
@@ -275,6 +275,12 @@ export let imageModels = [
     label: "Gemini 2.5 Flash Image",
     provider: "Google",
     tags: ["image", "fast"],
+  },
+  {
+    id: "gemini-2.5-flash-image-preview",
+    label: "Gemini 2.5 Flash Image Preview",
+    provider: "Google",
+    tags: ["image", "fast", "editor"],
   },
   {
     id: "gemini-3-pro-image-preview",

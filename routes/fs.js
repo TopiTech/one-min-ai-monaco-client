@@ -41,21 +41,29 @@ router.get('/drives', async (_req, res) => {
   const drives = [];
 
   if (process.platform === 'win32') {
-    try {
-      // Use powershell to get logical drives
-      const { stdout } = await execAsync('powershell -NoProfile -Command "Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Name"', { timeout: 5000 });
-      const lines = stdout.split('\n').map(l => l.trim()).filter(l => l);
-      for (const line of lines) {
-        const driveLetter = line.replace(':', '').trim();
-        if (driveLetter) {
-          drives.push({
-            name: driveLetter + ':',
-            path: driveLetter + ':\\',
-            type: 'local'
-          });
+    let usedPowershell = false;
+    if (String(process.env.ENABLE_COMMAND_EXECUTION || 'false').toLowerCase() === 'true') {
+      try {
+        // Use powershell to get logical drives
+        const { stdout } = await execAsync('powershell -NoProfile -Command "Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Name"', { timeout: 5000 });
+        const lines = stdout.split('\n').map(l => l.trim()).filter(l => l);
+        for (const line of lines) {
+          const driveLetter = line.replace(':', '').trim();
+          if (driveLetter) {
+            drives.push({
+              name: driveLetter + ':',
+              path: driveLetter + ':\\',
+              type: 'local'
+            });
+          }
         }
+        usedPowershell = true;
+      } catch {
+        // Fallback to common drives below
       }
-    } catch {
+    }
+    
+    if (!usedPowershell) {
       // Fallback: check common drive letters
       const commonDrives = ['C:', 'D:', 'E:', 'F:', 'G:'];
       for (const drive of commonDrives) {
