@@ -35,6 +35,22 @@ describe('command-runner', () => {
             expect(result.safe).toBe(false);
         });
 
+        test('should block shell metacharacters', () => {
+            expect(checkCommandSafety('echo hello ; rm -rf /').safe).toBe(false);
+            expect(checkCommandSafety('echo hello && rm -rf /').safe).toBe(false);
+            expect(checkCommandSafety('echo $(whoami)').safe).toBe(false);
+        });
+
+        test('should block direct script execution flags', () => {
+            expect(checkCommandSafety('node -e "console.log(1)"').safe).toBe(false);
+            expect(checkCommandSafety('python -c "print(1)"').safe).toBe(false);
+        });
+
+        test('should allow quoted arguments without shell metacharacters', () => {
+            const result = checkCommandSafety('echo "hello world"');
+            expect(result.safe).toBe(true);
+        });
+
         test('should block format command', () => {
             const result = checkCommandSafety('format C:');
             expect(result.safe).toBe(false);
@@ -64,10 +80,16 @@ describe('command-runner', () => {
             expect(result.timedOut).toBe(false);
         });
 
-        test('should capture stderr', async () => {
-            const result = await executeCommand('echo error >&2', { timeoutMs: 5000 });
-            expect(result.exitCode).toBe(0);
-            expect(result.stderr).toBe('error');
+        test('should capture stderr via a failing command', async () => {
+            // Commands that write to stderr naturally (e.g. ls on a non-existent path)
+            // Redirect >&2 is blocked as a shell metacharacter - use a command that
+            // inherently writes to stderr instead.
+            const isWindows = process.platform === 'win32';
+            const cmd = isWindows ? 'dir nonexistent_path_xyz' : 'ls nonexistent_path_xyz';
+            const result = await executeCommand(cmd, { timeoutMs: 5000 });
+            // Non-zero exit code and stderr content expected
+            expect(result.exitCode).not.toBe(0);
+            expect(result.stderr.length).toBeGreaterThan(0);
         });
 
         test('should handle command timeout', async () => {

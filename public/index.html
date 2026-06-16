@@ -1,301 +1,211 @@
 <!doctype html>
 <html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>1min.ai Monaco Client</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
 
-  <body>
-    <a href="#chatPrompt" class="skip-link">メインコンテンツへスキップ</a>
-    <!-- Floating background liquid blobs -->
-    <div class="liquid-bg-container">
-      <div class="liquid-blob blob-1"></div>
-      <div class="liquid-blob blob-2"></div>
-      <div class="liquid-blob blob-3"></div>
-      <div class="liquid-blob blob-4"></div>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>1min.ai Monaco Client</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <a href="#chatPrompt" class="skip-link">メインコンテンツへスキップ</a>
+  <!-- Floating background liquid blobs -->
+  <div class="liquid-bg-container">
+    <div class="liquid-blob blob-1"></div>
+    <div class="liquid-blob blob-2"></div>
+    <div class="liquid-blob blob-3"></div>
+    <div class="liquid-blob blob-4"></div>
+  </div>
+
+  <!-- Model Picker Dropdown (shared, absolutely positioned) -->
+  <div id="modelPickerDropdown" class="model-picker-dropdown u-hidden">
+    <div class="model-picker-search-row">
+      <input id="modelPickerSearch" type="text" placeholder="モデルを検索..." autocomplete="off" />
     </div>
-
-    <!-- Model Picker Dropdown (shared, absolutely positioned) -->
-    <div id="modelPickerDropdown" class="model-picker-dropdown u-hidden">
-      <div class="model-picker-search-row">
-        <input
-          id="modelPickerSearch"
-          type="text"
-          placeholder="モデルを検索..."
-          autocomplete="off"
-        />
-      </div>
-      <div id="modelPickerTabs" class="model-picker-tabs">
-        <button type="button" class="picker-tab active" data-tag="all">すべて</button>
-        <button type="button" class="picker-tab" data-tag="flagship">フラグシップ</button>
-        <button type="button" class="picker-tab" data-tag="reasoning">思考・論理</button>
-        <button type="button" class="picker-tab" data-tag="fast">高速・軽量</button>
-      </div>
-      <div id="modelPickerList" class="model-picker-list"></div>
+    <div id="modelPickerTabs" class="model-picker-tabs">
+      <button type="button" class="picker-tab active" data-tag="all">すべて</button>
+      <button type="button" class="picker-tab" data-tag="flagship">フラグシップ</button>
+      <button type="button" class="picker-tab" data-tag="reasoning">思考・論理</button>
+      <button type="button" class="picker-tab" data-tag="fast">高速・軽量</button>
     </div>
+    <div id="modelPickerList" class="model-picker-list"></div>
+  </div>
 
-    <div id="app">
-      <aside class="sidebar">
-        <div class="brand">
-          <div class="logo">1m</div>
-          <div>
-            <h1>1min.ai Client</h1>
-            <p>Monaco + Custom UI</p>
-          </div>
+  <div id="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">1m</div>
+        <div>
+          <h1>1min.ai Client</h1>
+          <p>Monaco + Custom UI</p>
         </div>
+      </div>
 
-        <button type="button" class="nav active" data-view="chat">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-          </svg>
-          通常チャット
-        </button>
-        <button type="button" class="nav" data-view="image">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-            <circle cx="8.5" cy="8.5" r="1.5"></circle>
-            <polyline points="21 15 16 10 5 21"></polyline>
-          </svg>
-          画像生成 / テキスト編集
-        </button>
-        <button type="button" class="nav" data-view="coding">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-            <polyline points="16 18 22 12 16 6"></polyline>
-            <polyline points="8 6 2 12 8 18"></polyline>
-          </svg>
-          コーディング
-        </button>
-        <button type="button" class="nav" data-view="settings">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path
-              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-            ></path>
-          </svg>
-          設定
-        </button>
+      <button type="button" class="nav active" data-view="chat">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+        通常チャット
+      </button>
+      <button type="button" class="nav" data-view="image">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <polyline points="21 15 16 10 5 21"></polyline>
+        </svg>
+        画像生成 / テキスト編集
+      </button>
+      <button type="button" class="nav" data-view="coding">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <polyline points="16 18 22 12 16 6"></polyline>
+          <polyline points="8 6 2 12 8 18"></polyline>
+        </svg>
+        コーディング
+      </button>
+      <button type="button" class="nav" data-view="settings">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z">
+          </path>
+        </svg>
+        設定
+      </button>
 
-        <button type="button" id="themeToggle" class="theme-toggle">
-          <svg
-            id="themeIconDark"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-          </svg>
-          <svg
-            id="themeIconLight"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            style="display: none"
-          >
-            <circle cx="12" cy="12" r="5"></circle>
-            <line x1="12" y1="1" x2="12" y2="3"></line>
-            <line x1="12" y1="21" x2="12" y2="23"></line>
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-            <line x1="1" y1="12" x2="3" y2="12"></line>
-            <line x1="21" y1="12" x2="23" y2="12"></line>
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-          </svg>
-          <span id="themeLabel">ダークモード</span>
-        </button>
+      <button type="button" id="themeToggle" class="theme-toggle">
+        <svg id="themeIconDark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+        <svg id="themeIconLight" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" style="display: none">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        <span id="themeLabel">ダークモード</span>
+      </button>
 
-        <div class="hint">APIキーはサーバー側の <code>.env</code> に保存します。</div>
-      </aside>
+      <div class="credit-save-box" style="margin-top: 10px; width: 100%;">
+        <label class="check"
+          style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text-muted); font-size: 0.82rem; margin: 0; user-select: none; padding: 10px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--glass-border);">
+          <input type="checkbox" id="creditSavingToggle" />
+          <span style="font-weight: 600;">クレジット節約モード</span>
+        </label>
+      </div>
 
-      <main class="main">
-        <header class="topbar">
-          <div>
-            <strong id="viewTitle">通常チャット</strong>
-            <span id="status" class="status" aria-live="polite">準備完了</span>
-          </div>
-          <button type="button" id="healthBtn" class="ghost">Health Check</button>
-        </header>
+      <div class="hint">APIキーはサーバー側の <code>.env</code> に保存します。</div>
+    </aside>
 
-        <section id="chat" class="view active">
-          <div class="panel two">
-            <div class="card grow">
-              <h2>Chat</h2>
-              <div
-                id="chatLog"
-                class="log"
-                role="log"
-                aria-live="polite"
-                aria-label="チャットメッセージ"
-              ></div>
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <strong id="viewTitle">通常チャット</strong>
+          <span id="status" class="status" aria-live="polite">準備完了</span>
+        </div>
+        <button type="button" id="healthBtn" class="ghost">Health Check</button>
+      </header>
 
-              <!-- Image attachments area -->
-              <div id="chatAttachments" class="chat-attachments u-hidden">
-                <div id="attachmentPreviews" class="attachment-previews"></div>
-              </div>
+      <section id="chat" class="view active">
+        <div class="panel two">
+          <div class="card grow">
+            <h2>Chat</h2>
+            <div id="chatLog" class="log" role="log" aria-live="polite" aria-label="チャットメッセージ"></div>
 
-              <div class="chat-input-row">
-                <textarea
-                  id="chatPrompt"
-                  placeholder="メッセージを入力... (動画/音声の解析、YouTube URLも対応)"
-                  rows="5"
-                  aria-label="チャットメッセージ入力"
-                ></textarea>
-                <button
-                  type="button"
-                  id="attachImageBtn"
-                  class="ghost small"
-                  title="ファイルを添付"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <path
-                      d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
-                    ></path>
-                  </svg>
-                </button>
-                <input
-                  type="file"
-                  id="chatImageInput"
-                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.csv,.json,.xml,.md"
-                  multiple
-                  class="u-hidden"
-                />
-              </div>
-
-              <div class="row">
-                <!-- Model Picker for Chat -->
-                <button
-                  id="chatModelBtn"
-                  class="model-picker-btn"
-                  data-model-type="chat"
-                  data-target-input="chatModel"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <circle cx="12" cy="12" r="3"></circle>
-                    <path
-                      d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
-                    ></path>
-                  </svg>
-                  <span id="chatModelLabel">GPT-4o mini</span>
-                  <svg
-                    class="chevron"
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <input id="chatModel" value="gpt-4o-mini" type="hidden" />
-                <button type="button" id="sendChat">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <line x1="22" y1="2" x2="11" y2="13"></line>
-                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                  </svg>
-                  送信
-                </button>
-                <button
-                  type="button"
-                  id="abortChat"
-                  class="ghost"
-                  style="display: none; color: #f87171; border-color: rgba(248, 113, 113, 0.3)"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                  </svg>
-                  停止
-                </button>
-              </div>
+            <!-- Image attachments area -->
+            <div id="chatAttachments" class="chat-attachments u-hidden">
+              <div id="attachmentPreviews" class="attachment-previews"></div>
             </div>
-            <div class="card side">
-              <h2>Conversation</h2>
-              <div class="u-mb-12">
-                <label
-                  style="
-                    display: block;
-                    font-size: 0.8rem;
-                    margin-bottom: 6px;
-                    font-weight: 600;
-                    color: var(--text-muted);
-                  "
-                  >会話のタイトル</label
-                >
-                <input id="conversationTitle" value="My AI Conversation" />
-              </div>
-              <button
-                type="button"
-                id="createConversation"
-                style="width: 100%; margin-bottom: 18px"
-              >
-                会話を新規作成
+
+            <div class="chat-input-row">
+              <textarea id="chatPrompt" placeholder="メッセージを入力... (動画/音声の解析、YouTube URLも対応)" rows="5"
+                aria-label="チャットメッセージ入力"></textarea>
+              <button type="button" id="attachImageBtn" class="ghost small" title="ファイルを添付">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2">
+                  <path
+                    d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48">
+                  </path>
+                </svg>
               </button>
+              <input type="file" id="chatImageInput"
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.csv,.json,.xml,.md" multiple class="u-hidden" />
+            </div>
 
-              <div class="u-mb-12">
-                <label
-                  style="
+            <div class="row">
+              <!-- Model Picker for Chat -->
+              <button id="chatModelBtn" class="model-picker-btn" data-model-type="chat" data-target-input="chatModel">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path
+                    d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41">
+                  </path>
+                </svg>
+                <span id="chatModelLabel">GPT-4o mini</span>
+                <svg class="chevron" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
+              <input id="chatModel" value="gpt-4o-mini" type="hidden" />
+              <button type="button" id="sendChat">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+                送信
+              </button>
+              <button type="button" id="abortChat" class="ghost"
+                style="display: none; color: #f87171; border-color: rgba(248, 113, 113, 0.3)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                </svg>
+                停止
+              </button>
+            </div>
+          </div>
+          <div class="card side">
+            <h2>Conversation</h2>
+            <div class="u-mb-12">
+              <label style="
                     display: block;
                     font-size: 0.8rem;
                     margin-bottom: 6px;
                     font-weight: 600;
                     color: var(--text-muted);
-                  "
-                  >conversationId (再開用)</label
-                >
-                <input id="conversationId" placeholder="uuid (任意)" />
-              </div>
+                  ">会話のタイトル</label>
+              <input id="conversationTitle" value="My AI Conversation" />
+            </div>
+            <button type="button" id="createConversation" style="width: 100%; margin-bottom: 18px">
+              会話を新規作成
+            </button>
 
-              <label class="check">
-                <input type="checkbox" id="webSearch" />
-                <span>Web Search を有効化</span>
-              </label>
-              <div
-                id="chatWebSearchSettings"
-                style="
+            <div class="u-mb-12">
+              <label style="
+                    display: block;
+                    font-size: 0.8rem;
+                    margin-bottom: 6px;
+                    font-weight: 600;
+                    color: var(--text-muted);
+                  ">conversationId (再開用)</label>
+              <input id="conversationId" placeholder="uuid (任意)" />
+            </div>
+
+            <label class="check">
+              <input type="checkbox" id="webSearch" />
+              <span>Web Search を有効化</span>
+            </label>
+            <div id="chatWebSearchSettings" style="
                   display: none;
                   margin-top: 8px;
                   margin-bottom: 12px;
@@ -303,945 +213,569 @@
                   background: rgba(255, 255, 255, 0.02);
                   border: 1px solid rgba(255, 255, 255, 0.05);
                   border-radius: 8px;
-                "
-              >
-                <div class="row" style="display: flex; gap: 8px">
-                  <div class="u-flex-1">
-                    <label
-                      for="chatNumOfSite"
-                      style="
+                ">
+              <div class="row" style="display: flex; gap: 8px">
+                <div class="u-flex-1">
+                  <label for="chatNumOfSite" style="
                         display: block;
                         font-size: 0.75rem;
                         margin-bottom: 4px;
                         color: var(--text-muted);
-                      "
-                    >
-                      サイト数 (1-10)
-                    </label>
-                    <input
-                      id="chatNumOfSite"
-                      type="number"
-                      min="1"
-                      max="10"
-                      value="3"
-                      style="width: 100%; padding: 6px; font-size: 0.8rem; border-radius: 6px"
-                    />
-                  </div>
-                  <div class="u-flex-1">
-                    <label
-                      for="chatMaxWord"
-                      style="
+                      ">
+                    サイト数 (1-10)
+                  </label>
+                  <input id="chatNumOfSite" type="number" min="1" max="10" value="3"
+                    style="width: 100%; padding: 6px; font-size: 0.8rem; border-radius: 6px" />
+                </div>
+                <div class="u-flex-1">
+                  <label for="chatMaxWord" style="
                         display: block;
                         font-size: 0.75rem;
                         margin-bottom: 4px;
                         color: var(--text-muted);
-                      "
-                    >
-                      最大単語数
-                    </label>
-                    <input
-                      id="chatMaxWord"
-                      type="number"
-                      min="100"
-                      max="10000"
-                      step="100"
-                      value="1000"
-                      style="width: 100%; padding: 6px; font-size: 0.8rem; border-radius: 6px"
-                    />
-                  </div>
+                      ">
+                    最大単語数
+                  </label>
+                  <input id="chatMaxWord" type="number" min="100" max="10000" step="100" value="1000"
+                    style="width: 100%; padding: 6px; font-size: 0.8rem; border-radius: 6px" />
                 </div>
               </div>
-              <label class="check">
-                <input type="checkbox" id="withMemories" />
-                <span>AI Memory を有効化</span>
-              </label>
-              <label class="check">
-                <input type="checkbox" id="isMixed" />
-                <span>モデル混在履歴を有効化</span>
-              </label>
-              <div class="u-mt-12">
-                <label
-                  style="
+            </div>
+            <label class="check">
+              <input type="checkbox" id="withMemories" />
+              <span>AI Memory を有効化</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="isMixed" />
+              <span>モデル混在履歴を有効化</span>
+            </label>
+            <div class="u-mt-12">
+              <label style="
                     display: block;
                     font-size: 0.8rem;
                     margin-bottom: 6px;
                     font-weight: 600;
                     color: var(--text-muted);
-                  "
-                  >Brand Voice ID (任意)</label
-                >
-                <input id="brandVoiceId" placeholder="ブランドボイスID" />
-              </div>
+                  ">Brand Voice ID (任意)</label>
+              <input id="brandVoiceId" placeholder="ブランドボイスID" />
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section id="image" class="view">
-          <div class="panel two">
-            <div class="card grow">
-              <h2>画像生成 / 編集</h2>
+      <section id="image" class="view">
+        <div class="panel two">
+          <div class="card grow">
+            <h2>画像生成 / 編集</h2>
 
-              <textarea
-                id="imagePrompt"
-                rows="4"
-                placeholder="生成または編集のプロンプトを入力してください... (例: a minimal futuristic workspace, soft light または 背景を夕焼けに変えて、など)"
-                aria-label="画像生成プロンプト"
-              ></textarea>
+            <textarea id="imagePrompt" rows="4"
+              placeholder="生成または編集のプロンプトを入力してください... (例: a minimal futuristic workspace, soft light または 背景を夕焼けに変えて、など)"
+              aria-label="画像生成プロンプト"></textarea>
 
-              <div class="image-input-source" style="margin-top: 16px; margin-bottom: 16px">
-                <h3
-                  style="
+            <div class="image-input-source" style="margin-top: 16px; margin-bottom: 16px">
+              <h3 style="
                     font-size: 0.9rem;
                     font-weight: 600;
                     margin-bottom: 8px;
                     color: var(--text-muted);
-                  "
-                >
-                  元画像 (画像編集を行う場合のみ指定してください)
-                </h3>
-                <div class="row u-mb-10">
-                  <input id="assetInput" type="file" accept="image/*" class="u-flex-2" />
-                  <button type="button" id="uploadAsset" class="u-flex-1">アップロード</button>
-                </div>
-                <div class="row" style="align-items: center; gap: 10px">
-                  <input
-                    id="editorImageUrl"
-                    placeholder="直接 asset key または画像 URL を入力..."
-                    class="u-flex-1"
-                  />
-                  <button type="button" id="clearImageBtn" class="ghost small u-hidden">
-                    クリア
-                  </button>
-                </div>
-                <img
-                  id="editorImagePreview"
-                  class="image-preview"
-                  alt="元画像プレビュー"
-                  style="
+                  ">
+                元画像 (画像編集を行う場合のみ指定してください)
+              </h3>
+              <div class="row u-mb-10">
+                <input id="assetInput" type="file" accept="image/*" class="u-flex-2" />
+                <button type="button" id="uploadAsset" class="u-flex-1">アップロード</button>
+              </div>
+              <div class="row" style="align-items: center; gap: 10px">
+                <input id="editorImageUrl" placeholder="直接 asset key または画像 URL を入力..." class="u-flex-1" />
+                <button type="button" id="clearImageBtn" class="ghost small u-hidden">
+                  クリア
+                </button>
+              </div>
+              <img id="editorImagePreview" class="image-preview" alt="元画像プレビュー" style="
                     display: none;
                     max-height: 150px;
                     margin-top: 10px;
                     border-radius: 8px;
                     border: 1px solid rgba(255, 255, 255, 0.1);
-                  "
-                />
-              </div>
+                  " />
+            </div>
 
-              <div class="row u-mb-16">
-                <div class="u-flex-2">
-                  <!-- Model Picker for Image Generation / Edit -->
-                  <button
-                    id="imageModelBtn"
-                    class="model-picker-btn"
-                    data-model-type="image"
-                    data-target-input="imageModel"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <rect x="3" y="3" width="18" height="18" rx="2"></rect>
-                      <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                      <polyline points="21 15 16 10 5 21"></polyline>
-                    </svg>
-                    <span id="imageModelLabel">GPT Image 2</span>
-                    <svg
-                      class="chevron"
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <polyline points="6 9 12 15 18 9"></polyline>
-                    </svg>
-                  </button>
-                  <input id="imageModel" value="gpt-image-2" type="hidden" />
-                </div>
+            <div class="row u-mb-16">
+              <div class="u-flex-2">
+                <!-- Model Picker for Image Generation / Edit -->
+                <button id="imageModelBtn" class="model-picker-btn" data-model-type="image"
+                  data-target-input="imageModel">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                    <polyline points="21 15 16 10 5 21"></polyline>
+                  </svg>
+                  <span id="imageModelLabel">GPT Image 2</span>
+                  <svg class="chevron" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <input id="imageModel" value="gpt-image-2" type="hidden" />
               </div>
+            </div>
 
-              <!-- Parameters section -->
-              <div
-                class="image-parameters-box"
-                style="
+            <!-- Parameters section -->
+            <div class="image-parameters-box" style="
                   background: rgba(255, 255, 255, 0.02);
                   border: 1px solid rgba(255, 255, 255, 0.05);
                   padding: 16px;
                   border-radius: 12px;
                   margin-bottom: 16px;
-                "
-              >
-                <!-- Regular Text-to-Image settings -->
-                <div id="textToImageParams" class="param-group">
-                  <h4
-                    style="
+                ">
+              <!-- Regular Text-to-Image settings -->
+              <div id="textToImageParams" class="param-group">
+                <h4 style="
                       font-size: 0.8rem;
                       font-weight: 600;
                       margin-bottom: 10px;
                       color: var(--text-muted);
-                    "
-                  >
-                    テキストから生成用の設定
-                  </h4>
-                  <div class="row">
-                    <div class="u-flex-1">
-                      <label
-                        style="
+                    ">
+                  テキストから生成用の設定
+                </h4>
+                <div class="row">
+                  <div class="u-flex-1">
+                    <label style="
                           display: block;
                           font-size: 0.75rem;
                           margin-bottom: 4px;
                           color: var(--text-muted);
-                        "
-                        >アスペクト比</label
-                      >
-                      <select id="aspectRatio" class="u-w-full">
-                        <option>1:1</option>
-                        <option>16:9</option>
-                        <option>9:16</option>
-                        <option>4:3</option>
-                        <option>3:4</option>
-                      </select>
-                    </div>
-                    <div class="u-flex-1">
-                      <label
-                        style="
+                        ">アスペクト比</label>
+                    <select id="aspectRatio" class="u-w-full">
+                      <option>1:1</option>
+                      <option>16:9</option>
+                      <option>9:16</option>
+                      <option>4:3</option>
+                      <option>3:4</option>
+                    </select>
+                  </div>
+                  <div class="u-flex-1">
+                    <label style="
                           display: block;
                           font-size: 0.75rem;
                           margin-bottom: 4px;
                           color: var(--text-muted);
-                        "
-                        >生成枚数</label
-                      >
-                      <input
-                        id="numOutputs"
-                        type="number"
-                        min="1"
-                        max="4"
-                        value="1"
-                        class="u-w-full"
-                      />
-                    </div>
+                        ">生成枚数</label>
+                    <input id="numOutputs" type="number" min="1" max="4" value="1" class="u-w-full" />
                   </div>
                 </div>
+              </div>
 
-                <!-- Image-to-Image (Edit) settings (shown dynamically) -->
-                <div
-                  id="imageToImageParams"
-                  class="param-group"
-                  style="
+              <!-- Image-to-Image (Edit) settings (shown dynamically) -->
+              <div id="imageToImageParams" class="param-group" style="
                     display: none;
                     border-top: 1px solid rgba(255, 255, 255, 0.05);
                     margin-top: 12px;
                     padding-top: 12px;
-                  "
-                >
-                  <h4
-                    style="
+                  ">
+                <h4 style="
                       font-size: 0.8rem;
                       font-weight: 600;
                       margin-bottom: 10px;
                       color: var(--text-muted);
-                    "
-                  >
-                    画像編集用の詳細設定
-                  </h4>
+                    ">
+                  画像編集用の詳細設定
+                </h4>
 
-                  <div class="row u-mb-10">
-                    <div class="u-flex-2">
-                      <label
-                        style="
+                <div class="row u-mb-10">
+                  <div class="u-flex-2">
+                    <label style="
                           display: block;
                           font-size: 0.75rem;
                           margin-bottom: 4px;
                           color: var(--text-muted);
-                        "
-                        >出力サイズ</label
-                      >
-                      <input id="editorSize" value="1024x1024" placeholder="1024x1024" />
-                    </div>
-                    <div class="u-flex-1">
-                      <label
-                        style="
-                          display: block;
-                          font-size: 0.75rem;
-                          margin-bottom: 4px;
-                          color: var(--text-muted);
-                        "
-                        >品質</label
-                      >
-                      <select id="editorQuality" class="u-w-full">
-                        <option value="low">low</option>
-                        <option value="medium" selected>medium</option>
-                        <option value="high">high</option>
-                      </select>
-                    </div>
+                        ">出力サイズ</label>
+                    <input id="editorSize" value="1024x1024" placeholder="1024x1024" />
                   </div>
-
-                  <div class="row u-mb-10">
-                    <div class="u-flex-1">
-                      <label
-                        style="
+                  <div class="u-flex-1">
+                    <label style="
                           display: block;
                           font-size: 0.75rem;
                           margin-bottom: 4px;
                           color: var(--text-muted);
-                        "
-                        >生成枚数</label
-                      >
-                      <input
-                        id="editorN"
-                        type="number"
-                        min="1"
-                        max="10"
-                        value="1"
-                        class="u-w-full"
-                      />
-                    </div>
-                    <div class="u-flex-2">
-                      <label
-                        style="
-                          display: block;
-                          font-size: 0.75rem;
-                          margin-bottom: 4px;
-                          color: var(--text-muted);
-                        "
-                        >背景処理</label
-                      >
-                      <select id="editorBackground" class="u-w-full">
-                        <option value="auto" selected>auto</option>
-                        <option value="transparent">transparent</option>
-                        <option value="original">original</option>
-                      </select>
-                    </div>
+                        ">品質</label>
+                    <select id="editorQuality" class="u-w-full">
+                      <option value="low">low</option>
+                      <option value="medium" selected>medium</option>
+                      <option value="high">high</option>
+                    </select>
                   </div>
+                </div>
 
-                  <div class="row">
-                    <div class="u-flex-1">
-                      <label
-                        style="
+                <div class="row u-mb-10">
+                  <div class="u-flex-1">
+                    <label style="
                           display: block;
                           font-size: 0.75rem;
                           margin-bottom: 4px;
                           color: var(--text-muted);
-                        "
-                        >フォーマット</label
-                      >
-                      <select id="editorOutputFormat" class="u-w-full">
-                        <option value="webp" selected>webp</option>
-                        <option value="png">png</option>
-                        <option value="jpeg">jpeg</option>
-                      </select>
-                    </div>
-                    <div class="u-flex-1">
-                      <label
-                        style="
+                        ">生成枚数</label>
+                    <input id="editorN" type="number" min="1" max="10" value="1" class="u-w-full" />
+                  </div>
+                  <div class="u-flex-2">
+                    <label style="
                           display: block;
                           font-size: 0.75rem;
                           margin-bottom: 4px;
                           color: var(--text-muted);
-                        "
-                        >圧縮率 (0-100)</label
-                      >
-                      <input
-                        id="editorOutputCompression"
-                        type="number"
-                        min="0"
-                        max="100"
-                        placeholder="圧縮率"
-                        class="u-w-full"
-                      />
-                    </div>
+                        ">背景処理</label>
+                    <select id="editorBackground" class="u-w-full">
+                      <option value="auto" selected>auto</option>
+                      <option value="transparent">transparent</option>
+                      <option value="original">original</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="row">
+                  <div class="u-flex-1">
+                    <label style="
+                          display: block;
+                          font-size: 0.75rem;
+                          margin-bottom: 4px;
+                          color: var(--text-muted);
+                        ">フォーマット</label>
+                    <select id="editorOutputFormat" class="u-w-full">
+                      <option value="webp" selected>webp</option>
+                      <option value="png">png</option>
+                      <option value="jpeg">jpeg</option>
+                    </select>
+                  </div>
+                  <div class="u-flex-1">
+                    <label style="
+                          display: block;
+                          font-size: 0.75rem;
+                          margin-bottom: 4px;
+                          color: var(--text-muted);
+                        ">圧縮率 (0-100)</label>
+                    <input id="editorOutputCompression" type="number" min="0" max="100" placeholder="圧縮率"
+                      class="u-w-full" />
                   </div>
                 </div>
               </div>
+            </div>
 
-              <button
-                type="button"
-                id="generateImage"
-                style="width: 100%; padding: 12px; font-weight: 600"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path
-                    d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"
-                  ></path>
+            <button type="button" id="generateImage" style="width: 100%; padding: 12px; font-weight: 600">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path
+                  d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+                </path>
+              </svg>
+              <span id="generateImageBtnText">画像を生成</span>
+            </button>
+          </div>
+
+          <div class="card side">
+            <h2>生成・編集結果</h2>
+            <div id="imageGallery" class="gallery"></div>
+            <pre id="assetResult" class="json"
+              style="margin-top: 18px; max-height: 200px; overflow-y: auto; font-size: 0.75rem"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section id="coding" class="view">
+        <div class="ide">
+          <div class="files card">
+            <h2>Files</h2>
+            <div class="explorer-toolbar">
+              <button type="button" id="openFolderBtn" class="ghost small" title="フォルダを開く">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
                 </svg>
-                <span id="generateImageBtnText">画像を生成</span>
+                フォルダを開く
+              </button>
+              <select id="rootSelector" class="root-selector" title="作業フォルダを選択">
+                <option value="">読み込み中...</option>
+              </select>
+            </div>
+            <div class="explorer-path-box">
+              <input id="explorerPath" type="text" placeholder="絶対パス" />
+              <button type="button" id="explorerRefresh" class="ghost" title="更新">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <polyline points="1 20 1 14 7 14"></polyline>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
               </button>
             </div>
-
-            <div class="card side">
-              <h2>生成・編集結果</h2>
-              <div id="imageGallery" class="gallery"></div>
-              <pre
-                id="assetResult"
-                class="json"
-                style="margin-top: 18px; max-height: 200px; overflow-y: auto; font-size: 0.75rem"
-              ></pre>
-            </div>
+            <div id="fileTree" class="file-tree" role="tree" aria-label="ファイルツリー"></div>
+            <p class="muted">※ 実際のフォルダやファイルを開いて編集できます。</p>
           </div>
-        </section>
 
-        <section id="coding" class="view">
-          <div class="ide">
-            <div class="files card">
-              <h2>Files</h2>
-              <div class="explorer-toolbar">
-                <button type="button" id="openFolderBtn" class="ghost small" title="フォルダを開く">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <path
-                      d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-                    ></path>
-                  </svg>
-                  フォルダを開く
-                </button>
-                <select id="rootSelector" class="root-selector" title="作業フォルダを選択">
-                  <option value="">読み込み中...</option>
-                </select>
-              </div>
-              <div class="explorer-path-box">
-                <input id="explorerPath" type="text" placeholder="絶対パス" />
-                <button type="button" id="explorerRefresh" class="ghost" title="更新">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <polyline points="23 4 23 10 17 10"></polyline>
-                    <polyline points="1 20 1 14 7 14"></polyline>
-                    <path
-                      d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
-                    ></path>
-                  </svg>
-                </button>
-              </div>
-              <div id="fileTree" class="file-tree" role="tree" aria-label="ファイルツリー"></div>
-              <p class="muted">※ 実際のフォルダやファイルを開いて編集できます。</p>
+          <div class="editorWrap card">
+            <div class="editor-header">
+              <span id="currentFileName">ファイルが選択されていません</span>
+              <button type="button" id="saveFileBtn" class="ghost small" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                  <polyline points="7 3 7 8 15 8"></polyline>
+                </svg>
+                保存 (Ctrl+S)
+              </button>
+            </div>
+            <div id="editorTabsBar" class="editor-tabs-bar"></div>
+            <div id="editor"></div>
+          </div>
+
+          <div class="assistant card agent-panel">
+            <div class="agent-header">
+              <h2>AI Agent</h2>
+              <span id="agentStatus" class="agent-status-badge idle">待機中</span>
             </div>
 
-            <div class="editorWrap card">
-              <div class="editor-header">
-                <span id="currentFileName">ファイルが選択されていません</span>
-                <button type="button" id="saveFileBtn" class="ghost small" disabled>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <path
-                      d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"
-                    ></path>
-                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                    <polyline points="7 3 7 8 15 8"></polyline>
-                  </svg>
-                  保存 (Ctrl+S)
-                </button>
-              </div>
-              <div id="editorTabsBar" class="editor-tabs-bar"></div>
-              <div id="editor"></div>
+            <!-- Recommendation tip -->
+            <div class="agent-model-tip"
+              style="font-size: 0.72rem; color: #facc15; background: rgba(250, 204, 21, 0.08); border: 1px solid rgba(250, 204, 21, 0.2); padding: 8px 12px; border-radius: 8px; line-height: 1.4; display: flex; gap: 6px; align-items: flex-start;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" style="flex-shrink: 0; margin-top: 1px;">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+              </svg>
+              <span><strong>推奨:</strong> エージェント機能は複雑なツール操作を伴うため、Tool Calling に強いモデル（GPT-4o, Claude 3.5 Sonnet, Gemini
+                2.5 Pro 等）を選択することを強く推奨します。</span>
             </div>
 
-            <div class="assistant card agent-panel">
-              <div class="agent-header">
-                <h2>AI Agent</h2>
-                <span id="agentStatus" class="agent-status-badge idle">待機中</span>
-              </div>
-
-              <div class="agent-setup-box">
-                <label for="agentInstruction" class="sr-only">エージェントへの指示</label>
-                <textarea
-                  id="agentInstruction"
-                  rows="4"
-                  placeholder="指示を入力... (例: utils/math.js を作成して、足し算関数とテストを作成し、テストを実行して結果を確認して)"
-                ></textarea>
-
-                <div class="row agent-setup-controls" style="margin-top: 10px; gap: 8px">
-                  <button
-                    type="button"
-                    id="startAgentBtn"
-                    class="agent-btn primary"
-                    style="
-                      flex: 1;
-                      height: 36px;
-                      font-size: 0.85rem;
-                      display: flex;
-                      align-items: center;
-                      justify-content: center;
-                      gap: 6px;
-                      border-radius: 8px;
-                      border: none;
-                      font-weight: 600;
-                      cursor: pointer;
-                      background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
-                      color: #fff;
-                      transition: filter 0.2s;
-                    "
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                    </svg>
-                    エージェント実行
-                  </button>
-                </div>
-
-                <!-- Code Generator Web Search Settings -->
-                <div
-                  class="code-gen-settings-box"
-                  style="
-                    margin-top: 16px;
-                    padding-top: 12px;
-                    border-top: 1px solid rgba(255, 255, 255, 0.05);
-                  "
-                >
-                  <h4
-                    style="
-                      font-size: 0.8rem;
-                      font-weight: 600;
-                      margin-bottom: 10px;
-                      color: var(--text-muted);
-                    "
-                  >
-                    AIコーディングモデルと検索設定
-                  </h4>
-                  <div class="row u-mb-12">
-                    <div class="u-flex-1">
-                      <label
-                        style="
-                          display: block;
-                          font-size: 0.75rem;
-                          margin-bottom: 4px;
-                          color: var(--text-muted);
-                        "
-                      >
-                        コーディングモデル (補完・インラインチャット用)
-                      </label>
-                      <button
-                        id="codeModelBtn"
-                        class="model-picker-btn"
-                        data-model-type="code"
-                        data-target-input="codeModel"
-                        style="width: 100%; font-size: 0.8rem; height: 36px; padding: 0 8px"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                        >
-                          <polyline points="16 18 22 12 16 6"></polyline>
-                          <polyline points="8 6 2 12 8 18"></polyline>
-                        </svg>
-                        <span id="codeModelLabel" class="u-text-xs">Qwen3 Coder Plus</span>
-                        <svg
-                          class="chevron"
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="10"
-                          height="10"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                        >
-                          <polyline points="6 9 12 15 18 9"></polyline>
-                        </svg>
-                      </button>
-                      <input id="codeModel" value="qwen3-coder-plus" type="hidden" />
-                    </div>
-                  </div>
-                  <label
-                    class="check"
-                    style="
-                      display: flex;
-                      align-items: center;
-                      gap: 8px;
-                      cursor: pointer;
-                      margin-top: 8px;
-                    "
-                  >
-                    <input type="checkbox" id="codeWebSearch" />
-                    <span>Web Search を有効化 (補完・インラインチャット用)</span>
-                  </label>
-                  <div class="row" style="display: flex; gap: 12px; margin-top: 10px">
-                    <div class="u-flex-1">
-                      <label
-                        for="codeNumOfSite"
-                        style="
-                          display: block;
-                          font-size: 0.75rem;
-                          margin-bottom: 4px;
-                          color: var(--text-muted);
-                        "
-                      >
-                        検索サイト数 (1-10)
-                      </label>
-                      <input
-                        id="codeNumOfSite"
-                        type="number"
-                        min="1"
-                        max="10"
-                        value="3"
-                        style="width: 100%; padding: 8px; font-size: 0.8rem; border-radius: 10px"
-                      />
-                    </div>
-                    <div class="u-flex-1">
-                      <label
-                        for="codeMaxWord"
-                        style="
-                          display: block;
-                          font-size: 0.75rem;
-                          margin-bottom: 4px;
-                          color: var(--text-muted);
-                        "
-                      >
-                        最大単語数/サイト
-                      </label>
-                      <input
-                        id="codeMaxWord"
-                        type="number"
-                        min="100"
-                        max="10000"
-                        step="100"
-                        value="1000"
-                        style="width: 100%; padding: 8px; font-size: 0.8rem; border-radius: 10px"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Agent Control Actions while running -->
-              <div
-                id="agentRunningControls"
-                class="agent-running-controls"
-                style="display: none; margin-top: 12px; gap: 8px; width: 100%"
-              >
-                <button
-                  type="button"
-                  id="stopAgentBtn"
-                  class="agent-btn danger"
-                  style="
-                    flex: 1;
-                    height: 36px;
+            <!-- Scrollable Chat Log -->
+            <div id="agentActivityLog" class="agent-timeline" role="log" aria-live="polite" aria-label="エージェントチャットログ"
+              style="
+                  flex: 1;
+                  overflow-y: auto;
+                  display: flex;
+                  flex-direction: column;
+                  gap: 12px;
+                  min-height: 250px;
+                  max-height: 520px;
+                  padding-right: 4px;
+                  margin-top: 8px;
+                ">
+              <div class="timeline-placeholder" style="
+                    color: var(--text-muted);
                     font-size: 0.85rem;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 6px;
+                    text-align: center;
+                    padding: 24px 8px;
+                    border: 1px dashed rgba(255, 255, 255, 0.05);
                     border-radius: 8px;
-                    border: none;
-                    font-weight: 600;
-                    cursor: pointer;
-                    background: rgba(239, 68, 68, 0.15);
-                    border: 1px solid rgba(239, 68, 68, 0.3);
-                    color: #f87171;
-                    transition: background 0.2s;
-                  "
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    background: rgba(255, 255, 255, 0.01);
+                  ">
+                指示を入力して、エージェントとのチャットを開始してください。
+              </div>
+            </div>
+
+            <!-- Collapsible Settings -->
+            <details class="agent-settings-details"
+              style="margin-top: 4px; border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 6px 10px; background: rgba(255, 255, 255, 0.01);">
+              <summary
+                style="font-size: 0.78rem; cursor: pointer; color: var(--text-muted); font-weight: 600; user-select: none;">
+                🤖 モデル・検索設定
+              </summary>
+              <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
+                <div class="row">
+                  <div class="u-flex-1">
+                    <label style="display: block; font-size: 0.75rem; margin-bottom: 4px; color: var(--text-muted);">
+                      コーディングモデル
+                    </label>
+                    <button id="codeModelBtn" class="model-picker-btn" data-model-type="code"
+                      data-target-input="codeModel"
+                      style="width: 100%; font-size: 0.8rem; height: 36px; padding: 0 8px">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2">
+                        <polyline points="16 18 22 12 16 6"></polyline>
+                        <polyline points="8 6 2 12 8 18"></polyline>
+                      </svg>
+                      <span id="codeModelLabel" class="u-text-xs">Qwen3 Coder Plus</span>
+                      <svg class="chevron" xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                      </svg>
+                    </button>
+                    <input id="codeModel" value="qwen3-coder-plus" type="hidden" />
+                  </div>
+                </div>
+                <label class="check"
+                  style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 4px;">
+                  <input type="checkbox" id="codeWebSearch" />
+                  <span style="font-size: 0.78rem;">Web Search を有効化</span>
+                </label>
+                <div class="row" style="display: flex; gap: 12px; margin-top: 4px;">
+                  <div class="u-flex-1">
+                    <label for="codeNumOfSite"
+                      style="display: block; font-size: 0.72rem; margin-bottom: 2px; color: var(--text-muted);">
+                      検索サイト数
+                    </label>
+                    <input id="codeNumOfSite" type="number" min="1" max="10" value="3"
+                      style="width: 100%; padding: 6px; font-size: 0.78rem; border-radius: 6px;" />
+                  </div>
+                  <div class="u-flex-1">
+                    <label for="codeMaxWord"
+                      style="display: block; font-size: 0.72rem; margin-bottom: 2px; color: var(--text-muted);">
+                      最大単語数/サイト
+                    </label>
+                    <input id="codeMaxWord" type="number" min="100" max="10000" step="100" value="1000"
+                      style="width: 100%; padding: 6px; font-size: 0.78rem; border-radius: 6px;" />
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            <!-- Unified Chat Input area at the bottom -->
+            <div class="agent-chat-input-box"
+              style="margin-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 10px;">
+              <textarea id="agentInstruction" rows="2" placeholder="指示を入力してエージェントを開始..."
+                style="width: 100%; border-radius: 10px; resize: none; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); padding: 8px 10px; color: #fff; font-size: 0.85rem;"></textarea>
+              <div class="agent-action-buttons" style="display: flex; gap: 8px; margin-top: 8px;">
+                <button type="button" id="startAgentBtn" class="agent-btn primary"
+                  style="flex: 2; height: 36px; font-size: 0.85rem; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%); color: #fff; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
                   </svg>
+                  実行
+                </button>
+                <button type="button" id="sendAgentFeedbackBtn" class="agent-btn primary-alt"
+                  style="display: none; flex: 2; height: 36px; font-size: 0.85rem; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%); color: #fff; align-items: center; justify-content: center; gap: 6px;">
+                  送信
+                </button>
+                <button type="button" id="stopAgentBtn" class="agent-btn danger"
+                  style="display: none; flex: 1; height: 36px; font-size: 0.85rem; border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.15); color: #f87171; font-weight: 600; cursor: pointer; align-items: center; justify-content: center; gap: 6px;">
                   停止
                 </button>
-                <button
-                  type="button"
-                  id="resetAgentBtn"
-                  class="agent-btn ghost"
-                  style="
-                    flex: 1;
-                    height: 36px;
-                    font-size: 0.85rem;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 6px;
-                    border-radius: 8px;
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    font-weight: 600;
-                    cursor: pointer;
-                    background: transparent;
-                    color: var(--text-muted);
-                    transition: background 0.2s;
-                  "
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
-                  </svg>
+                <button type="button" id="resetAgentBtn" class="agent-btn ghost"
+                  style="flex: 1; height: 36px; font-size: 0.85rem; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1); background: transparent; color: var(--text-muted); font-weight: 600; cursor: pointer; align-items: center; justify-content: center; gap: 6px;">
                   リセット
                 </button>
               </div>
+            </div>
 
-              <!-- Timeline/Activity Log -->
-              <div
-                class="agent-activity-section"
-                style="
-                  margin-top: 16px;
-                  flex: 1;
-                  display: flex;
-                  flex-direction: column;
-                  overflow: hidden;
-                  min-height: 0;
-                "
-              >
-                <h3
-                  class="section-title"
-                  style="
-                    font-size: 0.85rem;
-                    font-weight: 600;
-                    text-transform: uppercase;
-                    letter-spacing: 0.05em;
-                    color: var(--text-muted);
-                    cursor: pointer;
-                    user-select: none;
-                  "
-                  id="agentActivityToggle"
-                  title="アクティビティログを展開/折りたたみ"
-                >
-                  <span id="agentActivityToggleIcon" style="display: inline-block; transition: transform 0.2s;">▼</span>
-                  アクティビティログ
-                </h3>
-                <div
-                  id="agentActivityLog"
-                  class="agent-timeline"
-                  role="log"
-                  aria-live="polite"
-                  aria-label="エージェントアクティビティログ"
-                  style="
-                    flex: 1;
-                    overflow-y: auto;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 12px;
-                    max-height: 680px;
-                    padding-right: 4px;
-                  "
-                >
-                  <div
-                    class="timeline-placeholder"
-                    style="
-                      color: var(--text-muted);
-                      font-size: 0.85rem;
-                      text-align: center;
-                      padding: 24px 8px;
-                      border: 1px dashed rgba(255, 255, 255, 0.05);
-                      border-radius: 8px;
-                      background: rgba(255, 255, 255, 0.01);
-                    "
-                  >
-                    エージェントの実行を開始すると、思考や行動のログがここに表示されます。
-                  </div>
-                </div>
-              </div>
-
-              <!-- User Interruption/Feedback -->
-              <div
-                id="agentFeedbackContainer"
-                class="agent-feedback-container"
-                style="display: none; margin-top: 12px"
-              >
-                <div class="row" style="gap: 8px; width: 100%">
-                  <input
-                    id="agentFeedbackInput"
-                    type="text"
-                    placeholder="追加の指示やヒントを入力..."
-                    style="flex: 1; font-size: 0.85rem"
-                  />
-                  <button
-                    type="button"
-                    id="sendAgentFeedbackBtn"
-                    class="agent-btn primary-alt"
-                    style="
-                      height: 36px;
-                      padding: 0 16px;
-                      font-size: 0.85rem;
-                      font-weight: 600;
-                      border-radius: 8px;
-                      border: none;
-                      cursor: pointer;
-                      background: rgba(255, 255, 255, 0.08);
-                      border: 1px solid rgba(255, 255, 255, 0.1);
-                      color: #fff;
-                    "
-                  >
-                    送信
-                  </button>
-                </div>
-              </div>
+            <!-- Dummy elements to keep full compatibility with app.js DOM logic -->
+            <div id="agentRunningControls" style="display: none;"></div>
+            <div id="agentFeedbackContainer" style="display: none;">
+              <input id="agentFeedbackInput" type="hidden" />
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section id="settings" class="view">
-          <div class="card settings">
-            <h2>サーバー設定とAPI情報</h2>
-            <p>
-              このアプリケーションはブラウザからローカルの中継Expressサーバーにアクセスし、ローカルサーバーが安全に
-              1min.ai API と通信を行います。APIキーがフロントエンドに露出することはありません。
-            </p>
-            <ol>
-              <li>
-                プロジェクトルートの <code>.env.example</code> をコピーして
-                <code>.env</code> を作成します。
-              </li>
-              <li><code>ONE_MIN_AI_API_KEY</code> にあなたの 1min.ai API キーを設定します。</li>
-              <li>
-                ターミナルで <code>npm install</code> を実行して依存関係をインストールします。
-              </li>
-              <li><code>npm start</code> を実行してサーバーを起動します。</li>
-            </ol>
-            <div
-              style="
+      <section id="settings" class="view">
+        <div class="card settings">
+          <h2>サーバー設定とAPI情報</h2>
+          <p>
+            このアプリケーションはブラウザからローカルの中継Expressサーバーにアクセスし、ローカルサーバーが安全に
+            1min.ai API と通信を行います。APIキーがフロントエンドに露出することはありません。
+          </p>
+          <ol>
+            <li>
+              プロジェクトルートの <code>.env.example</code> をコピーして
+              <code>.env</code> を作成します。
+            </li>
+            <li><code>ONE_MIN_AI_API_KEY</code> にあなたの 1min.ai API キーを設定します。</li>
+            <li>
+              ターミナルで <code>npm install</code> を実行して依存関係をインストールします。
+            </li>
+            <li><code>npm start</code> を実行してサーバーを起動します。</li>
+          </ol>
+          <div style="
                 background: rgba(255, 255, 255, 0.03);
                 border: 1px solid rgba(255, 255, 255, 0.06);
                 padding: 16px;
                 border-radius: 12px;
                 margin-top: 20px;
-              "
-            >
-              <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 8px; color: #fff">
-                環境変数デフォルト値
-              </h3>
-              <p style="font-size: 0.85rem; margin-bottom: 0">
-                DEFAULT_CHAT_MODEL: <code>gpt-4o-mini</code><br />
-                DEFAULT_IMAGE_MODEL: <code>gpt-image-2</code><br />
-                DEFAULT_IMAGE_EDITOR_MODEL: <code>gpt-image-2</code>
-              </p>
-            </div>
+              ">
+            <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 8px; color: #fff">
+              環境変数デフォルト値
+            </h3>
+            <p style="font-size: 0.85rem; margin-bottom: 0">
+              DEFAULT_CHAT_MODEL: <code>gpt-4o-mini</code><br />
+              DEFAULT_IMAGE_MODEL: <code>gpt-image-2</code><br />
+              DEFAULT_IMAGE_EDITOR_MODEL: <code>gpt-image-2</code>
+            </p>
           </div>
-        </section>
-      </main>
-    </div>
-
-    <div id="folderPickerModal" class="folder-picker-modal u-hidden">
-      <div
-        class="folder-picker-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="folderPickerTitle"
-      >
-        <h3 id="folderPickerTitle">フォルダを選択</h3>
-        <p>
-          エクスプローラーで表示する作業フォルダを選択してください。許可されたルート配下のフォルダを開けます。
-        </p>
-
-        <div class="folder-picker-nav">
-          <button id="folderPickerUp" type="button" class="ghost small" title="上のフォルダへ">
-            ↑
-          </button>
-          <div id="folderPickerCurrentPath" class="folder-picker-current-path"></div>
         </div>
+      </section>
+    </main>
+  </div>
 
-        <div id="folderPickerDrives" class="folder-picker-drives"></div>
+  <div id="folderPickerModal" class="folder-picker-modal u-hidden">
+    <div class="folder-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="folderPickerTitle">
+      <h3 id="folderPickerTitle">フォルダを選択</h3>
+      <p>
+        エクスプローラーで表示する作業フォルダを選択してください。許可されたルート配下のフォルダを開けます。
+      </p>
 
-        <div id="folderPickerBody" class="folder-picker-body">
-          <div class="folder-picker-loading">フォルダを読み込み中...</div>
-        </div>
+      <div class="folder-picker-nav">
+        <button id="folderPickerUp" type="button" class="ghost small" title="上のフォルダへ">
+          ↑
+        </button>
+        <div id="folderPickerCurrentPath" class="folder-picker-current-path"></div>
+      </div>
 
-        <div class="folder-picker-path-row">
-          <input id="folderPickerPath" type="text" placeholder="フォルダの絶対パス" />
-        </div>
+      <div id="folderPickerDrives" class="folder-picker-drives"></div>
 
-        <div id="folderPickerError" class="folder-picker-error"></div>
+      <div id="folderPickerBody" class="folder-picker-body">
+        <div class="folder-picker-loading">フォルダを読み込み中...</div>
+      </div>
 
-        <div class="folder-picker-help">
-          ここではアップロード用ファイル入力を使わず、アプリ内フォルダブラウザでドライブ/フォルダをたどって選択できます。
-        </div>
+      <div class="folder-picker-path-row">
+        <input id="folderPickerPath" type="text" placeholder="フォルダの絶対パス" />
+      </div>
 
-        <div class="folder-picker-actions">
-          <button id="folderPickerCancel" type="button" class="ghost">キャンセル</button>
-          <button id="folderPickerOpen" type="button">開く</button>
-        </div>
+      <div id="folderPickerError" class="folder-picker-error"></div>
+
+      <div class="folder-picker-help">
+        ここではアップロード用ファイル入力を使わず、アプリ内フォルダブラウザでドライブ/フォルダをたどって選択できます。
+      </div>
+
+      <div class="folder-picker-actions">
+        <button id="folderPickerCancel" type="button" class="ghost">キャンセル</button>
+        <button id="folderPickerOpen" type="button">開く</button>
       </div>
     </div>
+  </div>
 
-    <div id="diffModal" class="folder-picker-modal u-hidden">
-      <div class="folder-picker-dialog" style="width: 90%; max-height: 90vh">
-        <h3>AI 提案の差分確認</h3>
-        <p
-          id="diffFilePath"
-          style="font-family: monospace; font-size: 0.8rem; margin-bottom: 10px"
-        ></p>
-        <div
-          id="diffEditorContainer"
-          style="
+  <div id="diffModal" class="folder-picker-modal u-hidden">
+    <div class="folder-picker-dialog" style="width: 90%; max-height: 90vh">
+      <div
+        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px;">
+        <h3 style="margin-bottom: 0;">AI 提案の差分確認</h3>
+        <label class="check"
+          style="margin-bottom: 0; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; font-size: 0.85rem;">
+          <input type="checkbox" id="diffInlineToggle" />
+          <span>インライン表示</span>
+        </label>
+      </div>
+      <p id="diffFilePath" style="font-family: monospace; font-size: 0.8rem; margin-bottom: 10px"></p>
+      <div id="diffEditorContainer" style="
             flex: 1;
             min-height: 400px;
             border: 1px solid var(--glass-border);
             border-radius: 12px;
-            overflow: hidden;
-          "
-        ></div>
-        <div class="folder-picker-actions">
-          <button id="diffCancel" type="button" class="ghost">破棄</button>
-          <button id="diffApply" type="button">変更を適用</button>
-        </div>
+          "></div>
+      <div class="folder-picker-actions">
+        <button id="diffCancel" type="button" class="ghost">破棄</button>
+        <button id="diffApply" type="button">変更を適用</button>
       </div>
     </div>
+  </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.5/dist/purify.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/min/vs/loader.js"></script>
-    <script src="./js/api.js"></script>
-    <script src="./js/models.js"></script>
-    <script src="./js/toast.js"></script>
-    <script src="./app.js"></script>
-  </body>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.5/dist/purify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/min/vs/loader.js"></script>
+  <script src="./js/api.js"></script>
+  <script src="./js/models.js"></script>
+  <script src="./js/toast.js"></script>
+  <script src="./app.js"></script>
+</body>
+
 </html>

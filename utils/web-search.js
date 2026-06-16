@@ -1,3 +1,6 @@
+import crypto from 'crypto';
+import { serverConfig } from '../config/server.js';
+
 /**
  * Validates and parses web search parameters.
  * @param {object} params - The parameters to validate.
@@ -44,12 +47,10 @@ export function buildWebSearchSettings({ webSearch, parsedNumOfSite, parsedMaxWo
   };
 }
 
-import crypto from 'crypto';
-import { serverConfig } from '../config/server.js';
 
 /**
  * Builds a CODE_GENERATOR payload matching the 1min.ai API schema:
- * promptObject.prompt, promptObject.webSearch, promptObject.numOfSite, promptObject.maxWord.
+ * promptObject.prompt, promptObject.settings.webSearchSettings.
  * @param {object} opts
  * @param {string} opts.prompt - The prompt text.
  * @param {string} [opts.model] - The model to use.
@@ -65,9 +66,13 @@ export function buildCodePayload({ prompt, model, webSearch, parsedNumOfSite, pa
     conversationId: `CODE_GEN_${crypto.randomUUID()}`,
     promptObject: {
       prompt,
-      webSearch: Boolean(webSearch),
-      ...(parsedNumOfSite !== undefined ? { numOfSite: parsedNumOfSite } : {}),
-      ...(parsedMaxWord !== undefined ? { maxWord: parsedMaxWord } : {}),
+      settings: {
+        webSearchSettings: {
+          webSearch: Boolean(webSearch),
+          ...(parsedNumOfSite !== undefined ? { numOfSite: parsedNumOfSite } : {}),
+          ...(parsedMaxWord !== undefined ? { maxWord: parsedMaxWord } : {}),
+        },
+      },
     },
   };
 }

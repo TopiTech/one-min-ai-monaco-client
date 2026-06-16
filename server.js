@@ -64,7 +64,7 @@ function compareAuthToken(a, b) {
 function parseCookies(cookieHeader) {
   const list = {};
   if (!cookieHeader) return list;
-  cookieHeader.split(`;`).forEach(function(cookie) {
+  cookieHeader.split(`;`).forEach(function (cookie) {
     let [name, ...rest] = cookie.split(`=`);
     name = name?.trim();
     if (!name) return;
@@ -77,11 +77,18 @@ function parseCookies(cookieHeader) {
 
 function localBffAuth({
   requireToken = true,
-  authToken = process.env.LOCAL_BFF_AUTH_TOKEN || createLocalAuthToken(),
+  authToken,
 } = {}) {
-  return (req, res, next) => {
-    if (!requireToken) return next();
+  // B-1: Require explicit authToken to prevent accidental re-evaluation of createLocalAuthToken()
+  if (requireToken && !authToken) {
+    throw new Error('localBffAuth: authToken must be provided explicitly when requireToken=true');
+  }
 
+  if (!requireToken) {
+    return (_req, _res, next) => next();
+  }
+
+  return (req, res, next) => {
     const cookies = parseCookies(req.headers.cookie);
     const headerToken = req.get("x-local-bff-token") || cookies["__bff_session"];
     if (headerToken && compareAuthToken(headerToken, authToken)) {
@@ -169,13 +176,10 @@ async function handleAssetUpload(req, res, next) {
     formData.append("asset", blob, safeName);
 
     const data = await callOneMin("/api/assets", { method: "POST", body: formData });
-    const normalized = normalizeAssetResponse(data);
+    const { raw: _raw, ...normalized } = normalizeAssetResponse(data);
 
     logger.info("Asset upload successful", { filename: req.file.originalname });
-    res.json({
-      ...normalized,
-      raw: data,
-    });
+    res.json(normalized);
   } catch (err) {
     logger.error("Asset upload failed", { error: err.message });
     next(err);
@@ -237,16 +241,18 @@ export function createApp(options = {}) {
     try {
       const htmlPath = path.join(__dirname, "public", "index.html");
       const html = fs.readFileSync(htmlPath, "utf8");
-      
+
       // Set the token as HttpOnly cookie instead of embedding in HTML meta tag
       if (requireLocalAuth) {
+        const ONE_DAY_MS = 24 * 60 * 60 * 1000;
         res.cookie('__bff_session', localAuthToken, {
           httpOnly: true,
           secure: process.env.NODE_ENV === "production",
-          sameSite: 'Lax'
+          sameSite: 'Strict',  // M-3: Strict prevents cross-site request forgery
+          maxAge: ONE_DAY_MS,  // B-2: Expire after 24h to limit session persistence
         });
       }
-      
+
       res.send(html);
     } catch (e) {
       res.status(500).send("Error loading index.html");
@@ -259,12 +265,11 @@ export function createApp(options = {}) {
     requireToken: requireLocalAuth,
     authToken: localAuthToken,
   });
+  // B-5: Health endpoint does not require auth but minimizes info exposure
   app.use("/api/health", (_req, res) => {
     res.json({
       ok: true,
       service: "one-min-ai-monaco-client",
-      localAuthEnabled: requireLocalAuth,
-      hasApiKey: !!process.env.ONE_MIN_AI_API_KEY,
     });
   });
 
@@ -282,9 +287,13 @@ export function createApp(options = {}) {
     },
   );
 
-  app.use("/api", protectedApiAuth, aiRoutes);
-  app.use("/api/fs", protectedApiAuth, fsRoutes);
-  app.use("/api/agent", protectedApiAuth, agentRoutes);
+  // B-5: Single auth layer at /api level. Sub-routes are mounted inside one protected router
+  // to avoid double invocation of protectedApiAuth.
+  const protectedRouter = express.Router();
+  protectedRouter.use("/", aiRoutes);
+  protectedRouter.use("/fs", fsRoutes);
+  protectedRouter.use("/agent", agentRoutes);
+  app.use("/api", protectedApiAuth, protectedRouter);
 
   app.use((err, req, res, _next) => {
     logger.error("Unhandled error", {

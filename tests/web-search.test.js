@@ -66,9 +66,13 @@ describe('web-search payload helpers', () => {
                 conversationId: expect.stringMatching(/^CODE_GEN_.+/),
                 promptObject: {
                     prompt: 'Fix this bug',
-                    webSearch: true,
-                    numOfSite: 3,
-                    maxWord: 500,
+                    settings: {
+                        webSearchSettings: {
+                            webSearch: true,
+                            numOfSite: 3,
+                            maxWord: 500,
+                        },
+                    },
                 },
             });
         });

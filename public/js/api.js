@@ -16,12 +16,13 @@ async function api(path, options = {}) {
   const timeoutId = setTimeout(() => controller.abort(), 60_000);
   try {
     const headers = options.headers || {};
-    
+
     const res = await fetch(path, { ...options, headers, signal: controller.signal });
     clearTimeout(timeoutId);
-    const data = await res.json().catch(() => ({}));
+
+    const data = await parseJsonOrTextResponse(res);
     if (!res.ok) {
-      throw new Error(data.error || `HTTP ${res.status}`);
+      throw new Error(data?.error || data?.message || res.statusText || `HTTP ${res.status}`);
     }
     if (_activeRequests > 0) _activeRequests--;
     if (_activeRequests === 0) setStatus("完了", "ok");
@@ -31,6 +32,22 @@ async function api(path, options = {}) {
     if (_activeRequests > 0) _activeRequests--;
     if (_activeRequests === 0) setStatus("エラー", "err");
     throw e;
+  }
+}
+
+async function parseJsonOrTextResponse(res) {
+  const text = await res.text();
+  if (!text) return {};
+
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json") && !text.trim().startsWith("{") && !text.trim().startsWith("[")) {
+    return { message: text };
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text };
   }
 }
 

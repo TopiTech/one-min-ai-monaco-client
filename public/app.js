@@ -7,7 +7,10 @@
 const $ = (id) => document.getElementById(id);
 
 // Initialize Model Pickers
-loadModels().then(() => initModelPickers());
+loadModels().then(() => {
+  initModelPickers();
+  applyCreditSavingMode();
+});
 
 // ============================================================
 // ============================================================
@@ -94,6 +97,7 @@ const state = {
   theme: {
     current: "dark",
   },
+  creditSaving: false,
 };
 
 const getBffToken = () => document.querySelector('meta[name="local-bff-token"]')?.content || "";
@@ -666,15 +670,15 @@ dom.sendChatBtn.onclick = async () => {
   }
 };
 
-// Check health and API key on startup
+// Check health on startup
 async function checkHealth() {
   try {
     const data = await api("/api/health");
-    if (!data.hasApiKey) {
-      toast.error("サーバーに 1min.ai APIキーが設定されていません。.env を確認してください。", {
+    if (!data?.ok) {
+      toast.error("サーバーのヘルスチェックに失敗しました。", {
         duration: 10000,
       });
-      setStatus("APIキー未設定", "err");
+      setStatus("ヘルスチェック失敗", "err");
     }
   } catch (e) {
     console.error("Health check failed:", e);
@@ -1127,7 +1131,7 @@ require(["vs/editor/editor.main"], function () {
           console.error("Autocomplete error:", e);
         }
       },
-      freeInlineCompletions: function () {},
+      freeInlineCompletions: function () { },
     });
   }
 });
@@ -1574,7 +1578,35 @@ function addAgentTimelineStep(type, title, body, resultText = null) {
 
   const bodyEl = document.createElement("div");
   bodyEl.className = "agent-step-body";
-  card.appendChild(bodyEl);
+
+  const isLongThought = type === "thought" && body && body.length > 100;
+  if (isLongThought) {
+    const toggleDiv = document.createElement("div");
+    toggleDiv.className = "agent-step-thought-toggle";
+    const toggleSpan = document.createElement("span");
+    toggleSpan.textContent = "▶ 思考プロセスを展開";
+    toggleDiv.appendChild(toggleSpan);
+
+    const thoughtBox = document.createElement("div");
+    thoughtBox.className = "agent-step-thought-box";
+    thoughtBox.style.display = "none";
+    thoughtBox.appendChild(bodyEl);
+
+    toggleDiv.onclick = () => {
+      if (thoughtBox.style.display === "none") {
+        thoughtBox.style.display = "block";
+        toggleSpan.textContent = "▼ 思考プロセスを折りたたむ";
+      } else {
+        thoughtBox.style.display = "none";
+        toggleSpan.textContent = "▶ 思考プロセスを展開";
+      }
+    };
+
+    card.appendChild(toggleDiv);
+    card.appendChild(thoughtBox);
+  } else {
+    card.appendChild(bodyEl);
+  }
 
   if (resultText !== null) {
     const toggleDiv = document.createElement("div");
@@ -1759,72 +1791,185 @@ function extractClosedTag(text, tagName) {
 function parseXMLTags(text) {
   const normalizedText = stripMarkdownCodeBlock(text || "");
 
-  const toolMatch = normalizedText.match(
-    /<call_tool\s+name=["']?([\w-]+)["']?\s*>([\s\S]*?)<\/call_tool>/i,
+  // 1. Try strict XML parsing with space-agnostic attributes
+  let toolMatch = normalizedText.match(
+    /<call_tool\s+name\s*=\s*["']?([\w-]+)["']?\s*>([\s\S]*?)<\/call_tool>/i,
   );
+
+  // Fallback: match even if closing </call_tool> is missing at the end of the text
+  if (!toolMatch) {
+    toolMatch = normalizedText.match(
+      /<call_tool\s+name\s*=\s*["']?([\w-]+)["']?\s*>([\s\S]*?)$/i,
+    );
+  }
 
   let toolCall = null;
   if (toolMatch) {
     const params = {};
-    const paramRegex = /<parameter\s+name=["']?([\w-]+)["']?\s*>([\s\S]*?)<\/parameter>/gi;
+    const paramRegex = /<parameter\s+name\s*=\s*["']?([\w-]+)["']?\s*>([\s\S]*?)<\/parameter>/gi;
     let match;
     while ((match = paramRegex.exec(toolMatch[2])) !== null) {
       params[match[1]] = unescapeXmlText(match[2].trim());
     }
 
-    if (Object.keys(params).length > 0) {
-      toolCall = { name: toolMatch[1], params };
+    // Always create toolCall if we matched a tool, even if params are empty
+    toolCall = { name: toolMatch[1], params };
+  }
+
+  let thought = extractClosedTag(normalizedText, "thought");
+  let finish = extractClosedTag(normalizedText, "finish");
+
+  // 2. Try JSON parsing fallback if no XML tags found
+  if (!toolCall && !finish) {
+    const jsonMatch = normalizedText.match(/\{[\s\S]*?\}/);
+    if (jsonMatch) {
+      try {
+        const data = JSON.parse(jsonMatch[0]);
+        if (data.thought && !thought) {
+          thought = data.thought;
+        }
+        if (data.finish) {
+          finish = data.finish;
+        } else if (data.status === "success" && data.summary) {
+          finish = data.summary;
+        }
+
+        let jsonToolName = data.tool || data.toolName || data.call_tool || (data.toolCall && data.toolCall.name) || data.action;
+        let jsonParams = data.parameters || data.params || (data.toolCall && data.toolCall.params) || data.arguments || data.args;
+
+        if (jsonToolName && typeof jsonToolName === "string") {
+          toolCall = {
+            name: jsonToolName,
+            params: jsonParams || {}
+          };
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+
+  // 3. Last resort fallback: Check for loose unclosed tags
+  if (!thought && normalizedText.includes("<thought>")) {
+    const idx = normalizedText.indexOf("<thought>");
+    const endIdx = normalizedText.indexOf("</thought>");
+    if (endIdx > idx) {
+      thought = normalizedText.substring(idx + 9, endIdx).trim();
+    } else {
+      thought = normalizedText.substring(idx + 9).trim();
+    }
+  }
+
+  if (!finish && normalizedText.includes("<finish>")) {
+    const idx = normalizedText.indexOf("<finish>");
+    const endIdx = normalizedText.indexOf("</finish>");
+    if (endIdx > idx) {
+      finish = normalizedText.substring(idx + 8, endIdx).trim();
+    } else {
+      finish = normalizedText.substring(idx + 8).trim();
     }
   }
 
   return {
-    thought: extractClosedTag(normalizedText, "thought"),
-    finish: extractClosedTag(normalizedText, "finish"),
+    thought,
+    finish,
     toolCall,
   };
 }
 let diffEditor = null;
 
 async function showDiffDialog(filePath, oldContent, newContent) {
-  const modal = $("diffModal");
-  const container = $("diffEditorContainer");
-  const pathLabel = $("diffFilePath");
+  try {
+    const modal = $("diffModal");
+    const container = $("diffEditorContainer");
+    const pathLabel = $("diffFilePath");
+    const inlineToggle = $("diffInlineToggle");
 
-  pathLabel.textContent = `ファイル: ${filePath}`;
-  modal.classList.remove("u-hidden");
+    pathLabel.textContent = `ファイル: ${filePath}`;
+    modal.classList.remove("u-hidden");
 
-  if (!diffEditor) {
-    diffEditor = monaco.editor.createDiffEditor(container, {
-      theme: document.documentElement.getAttribute("data-theme") === "light" ? "vs" : "vs-dark",
-      automaticLayout: true,
-      readOnly: true,
-      renderSideBySide: true,
+    const isInline = localStorage.getItem("diffRenderInline") === "true";
+    if (inlineToggle) {
+      inlineToggle.checked = isInline;
+      inlineToggle.onchange = (e) => {
+        const inline = e.target.checked;
+        localStorage.setItem("diffRenderInline", inline);
+        if (diffEditor) {
+          diffEditor.updateOptions({
+            renderSideBySide: !inline,
+          });
+        }
+      };
+    }
+
+    if (!diffEditor) {
+      diffEditor = monaco.editor.createDiffEditor(container, {
+        theme: document.documentElement.getAttribute("data-theme") === "light" ? "vs" : "vs-dark",
+        automaticLayout: true,
+        readOnly: true,
+        renderSideBySide: !isInline,
+      });
+    } else {
+      diffEditor.updateOptions({
+        theme: document.documentElement.getAttribute("data-theme") === "light" ? "vs" : "vs-dark",
+        renderSideBySide: !isInline,
+      });
+    }
+
+    // 拡張子とファイル名を取得し、スペースやコロン、日本語などの非ASCII文字を排除した安全なパスを構築する
+    const ext = filePath.includes('.') ? filePath.split('.').pop() : 'txt';
+    const baseName = filePath.split(/[\\/]/).pop().replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const safePath = '/' + baseName;
+    const originalUri = monaco.Uri.from({ scheme: "diff-original", path: safePath });
+    const modifiedUri = monaco.Uri.from({ scheme: "diff-modified", path: safePath });
+
+    let originalModel = monaco.editor.getModel(originalUri);
+    if (originalModel) originalModel.dispose();
+    let modifiedModel = monaco.editor.getModel(modifiedUri);
+    if (modifiedModel) modifiedModel.dispose();
+
+    originalModel = monaco.editor.createModel(oldContent, undefined, originalUri);
+    modifiedModel = monaco.editor.createModel(newContent, undefined, modifiedUri);
+    diffEditor.setModel({
+      original: originalModel,
+      modified: modifiedModel,
     });
+
+    // Force layout calculation since container was hidden.
+    // Use double-rAF to wait for the CSS modal animation (180ms) to finish
+    // and for the browser to complete its layout pass.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (diffEditor) {
+          diffEditor.layout();
+        }
+      });
+    });
+
+    return new Promise((resolve) => {
+      $("diffApply").onclick = () => {
+        modal.classList.add("u-hidden");
+        if (diffEditor) diffEditor.setModel(null);
+        originalModel.dispose();
+        modifiedModel.dispose();
+        resolve(true);
+      };
+      $("diffCancel").onclick = () => {
+        modal.classList.add("u-hidden");
+        if (diffEditor) diffEditor.setModel(null);
+        originalModel.dispose();
+        modifiedModel.dispose();
+        resolve(false);
+      };
+    });
+  } catch (error) {
+    console.error("showDiffDialogでエラーが発生しました:", error);
+    if (window.toast) {
+      window.toast.error("差分ダイアログの表示中にエラーが発生しました: " + error.message);
+    }
+    $("diffModal").classList.add("u-hidden");
+    return false;
   }
-
-  const originalModel = monaco.editor.createModel(oldContent);
-  const modifiedModel = monaco.editor.createModel(newContent);
-  diffEditor.setModel({
-    original: originalModel,
-    modified: modifiedModel,
-  });
-
-  return new Promise((resolve) => {
-    $("diffApply").onclick = () => {
-      modal.classList.add("u-hidden");
-      if (diffEditor) diffEditor.setModel(null);
-      originalModel.dispose();
-      modifiedModel.dispose();
-      resolve(true);
-    };
-    $("diffCancel").onclick = () => {
-      modal.classList.add("u-hidden");
-      if (diffEditor) diffEditor.setModel(null);
-      originalModel.dispose();
-      modifiedModel.dispose();
-      resolve(false);
-    };
-  });
 }
 
 function resolvePathRelativeToWorkspace(workspaceRoot, filePath) {
@@ -1841,7 +1986,10 @@ function estimateTokens(text) {
   return Math.ceil(text.length / 3);
 }
 
-function trimAgentHistory(history, maxTokens = 90000) {
+function trimAgentHistory(history, maxTokens) {
+  if (maxTokens === undefined) {
+    maxTokens = state.creditSaving ? 15000 : 45000;
+  }
   let totalTokens = 0;
   for (let i = history.length - 1; i >= 0; i--) {
     totalTokens += estimateTokens(history[i].content);
@@ -1859,6 +2007,9 @@ function trimAgentHistory(history, maxTokens = 90000) {
 async function runAgentLoop(initialInstruction) {
   const workspaceRoot = dom.explorerPath.value || "";
   setAgentStatus("初期化中...", "thinking");
+
+  // Show user's initial message as a user chat bubble
+  addAgentTimelineStep("user", "指示", initialInstruction);
 
   if (!state.agent.sessionId) {
     try {
@@ -2258,8 +2409,10 @@ ${workspaceFilesText}
 
   state.agent.active = false;
   dom.startAgentBtn.style.display = "flex";
-  $("agentRunningControls").style.display = "none";
-  dom.agentInstruction.disabled = false;
+  dom.sendAgentFeedbackBtn.style.display = "none";
+  dom.stopAgentBtn.style.display = "none";
+  dom.resetAgentBtn.style.display = "flex";
+  dom.agentInstruction.placeholder = "指示を入力してエージェントを開始...";
   if (dom.agentStatus.textContent !== "完了" && dom.agentStatus.textContent !== "エラー") {
     setAgentStatus("待機中", "idle");
   }
@@ -2273,10 +2426,15 @@ dom.startAgentBtn.onclick = async () => {
     return;
   }
 
+  // Clear input so user can type feedback immediately
+  dom.agentInstruction.value = "";
+  dom.agentInstruction.placeholder = "追加の指示やヒントを入力...";
+
   state.agent.active = true;
   dom.startAgentBtn.style.display = "none";
-  $("agentRunningControls").style.display = "flex";
-  dom.agentInstruction.disabled = true;
+  dom.sendAgentFeedbackBtn.style.display = "flex";
+  dom.stopAgentBtn.style.display = "flex";
+  dom.resetAgentBtn.style.display = "none";
 
   try {
     await runAgentLoop(instruction);
@@ -2291,8 +2449,10 @@ dom.startAgentBtn.onclick = async () => {
   } finally {
     state.agent.active = false;
     dom.startAgentBtn.style.display = "flex";
-    dom.agentInstruction.disabled = false;
-    $("agentRunningControls").style.display = "none";
+    dom.sendAgentFeedbackBtn.style.display = "none";
+    dom.stopAgentBtn.style.display = "none";
+    dom.resetAgentBtn.style.display = "flex";
+    dom.agentInstruction.placeholder = "指示を入力してエージェントを開始...";
   }
 };
 
@@ -2324,20 +2484,25 @@ dom.resetAgentBtn.onclick = async () => {
       placeholder.style.cssText =
         "color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 24px 8px; border: 1px dashed rgba(255,255,255,0.05); border-radius: 8px; background: rgba(255,255,255,0.01);";
       placeholder.textContent =
-        "エージェントの実行を開始すると、思考や行動のログがここに表示されます。";
+        "指示を入力して、エージェントとのチャットを開始してください。";
       log.appendChild(placeholder);
     }
     setAgentStatus("待機中", "idle");
+    dom.agentInstruction.placeholder = "指示を入力してエージェントを開始...";
+    dom.startAgentBtn.style.display = "flex";
+    dom.sendAgentFeedbackBtn.style.display = "none";
+    dom.stopAgentBtn.style.display = "none";
+    dom.resetAgentBtn.style.display = "flex";
     toast.success("セッションをリセットしました");
   }
 };
 
 dom.sendAgentFeedbackBtn.onclick = () => {
-  const feedback = dom.agentFeedbackInput.value.trim();
+  const feedback = dom.agentInstruction.value.trim();
   if (!feedback) return;
-  dom.agentFeedbackInput.value = "";
+  dom.agentInstruction.value = "";
 
-  addAgentTimelineStep("thought", "フィードバック追加", feedback);
+  addAgentTimelineStep("user", "追加指示", feedback);
 
   if (state.agent.resolver) {
     state.agent.resolver({ approved: false, reason: `ユーザー指示: ${feedback}` });
@@ -2348,6 +2513,17 @@ dom.sendAgentFeedbackBtn.onclick = () => {
     });
   }
 };
+
+dom.agentInstruction.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    if (state.agent.active) {
+      dom.sendAgentFeedbackBtn.click();
+    } else {
+      dom.startAgentBtn.click();
+    }
+  }
+});
 
 async function initWorkspace() {
   try {
@@ -2667,5 +2843,108 @@ function initFolderPicker() {
   };
 }
 
+function selectModelForPicker(inputId, modelObj) {
+  const hiddenInput = document.getElementById(inputId);
+  if (hiddenInput) hiddenInput.value = modelObj.id;
+  const btn = document.querySelector(`button[data-target-input="${inputId}"]`);
+  const labelSpan = btn?.querySelector("span:first-of-type");
+  if (labelSpan) labelSpan.textContent = modelObj.label;
+}
+
+const STORAGE_KEY_CREDIT_SAVING = "monaco_client_credit_saving";
+
+function initCreditSavingMode() {
+  const toggle = $("creditSavingToggle");
+  if (!toggle) return;
+
+  const saved = localStorage.getItem(STORAGE_KEY_CREDIT_SAVING);
+  state.creditSaving = saved === "true";
+  toggle.checked = state.creditSaving;
+
+  toggle.onchange = (e) => {
+    state.creditSaving = e.target.checked;
+    localStorage.setItem(STORAGE_KEY_CREDIT_SAVING, state.creditSaving);
+    applyCreditSavingMode();
+  };
+
+  applyCreditSavingMode();
+}
+
+function applyCreditSavingMode() {
+  const webSearch = $("webSearch");
+  const codeWebSearch = $("codeWebSearch");
+  const numOutputs = $("numOutputs");
+  const editorN = $("editorN");
+  const editorQuality = $("editorQuality");
+
+  if (state.creditSaving) {
+    if (webSearch) {
+      webSearch.checked = false;
+      webSearch.disabled = true;
+      const chatSettings = $("chatWebSearchSettings");
+      if (chatSettings) chatSettings.style.display = "none";
+    }
+    if (codeWebSearch) {
+      codeWebSearch.checked = false;
+      codeWebSearch.disabled = true;
+    }
+
+    if (numOutputs) {
+      numOutputs.value = 1;
+      numOutputs.disabled = true;
+    }
+    if (editorN) {
+      editorN.value = 1;
+      editorN.disabled = true;
+    }
+    if (editorQuality) {
+      editorQuality.value = "medium";
+      for (let i = 0; i < editorQuality.options.length; i++) {
+        if (editorQuality.options[i].value === "high") {
+          editorQuality.options[i].disabled = true;
+        }
+      }
+    }
+
+    if (typeof _allChatModels !== "undefined" && _allChatModels.length > 0) {
+      const currentChat = $("chatModel")?.value;
+      const currentModelObj = _allChatModels.find((m) => m.id === currentChat);
+      if (currentChat && (!currentModelObj || !currentModelObj.tags || !currentModelObj.tags.includes("fast"))) {
+        const fallback = _allChatModels.find((m) => m.id === "gpt-4o-mini") || _allChatModels.find((m) => m.tags && m.tags.includes("fast"));
+        if (fallback) selectModelForPicker("chatModel", fallback);
+      }
+    }
+
+    if (typeof _allCodeModels !== "undefined" && _allCodeModels.length > 0) {
+      const currentCode = $("codeModel")?.value;
+      const currentModelObj = _allCodeModels.find((m) => m.id === currentCode);
+      if (currentCode && (!currentModelObj || !currentModelObj.tags || !currentModelObj.tags.includes("fast"))) {
+        const fallback = _allCodeModels.find((m) => m.id === "qwen3-coder-flash") || _allCodeModels.find((m) => m.tags && m.tags.includes("fast"));
+        if (fallback) selectModelForPicker("codeModel", fallback);
+      }
+    }
+
+    if (typeof _allImageModels !== "undefined" && _allImageModels.length > 0) {
+      const currentImage = $("imageModel")?.value;
+      const currentModelObj = _allImageModels.find((m) => m.id === currentImage);
+      if (currentImage && (!currentModelObj || !currentModelObj.tags || !currentModelObj.tags.includes("fast"))) {
+        const fallback = _allImageModels.find((m) => m.id === "gpt-image-1-mini") || _allImageModels.find((m) => m.tags && m.tags.includes("fast"));
+        if (fallback) selectModelForPicker("imageModel", fallback);
+      }
+    }
+  } else {
+    if (webSearch) webSearch.disabled = false;
+    if (codeWebSearch) codeWebSearch.disabled = false;
+    if (numOutputs) numOutputs.disabled = false;
+    if (editorN) editorN.disabled = false;
+    if (editorQuality) {
+      for (let i = 0; i < editorQuality.options.length; i++) {
+        editorQuality.options[i].disabled = false;
+      }
+    }
+  }
+}
+
 initWorkspace();
 initFolderPicker();
+initCreditSavingMode();

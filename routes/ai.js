@@ -367,6 +367,19 @@ router.post("/images/text-editor", async (req, res, next) => {
 const MAX_CODE_LENGTH = 100_000;
 const MAX_PROMPT_LENGTH = 50_000;
 
+/**
+ * M-2: Sanitize a value before embedding it into an AI prompt.
+ * Strips control characters and truncates to prevent prompt injection
+ * via crafted fileName or language fields.
+ */
+function sanitizeForPrompt(value, maxLen = 256) {
+  if (typeof value !== "string") return "";
+  return value
+    .replace(/[\x00-\x1f\x7f]/g, "")  // strip control characters
+    .replace(/`{3}/g, "'''")            // neutralize markdown code fence markers
+    .slice(0, maxLen);
+}
+
 function stripCodeFences(text) {
   if (!text.includes("```")) return text;
   const match = text.match(/```(?:\w+)?\n([\s\S]*?)```/);
@@ -398,7 +411,7 @@ router.post("/code/generate", async (req, res, next) => {
       maxWord,
     });
 
-    const prompt = `あなたは熟練のソフトウェアエンジニアです。以下のコードに対してユーザー指示を実行してください。\n\n出力ルール:\n- 変更コードが必要な場合は完全なコードブロックで返す\n- 変更理由を短く説明する\n- 可能なら注意点も述べる\n\nファイル名: ${fileName}\n言語: ${language}\n\nユーザー指示:\n${instruction}\n\n現在のコード:\n\`\`\`${language}\n${code}\n\`\`\``;
+    const prompt = `あなたは熟練のソフトウェアエンジニアです。以下のコードに対してユーザー指示を実行してください。\n\n出力ルール:\n- 変更コードが必要な場合は完全なコードブロックで返す\n- 変更理由を短く説明する\n- 可能なら注意点も述べる\n\nファイル名: ${sanitizeForPrompt(fileName)}\n言語: ${sanitizeForPrompt(language)}\n\nユーザー指示:\n${instruction}\n\n現在のコード:\n\`\`\`${sanitizeForPrompt(language)}\n${code}\n\`\`\``;
 
     const payload = buildCodePayload({
       prompt,
@@ -452,16 +465,17 @@ router.post("/code/autocomplete", async (req, res, next) => {
     const afterCurrent = currentLine.substring(colIndex);
     const linesAfter = lines.slice(lineIndex + 1);
 
-    const beforeCode = [...linesBefore, beforeCurrent].join("\n");
-    const afterCode = [afterCurrent, ...linesAfter].join("\n");
+    // Trim context lines to save tokens/credits for inline completions (Local window only)
+    const beforeCode = [...linesBefore.slice(-100), beforeCurrent].join("\n");
+    const afterCode = [afterCurrent, ...linesAfter.slice(0, 100)].join("\n");
 
     const prompt = `あなたはAIコーディングアシスタントです。ユーザーがエディタでコードを入力中であり、カーソルの直後に続くべきコード（数行〜最大20行程度）を提案してください。
 必ず提案するコード「のみ」を出力してください。説明、マークダウンのコードブロック記号(\`\`\`)、解説、挨拶などは絶対に含めないでください。
 また、提案コードは「カーソルより前のコード」の直後からシームレスに繋がるようにしてください（すでに書かれているコードを重複して出力しないでください）。
 
 コンテキスト:
-ファイル名: ${fileName || "untitled"}
-言語: ${language || "plaintext"}
+ファイル名: ${sanitizeForPrompt(fileName || "untitled")}
+言語: ${sanitizeForPrompt(language || "plaintext")}
 
 カーソルより前のコード:
 ${beforeCode}
@@ -531,15 +545,16 @@ router.post("/code/inline-chat", async (req, res, next) => {
     const afterCurrent = currentLine.substring(colIndex);
     const linesAfter = lines.slice(lineIndex + 1);
 
-    const beforeCode = [...linesBefore, beforeCurrent].join("\n");
-    const afterCode = [afterCurrent, ...linesAfter].join("\n");
+    // Trim context lines to save tokens/credits for inline chat editing (Local window only)
+    const beforeCode = [...linesBefore.slice(-150), beforeCurrent].join("\n");
+    const afterCode = [afterCurrent, ...linesAfter.slice(0, 150)].join("\n");
 
     const prompt = `あなたは熟練のソフトウェアエンジニアです。エディタのカーソル位置でユーザー指示を実行し、挿入または変更すべきコードを出力してください。
 必ず提案するコード「のみ」を出力し、説明やマークダウンのコードブロック記号(\`\`\`)は一切含めないでください。
 
 コンテキスト:
-ファイル名: ${fileName || "untitled"}
-言語: ${language || "plaintext"}
+ファイル名: ${sanitizeForPrompt(fileName || "untitled")}
+言語: ${sanitizeForPrompt(language || "plaintext")}
 ユーザー指示: ${userPrompt}
 
 カーソルより前のコード:

@@ -12,6 +12,10 @@ import fs from "fs/promises";
 import path from "path";
 import logger from "../utils/logger.js";
 
+function resolveAgentPath(targetPath, sessionCwd = process.cwd()) {
+  return path.isAbsolute(targetPath) ? targetPath : path.join(sessionCwd, targetPath);
+}
+
 const router = express.Router();
 
 // In-memory session store (replace with persistent store in production)
@@ -63,15 +67,7 @@ router.post("/sessions", (req, res, next) => {
     const { id, cwd, task } = req.body;
     const sessionId = id || crypto.randomUUID();
 
-    let validatedCwd = cwd || process.cwd();
-    if (cwd) {
-      try {
-        validatedCwd = validatePath(cwd);
-        assertNotProtectedPath(validatedCwd);
-      } catch (e) {
-        return res.status(400).json({ error: `Invalid cwd: ${e.message}` });
-      }
-    }
+    const validatedCwd = cwd ? path.resolve(cwd) : process.cwd();
 
     const session = {
       id: sessionId,
@@ -144,9 +140,10 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
     }
 
     // Validate working directory
-    const workingDir = cwd || session.cwd;
+    const workingDir = path.resolve(resolveAgentPath(cwd || session.cwd, session.cwd));
     try {
       validatePath(workingDir);
+      assertNotProtectedPath(workingDir);
     } catch (err) {
       return res.status(403).json({ error: `Invalid working directory: ${err.message}` });
     }
@@ -176,7 +173,7 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
 
       logger.info(`Command execution paused, awaiting user approval`, {
         sessionId: req.params.id,
-        command,
+        command: command.split(/\s+/)[0],
         cwd: workingDir,
         approvalToken,
       });
@@ -194,7 +191,7 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
     session.status = "running";
     logger.info(`Executing command (auto-approved or bypass-auth)`, {
       sessionId: req.params.id,
-      command,
+      command: command.split(/\s+/)[0],
       cwd: workingDir,
     });
     const result = await executeCommand(command, {
@@ -205,7 +202,7 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
     session.status = "idle";
     logger.info(`Command execution finished`, {
       sessionId: req.params.id,
-      command,
+      command: command.split(/\s+/)[0],
       exitCode: result.exitCode,
       timedOut: result.timedOut,
     });
@@ -261,13 +258,14 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
       });
     }
 
-    const workingDir = pending.cwd;
+    const workingDir = path.resolve(resolveAgentPath(pending.cwd, session.cwd));
     validatePath(workingDir);
+    assertNotProtectedPath(workingDir);
 
     session.status = "running";
     logger.info(`Executing approved command`, {
       sessionId: req.params.id,
-      command: pending.command,
+      command: pending.command.split(/\s+/)[0],
       cwd: workingDir,
     });
     const result = await executeCommand(pending.command, {
@@ -278,7 +276,7 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
     session.status = "idle";
     logger.info(`Approved command finished`, {
       sessionId: req.params.id,
-      command: pending.command,
+      command: pending.command.split(/\s+/)[0],
       exitCode: result.exitCode,
       timedOut: result.timedOut,
     });
@@ -318,7 +316,7 @@ router.get("/sessions/:id/files", async (req, res, next) => {
       return res.status(400).json({ error: "path is required" });
     }
 
-    const resolvedPath = validatePath(filePath);
+    const resolvedPath = validatePath(resolveAgentPath(filePath, session.cwd));
     assertNotProtectedPath(resolvedPath);
     const content = await fs.readFile(resolvedPath, "utf-8");
 
@@ -350,7 +348,7 @@ router.post("/sessions/:id/files", async (req, res, next) => {
       return res.status(400).json({ error: "content must be a string" });
     }
 
-    const resolvedPath = validatePath(filePath);
+    const resolvedPath = validatePath(resolveAgentPath(filePath, session.cwd));
     assertNotWriteProtectedPath(resolvedPath);
     const dir = path.dirname(resolvedPath);
     await fs.mkdir(dir, { recursive: true });
@@ -388,7 +386,7 @@ router.get("/sessions/:id/search", async (req, res, next) => {
     }
 
     const searchDir = dir || session.cwd;
-    const resolvedSearchDir = validatePath(searchDir);
+    const resolvedSearchDir = validatePath(resolveAgentPath(searchDir, session.cwd));
     assertNotProtectedPath(resolvedSearchDir);
 
     const limit = Math.max(1, Math.min(parseInt(maxResults) || 20, 100));
@@ -466,6 +464,11 @@ async function searchInDirectory(dir, query, results, maxResults, depth = 0) {
         }
       }),
     );
+    // L-4: Promise.all runs in parallel so results may slightly exceed maxResults;
+    // trim the array to the hard limit after all entries are processed.
+    if (results.length > maxResults) {
+      results.splice(maxResults);
+    }
   } catch {
     // Skip inaccessible directories
   }
@@ -525,7 +528,8 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
       return res.status(400).json({ error: "diff is required" });
     }
 
-    const resolvedPath = validatePath(filePath);
+    const agentPath = resolveAgentPath(filePath, session.cwd);
+    const resolvedPath = validatePath(agentPath);
     assertNotWriteProtectedPath(resolvedPath);
 
     const content = await fs.readFile(resolvedPath, "utf-8");
@@ -680,7 +684,9 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
     res.json({
       ok: true,
       path: resolvedPath,
-      newContent: newContent,
+      // M-5: Only return newContent on dryRun to avoid sending large file contents
+      // unnecessarily when the write has already been committed to disk.
+      ...(dryRun ? { newContent } : {}),
       message: dryRun
         ? "プレビューを生成しました。"
         : `${blocks.length}個のブロックの置換に成功しました。`,

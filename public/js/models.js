@@ -152,6 +152,10 @@ function openModelPicker(btn, type) {
   let models =
     type === "image" ? _allImageModels : type === "code" ? _allCodeModels : _allChatModels;
 
+  if (typeof state !== "undefined" && state.creditSaving) {
+    models = models.filter((m) => m.tags && m.tags.includes("fast"));
+  }
+
   if (type === "image") {
     const isEditMode = !!(document.getElementById("editorImageUrl")?.value?.trim());
     if (isEditMode) {

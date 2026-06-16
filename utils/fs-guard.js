@@ -116,9 +116,12 @@ export function validatePath(targetPath) {
     }
   });
 
-  const isAllowed = realRoots.some(
-    (root) => realPath === root || realPath.startsWith(root + path.sep),
-  );
+  // Case-insensitive comparison for Windows drive letters (c: vs C:)
+  const normalizedRealPath = process.platform === "win32" ? realPath.toLowerCase() : realPath;
+  const isAllowed = realRoots.some((root) => {
+    const normalizedRoot = process.platform === "win32" ? root.toLowerCase() : root;
+    return normalizedRealPath === normalizedRoot || normalizedRealPath.startsWith(normalizedRoot + path.sep);
+  });
 
   if (!isAllowed) {
     const err = new Error("Access denied: Path is outside the allowed directories");

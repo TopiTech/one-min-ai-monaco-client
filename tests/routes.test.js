@@ -10,7 +10,10 @@ jest.unstable_mockModule('../utils/api-client.js', () => ({
     if (data.aiRecord?.aiRecordDetail?.resultObject) return data.aiRecord.aiRecordDetail.resultObject;
     return JSON.stringify(data);
   }),
-  normalizeAssetResponse: jest.fn((data) => ({ key: data?.asset?.key || '', url: '', raw: data })),
+  normalizeAssetResponse: jest.fn((data) => {
+    const key = data?.asset?.key || '';
+    return { key, url: key ? `https://asset.1min.ai/${key}` : '' };
+  }),
 }));
 
 // Re-import mocked client and other helpers after mocking
@@ -104,10 +107,14 @@ describe('AI Routes Integration Tests', () => {
       expect(sentBody.promptObject).toEqual(
         expect.objectContaining({
           prompt: expect.stringContaining('ユーザー指示:'),
-          webSearch: false,
+          settings: expect.objectContaining({
+            webSearchSettings: expect.objectContaining({
+              webSearch: false,
+            }),
+          }),
         }),
       );
-      expect(sentBody.promptObject).not.toHaveProperty('settings');
+      expect(sentBody.promptObject).not.toHaveProperty('webSearch');
     });
 
     test('should return 400 if instruction is missing', async () => {
@@ -117,6 +124,25 @@ describe('AI Routes Integration Tests', () => {
 
       expect(response.status).toBe(400);
       expect(response.body.error).toBe('instruction is required');
+    });
+  });
+
+  describe('POST /api/assets/upload', () => {
+    test('should not return raw upstream payload', async () => {
+      callOneMin.mockResolvedValue({
+        asset: { key: 'uploads/test.txt' },
+      });
+
+      const response = await request(app)
+        .post('/api/assets/upload')
+        .attach('asset', Buffer.from('hello'), { filename: 'test.txt', contentType: 'text/plain' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        key: 'uploads/test.txt',
+        url: 'https://asset.1min.ai/uploads/test.txt',
+      });
+      expect(response.body).not.toHaveProperty('raw');
     });
   });
 

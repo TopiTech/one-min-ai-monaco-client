@@ -39,16 +39,19 @@ describe("Server Factory", () => {
       expect(response.status).toBe(200);
       expect(response.body.ok).toBe(true);
       expect(response.body.service).toBe("one-min-ai-monaco-client");
-      expect(response.body.hasApiKey).toBe(true);
+      // hasApiKey removed from health endpoint to reduce info exposure (B-5)
+      expect(response.body.hasApiKey).toBeUndefined();
     });
 
-    test("should indicate when API key is missing", async () => {
+    test("should return 200 even when API key is missing", async () => {
       delete process.env.ONE_MIN_AI_API_KEY;
 
       const response = await request(app).get("/api/health");
 
       expect(response.status).toBe(200);
-      expect(response.body.hasApiKey).toBe(false);
+      expect(response.body.ok).toBe(true);
+      // hasApiKey removed from health endpoint (B-5)
+      expect(response.body.hasApiKey).toBeUndefined();
     });
   });
 
