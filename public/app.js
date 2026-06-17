@@ -1191,6 +1191,7 @@ const inlineChatWidget = {
     if (!state.editor.inlineChatDom) {
       state.editor.inlineChatDom = document.createElement("div");
       state.editor.inlineChatDom.className = "inline-chat-widget";
+      state.editor.inlineChatDom.style.maxWidth = "90vw";
       state.editor.inlineChatDom.style.width = "350px";
 
       const inputRow = document.createElement("div");
