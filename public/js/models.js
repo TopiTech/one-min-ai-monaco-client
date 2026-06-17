@@ -269,8 +269,13 @@ function initModelPickers() {
     });
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeModelPicker();
+    if (e.key === "Escape" && _activePickerType) {
+      closeModelPicker();
+    }
     if (e.key === "Enter" && _activePickerType) {
+      const target = e.target;
+      const tag = target?.tagName;
+      if (tag === "TEXTAREA" || tag === "BUTTON") return;
       e.preventDefault();
       selectActivePickerItem();
     }

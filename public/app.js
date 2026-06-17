@@ -151,7 +151,7 @@ function updateThemeUI() {
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
   $("themeToggle")?.addEventListener("click", toggleTheme);
-});
+}, { once: true });
 
 function initCodeGeneratorSettings() {
   const wsInput = $("codeWebSearch");
@@ -244,13 +244,17 @@ function initChatSettings() {
 }
 
 // Call on startup
-document.addEventListener("DOMContentLoaded", () => {
+let _settingsInitDone = false;
+function bootstrapSettings() {
+  if (_settingsInitDone) return;
+  _settingsInitDone = true;
   initCodeGeneratorSettings();
   initChatSettings();
-});
-if (document.readyState === "complete" || document.readyState === "interactive") {
-  initCodeGeneratorSettings();
-  initChatSettings();
+}
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bootstrapSettings, { once: true });
+} else {
+  bootstrapSettings();
 }
 
 // navigation

@@ -1,4 +1,13 @@
 {
+  "61f01e44-a238-4207-87a4-4386af27158f": {
+    "id": "61f01e44-a238-4207-87a4-4386af27158f",
+    "cwd": "C:\\Users\\mibu0\\Documents\\develop\\one-min-ai-monaco-client",
+    "task": "Test task",
+    "history": [],
+    "status": "idle",
+    "createdAt": "2026-06-17T09:11:12.958Z",
+    "lastAccessedAt": 1781687472968
+  },
   "d0a8a6fe-6496-47f1-9326-af04dbd10e1f": {
     "id": "d0a8a6fe-6496-47f1-9326-af04dbd10e1f",
     "cwd": "C:\\Users\\mibu0\\Documents\\develop\\one-min-ai-monaco-client",
@@ -1490,5 +1499,95 @@
     "status": "idle",
     "createdAt": "2026-06-17T08:36:12.455Z",
     "lastAccessedAt": 1781685372455
+  },
+  "9c3bfd39-6ec0-47e7-85fb-22135055085c": {
+    "id": "9c3bfd39-6ec0-47e7-85fb-22135055085c",
+    "cwd": "C:\\Users\\mibu0\\Documents\\develop\\one-min-ai-monaco-client",
+    "task": "Test task",
+    "history": [],
+    "status": "idle",
+    "createdAt": "2026-06-17T09:11:12.976Z",
+    "lastAccessedAt": 1781687472976
+  },
+  "74132187-0d98-4731-b518-22b76a60c38c": {
+    "id": "74132187-0d98-4731-b518-22b76a60c38c",
+    "cwd": "C:\\Users\\mibu0\\Documents\\develop\\one-min-ai-monaco-client",
+    "task": "Test task",
+    "history": [],
+    "status": "idle",
+    "createdAt": "2026-06-17T09:11:12.984Z",
+    "lastAccessedAt": 1781687472989
+  },
+  "df70737d-4a90-4ae1-be29-e9a19c5917c1": {
+    "id": "df70737d-4a90-4ae1-be29-e9a19c5917c1",
+    "cwd": "C:\\Users\\mibu0\\Documents\\develop\\one-min-ai-monaco-client",
+    "task": "Test task",
+    "history": [
+      {
+        "type": "diff",
+        "path": "C:\\Users\\mibu0\\Documents\\develop\\one-min-ai-monaco-client\\temp-diff-test.txt",
+        "timestamp": "2026-06-17T09:11:13.003Z"
+      }
+    ],
+    "status": "idle",
+    "createdAt": "2026-06-17T09:11:12.995Z",
+    "lastAccessedAt": 1781687473000
+  },
+  "92452c48-bfde-446f-84c3-5d64b1c98421": {
+    "id": "92452c48-bfde-446f-84c3-5d64b1c98421",
+    "cwd": "C:\\Users\\mibu0\\Documents\\develop\\one-min-ai-monaco-client",
+    "task": "Test task",
+    "history": [
+      {
+        "type": "diff",
+        "path": "C:\\Users\\mibu0\\Documents\\develop\\one-min-ai-monaco-client\\temp-diff-test.txt",
+        "timestamp": "2026-06-17T09:11:13.018Z"
+      }
+    ],
+    "status": "idle",
+    "createdAt": "2026-06-17T09:11:13.010Z",
+    "lastAccessedAt": 1781687473016
+  },
+  "21f9ade9-01e1-4dc7-a340-88ce1df19118": {
+    "id": "21f9ade9-01e1-4dc7-a340-88ce1df19118",
+    "cwd": "C:\\Users\\mibu0\\Documents\\develop\\one-min-ai-monaco-client",
+    "task": "Test task",
+    "history": [
+      {
+        "type": "diff",
+        "path": "C:\\Users\\mibu0\\Documents\\develop\\one-min-ai-monaco-client\\temp-diff-test.txt",
+        "timestamp": "2026-06-17T09:11:13.032Z"
+      }
+    ],
+    "status": "idle",
+    "createdAt": "2026-06-17T09:11:13.024Z",
+    "lastAccessedAt": 1781687473031
+  },
+  "2a6f0cd9-262f-4a9f-80c7-9c39109ca8e7": {
+    "id": "2a6f0cd9-262f-4a9f-80c7-9c39109ca8e7",
+    "cwd": "C:\\Users\\mibu0\\Documents\\develop\\one-min-ai-monaco-client",
+    "task": "Test task",
+    "history": [],
+    "status": "idle",
+    "createdAt": "2026-06-17T09:11:13.037Z",
+    "lastAccessedAt": 1781687473040
+  },
+  "077854ad-ad04-4f1d-815d-e2552a320769": {
+    "id": "077854ad-ad04-4f1d-815d-e2552a320769",
+    "cwd": "C:\\Users\\mibu0\\Documents\\develop\\one-min-ai-monaco-client",
+    "task": "Test task",
+    "history": [],
+    "status": "idle",
+    "createdAt": "2026-06-17T09:11:13.045Z",
+    "lastAccessedAt": 1781687473049
+  },
+  "bf8df5d7-996d-4bb1-8522-bf8da69b6971": {
+    "id": "bf8df5d7-996d-4bb1-8522-bf8da69b6971",
+    "cwd": "C:\\Users\\mibu0\\Documents\\develop\\one-min-ai-monaco-client",
+    "task": "Test task",
+    "history": [],
+    "status": "idle",
+    "createdAt": "2026-06-17T09:11:13.054Z",
+    "lastAccessedAt": 1781687473054
   }
 }
