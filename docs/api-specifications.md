@@ -238,13 +238,9 @@
   "conversationId": "CODE_GENERATOR",
   "promptObject": {
     "prompt": "...システムコンテキストと指示テキスト...",
-    "settings": {
-      "webSearchSettings": {
-        "webSearch": false,
-        "numOfSite": 3,
-        "maxWord": 1000
-      }
-    }
+    "webSearch": false,
+    "numOfSite": 3,
+    "maxWord": 1000
   }
 }
 ```

@@ -1,3 +1,6 @@
+import { injectStyle } from "./dom-style.js";
+import { api } from "./api.js";
+
 let _allChatModels = [];
 let _allCodeModels = [];
 let _allImageModels = [];
@@ -5,7 +8,7 @@ let _activePickerBtn = null;
 let _activePickerType = null;
 let _activeTag = "all";
 
-async function loadModels() {
+export async function loadModels() {
   try {
     const data = await api("/api/models");
     _allChatModels = Array.isArray(data.chatModels) ? data.chatModels : [];
@@ -39,6 +42,13 @@ function getProviderColor(provider) {
     Recraft: "#84cc16",
   };
   return map[provider] || "var(--accent)";
+}
+
+function providerToSlug(provider) {
+  return String(provider || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "default";
 }
 
 function renderPickerList(models, search = "", tag = "all") {
@@ -76,8 +86,7 @@ function renderPickerList(models, search = "", tag = "all") {
 
   for (const [provider, items] of Object.entries(groups)) {
     const header = document.createElement("div");
-    header.className = "model-picker-group-header";
-    header.style.setProperty("--provider-color", getProviderColor(provider));
+    header.className = `model-picker-group-header model-picker-group-header--${providerToSlug(provider)}`;
     header.textContent = provider;
     list.appendChild(header);
 
@@ -194,8 +203,10 @@ function openModelPicker(btn, type) {
   search.value = "";
   renderPickerList(models, "", "all");
 
-  dropdown.style.visibility = "hidden";
-  dropdown.style.display = "flex";
+  dropdown.classList.remove("u-hidden");
+  dropdown.classList.add("u-flex");
+  dropdown.classList.add("is-positioning");
+  injectStyle("#modelPickerDropdown.is-positioning { visibility: hidden; }");
 
   const rect = btn.getBoundingClientRect();
   const dropH = dropdown.offsetHeight || 480;
@@ -205,19 +216,21 @@ function openModelPicker(btn, type) {
   const spaceAbove = rect.top - 8;
 
   let topPx;
+  let maxHeightPx;
   if (spaceBelow >= Math.min(dropH, 240) || spaceBelow >= spaceAbove) {
     topPx = rect.bottom + 6 + window.scrollY;
-    dropdown.style.maxHeight = Math.max(spaceBelow - 4, 120) + "px";
+    maxHeightPx = Math.max(spaceBelow - 4, 120);
   } else {
     const availH = Math.max(spaceAbove - 4, 120);
-    dropdown.style.maxHeight = availH + "px";
+    maxHeightPx = availH;
     topPx = rect.top + window.scrollY - Math.min(dropH, availH) - 6;
   }
 
-  dropdown.style.top = topPx + "px";
-  dropdown.style.left = Math.min(rect.left, window.innerWidth - dropW - 8) + "px";
-  dropdown.style.width = dropW + "px";
-  dropdown.style.visibility = "";
+  const leftPx = Math.min(rect.left, window.innerWidth - dropW - 8);
+  injectStyle(
+    `#modelPickerDropdown { top: ${topPx}px; left: ${leftPx}px; width: ${dropW}px; max-height: ${maxHeightPx}px; }`,
+  );
+  dropdown.classList.remove("is-positioning");
 
   search.focus();
 
@@ -250,18 +263,23 @@ function closePicker(e) {
 
 function closeModelPicker() {
   const dropdown = document.getElementById("modelPickerDropdown");
-  if (dropdown) dropdown.style.display = "none";
+  if (dropdown) {
+    dropdown.classList.add("u-hidden");
+    dropdown.classList.remove("u-flex");
+    injectStyle("#modelPickerDropdown { top: auto; left: auto; width: auto; max-height: 480px; }");
+  }
   if (_activePickerBtn) _activePickerBtn.setAttribute("aria-expanded", "false");
   _activePickerBtn = null;
   _activePickerType = null;
 }
 
-function initModelPickers() {
+export function initModelPickers() {
   document.querySelectorAll(".model-picker-btn").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const dropdown = document.getElementById("modelPickerDropdown");
-      if (dropdown.style.display !== "none" && _activePickerBtn === btn) {
+      const isOpen = dropdown && !dropdown.classList.contains("u-hidden");
+      if (isOpen && _activePickerBtn === btn) {
         closeModelPicker();
       } else {
         openModelPicker(btn, btn.dataset.modelType);

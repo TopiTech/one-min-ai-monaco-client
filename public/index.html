@@ -6,6 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#030712" />
   <title>1min.ai Monaco Client</title>
+  <!-- L-12: preconnect to Google Fonts + Monaco CDN to reduce FOUC and
+       shorten the waterfall when loading the editor and the Plus Jakarta
+       Sans webfont. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
@@ -43,29 +49,29 @@
         </div>
       </div>
 
-<button type="button" class="nav active" data-view="chat">
-         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
-           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-         </svg>
-         <span>通常チャット</span>
-       </button>
-       <button type="button" class="nav" data-view="image">
-         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
-           <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-           <circle cx="8.5" cy="8.5" r="1.5"></circle>
-           <polyline points="21 15 16 10 5 21"></polyline>
-         </svg>
-         <span>画像生成 / テキスト編集</span>
-       </button>
-       <button type="button" class="nav" data-view="coding">
-         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
-           <polyline points="16 18 22 12 16 6"></polyline>
-           <polyline points="8 6 2 12 8 18"></polyline>
-         </svg>
-         <span>コーディング</span>
-       </button>
+      <button type="button" class="nav active" data-view="chat" role="button" aria-label="通常チャット">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <span>通常チャット</span>
+      </button>
+      <button type="button" class="nav" data-view="image" role="button" aria-label="画像生成 / テキスト編集">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <polyline points="21 15 16 10 5 21"></polyline>
+        </svg>
+        <span>画像生成 / テキスト編集</span>
+      </button>
+      <button type="button" class="nav" data-view="coding" role="button" aria-label="コーディング">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+          <polyline points="16 18 22 12 16 6"></polyline>
+          <polyline points="8 6 2 12 8 18"></polyline>
+        </svg>
+        <span>コーディング</span>
+      </button>
 
-      <button type="button" class="nav" data-view="settings">
+      <button type="button" class="nav" data-view="settings" role="button" aria-label="設定">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
           <circle cx="12" cy="12" r="3"></circle>
           <path
@@ -82,8 +88,8 @@
           stroke-width="2">
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
         </svg>
-        <svg id="themeIconLight" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" stroke-width="2" style="display: none">
+        <svg id="themeIconLight" class="theme-icon is-hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="5"></circle>
           <line x1="12" y1="1" x2="12" y2="3"></line>
           <line x1="12" y1="21" x2="12" y2="23"></line>
@@ -97,11 +103,10 @@
         <span id="themeLabel">ダークモード</span>
       </button>
 
-      <div class="credit-save-box" style="margin-top: 10px; width: 100%;">
-        <label class="check"
-          style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text-muted); font-size: 0.82rem; margin: 0; user-select: none; padding: 10px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--glass-border);">
+      <div class="credit-save-box">
+        <label class="check check--boxed">
           <input type="checkbox" id="creditSavingToggle" />
-          <span style="font-weight: 600;">クレジット節約モード</span>
+          <span class="credit-save-label">クレジット節約モード</span>
         </label>
       </div>
     </aside>
@@ -158,7 +163,7 @@
                 </svg>
               </button>
               <input id="chatModel" value="gpt-4o-mini" type="hidden" />
-              <button type="button" id="sendChat">
+              <button type="button" id="sendChat" aria-label="メッセージを送信">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -166,8 +171,7 @@
                 </svg>
                 送信
               </button>
-              <button type="button" id="abortChat" class="ghost"
-                style="display: none; color: #f87171; border-color: rgba(248, 113, 113, 0.3)">
+              <button type="button" id="abortChat" class="ghost is-abort">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -179,27 +183,15 @@
           <div class="card side">
             <h2>Conversation</h2>
             <div class="u-mb-12">
-              <label style="
-                    display: block;
-                    font-size: 0.8rem;
-                    margin-bottom: 6px;
-                    font-weight: 600;
-                    color: var(--text-muted);
-                  ">会話のタイトル</label>
+              <label class="label-muted">会話のタイトル</label>
               <input id="conversationTitle" value="My AI Conversation" />
             </div>
-            <button type="button" id="createConversation" style="width: 100%; margin-bottom: 18px">
+            <button type="button" id="createConversation" class="btn-block-mb-18">
               会話を新規作成
             </button>
 
             <div class="u-mb-12">
-              <label style="
-                    display: block;
-                    font-size: 0.8rem;
-                    margin-bottom: 6px;
-                    font-weight: 600;
-                    color: var(--text-muted);
-                  ">conversationId (再開用)</label>
+              <label class="label-muted">conversationId (再開用)</label>
               <input id="conversationId" placeholder="uuid (任意)" />
             </div>
 
@@ -207,39 +199,19 @@
               <input type="checkbox" id="webSearch" />
               <span>Web Search を有効化</span>
             </label>
-            <div id="chatWebSearchSettings" style="
-                  display: none;
-                  margin-top: 8px;
-                  margin-bottom: 12px;
-                  padding: 10px;
-                  background: rgba(255, 255, 255, 0.02);
-                  border: 1px solid rgba(255, 255, 255, 0.05);
-                  border-radius: 8px;
-                ">
-              <div class="row" style="display: flex; gap: 8px">
+            <div id="chatWebSearchSettings" class="chat-web-search-settings">
+              <div class="row row--gap-8">
                 <div class="u-flex-1">
-                  <label for="chatNumOfSite" style="
-                        display: block;
-                        font-size: 0.75rem;
-                        margin-bottom: 4px;
-                        color: var(--text-muted);
-                      ">
+                  <label for="chatNumOfSite" class="label-muted-sm">
                     サイト数 (1-10)
                   </label>
-                  <input id="chatNumOfSite" type="number" min="1" max="10" value="3"
-                    style="width: 100%; padding: 6px; font-size: 0.8rem; border-radius: 6px" />
+                  <input id="chatNumOfSite" type="number" min="1" max="10" value="3" class="input-sm" />
                 </div>
                 <div class="u-flex-1">
-                  <label for="chatMaxWord" style="
-                        display: block;
-                        font-size: 0.75rem;
-                        margin-bottom: 4px;
-                        color: var(--text-muted);
-                      ">
+                  <label for="chatMaxWord" class="label-muted-sm">
                     最大単語数
                   </label>
-                  <input id="chatMaxWord" type="number" min="100" max="10000" step="100" value="1000"
-                    style="width: 100%; padding: 6px; font-size: 0.8rem; border-radius: 6px" />
+                  <input id="chatMaxWord" type="number" min="100" max="10000" step="100" value="1000" class="input-sm" />
                 </div>
               </div>
             </div>
@@ -252,13 +224,7 @@
               <span>モデル混在履歴を有効化</span>
             </label>
             <div class="u-mt-12">
-              <label style="
-                    display: block;
-                    font-size: 0.8rem;
-                    margin-bottom: 6px;
-                    font-weight: 600;
-                    color: var(--text-muted);
-                  ">Brand Voice ID (任意)</label>
+              <label class="label-muted">Brand Voice ID (任意)</label>
               <input id="brandVoiceId" placeholder="ブランドボイスID" />
             </div>
           </div>
@@ -274,32 +240,21 @@
               placeholder="生成または編集のプロンプトを入力してください... (例: a minimal futuristic workspace, soft light または 背景を夕焼けに変えて、など)"
               aria-label="画像生成プロンプト"></textarea>
 
-            <div class="image-input-source" style="margin-top: 16px; margin-bottom: 16px">
-              <h3 style="
-                    font-size: 0.9rem;
-                    font-weight: 600;
-                    margin-bottom: 8px;
-                    color: var(--text-muted);
-                  ">
+            <div class="image-input-source">
+              <h3 class="sub-h3">
                 元画像 (画像編集を行う場合のみ指定してください)
               </h3>
               <div class="row u-mb-10">
                 <input id="assetInput" type="file" accept="image/*" class="u-flex-2" />
                 <button type="button" id="uploadAsset" class="u-flex-1">アップロード</button>
               </div>
-              <div class="row" style="align-items: center; gap: 10px">
+              <div class="row image-preview-row">
                 <input id="editorImageUrl" placeholder="直接 asset key または画像 URL を入力..." class="u-flex-1" />
                 <button type="button" id="clearImageBtn" class="ghost small u-hidden">
                   クリア
                 </button>
               </div>
-              <img id="editorImagePreview" class="image-preview" alt="元画像プレビュー" style="
-                    display: none;
-                    max-height: 150px;
-                    margin-top: 10px;
-                    border-radius: 8px;
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                  " />
+              <img id="editorImagePreview" class="image-preview" alt="元画像プレビュー" />
             </div>
 
             <div class="row u-mb-16">
@@ -324,31 +279,15 @@
             </div>
 
             <!-- Parameters section -->
-            <div class="image-parameters-box" style="
-                  background: rgba(255, 255, 255, 0.02);
-                  border: 1px solid rgba(255, 255, 255, 0.05);
-                  padding: 16px;
-                  border-radius: 12px;
-                  margin-bottom: 16px;
-                ">
+            <div class="image-parameters-box">
               <!-- Regular Text-to-Image settings -->
               <div id="textToImageParams" class="param-group">
-                <h4 style="
-                      font-size: 0.8rem;
-                      font-weight: 600;
-                      margin-bottom: 10px;
-                      color: var(--text-muted);
-                    ">
+                <h4 class="sub-h4">
                   テキストから生成用の設定
                 </h4>
                 <div class="row">
                   <div class="u-flex-1">
-                    <label style="
-                          display: block;
-                          font-size: 0.75rem;
-                          margin-bottom: 4px;
-                          color: var(--text-muted);
-                        ">アスペクト比</label>
+                    <label class="label-muted-sm">アスペクト比</label>
                     <select id="aspectRatio" class="u-w-full">
                       <option>1:1</option>
                       <option>16:9</option>
@@ -358,50 +297,25 @@
                     </select>
                   </div>
                   <div class="u-flex-1">
-                    <label style="
-                          display: block;
-                          font-size: 0.75rem;
-                          margin-bottom: 4px;
-                          color: var(--text-muted);
-                        ">生成枚数</label>
+                    <label class="label-muted-sm">生成枚数</label>
                     <input id="numOutputs" type="number" min="1" max="4" value="1" class="u-w-full" />
                   </div>
                 </div>
               </div>
 
               <!-- Image-to-Image (Edit) settings (shown dynamically) -->
-              <div id="imageToImageParams" class="param-group" style="
-                    display: none;
-                    border-top: 1px solid rgba(255, 255, 255, 0.05);
-                    margin-top: 12px;
-                    padding-top: 12px;
-                  ">
-                <h4 style="
-                      font-size: 0.8rem;
-                      font-weight: 600;
-                      margin-bottom: 10px;
-                      color: var(--text-muted);
-                    ">
+              <div id="imageToImageParams" class="param-group image-to-image-params">
+                <h4 class="sub-h4">
                   画像編集用の詳細設定
                 </h4>
 
                 <div class="row u-mb-10">
                   <div class="u-flex-2">
-                    <label style="
-                          display: block;
-                          font-size: 0.75rem;
-                          margin-bottom: 4px;
-                          color: var(--text-muted);
-                        ">出力サイズ</label>
+                    <label class="label-muted-sm">出力サイズ</label>
                     <input id="editorSize" value="1024x1024" placeholder="1024x1024" />
                   </div>
                   <div class="u-flex-1">
-                    <label style="
-                          display: block;
-                          font-size: 0.75rem;
-                          margin-bottom: 4px;
-                          color: var(--text-muted);
-                        ">品質</label>
+                    <label class="label-muted-sm">品質</label>
                     <select id="editorQuality" class="u-w-full">
                       <option value="low">low</option>
                       <option value="medium" selected>medium</option>
@@ -412,21 +326,11 @@
 
                 <div class="row u-mb-10">
                   <div class="u-flex-1">
-                    <label style="
-                          display: block;
-                          font-size: 0.75rem;
-                          margin-bottom: 4px;
-                          color: var(--text-muted);
-                        ">生成枚数</label>
+                    <label class="label-muted-sm">生成枚数</label>
                     <input id="editorN" type="number" min="1" max="10" value="1" class="u-w-full" />
                   </div>
                   <div class="u-flex-2">
-                    <label style="
-                          display: block;
-                          font-size: 0.75rem;
-                          margin-bottom: 4px;
-                          color: var(--text-muted);
-                        ">背景処理</label>
+                    <label class="label-muted-sm">背景処理</label>
                     <select id="editorBackground" class="u-w-full">
                       <option value="auto" selected>auto</option>
                       <option value="transparent">transparent</option>
@@ -437,12 +341,7 @@
 
                 <div class="row">
                   <div class="u-flex-1">
-                    <label style="
-                          display: block;
-                          font-size: 0.75rem;
-                          margin-bottom: 4px;
-                          color: var(--text-muted);
-                        ">フォーマット</label>
+                    <label class="label-muted-sm">フォーマット</label>
                     <select id="editorOutputFormat" class="u-w-full">
                       <option value="webp" selected>webp</option>
                       <option value="png">png</option>
@@ -450,12 +349,7 @@
                     </select>
                   </div>
                   <div class="u-flex-1">
-                    <label style="
-                          display: block;
-                          font-size: 0.75rem;
-                          margin-bottom: 4px;
-                          color: var(--text-muted);
-                        ">圧縮率 (0-100)</label>
+                    <label class="label-muted-sm">圧縮率 (0-100)</label>
                     <input id="editorOutputCompression" type="number" min="0" max="100" placeholder="圧縮率"
                       class="u-w-full" />
                   </div>
@@ -463,7 +357,7 @@
               </div>
             </div>
 
-            <button type="button" id="generateImage" style="width: 100%; padding: 12px; font-weight: 600">
+            <button type="button" id="generateImage" class="btn-block-pad-12">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path
@@ -477,8 +371,7 @@
           <div class="card side">
             <h2>生成・編集結果</h2>
             <div id="imageGallery" class="gallery"></div>
-            <pre id="assetResult" class="json"
-              style="margin-top: 18px; max-height: 200px; overflow-y: auto; font-size: 0.75rem"></pre>
+            <pre id="assetResult" class="json json-preview-sm"></pre>
           </div>
         </div>
       </section>
@@ -538,10 +431,9 @@
             </div>
 
             <!-- Recommendation tip -->
-            <div class="agent-model-tip"
-              style="font-size: 0.72rem; color: #facc15; background: rgba(250, 204, 21, 0.08); border: 1px solid rgba(250, 204, 21, 0.2); padding: 8px 12px; border-radius: 8px; line-height: 1.4; display: flex; gap: 6px; align-items: flex-start;">
+            <div class="agent-model-tip">
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2" style="flex-shrink: 0; margin-top: 1px;">
+                stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="10"></circle>
                 <line x1="12" y1="16" x2="12" y2="12"></line>
                 <line x1="12" y1="8" x2="12.01" y2="8"></line>
@@ -551,47 +443,25 @@
             </div>
 
             <!-- Scrollable Chat Log -->
-            <div id="agentActivityLog" class="agent-timeline" role="log" aria-live="polite" aria-label="エージェントチャットログ"
-              style="
-                  flex: 1;
-                  overflow-y: auto;
-                  display: flex;
-                  flex-direction: column;
-                  gap: 12px;
-                  min-height: 250px;
-                  max-height: 520px;
-                  padding-right: 4px;
-                  margin-top: 8px;
-                ">
-              <div class="timeline-placeholder" style="
-                    color: var(--text-muted);
-                    font-size: 0.85rem;
-                    text-align: center;
-                    padding: 24px 8px;
-                    border: 1px dashed rgba(255, 255, 255, 0.05);
-                    border-radius: 8px;
-                    background: rgba(255, 255, 255, 0.01);
-                  ">
+            <div id="agentActivityLog" class="agent-timeline agent-activity-log" role="log" aria-live="polite" aria-label="エージェントチャットログ">
+              <div class="timeline-placeholder timeline-placeholder-inline">
                 指示を入力して、エージェントとのチャットを開始してください。
               </div>
             </div>
 
             <!-- Collapsible Settings -->
-            <details class="agent-settings-details"
-              style="margin-top: 4px; border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 6px 10px; background: rgba(255, 255, 255, 0.01);">
-              <summary
-                style="font-size: 0.78rem; cursor: pointer; color: var(--text-muted); font-weight: 600; user-select: none;">
+            <details class="agent-settings-details">
+              <summary>
                 🤖 モデル・検索設定
               </summary>
-              <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
+              <div class="agent-settings-body">
                 <div class="row">
                   <div class="u-flex-1">
-                    <label style="display: block; font-size: 0.75rem; margin-bottom: 4px; color: var(--text-muted);">
+                    <label class="label-muted-sm">
                       コーディングモデル
                     </label>
-                    <button id="codeModelBtn" class="model-picker-btn" data-model-type="code"
-                      data-target-input="codeModel"
-                      style="width: 100%; font-size: 0.8rem; height: 36px; padding: 0 8px">
+                    <button id="codeModelBtn" class="model-picker-btn is-small" data-model-type="code"
+                      data-target-input="codeModel">
                       <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"
                         stroke="currentColor" stroke-width="2">
                         <polyline points="16 18 22 12 16 6"></polyline>
@@ -606,64 +476,54 @@
                     <input id="codeModel" value="qwen3-coder-plus" type="hidden" />
                   </div>
                 </div>
-                <label class="check"
-                  style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 4px;">
+                <label class="check check--inline">
                   <input type="checkbox" id="codeWebSearch" />
-                  <span style="font-size: 0.78rem;">Web Search を有効化</span>
+                  <span class="u-text-sm">Web Search を有効化</span>
                 </label>
-                <div class="row" style="display: flex; gap: 12px; margin-top: 4px;">
+                <div class="row row--gap-12">
                   <div class="u-flex-1">
-                    <label for="codeNumOfSite"
-                      style="display: block; font-size: 0.72rem; margin-bottom: 2px; color: var(--text-muted);">
+                    <label for="codeNumOfSite" class="label-muted-xxs">
                       検索サイト数
                     </label>
-                    <input id="codeNumOfSite" type="number" min="1" max="10" value="3"
-                      style="width: 100%; padding: 6px; font-size: 0.78rem; border-radius: 6px;" />
+                    <input id="codeNumOfSite" type="number" min="1" max="10" value="3" class="input-xs" />
                   </div>
                   <div class="u-flex-1">
-                    <label for="codeMaxWord"
-                      style="display: block; font-size: 0.72rem; margin-bottom: 2px; color: var(--text-muted);">
+                    <label for="codeMaxWord" class="label-muted-xxs">
                       最大単語数/サイト
                     </label>
-                    <input id="codeMaxWord" type="number" min="100" max="10000" step="100" value="1000"
-                      style="width: 100%; padding: 6px; font-size: 0.78rem; border-radius: 6px;" />
+                    <input id="codeMaxWord" type="number" min="100" max="10000" step="100" value="1000" class="input-xs" />
                   </div>
                 </div>
               </div>
             </details>
 
             <!-- Unified Chat Input area at the bottom -->
-            <div class="agent-chat-input-box"
-              style="margin-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 10px;">
+            <div class="agent-chat-input-box">
               <textarea id="agentInstruction" rows="2" placeholder="指示を入力してエージェントを開始..."
-                style="width: 100%; border-radius: 10px; resize: none; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); padding: 8px 10px; color: #fff; font-size: 0.85rem;"></textarea>
-              <div class="agent-action-buttons" style="display: flex; gap: 8px; margin-top: 8px;">
-                <button type="button" id="startAgentBtn" class="agent-btn primary"
-                  style="flex: 2; height: 36px; font-size: 0.85rem; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%); color: #fff; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                class="agent-instruction-textarea"></textarea>
+              <div class="agent-action-buttons">
+                <button type="button" id="startAgentBtn" class="agent-btn agent-btn--primary">
                   <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"
                     stroke="currentColor" stroke-width="2">
                     <polygon points="5 3 19 12 5 21 5 3"></polygon>
                   </svg>
                   実行
                 </button>
-                <button type="button" id="sendAgentFeedbackBtn" class="agent-btn primary-alt"
-                  style="display: none; flex: 2; height: 36px; font-size: 0.85rem; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%); color: #fff; align-items: center; justify-content: center; gap: 6px;">
+                <button type="button" id="sendAgentFeedbackBtn" class="agent-btn agent-btn--primary-alt">
                   送信
                 </button>
-                <button type="button" id="stopAgentBtn" class="agent-btn danger"
-                  style="display: none; flex: 1; height: 36px; font-size: 0.85rem; border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.15); color: #f87171; font-weight: 600; cursor: pointer; align-items: center; justify-content: center; gap: 6px;">
+                <button type="button" id="stopAgentBtn" class="agent-btn agent-btn--danger">
                   停止
                 </button>
-                <button type="button" id="resetAgentBtn" class="agent-btn ghost"
-                  style="flex: 1; height: 36px; font-size: 0.85rem; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1); background: transparent; color: var(--text-muted); font-weight: 600; cursor: pointer; align-items: center; justify-content: center; gap: 6px;">
+                <button type="button" id="resetAgentBtn" class="agent-btn agent-btn--ghost">
                   リセット
                 </button>
               </div>
             </div>
 
             <!-- Dummy elements to keep full compatibility with app.js DOM logic -->
-            <div id="agentRunningControls" style="display: none;"></div>
-            <div id="agentFeedbackContainer" style="display: none;">
+            <div id="agentRunningControls" class="u-hidden"></div>
+            <div id="agentFeedbackContainer" class="u-hidden">
               <input id="agentFeedbackInput" type="hidden" />
             </div>
           </div>
@@ -688,17 +548,11 @@
             </li>
             <li><code>npm start</code> を実行してサーバーを起動します。</li>
           </ol>
-          <div style="
-                background: rgba(255, 255, 255, 0.03);
-                border: 1px solid rgba(255, 255, 255, 0.06);
-                padding: 16px;
-                border-radius: 12px;
-                margin-top: 20px;
-              ">
-            <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 8px; color: #fff">
+          <div class="env-defaults-box">
+            <h3 class="h3-white">
               環境変数デフォルト値
             </h3>
-            <p style="font-size: 0.85rem; margin-bottom: 0">
+            <p class="env-defaults-text">
               DEFAULT_CHAT_MODEL: <code>gpt-4o-mini</code><br />
               DEFAULT_IMAGE_MODEL: <code>gpt-image-2</code><br />
               DEFAULT_IMAGE_EDITOR_MODEL: <code>gpt-image-2</code>
@@ -747,23 +601,16 @@
   </div>
 
   <div id="diffModal" class="folder-picker-modal u-hidden">
-    <div class="folder-picker-dialog" style="width: 90%; max-height: 90vh">
-      <div
-        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px;">
-        <h3 style="margin-bottom: 0;">AI 提案の差分確認</h3>
-        <label class="check"
-          style="margin-bottom: 0; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; font-size: 0.85rem;">
+    <div class="folder-picker-dialog folder-picker-dialog--wide">
+      <div class="diff-header-row">
+        <h3>AI 提案の差分確認</h3>
+        <label class="check diff-inline-toggle-label">
           <input type="checkbox" id="diffInlineToggle" />
           <span>インライン表示</span>
         </label>
       </div>
-      <p id="diffFilePath" style="font-family: monospace; font-size: 0.8rem; margin-bottom: 10px"></p>
-      <div id="diffEditorContainer" style="
-            flex: 1;
-            min-height: 400px;
-            border: 1px solid var(--glass-border);
-            border-radius: 12px;
-          "></div>
+      <p id="diffFilePath" class="diff-file-path"></p>
+      <div id="diffEditorContainer" class="diff-editor-container"></div>
       <div class="folder-picker-actions">
         <button id="diffCancel" type="button" class="ghost">破棄</button>
         <button id="diffApply" type="button">変更を適用</button>
@@ -774,10 +621,11 @@
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.5/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/min/vs/loader.js"></script>
-  <script src="./js/api.js"></script>
-  <script src="./js/models.js"></script>
-  <script src="./js/toast.js"></script>
-  <script src="./app.js"></script>
+  <script type="module" src="./js/api.js"></script>
+  <script type="module" src="./js/dom-style.js"></script>
+  <script type="module" src="./js/models.js"></script>
+  <script type="module" src="./js/toast.js"></script>
+  <script type="module" src="./app.js"></script>
 </body>
 
 </html>

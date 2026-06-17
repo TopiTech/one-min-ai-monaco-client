@@ -32,6 +32,7 @@ async function api(path, options = {}) {
     else signal.addEventListener("abort", () => controller.abort(), { once: true });
   }
 
+  let outcome = "ok";
   try {
     const headers = options.headers || {};
     const token = getBffToken();
@@ -41,26 +42,29 @@ async function api(path, options = {}) {
     clearTimeout(timeoutId);
 
     if (fetchOptions.raw) {
-      // L-1: even raw responses own their share of in-flight state so the
-      // status indicator accurately reflects activity. Decrement here instead
-      // of relying on the caller (the streaming chat path skips the
-      // post-fetch parse entirely).
-      _activeRequests = Math.max(0, _activeRequests - 1);
-      if (_activeRequests === 0) setStatus("完了", "ok");
+      // Streaming response: caller owns the body. Don't parse here.
       return res;
     }
 
     const data = await parseJsonOrTextResponse(res);
-    if (!res.ok) throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
+    if (!res.ok) {
+      outcome = "err";
+      throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
+    }
 
-    _activeRequests = Math.max(0, _activeRequests - 1);
-    if (_activeRequests === 0) setStatus("完了", "ok");
     return data;
   } catch (e) {
     clearTimeout(timeoutId);
-    _activeRequests = Math.max(0, _activeRequests - 1);
-    if (_activeRequests === 0) setStatus("エラー", "err");
+    outcome = "err";
     throw e;
+  } finally {
+    // L-6: Always decrement the in-flight counter and reflect terminal
+    // status, regardless of which return path we took. Centralising this
+    // avoids the prior bug where the streaming branch forgot to clear it.
+    _activeRequests = Math.max(0, _activeRequests - 1);
+    if (_activeRequests === 0) {
+      setStatus(outcome === "err" ? "エラー" : "完了", outcome === "err" ? "err" : "ok");
+    }
   }
 }
 
@@ -89,6 +93,8 @@ function assetUrl(path) {
   if (/^https?:\/\//.test(path)) return path;
   return `https://asset.1min.ai/${path.replace(/^\//, "")}`;
 }
+
+export { api, assetUrl, extractImages };
 
 function extractImages(data) {
   // 1min.ai: resultObject is a string[] of URLs (most providers), but some

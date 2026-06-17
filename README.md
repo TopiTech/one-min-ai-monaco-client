@@ -149,7 +149,7 @@ package.json
 
 ## 注意
 
-- `.env` をGitにコミットしないでください。
+- `.env` をGitにコミットしないでください。本リポジトリの `.gitignore` は `.env` を除外していますが、**もし `.env` を誤ってコミットしてしまった場合は必ず 1min.ai 側で API キーを再生成（ローテーション）してください**。Git の履歴に残ったキーは `git filter-repo` 等での除去後も危険です。
 - `/api/fs/*` はプロジェクト配下のファイルを読み書きできます。`.env`、`.git`、`node_modules`、サーバー実装ファイルなどの保護パスは削除・上書き・改名からガードしています。公開サーバーで動かさないでください。
 - Asset uploadは現在のローカル実装では `25MB` までです。1min.ai公式のAsset APIドキュメントでは上限例として `50MB` が記載されています。
 - 公式ドキュメントではレート制限のデフォルトは `180 requests per minute` とされています。Asset APIページには `100 requests per minute` / `5 simultaneous uploads` の記載もあるため、実際のプラン制限は1min.ai側で確認してください。
@@ -158,7 +158,6 @@ package.json
 
 ## 既知の改善候補
 
-- Chat with AI APIの `webSearch` / `history` は、現在の実装ではトップレベルで送信しています。公式ドキュメントでは `settings.webSearchSettings` / `settings.historySettings` 配下での指定が推奨されているため、API仕様変更時に確認してください。
 - 1min.ai APIのレスポンス形式は機能・モデルによって異なるため、フロント側で複数のフィールドからテキストや画像URLを抽出しています。
 - Asset uploadのフィールド名は、1min.ai公式ドキュメントに従い `asset` を使用しています。
 - `/api/fs/*` はローカル開発向けです。公開環境で利用する場合は、認証、CSRF対策、監査ログ、実行サンドボックス、保護パスの運用ポリシーを強化してください。

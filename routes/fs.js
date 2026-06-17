@@ -12,9 +12,13 @@ import {
   assertNotWriteProtectedPath,
   isProtectedPathForListing,
 } from "../utils/fs-guard.js";
+import { serverConfig } from "../config/server.js";
+import { detectBinaryContent } from "../utils/mime-guard.js";
 
 const MAX_READ_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_LIST_ENTRIES = 5000;
+// L-9: Use the server-configured JSON body limit as the upper bound on
+// editable file size so ops can tune it without code changes.
 const BINARY_EXTENSIONS = new Set([
   ".png",
   ".jpg",
@@ -67,8 +71,11 @@ router.get("/drives", async (_req, res) => {
 
   if (process.platform === "win32") {
     let success = false;
-    // Method 1: PowerShell (Modern, reliable if not blocked)
-    if (String(process.env.ENABLE_COMMAND_EXECUTION || "false").toLowerCase() === "true") {
+    const allowShellLookup = serverConfig.enableDrivesShellLookup;
+    // Method 1: PowerShell (Modern, reliable if not blocked). Independent
+    // from ENABLE_COMMAND_EXECUTION — drive enumeration is read-only and not
+    // an agent surface, so a separate env gate (defaulting on) is enough.
+    if (allowShellLookup) {
       try {
         const { stdout } = await execAsync(
           'powershell -NoProfile -Command "[System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady } | Select-Object -ExpandProperty Name"',
@@ -93,10 +100,7 @@ router.get("/drives", async (_req, res) => {
     }
 
     // Method 2: wmic (Legacy but often available)
-    if (
-      !success &&
-      String(process.env.ENABLE_COMMAND_EXECUTION || "false").toLowerCase() === "true"
-    ) {
+    if (!success && allowShellLookup) {
       try {
         const { stdout } = await execAsync("wmic logicaldisk get name", { timeout: 3000 });
         const lines = stdout
@@ -116,7 +120,7 @@ router.get("/drives", async (_req, res) => {
       }
     }
 
-    // Method 3: Fallback manual check of common drive letters
+    // Method 3: Fallback manual check of common drive letters (no shell)
     if (!success) {
       const commonDrives = ["C:", "D:", "E:", "F:", "G:", "H:", "I:", "Z:"];
       for (const drive of commonDrives) {
@@ -256,7 +260,17 @@ router.get("/read", async (req, res, next) => {
       return res.status(400).json({ error: "Cannot read binary files as text in the editor." });
     }
 
-    const content = await fs.readFile(resolvedPath, "utf-8");
+    // M-9: Even when the extension is text-like, perform a content-based
+    // binary check. Files renamed (e.g. exe.txt) should still be refused
+    // from the text editor to avoid corrupting the Monaco buffer.
+    const buffer = await fs.readFile(resolvedPath);
+    if (detectBinaryContent(buffer)) {
+      return res
+        .status(400)
+        .json({ error: "Cannot read binary files as text in the editor." });
+    }
+
+    const content = buffer.toString("utf-8");
     res.json({ path: resolvedPath, content });
   } catch (err) {
     next(err);

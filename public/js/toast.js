@@ -10,6 +10,8 @@ toastContainer.setAttribute('aria-live', 'polite');
 document.body.appendChild(toastContainer);
 
 const toastStyles = document.createElement('style');
+const cspNonce = document.querySelector('meta[name="csp-nonce"]')?.content;
+if (cspNonce) toastStyles.nonce = cspNonce;
 toastStyles.textContent = `
   #toast-container {
     position: fixed;
@@ -264,54 +266,28 @@ function toastConfirm(message, options = {}) {
         } = options;
 
         const toast = document.createElement('div');
-        toast.className = `toast toast-${type}`;
-        toast.style.flexDirection = 'column';
-        toast.style.gap = '12px';
+        toast.className = `toast toast-${type} toast--confirm`;
 
         const content = document.createElement('div');
         content.className = 'toast-content';
         content.textContent = message;
 
         const actions = document.createElement('div');
-        actions.style.display = 'flex';
-        actions.style.gap = '8px';
-        actions.style.justify = 'flex-end';
+        actions.className = 'toast-actions';
 
         const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.className = 'toast-btn toast-btn--cancel';
         cancelBtn.textContent = cancelText;
-        cancelBtn.style.cssText = `
-      padding: 8px 16px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 8px;
-      color: #fff;
-      font-size: 0.8rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    `;
-        cancelBtn.onmouseenter = () => cancelBtn.style.background = 'rgba(255, 255, 255, 0.1)';
-        cancelBtn.onmouseleave = () => cancelBtn.style.background = 'rgba(255, 255, 255, 0.05)';
         cancelBtn.onclick = () => {
             removeToast(toast);
             resolve(false);
         };
 
         const confirmBtn = document.createElement('button');
+        confirmBtn.type = 'button';
+        confirmBtn.className = 'toast-btn toast-btn--confirm';
         confirmBtn.textContent = confirmText;
-        confirmBtn.style.cssText = `
-      padding: 8px 16px;
-      background: var(--accent-gradient);
-      border: none;
-      border-radius: 8px;
-      color: #fff;
-      font-size: 0.8rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    `;
-        confirmBtn.onmouseenter = () => confirmBtn.style.filter = 'brightness(1.1)';
-        confirmBtn.onmouseleave = () => confirmBtn.style.filter = 'none';
         confirmBtn.onclick = () => {
             removeToast(toast);
             resolve(true);

@@ -27,13 +27,24 @@ function validateAttachments(attachments) {
     err.status = 400;
     throw err;
   }
+  // M-3: Reject anything that doesn't look like either a 1min.ai asset
+  // key (UUID-ish, ~32-64 chars) or an http(s) URL. This prevents the
+  // upstream payload from being polluted with arbitrary strings that
+  // downstream providers may interpret differently.
+  const looksLikeAssetRef = (s) =>
+    typeof s === "string" &&
+    (s.length <= 1024) &&
+    (/^https?:\/\//i.test(s) || /^[A-Za-z0-9._/-]+$/.test(s));
+
   const out = {};
   if (attachments.images !== undefined) {
     if (
       !Array.isArray(attachments.images) ||
-      attachments.images.some((x) => typeof x !== "string")
+      attachments.images.some((x) => typeof x !== "string" || !looksLikeAssetRef(x))
     ) {
-      const err = new Error("attachments.images must be an array of strings");
+      const err = new Error(
+        "attachments.images must be an array of URLs or 1min.ai asset keys",
+      );
       err.status = 400;
       throw err;
     }
@@ -46,8 +57,13 @@ function validateAttachments(attachments) {
     if (cleaned.length) out.images = cleaned;
   }
   if (attachments.files !== undefined) {
-    if (!Array.isArray(attachments.files) || attachments.files.some((x) => typeof x !== "string")) {
-      const err = new Error("attachments.files must be an array of strings");
+    if (
+      !Array.isArray(attachments.files) ||
+      attachments.files.some((x) => typeof x !== "string" || !looksLikeAssetRef(x))
+    ) {
+      const err = new Error(
+        "attachments.files must be an array of URLs or 1min.ai asset keys",
+      );
       err.status = 400;
       throw err;
     }
@@ -100,6 +116,53 @@ function buildChatPayload({
   };
 }
 
+/**
+ * Parse and validate a chat request body. Returns { payload, error }.
+ * Used by both /chat and /chat/stream to avoid duplication.
+ */
+function parseChatRequest(body) {
+  const {
+    prompt,
+    model,
+    conversationId,
+    attachments,
+    webSearch = false,
+    numOfSite,
+    maxWord,
+    history = true,
+    withMemories = false,
+    brandVoiceId,
+    isMixed = false,
+  } = body;
+
+  if (!prompt || !String(prompt).trim()) {
+    return { error: { status: 400, message: "prompt is required" } };
+  }
+
+  let safeAttachments;
+  try {
+    safeAttachments = validateAttachments(attachments);
+  } catch (err) {
+    return { error: { status: err.status || 400, message: err.message } };
+  }
+
+  const payload = buildChatPayload({
+    prompt,
+    model,
+    conversationId,
+    attachments: safeAttachments,
+    webSearch,
+    numOfSite,
+    maxWord,
+    history,
+    withMemories,
+    brandVoiceId,
+    isMixed,
+  });
+
+  return { payload };
+}
+
 // Available models endpoint
 router.get("/models", (_req, res) => {
   res.json({ chatModels, codeModels, imageModels });
@@ -107,42 +170,8 @@ router.get("/models", (_req, res) => {
 
 router.post("/chat", async (req, res, next) => {
   try {
-    const {
-      prompt,
-      model,
-      conversationId,
-      attachments,
-      webSearch = false,
-      numOfSite,
-      maxWord,
-      history = true,
-      withMemories = false,
-      brandVoiceId,
-      isMixed = false,
-    } = req.body;
-    if (!prompt || !String(prompt).trim())
-      return res.status(400).json({ error: "prompt is required" });
-
-    let safeAttachments;
-    try {
-      safeAttachments = validateAttachments(attachments);
-    } catch (err) {
-      return res.status(err.status || 400).json({ error: err.message });
-    }
-
-    const payload = buildChatPayload({
-      prompt,
-      model,
-      conversationId,
-      attachments: safeAttachments,
-      webSearch,
-      numOfSite,
-      maxWord,
-      history,
-      withMemories,
-      brandVoiceId,
-      isMixed,
-    });
+    const { error, payload } = parseChatRequest(req.body);
+    if (error) return res.status(error.status).json({ error: error.message });
 
     const data = await callOneMin("/api/chat-with-ai", {
       headers: { "Content-Type": "application/json" },
@@ -162,42 +191,8 @@ router.post("/chat", async (req, res, next) => {
 
 router.post("/chat/stream", async (req, res, next) => {
   try {
-    const {
-      prompt,
-      model,
-      conversationId,
-      attachments,
-      webSearch = false,
-      numOfSite,
-      maxWord,
-      history = true,
-      withMemories = false,
-      brandVoiceId,
-      isMixed = false,
-    } = req.body;
-    if (!prompt || !String(prompt).trim())
-      return res.status(400).json({ error: "prompt is required" });
-
-    let safeAttachments;
-    try {
-      safeAttachments = validateAttachments(attachments);
-    } catch (err) {
-      return res.status(err.status || 400).json({ error: err.message });
-    }
-
-    const payload = buildChatPayload({
-      prompt,
-      model,
-      conversationId,
-      attachments: safeAttachments,
-      webSearch,
-      numOfSite,
-      maxWord,
-      history,
-      withMemories,
-      brandVoiceId,
-      isMixed,
-    });
+    const { error, payload } = parseChatRequest(req.body);
+    if (error) return res.status(error.status).json({ error: error.message });
 
     const controller = new AbortController();
     res.on("close", () => {
@@ -254,6 +249,10 @@ router.post("/chat/stream", async (req, res, next) => {
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
+        // H-3: 1min.ai streams as plain SSE `data: {...}\n\n` chunks without
+        // an explicit `event:` line. We forward as-is so the OpenAI-compatible
+        // chunk shape (choices[0].delta.content / choices[0].finish_reason)
+        // reaches the client intact.
         res.write(chunk);
       }
     } catch (streamErr) {
@@ -297,9 +296,12 @@ router.post("/conversations", async (req, res, next) => {
       title,
       model: model || getDefaultModel(type),
     };
+    // M-1: Conversation creation is non-idempotent — a retry would create a
+    // duplicate conversation. Disable retries explicitly.
     const data = await callOneMin("/api/conversations", {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      idempotent: false,
     });
     if (isFailedResponse(data)) {
       const err = new Error(
@@ -582,8 +584,18 @@ router.post("/code/autocomplete", async (req, res, next) => {
       numOfSite,
       maxWord,
     } = req.body;
-    if (code === undefined || !line || !column) {
+    if (code === undefined || line === undefined || column === undefined) {
       return res.status(400).json({ error: "code, line, and column are required" });
+    }
+    // M-7: line/column must be finite positive integers; otherwise the
+    // .split() math below produces empty context and wastes a token.
+    const lineNum = Number(line);
+    const colNum = Number(column);
+    if (!Number.isInteger(lineNum) || lineNum < 1 || lineNum > 1_000_000) {
+      return res.status(400).json({ error: "line must be a positive integer" });
+    }
+    if (!Number.isInteger(colNum) || colNum < 1 || colNum > 1_000_000) {
+      return res.status(400).json({ error: "column must be a positive integer" });
     }
     if (String(code).length > MAX_CODE_LENGTH)
       return res.status(400).json({ error: `code exceeds ${MAX_CODE_LENGTH} characters` });
@@ -666,8 +678,16 @@ router.post("/code/inline-chat", async (req, res, next) => {
       numOfSite,
       maxWord,
     } = req.body;
-    if (!userPrompt || code === undefined || !line || !column) {
+    if (!userPrompt || code === undefined || line === undefined || column === undefined) {
       return res.status(400).json({ error: "prompt, code, line, and column are required" });
+    }
+    const lineNum = Number(line);
+    const colNum = Number(column);
+    if (!Number.isInteger(lineNum) || lineNum < 1 || lineNum > 1_000_000) {
+      return res.status(400).json({ error: "line must be a positive integer" });
+    }
+    if (!Number.isInteger(colNum) || colNum < 1 || colNum > 1_000_000) {
+      return res.status(400).json({ error: "column must be a positive integer" });
     }
     if (String(userPrompt).length > MAX_PROMPT_LENGTH)
       return res.status(400).json({ error: `prompt exceeds ${MAX_PROMPT_LENGTH} characters` });

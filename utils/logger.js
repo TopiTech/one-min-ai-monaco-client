@@ -26,9 +26,16 @@ const LOG_COLORS = {
     reset: '\x1b[0m',
 };
 
+function normalizeLogLevel(level) {
+    const normalized = String(level || 'info').toLowerCase();
+    return Object.prototype.hasOwnProperty.call(LOG_LEVELS, normalized)
+        ? LOG_LEVELS[normalized]
+        : LOG_LEVELS.info;
+}
+
 class Logger {
     constructor(options = {}) {
-        this.level = LOG_LEVELS[options.level] ?? LOG_LEVELS.info;
+        this.level = normalizeLogLevel(options.level);
         this.logToFile = options.logToFile ?? false;
         this.logDir = options.logDir || path.join(__dirname, '..', 'logs');
 
@@ -52,7 +59,21 @@ class Logger {
         let metaStr = '';
         if (Object.keys(meta).length) {
             try {
-                metaStr = ` ${JSON.stringify(meta).replace(/\r?\n/g, '\\n')}`;
+                // L-3: Cap meta serialization at 8KB to avoid runaway logs from
+                // accidentally logged payloads (e.g. full upstream error
+                // responses). Truncated entries are tagged so the truncation
+                // is visible downstream.
+                let serialized = JSON.stringify(meta, (_k, v) => {
+                    if (typeof v === "string" && v.length > 1024) {
+                        return v.slice(0, 1024) + "...[truncated]";
+                    }
+                    if (typeof v === "function" || typeof v === "undefined") return undefined;
+                    return v;
+                }).replace(/\r?\n/g, "\\n");
+                if (serialized && serialized.length > 8192) {
+                    serialized = serialized.slice(0, 8192) + "...[truncated]";
+                }
+                metaStr = ` ${serialized}`;
             } catch {
                 metaStr = ' [Invalid Meta]';
             }

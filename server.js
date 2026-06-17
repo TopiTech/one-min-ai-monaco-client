@@ -3,6 +3,7 @@ import express from "express";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import multer from "multer";
+import FormData from "form-data";
 import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
@@ -15,7 +16,7 @@ import fs from "fs";
 import aiRoutes from "./routes/ai.js";
 import fsRoutes from "./routes/fs.js";
 import agentRoutes from "./routes/agent.js";
-import { initModels } from "./config/models.js";
+import { initModels, getModelSyncStatus } from "./config/models.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -76,13 +77,15 @@ function parseCookies(cookieHeader) {
 }
 
 function localBffAuth({ requireToken = true, authToken } = {}) {
-  // B-1: Require explicit authToken to prevent accidental re-evaluation of createLocalAuthToken()
-  if (requireToken && !authToken) {
-    throw new Error("localBffAuth: authToken must be provided explicitly when requireToken=true");
-  }
-
+  // L-1: When authentication is not required (e.g. tests), short-circuit
+  // immediately so the rest of the helper does not have to branch.
   if (!requireToken) {
     return (_req, _res, next) => next();
+  }
+
+  // B-1: Require explicit authToken to prevent accidental re-evaluation of createLocalAuthToken()
+  if (!authToken) {
+    throw new Error("localBffAuth: authToken must be provided explicitly when requireToken=true");
   }
 
   return (req, res, next) => {
@@ -144,6 +147,7 @@ function escapeHtmlAttr(str) {
   return String(str)
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
@@ -207,34 +211,10 @@ function normalizePayloadError(err) {
   return null;
 }
 
-function buildCspDirectives() {
-  // NOTE: 'unsafe-inline' in scriptSrc is required for Monaco Editor's AMD loader.
-  // For production, consider using nonces or self-hosting Monaco to remove this.
-  // styleSrc 'unsafe-inline' is needed for dynamic theme toggling.
-  return {
-    defaultSrc: ["'self'"],
-    scriptSrc: ["'self'", "https://cdn.jsdelivr.net", "'unsafe-inline'", "blob:"],
-    styleSrc: [
-      "'self'",
-      "'unsafe-inline'",
-      "https://cdn.jsdelivr.net",
-      "https://fonts.googleapis.com",
-    ],
-    imgSrc: ["'self'", "data:", "https:", "blob:"],
-    connectSrc: ["'self'", "https://cdn.jsdelivr.net"],
-    fontSrc: ["'self'", "data:", "https://cdn.jsdelivr.net", "https://fonts.gstatic.com"],
-    objectSrc: ["'none'"],
-    mediaSrc: ["'self'"],
-    frameSrc: ["'none'"],
-    workerSrc: ["'self'", "blob:"],
-  };
-}
-
 async function handleAssetUpload(req, res, next) {
   try {
     if (!req.file) return res.status(400).json({ error: "asset file is required" });
 
-    // Validate real mime type using magic bytes check (empty files are permitted)
     if (req.file.size > 0 && !validateBufferMimeType(req.file.buffer, req.file.mimetype)) {
       logger.warn("Asset upload rejected: MIME type signature mismatch", {
         filename: req.file.originalname,
@@ -251,19 +231,29 @@ async function handleAssetUpload(req, res, next) {
       mimetype: req.file.mimetype,
     });
 
-    const formData = new FormData();
-    const blob = new Blob([req.file.buffer], {
-      type: req.file.mimetype || "application/octet-stream",
-    });
-
     const safeName = path
       .basename(req.file.originalname || "upload.bin")
       .replace(/[^a-zA-Z0-9._-]/g, "_")
       .substring(0, 255);
-    formData.append("asset", blob, safeName);
+    const formData = new FormData();
+    formData.append("asset", req.file.buffer, {
+      filename: safeName,
+      contentType: req.file.mimetype || "application/octet-stream",
+    });
 
-    const data = await callOneMin("/api/assets", { method: "POST", body: formData });
+    const data = await callOneMin("/api/assets", {
+      method: "POST",
+      headers: formData.getHeaders(),
+      body: formData,
+      idempotent: false,
+    });
     const { raw: _raw, ...normalized } = normalizeAssetResponse(data);
+    if (!normalized.key) {
+      logger.warn("Asset upload completed without a usable asset key", {
+        filename: req.file.originalname,
+        responseKeys: Object.keys(data || {}),
+      });
+    }
 
     logger.info("Asset upload successful", { filename: req.file.originalname });
     res.json(normalized);
@@ -308,10 +298,47 @@ export function createApp(options = {}) {
 
   const app = express();
 
+  // Per-request nonce for CSP
+  app.use((_req, res, next) => {
+    res.locals.nonce = crypto.randomBytes(16).toString("base64");
+    next();
+  });
+
   app.use(
     helmet({
       contentSecurityPolicy: {
-        directives: buildCspDirectives(),
+        directives: {
+          "default-src": ["'self'"],
+          "script-src": [
+            "'self'",
+            "https://cdn.jsdelivr.net",
+            (_req, res) => `'nonce-${res.locals.nonce}'`,
+            "'unsafe-inline'",
+            "blob:",
+          ],
+          // style-src intentionally omits the per-request nonce. CSP
+          // forbids mixing 'nonce-...' with 'unsafe-inline' in the same
+          // directive: when both are present the nonce wins and
+          // 'unsafe-inline' is ignored, which broke Monaco's runtime
+          // style assignments. The script-src directive above still
+          // requires a nonce, so genuine XSS surface is unchanged.
+          "style-src": [
+            "'self'",
+            "'unsafe-inline'",
+            "https://cdn.jsdelivr.net",
+            "https://fonts.googleapis.com",
+          ],
+          // Monaco assigns to element.style.* and setAttribute('style', ...)
+          // internally; mirror the relaxation on style-src-attr.
+          "style-src-attr": ["'unsafe-inline'"],
+          "img-src": ["'self'", "data:", "https:", "blob:"],
+          "connect-src": ["'self'", "https://api.1min.ai", "https://cdn.jsdelivr.net"],
+          "font-src": ["'self'", "data:", "https://cdn.jsdelivr.net", "https://fonts.gstatic.com"],
+          "object-src": ["'none'"],
+          "media-src": ["'self'"],
+          "frame-src": ["'none'"],
+          "worker-src": ["'self'", "blob:"],
+        },
       },
       crossOriginEmbedderPolicy: false,
     }),
@@ -332,7 +359,19 @@ export function createApp(options = {}) {
   app.get(["/", "/index.html"], (req, res) => {
     try {
       const htmlPath = path.join(__dirname, "public", "index.html");
-      const html = fs.readFileSync(htmlPath, "utf8");
+      let html = fs.readFileSync(htmlPath, "utf8");
+
+      const nonce = res.locals.nonce;
+
+      // Inject nonce into all <script> tags
+      html = html.replace(/<script\b/g, `<script nonce="${nonce}"`);
+
+      // Expose nonce to client-side JS via meta tag (for dynamic <style> elements)
+      html = html.replace(
+        /<head(\s*[^>]*)>/i,
+        (match, attrs) =>
+          `<head${attrs}><meta name="csp-nonce" content="${nonce}">`,
+      );
 
       // Set the token as HttpOnly cookie (CSRF mitigation) AND inject a
       // data attribute on <body> so client-side JS can read it for the
@@ -343,15 +382,14 @@ export function createApp(options = {}) {
         res.cookie("__bff_session", localAuthToken, {
           httpOnly: true,
           secure: process.env.NODE_ENV === "production",
-          sameSite: "Strict", // M-3: Strict prevents cross-site request forgery
-          maxAge: ONE_DAY_MS, // B-2: Expire after 24h to limit session persistence
+          sameSite: "Strict",
+          maxAge: ONE_DAY_MS,
         });
 
-        const injected = html.replace(
+        html = html.replace(
           /<body(\s*[^>]*)>/i,
           (match, attrs) => `<body${attrs} data-bff-token="${escapeHtmlAttr(localAuthToken)}">`,
         );
-        return res.send(injected);
       }
 
       res.send(html);
@@ -360,7 +398,16 @@ export function createApp(options = {}) {
     }
   });
 
-  app.use(express.static(path.join(__dirname, "public"), { index: false }));
+  app.use(
+    express.static(path.join(__dirname, "public"), {
+      index: false,
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith(".js")) {
+          res.setHeader("X-Content-Type-Options", "nosniff");
+        }
+      },
+    }),
+  );
 
   const protectedApiAuth = localBffAuth({
     requireToken: requireLocalAuth,
@@ -371,6 +418,7 @@ export function createApp(options = {}) {
     res.json({
       ok: true,
       service: "one-min-ai-monaco-client",
+      models: getModelSyncStatus(),
     });
   });
 

@@ -57,7 +57,12 @@ async function saveSessions() {
   try {
     await ensureDataDir();
     const data = JSON.stringify(Object.fromEntries(sessions), null, 2);
-    await fs.writeFile(SESSIONS_FILE, data, "utf-8");
+    // M-4: Write to a temp file first, then atomically rename. This prevents
+    // corruption on crash mid-write and surfaces failures loudly instead of
+    // silently desyncing persistence from the in-memory state.
+    const tmpFile = SESSIONS_FILE + ".tmp";
+    await fs.writeFile(tmpFile, data, "utf-8");
+    await fs.rename(tmpFile, SESSIONS_FILE);
   } catch (err) {
     logger.error("Failed to save sessions to file", { error: err.message });
   }
@@ -97,6 +102,10 @@ const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 function cleanupExpiredSessions() {
   const now = Date.now();
   for (const [id, session] of sessions) {
+    // M-5: Never reap a session that is actively executing a command —
+    // doing so would orphan the spawned child process and confuse the
+    // client waiting on the response.
+    if (session.status === "running") continue;
     if (now - session.lastAccessedAt > SESSION_TTL_MS) {
       sessions.delete(id);
     }
@@ -604,7 +613,9 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
 
     const content = await fs.readFile(resolvedPath, "utf-8");
 
-    // Parse SEARCH/REPLACE blocks
+    // M-13: Construct the regex inside the handler so its `lastIndex` is
+    // reset on every call. Reusing a module-level /g regex would otherwise
+    // resume from the previous invocation and silently drop blocks.
     const blockRegex =
       /<<<<<<< SEARCH[ \t]*\r?\n([\s\S]*?)\r?\n=======[ \t]*\r?\n([\s\S]*?)\r?\n>>>>>>> REPLACE[ \t]*/g;
     const blocks = [];
@@ -707,7 +718,17 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
         return res.status(400).json({ error: errorMsg });
       }
 
+      // H-2: Multiple matches always require explicit disambiguation by the
+      // caller. Indentation-insensitive matching in particular frequently
+      // produces false positives (a lone `}` or empty line), so silently
+      // picking the first hit risks replacing the wrong section. The user
+      // (or upstream agent) is expected to add surrounding context lines
+      // until the match becomes unique.
       if (matchCount > 1) {
+        logger.warn(
+          `SEARCH block matched ${matchCount} times in ${resolvedPath}; requiring disambiguation`,
+          { searchLines: searchLines.length },
+        );
         return res.status(400).json({
           error: `置換対象の SEARCH ブロックのコードがファイル内に複数存在するため、一意に特定できません。前後の行も含めて指定してください：\n${block.search}`,
         });

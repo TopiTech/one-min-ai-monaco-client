@@ -1,6 +1,13 @@
 node_modules
 .env
+.env.*
+!.env.example
 .DS_Store
 npm-debug.log*
 logs/
 .mimocode/data/agent_sessions.json
+temp_diff.txt
+test-output.log
+test-output.txt
+coverage/
+*.log

@@ -1,7 +1,11 @@
 /**
  * Main application logic for 1min.ai Monaco Client
- * Depends on: js/api.js, js/models.js, js/toast.js
+ * Depends on: js/api.js, js/dom-style.js, js/models.js, js/toast.js
  */
+
+import { injectStyle } from "./js/dom-style.js";
+import { loadModels, initModelPickers } from "./js/models.js";
+import { api, assetUrl, extractImages } from "./js/api.js";
 
 // Helper to get element by ID
 const $ = (id) => document.getElementById(id);
@@ -117,7 +121,12 @@ function initTheme() {
   updateThemeUI();
 }
 
+let _themeToggleTimer = null;
 function toggleTheme() {
+  if (_themeToggleTimer) return;
+  _themeToggleTimer = setTimeout(() => {
+    _themeToggleTimer = null;
+  }, 200);
   const current = document.documentElement.getAttribute("data-theme");
   let next;
   if (current === "light") {
@@ -143,15 +152,19 @@ function updateThemeUI() {
   const iconDark = $("themeIconDark");
   const iconLight = $("themeIconLight");
   const label = $("themeLabel");
-  if (iconDark) iconDark.style.display = isDark ? "none" : "block";
-  if (iconLight) iconLight.style.display = isDark ? "block" : "none";
+  if (iconDark) iconDark.classList.toggle("is-hidden", isDark);
+  if (iconLight) iconLight.classList.toggle("is-hidden", !isDark);
   if (label) label.textContent = isDark ? "ライトモード" : "ダークモード";
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  initTheme();
-  $("themeToggle")?.addEventListener("click", toggleTheme);
-}, { once: true });
+document.addEventListener(
+  "DOMContentLoaded",
+  () => {
+    initTheme();
+    $("themeToggle")?.addEventListener("click", toggleTheme);
+  },
+  { once: true },
+);
 
 function initCodeGeneratorSettings() {
   const wsInput = $("codeWebSearch");
@@ -203,7 +216,7 @@ function initChatSettings() {
   if (!wsInput || !nosInput || !mwInput || !settingsBox) return;
 
   const updateVisibility = () => {
-    settingsBox.style.display = wsInput.checked ? "block" : "none";
+    settingsBox.classList.toggle("is-shown", wsInput.checked);
   };
 
   // Restore
@@ -317,7 +330,7 @@ function addMsg(role, content, images = []) {
       imgEl.alt = "attached";
       imgEl.src = img.url || img.assetUrl || img;
       imgEl.onerror = function () {
-        this.style.display = "none";
+        this.classList.add("is-error-hidden");
       };
       imagesDiv.appendChild(imgEl);
     }
@@ -348,12 +361,12 @@ function updateAttachmentPreview() {
   if (!container || !attachmentsArea) return;
 
   if (attachments.length === 0) {
-    attachmentsArea.style.display = "none";
+    attachmentsArea.classList.add("u-hidden");
     container.textContent = "";
     return;
   }
 
-  attachmentsArea.style.display = "block";
+  attachmentsArea.classList.remove("u-hidden");
   container.textContent = "";
 
   attachments.forEach((att, index) => {
@@ -371,7 +384,7 @@ function updateAttachmentPreview() {
       img.src = att.previewUrl;
       img.alt = "preview";
       img.onerror = function () {
-        this.style.display = "none";
+        this.classList.add("is-error-hidden");
       };
       thumb.appendChild(img);
     } else {
@@ -464,7 +477,7 @@ if (dom.chatImageInput) {
   };
 }
 
-// Upload attachments to 1min.ai Asset API (parallel)
+// Upload attachments to 1min.ai Asset API (concurrency-controlled)
 async function uploadAttachments() {
   const attachments = state.chat.attachments;
   const pending = attachments.filter((att) => !att.assetKey);
@@ -482,29 +495,45 @@ async function uploadAttachments() {
   }
   updateAttachmentPreview();
 
-  const results = await Promise.allSettled(
-    pending.map(async (att) => {
-      const fd = new FormData();
-      fd.append("asset", att.file);
-      const data = await api("/api/assets/upload", { method: "POST", body: fd });
-      const key =
-        data?.key || data?.asset?.key || data?.fileContent?.path || data?.asset?.location || "";
-      const url = data?.url || (key ? assetUrl(key) : "");
-      att.assetKey = key;
-      att.assetUrl = url;
-      att.uploading = false;
-      return { type: att.type || "image", assetKey: key, url };
-    }),
-  );
+  // M-5: Limit concurrency to 3 simultaneous uploads to stay within 1min.ai
+  // limits and avoid browser connection pooling bottlenecks.
+  const CONCURRENCY_LIMIT = 3;
+  const queue = [...pending];
+  const results = new Array(pending.length);
 
-  for (let i = 0; i < results.length; i++) {
-    if (results[i].status === "rejected") {
-      pending[i].uploading = false;
-      toast.error(`アップロード失敗: ${results[i].reason?.message || "不明なエラー"}`);
+  const worker = async () => {
+    while (queue.length > 0) {
+      const index = pending.length - queue.length;
+      const att = queue.shift();
+      try {
+        const fd = new FormData();
+        fd.append("asset", att.file);
+        const data = await api("/api/assets/upload", { method: "POST", body: fd });
+        const key =
+          data?.key || data?.asset?.key || data?.fileContent?.path || data?.asset?.location || "";
+        const url = data?.url || (key ? assetUrl(key) : "");
+        att.assetKey = key;
+        att.assetUrl = url;
+        att.uploading = false;
+        results[index] = {
+          status: "fulfilled",
+          value: { type: att.type || "image", assetKey: key, url },
+        };
+      } catch (err) {
+        att.uploading = false;
+        results[index] = { status: "rejected", reason: err };
+        toast.error(`アップロード失敗 (${att.file.name}): ${err.message || "不明なエラー"}`);
+      }
+      updateAttachmentPreview();
     }
-  }
+  };
 
-  updateAttachmentPreview();
+  const workers = Array(Math.min(CONCURRENCY_LIMIT, queue.length))
+    .fill(null)
+    .map(() => worker());
+
+  await Promise.all(workers);
+
   return attachments
     .filter((att) => att.assetKey)
     .map((att) => ({ type: att.type || "image", assetKey: att.assetKey, url: att.assetUrl }));
@@ -527,8 +556,8 @@ dom.sendChatBtn.onclick = async () => {
   const sendBtn = dom.sendChatBtn;
   const abortBtn = dom.abortChatBtn;
   sendBtn.disabled = true;
-  sendBtn.style.display = "none";
-  abortBtn.style.display = "inline-flex";
+  sendBtn.classList.add("u-hidden");
+  abortBtn.classList.add("is-shown");
 
   state.chat.abortController = new AbortController();
 
@@ -597,9 +626,40 @@ dom.sendChatBtn.onclick = async () => {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    let currentEvent = "content";
     let streamDone = false;
     let streamError = null;
+    let currentEvent = "content";
+
+    // Safety: abort streaming after 5 minutes to prevent infinite hangs
+    const MAX_STREAM_MS = 5 * 60 * 1000;
+    const streamTimeoutId = setTimeout(() => {
+      if (!streamDone) {
+        streamDone = true;
+        streamError = new Error("ストリーミングがタイムアウトしました（5分）");
+        reader.cancel().catch(() => {});
+      }
+    }, MAX_STREAM_MS);
+    // H-3: Throttle markdown re-renders to avoid CPU spikes during streaming.
+    // Long responses with frequent chunks would otherwise re-parse on every
+    // single delta. We render at most once per RAF (~60fps) and always on the
+    // final [DONE] chunk.
+    let renderScheduled = false;
+    const scheduleRender = () => {
+      if (renderScheduled) return;
+      renderScheduled = true;
+      const run = () => {
+        renderScheduled = false;
+        if (fullText) {
+          renderMarkdownSafely(aiContentDiv, fullText);
+          dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
+        }
+      };
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(run);
+      } else {
+        setTimeout(run, 16);
+      }
+    };
 
     while (!streamDone) {
       const { done, value } = await reader.read();
@@ -610,14 +670,24 @@ dom.sendChatBtn.onclick = async () => {
       buffer = lines.pop();
 
       for (const line of lines) {
+        // 1min.ai may use bare `data:` lines (no event: prefix). The OpenAI
+        // streaming convention puts `data:` on every line and the SSE
+        // terminator is `data: [DONE]`. Treat both styles as the default
+        // content channel.
         if (line.startsWith("event: ")) {
           currentEvent = line.slice(7).trim();
           continue;
         }
 
-        if (!line.startsWith("data: ")) continue;
-        const dataStr = line.slice(6).trim();
-        if (!dataStr || dataStr === "[DONE]") continue;
+        if (!line.startsWith("data:")) continue;
+        const dataStr = line.replace(/^data:\s*/, "").trim();
+        if (!dataStr) continue;
+
+        // Standard OpenAI SSE terminator: stop reading and finalize.
+        if (dataStr === "[DONE]") {
+          streamDone = true;
+          break;
+        }
 
         try {
           const data = JSON.parse(dataStr);
@@ -654,16 +724,28 @@ dom.sendChatBtn.onclick = async () => {
             data?.text;
           if (content) {
             fullText += content;
-            renderMarkdownSafely(aiContentDiv, fullText);
-            dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
+            scheduleRender();
           }
-        } catch {
-          // Non-JSON data line, skip
+
+          // OpenAI-compatible finish marker; some providers use this instead
+          // of a `[DONE]` sentinel. Treat it as a graceful stream end.
+          const finishReason = data?.choices?.[0]?.finish_reason;
+          if (finishReason && finishReason !== "null") {
+            console.log(`Stream finished: ${finishReason}`);
+            streamDone = true;
+            break;
+          }
+        } catch (jsonErr) {
+          // Non-JSON data line or malformed, skip
+          console.debug("SSE non-JSON chunk:", dataStr);
         }
       }
     }
 
+    clearTimeout(streamTimeoutId);
     if (streamError) throw streamError;
+    // Final render to ensure any throttled content is visible.
+    if (fullText) renderMarkdownSafely(aiContentDiv, fullText);
 
     if (!fullText) {
       fullText = "(応答が空でした)";
@@ -678,6 +760,7 @@ dom.sendChatBtn.onclick = async () => {
       setStatus("キャンセルしました", "warn");
     } else {
       const message = e?.message || "不明なエラー";
+      console.error("Chat Stream Error:", e);
       aiContentDiv.textContent = `エラー: ${message}`;
       toast.error(`チャットエラー: ${message}`);
       setStatus("エラー", "error");
@@ -685,8 +768,8 @@ dom.sendChatBtn.onclick = async () => {
   } finally {
     state.chat.abortController = null;
     sendBtn.disabled = false;
-    sendBtn.style.display = "inline-flex";
-    abortBtn.style.display = "none";
+    sendBtn.classList.remove("u-hidden");
+    abortBtn.classList.remove("is-shown");
     setStatus("準備完了");
     state.chat.attachments.length = 0;
     updateAttachmentPreview();
@@ -702,6 +785,14 @@ async function checkHealth() {
         duration: 10000,
       });
       setStatus("ヘルスチェック失敗", "err");
+    } else if (data.models && !data.models.ok) {
+      console.warn("Model sync failure:", data.models.error);
+      toast.warning(
+        `モデル情報の同期に失敗しています。以前のデータを使用します: ${data.models.error}`,
+        {
+          duration: 8000,
+        },
+      );
     }
   } catch (e) {
     console.error("Health check failed:", e);
@@ -732,23 +823,43 @@ $("createConversation").onclick = async () => {
 // images
 function renderImages(data, sourceImageUrl = null) {
   const images = extractImages(data);
+  const gallery = dom.imageGallery;
+  if (!gallery) return;
+
   if (!images.length) {
     const pre = document.createElement("pre");
     pre.className = "json";
     pre.textContent = JSON.stringify(data, null, 2);
-    dom.imageGallery.prepend(pre);
+    gallery.prepend(pre);
     return;
   }
+
+  // Diff-based update: collect existing card URLs
+  const existingCards = new Map();
+  gallery.querySelectorAll(".imageCard").forEach((card) => {
+    const imgEl = card.querySelector("img:not(.image-before)");
+    const link = card.querySelector("a");
+    const key = (imgEl && imgEl.src) || (link && link.href) || "";
+    if (key) existingCards.set(key, card);
+  });
+
+  const newUrls = new Set();
   for (const img of images) {
+    const url = assetUrl(img);
+    newUrls.add(url);
+
+    // Skip if card with same URL already exists
+    if (existingCards.has(url)) continue;
+
     const card = document.createElement("div");
     card.className = "imageCard";
-    const url = assetUrl(img);
 
     if (sourceImageUrl) {
       // Create slider comparison card
       const sourceUrl = assetUrl(sourceImageUrl);
+      const cmpId = `cmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const slider = document.createElement("div");
-      slider.className = "image-comparison-slider";
+      slider.className = `image-comparison-slider ${cmpId}`;
 
       const afterImg = document.createElement("img");
       afterImg.src = url;
@@ -760,7 +871,6 @@ function renderImages(data, sourceImageUrl = null) {
       beforeImg.src = sourceUrl;
       beforeImg.alt = "Before";
       beforeImg.className = "image-before";
-      beforeImg.style.clipPath = "polygon(0 0, 50% 0, 50% 100%, 0 100%)";
       slider.appendChild(beforeImg);
 
       const range = document.createElement("input");
@@ -774,16 +884,22 @@ function renderImages(data, sourceImageUrl = null) {
 
       const divider = document.createElement("div");
       divider.className = "slider-divider";
-      divider.style.left = "50%";
       const handle = document.createElement("div");
       handle.className = "slider-handle";
       divider.appendChild(handle);
       slider.appendChild(divider);
 
+      injectStyle(
+        `.${cmpId} .image-before { clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%); } ` +
+        `.${cmpId} .slider-divider { left: 50%; }`,
+      );
+
       range.addEventListener("input", (e) => {
         const val = e.target.value;
-        beforeImg.style.clipPath = `polygon(0 0, ${val}% 0, ${val}% 100%, 0 100%)`;
-        divider.style.left = val + "%";
+        injectStyle(
+          `.${cmpId} .image-before { clip-path: polygon(0 0, ${val}% 0, ${val}% 100%, 0 100%); } ` +
+          `.${cmpId} .slider-divider { left: ${val}%; }`,
+        );
       });
       card.appendChild(slider);
     } else {
@@ -791,17 +907,14 @@ function renderImages(data, sourceImageUrl = null) {
       imgEl.src = url;
       imgEl.alt = "AI生成画像";
       imgEl.onerror = function () {
-        this.style.display = "none";
+        this.classList.add("is-error-hidden");
       };
       card.appendChild(imgEl);
     }
 
     // Info row under the image/slider
     const infoRow = document.createElement("div");
-    infoRow.style.marginTop = "10px";
-    infoRow.style.display = "flex";
-    infoRow.style.flexDirection = "column";
-    infoRow.style.gap = "4px";
+    infoRow.className = "image-card-info";
 
     const link = document.createElement("a");
     link.href = url;
@@ -809,8 +922,7 @@ function renderImages(data, sourceImageUrl = null) {
     link.rel = "noopener noreferrer";
     link.textContent = img.length > 30 ? img.slice(0, 27) + "..." : img;
     link.title = img;
-    link.style.display = "block";
-    link.style.textAlign = "center";
+    link.className = "image-card-link";
     infoRow.appendChild(link);
 
     if (sourceImageUrl) {
@@ -818,16 +930,20 @@ function renderImages(data, sourceImageUrl = null) {
         document.getElementById("imageModelLabel")?.textContent?.trim() || "AI Model";
       const modelLabel = document.createElement("span");
       modelLabel.textContent = `編集モデル: ${modelName}`;
-      modelLabel.style.fontSize = "0.7rem";
-      modelLabel.style.color = "var(--text-muted)";
-      modelLabel.style.textAlign = "center";
+      modelLabel.className = "image-card-model";
       infoRow.appendChild(modelLabel);
     }
 
     card.appendChild(infoRow);
-    dom.imageGallery.prepend(card);
-    pruneImageGallery();
+    gallery.prepend(card);
   }
+
+  // Remove cards whose URLs are no longer present
+  existingCards.forEach((card, url) => {
+    if (!newUrls.has(url)) card.remove();
+  });
+
+  pruneImageGallery();
 }
 
 dom.generateImage.onclick = async () => {
@@ -947,10 +1063,10 @@ function updateEditorImagePreview(imageUrl) {
       : null;
 
   if (!value) {
-    if (preview) preview.style.display = "none";
-    if (clearBtn) clearBtn.style.display = "none";
-    if (imgToImgParams) imgToImgParams.style.display = "none";
-    if (textToImgParams) textToImgParams.style.display = "block";
+    if (preview) preview.classList.remove("is-shown");
+    if (clearBtn) clearBtn.classList.remove("is-shown");
+    if (imgToImgParams) imgToImgParams.classList.remove("is-shown");
+    if (textToImgParams) textToImgParams.classList.remove("is-hidden");
     if (btnText) btnText.textContent = "画像を生成";
 
     // Switch model if current model is editor-only
@@ -972,11 +1088,11 @@ function updateEditorImagePreview(imageUrl) {
 
   if (preview) {
     preview.src = assetUrl(value);
-    preview.style.display = "block";
+    preview.classList.add("is-shown");
   }
-  if (clearBtn) clearBtn.style.display = "block";
-  if (imgToImgParams) imgToImgParams.style.display = "block";
-  if (textToImgParams) textToImgParams.style.display = "none";
+  if (clearBtn) clearBtn.classList.add("is-shown");
+  if (imgToImgParams) imgToImgParams.classList.add("is-shown");
+  if (textToImgParams) textToImgParams.classList.add("is-hidden");
   if (btnText) btnText.textContent = "画像を編集";
 
   // Switch model if current model doesn't support editing
@@ -1195,8 +1311,8 @@ const inlineChatWidget = {
     if (!state.editor.inlineChatDom) {
       state.editor.inlineChatDom = document.createElement("div");
       state.editor.inlineChatDom.className = "inline-chat-widget";
-      state.editor.inlineChatDom.style.maxWidth = "90vw";
-      state.editor.inlineChatDom.style.width = "350px";
+      state.editor.inlineChatDom.setAttribute("role", "dialog");
+      state.editor.inlineChatDom.setAttribute("aria-label", "AIインラインチャット");
 
       const inputRow = document.createElement("div");
       inputRow.className = "inline-chat-input-row";
@@ -1205,11 +1321,13 @@ const inlineChatWidget = {
       promptInput.type = "text";
       promptInput.id = "inlineChatPrompt";
       promptInput.placeholder = "AIへの指示を入力 (例: ループを追加)...";
+      promptInput.setAttribute("aria-label", "AIへの指示");
 
       const submitBtn = document.createElement("button");
       submitBtn.type = "button";
       submitBtn.id = "inlineChatSubmit";
       submitBtn.textContent = "送信";
+      submitBtn.setAttribute("aria-label", "送信");
 
       inputRow.appendChild(promptInput);
       inputRow.appendChild(submitBtn);
@@ -1217,8 +1335,9 @@ const inlineChatWidget = {
       const statusDiv = document.createElement("div");
       statusDiv.id = "inlineChatStatus";
       statusDiv.className = "inline-chat-status";
-      statusDiv.style.display = "none";
       statusDiv.textContent = "生成中...";
+      statusDiv.setAttribute("role", "status");
+      statusDiv.setAttribute("aria-live", "polite");
 
       state.editor.inlineChatDom.appendChild(inputRow);
       state.editor.inlineChatDom.appendChild(statusDiv);
@@ -1257,8 +1376,8 @@ async function submitInlineChat() {
   const prompt = input.value.trim();
   if (!prompt) return;
 
-  status.style.display = "block";
-  status.className = "inline-chat-status loading";
+  status.classList.add("is-shown");
+  status.className = "inline-chat-status is-shown loading";
   input.disabled = true;
 
   const code = window.editor.getValue();
@@ -1309,7 +1428,7 @@ async function submitInlineChat() {
   } catch (e) {
     toast.error(`AIコード生成に失敗しました: ${e.message}`);
   } finally {
-    status.style.display = "none";
+    status.classList.remove("is-shown", "loading");
     status.className = "inline-chat-status";
     input.disabled = false;
     input.value = "";
@@ -1400,7 +1519,6 @@ async function renderTreeNodes(items, container, depth = 0) {
     if (item.isDirectory) {
       const childrenContainer = document.createElement("div");
       childrenContainer.className = "tree-children";
-      childrenContainer.style.display = "none";
       childrenContainer.setAttribute("role", "group");
       container.appendChild(childrenContainer);
 
@@ -1409,7 +1527,7 @@ async function renderTreeNodes(items, container, depth = 0) {
         const isExpanded = node.classList.toggle("expanded");
         node.setAttribute("aria-expanded", String(isExpanded));
         if (isExpanded) {
-          childrenContainer.style.display = "flex";
+          childrenContainer.classList.add("is-expanded");
           toggle.textContent = "▼";
           if (childrenContainer.childElementCount === 0) {
             try {
@@ -1420,7 +1538,7 @@ async function renderTreeNodes(items, container, depth = 0) {
             }
           }
         } else {
-          childrenContainer.style.display = "none";
+          childrenContainer.classList.remove("is-expanded");
           toggle.textContent = "▶";
         }
       };
@@ -1580,8 +1698,7 @@ function createSvgIcon(viewBox, paths) {
   svg.setAttribute("stroke-width", "2");
   svg.setAttribute("stroke-linecap", "round");
   svg.setAttribute("stroke-linejoin", "round");
-  svg.style.verticalAlign = "middle";
-  svg.style.marginRight = "4px";
+  svg.classList.add("agent-step-icon-svg");
 
   const path = document.createElementNS(SVG_NS, "path");
   path.setAttribute("d", paths);
@@ -1676,18 +1793,15 @@ function addAgentTimelineStep(type, title, body, resultText = null) {
     toggleDiv.appendChild(toggleSpan);
 
     const thoughtBox = document.createElement("div");
-    thoughtBox.className = "agent-step-thought-box";
-    thoughtBox.style.display = "none";
+    thoughtBox.className = "agent-step-thought-box u-hidden";
     thoughtBox.appendChild(bodyEl);
 
     toggleDiv.onclick = () => {
-      if (thoughtBox.style.display === "none") {
-        thoughtBox.style.display = "block";
-        toggleSpan.textContent = "▼ 思考プロセスを折りたたむ";
-      } else {
-        thoughtBox.style.display = "none";
-        toggleSpan.textContent = "▶ 思考プロセスを展開";
-      }
+      const willBeHidden = !thoughtBox.classList.contains("u-hidden");
+      thoughtBox.classList.toggle("u-hidden", willBeHidden);
+      toggleSpan.textContent = willBeHidden
+        ? "▶ 思考プロセスを展開"
+        : "▼ 思考プロセスを折りたたむ";
     };
 
     card.appendChild(toggleDiv);
@@ -1707,8 +1821,7 @@ function addAgentTimelineStep(type, title, body, resultText = null) {
 
     const resultPre = document.createElement("pre");
     resultPre.id = "result-" + stepId;
-    resultPre.className = "agent-step-result-box";
-    resultPre.style.display = "none";
+    resultPre.className = "agent-step-result-box u-hidden";
     resultPre.textContent = resultText;
     card.appendChild(resultPre);
   }
@@ -1728,12 +1841,10 @@ window.toggleTimelineResult = function (stepId) {
   if (!box) return;
   const toggle = box.previousElementSibling;
   const toggleSpan = toggle.querySelector("span");
-  if (box.style.display === "none") {
-    box.style.display = "block";
-    if (toggleSpan) toggleSpan.textContent = "▼ 実行出力を非表示";
-  } else {
-    box.style.display = "none";
-    if (toggleSpan) toggleSpan.textContent = "▶ 実行出力を表示";
+  const willBeHidden = !box.classList.contains("u-hidden");
+  box.classList.toggle("u-hidden", willBeHidden);
+  if (toggleSpan) {
+    toggleSpan.textContent = willBeHidden ? "▶ 実行出力を表示" : "▼ 実行出力を非表示";
   }
 };
 
@@ -1763,7 +1874,6 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
 
   const iconSpan = document.createElement("span");
   iconSpan.className = "agent-step-icon";
-  iconSpan.style.color = "#facc15";
   appendStepIcon(iconSpan, "approval");
   iconSpan.appendChild(document.createTextNode("コマンド実行"));
 
@@ -1843,14 +1953,7 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
     if (finalized) return;
     finalized = true;
     setTimeout(() => {
-      step.style.transition = "opacity 0.4s ease, max-height 0.4s ease, margin 0.4s ease, padding 0.4s ease";
-      step.style.opacity = "0";
-      step.style.maxHeight = "0";
-      step.style.marginTop = "0";
-      step.style.marginBottom = "0";
-      step.style.paddingTop = "0";
-      step.style.paddingBottom = "0";
-      step.style.overflow = "hidden";
+      step.classList.add("is-fading");
       setTimeout(() => {
         step.remove();
       }, 450);
@@ -1865,7 +1968,7 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
     rejectBtn.disabled = true;
     feedbackInput.disabled = true;
     approveBtn.textContent = "許可済み";
-    approveBtn.style.opacity = "0.7";
+    approveBtn.classList.add("is-disabled");
     onApprove();
     finalizeStep();
   };
@@ -1875,7 +1978,7 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
     rejectBtn.disabled = true;
     feedbackInput.disabled = true;
     rejectBtn.textContent = "却下済み";
-    rejectBtn.style.opacity = "0.7";
+    rejectBtn.classList.add("is-disabled");
     const reason = feedbackInput.value.trim() || "ユーザーによって却下されました";
     onReject(reason);
     finalizeStep();
@@ -2496,10 +2599,10 @@ ${workspaceFilesText}
   }
 
   state.agent.active = false;
-  dom.startAgentBtn.style.display = "flex";
-  dom.sendAgentFeedbackBtn.style.display = "none";
-  dom.stopAgentBtn.style.display = "none";
-  dom.resetAgentBtn.style.display = "flex";
+  dom.startAgentBtn.classList.remove("is-hidden");
+  dom.sendAgentFeedbackBtn.classList.remove("is-shown");
+  dom.stopAgentBtn.classList.remove("is-shown");
+  dom.resetAgentBtn.classList.remove("is-hidden");
   dom.agentInstruction.placeholder = "指示を入力してエージェントを開始...";
   if (dom.agentStatus.textContent !== "完了" && dom.agentStatus.textContent !== "エラー") {
     setAgentStatus("待機中", "idle");
@@ -2519,10 +2622,10 @@ dom.startAgentBtn.onclick = async () => {
   dom.agentInstruction.placeholder = "追加の指示やヒントを入力...";
 
   state.agent.active = true;
-  dom.startAgentBtn.style.display = "none";
-  dom.sendAgentFeedbackBtn.style.display = "flex";
-  dom.stopAgentBtn.style.display = "flex";
-  dom.resetAgentBtn.style.display = "none";
+  dom.startAgentBtn.classList.add("is-hidden");
+  dom.sendAgentFeedbackBtn.classList.add("is-shown");
+  dom.stopAgentBtn.classList.add("is-shown");
+  dom.resetAgentBtn.classList.add("is-hidden");
 
   try {
     await runAgentLoop(instruction);
@@ -2536,10 +2639,10 @@ dom.startAgentBtn.onclick = async () => {
     );
   } finally {
     state.agent.active = false;
-    dom.startAgentBtn.style.display = "flex";
-    dom.sendAgentFeedbackBtn.style.display = "none";
-    dom.stopAgentBtn.style.display = "none";
-    dom.resetAgentBtn.style.display = "flex";
+    dom.startAgentBtn.classList.remove("is-hidden");
+    dom.sendAgentFeedbackBtn.classList.remove("is-shown");
+    dom.stopAgentBtn.classList.remove("is-shown");
+    dom.resetAgentBtn.classList.remove("is-hidden");
     dom.agentInstruction.placeholder = "指示を入力してエージェントを開始...";
   }
 };
@@ -2551,9 +2654,7 @@ dom.stopAgentBtn.onclick = () => {
     state.agent.resolver({ abort: true });
   }
   // M-2: pending approvals become orphans once we stop the agent — clean them up.
-  document
-    .querySelectorAll(".agent-step.approval")
-    .forEach((el) => el.__finalizeApproval?.());
+  document.querySelectorAll(".agent-step.approval").forEach((el) => el.__finalizeApproval?.());
   setAgentStatus("停止", "idle");
   addAgentTimelineStep("thought", "停止", "ユーザーによって停止されました。");
 };
@@ -2569,27 +2670,23 @@ dom.resetAgentBtn.onclick = async () => {
     // M-2: Clean up any pending approval cards so they don't outlive the
     // session (they would otherwise become "orphan" cards that fail if the
     // user clicks approve after reset).
-    document
-      .querySelectorAll(".agent-step.approval")
-      .forEach((el) => el.__finalizeApproval?.());
+    document.querySelectorAll(".agent-step.approval").forEach((el) => el.__finalizeApproval?.());
     state.agent.sessionId = null;
     state.agent.history = [];
     const log = dom.agentActivityLog;
     if (log) {
       log.textContent = "";
       const placeholder = document.createElement("div");
-      placeholder.className = "timeline-placeholder";
-      placeholder.style.cssText =
-        "color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 24px 8px; border: 1px dashed rgba(255,255,255,0.05); border-radius: 8px; background: rgba(255,255,255,0.01);";
+      placeholder.className = "timeline-placeholder timeline-placeholder-inline";
       placeholder.textContent = "指示を入力して、エージェントとのチャットを開始してください。";
       log.appendChild(placeholder);
     }
     setAgentStatus("待機中", "idle");
     dom.agentInstruction.placeholder = "指示を入力してエージェントを開始...";
-    dom.startAgentBtn.style.display = "flex";
-    dom.sendAgentFeedbackBtn.style.display = "none";
-    dom.stopAgentBtn.style.display = "none";
-    dom.resetAgentBtn.style.display = "flex";
+    dom.startAgentBtn.classList.remove("is-hidden");
+    dom.sendAgentFeedbackBtn.classList.remove("is-shown");
+    dom.stopAgentBtn.classList.remove("is-shown");
+    dom.resetAgentBtn.classList.remove("is-hidden");
     toast.success("セッションをリセットしました");
   }
 };
@@ -2711,7 +2808,7 @@ function initFolderPicker() {
   let folderPickerCurrentPath = "";
 
   const hideError = () => {
-    errorBox.style.display = "none";
+    errorBox.classList.remove("is-shown");
     errorBox.textContent = "";
   };
 
@@ -2812,7 +2909,8 @@ function initFolderPicker() {
     const initial = initialPath || $("explorerPath").value || "";
     folderPickerCurrentPath = initial;
     hideError();
-    modal.style.display = "flex";
+    modal.classList.remove("u-hidden");
+    modal.classList.remove("is-hidden");
     renderDrives();
     renderFolderPickerList(initial);
     setTimeout(() => pathInput.focus(), 0);
@@ -2822,7 +2920,8 @@ function initFolderPicker() {
   };
 
   window.closeFolderPicker = () => {
-    modal.style.display = "none";
+    modal.classList.add("u-hidden");
+    modal.classList.add("is-hidden");
     hideError();
     modal.removeEventListener("keydown", trapFocus);
     if (modal._previousFocus) {
@@ -2872,7 +2971,7 @@ function initFolderPicker() {
     const path = pathInput.value.trim();
     if (!path) {
       errorBox.textContent = "フォルダの絶対パスを入力してください。";
-      errorBox.style.display = "block";
+      errorBox.classList.add("is-shown");
       return;
     }
 
@@ -2908,7 +3007,7 @@ function initFolderPicker() {
       window.closeFolderPicker();
     } catch (err) {
       errorBox.textContent = `フォルダ選択失敗: ${err.message}`;
-      errorBox.style.display = "block";
+      errorBox.classList.add("is-shown");
     }
   };
 
@@ -2979,7 +3078,7 @@ function applyCreditSavingMode() {
       webSearch.checked = false;
       webSearch.disabled = true;
       const chatSettings = $("chatWebSearchSettings");
-      if (chatSettings) chatSettings.style.display = "none";
+      if (chatSettings) chatSettings.classList.remove("is-shown");
     }
     if (codeWebSearch) {
       codeWebSearch.checked = false;

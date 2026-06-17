@@ -41,6 +41,8 @@ describe("Server Factory", () => {
       expect(response.status).toBe(200);
       expect(response.body.ok).toBe(true);
       expect(response.body.service).toBe("one-min-ai-monaco-client");
+      expect(response.body.models).toBeDefined();
+      expect(response.body.models.ok).toBe(true);
       // hasApiKey removed from health endpoint to reduce info exposure (B-5)
       expect(response.body.hasApiKey).toBeUndefined();
     });
@@ -160,7 +162,7 @@ describe("Server Factory", () => {
         enableRateLimit: false,
       });
 
-      const response = await protectedApp.request
+      const response = (await protectedApp.request)
         ? await request(protectedApp)
             .get("/api/fs/config")
             .set("x-local-bff-token", "secret-token")

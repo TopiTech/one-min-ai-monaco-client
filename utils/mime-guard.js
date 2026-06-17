@@ -109,3 +109,28 @@ export function validateBufferMimeType(buffer, declaredMimeType) {
 
   return true;
 }
+
+/**
+ * Heuristic content-based binary detection for `/api/fs/read`. Unlike the
+ * extension-based BINARY_EXTENSIONS list, this catches files renamed to a
+ * text-like extension (.txt, .md, .json) but containing actual binary data.
+ * Returns true if the buffer is likely binary and should not be served to the
+ * text editor.
+ */
+export function detectBinaryContent(buffer) {
+  if (!buffer || buffer.length === 0) return false;
+  // Reuse the magic byte checks already in this file by feeding a permissive
+  // declared mime. If we recognise a known image/audio/video/PDF/zip/archive
+  // signature, it is binary.
+  const probeMime = "application/octet-stream";
+  if (!validateBufferMimeType(buffer, probeMime)) {
+    // validateBufferMimeType returns true only for empty or explicitly
+    // non-executable headers under the catch-all branch, so a false here
+    // means a PE/ELF/polyglot header was detected.
+    return true;
+  }
+  // Fallback heuristic: presence of NUL byte in the first 8KB is a strong
+  // indicator of binary content (text files virtually never contain NUL).
+  const probe = buffer.subarray(0, Math.min(buffer.length, 8192));
+  return probe.includes(0x00);
+}

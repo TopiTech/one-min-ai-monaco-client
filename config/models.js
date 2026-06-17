@@ -1,7 +1,7 @@
 // Source: https://docs.1min.ai/
 
-import { callOneMin } from '../utils/api-client.js';
-import logger from '../utils/logger.js';
+import { callOneMin } from "../utils/api-client.js";
+import logger from "../utils/logger.js";
 
 export let chatModels = [
   // OpenAI
@@ -249,7 +249,12 @@ export let codeModels = [
 
 export let imageModels = [
   // OpenAI image generation
-  { id: "gpt-image-2", label: "GPT Image 2", provider: "OpenAI", tags: ["image", "flagship", "editor"] },
+  {
+    id: "gpt-image-2",
+    label: "GPT Image 2",
+    provider: "OpenAI",
+    tags: ["image", "flagship", "editor"],
+  },
   { id: "gpt-image-1", label: "GPT Image 1", provider: "OpenAI", tags: ["image", "editor"] },
   {
     id: "gpt-image-1-mini",
@@ -258,17 +263,52 @@ export let imageModels = [
     tags: ["image", "fast", "editor"],
   },
   // Flux image generation
-  { id: "black-forest-labs/flux-2-pro", label: "Flux 2 Pro", provider: "Flux", tags: ["image", "flagship"] },
+  {
+    id: "black-forest-labs/flux-2-pro",
+    label: "Flux 2 Pro",
+    provider: "Flux",
+    tags: ["image", "flagship"],
+  },
   { id: "black-forest-labs/flux-2-dev", label: "Flux 2 Dev", provider: "Flux", tags: ["image"] },
   { id: "black-forest-labs/flux-2-flex", label: "Flux 2 Flex", provider: "Flux", tags: ["image"] },
-  { id: "black-forest-labs/flux-2-max", label: "Flux 2 Max", provider: "Flux", tags: ["image", "flagship"] },
-  { id: "black-forest-labs/flux-2-klein-4b", label: "Flux 2 Klein 4B", provider: "Flux", tags: ["image", "fast"] },
-  { id: "black-forest-labs/flux-2-klein-9b", label: "Flux 2 Klein 9B", provider: "Flux", tags: ["image"] },
-  { id: "black-forest-labs/flux-pro-1.1", label: "Flux Pro 1.1", provider: "Flux", tags: ["image"] },
-  { id: "black-forest-labs/flux-1.1-pro-ultra", label: "Flux 1.1 Pro Ultra", provider: "Flux", tags: ["image"] },
+  {
+    id: "black-forest-labs/flux-2-max",
+    label: "Flux 2 Max",
+    provider: "Flux",
+    tags: ["image", "flagship"],
+  },
+  {
+    id: "black-forest-labs/flux-2-klein-4b",
+    label: "Flux 2 Klein 4B",
+    provider: "Flux",
+    tags: ["image", "fast"],
+  },
+  {
+    id: "black-forest-labs/flux-2-klein-9b",
+    label: "Flux 2 Klein 9B",
+    provider: "Flux",
+    tags: ["image"],
+  },
+  {
+    id: "black-forest-labs/flux-pro-1.1",
+    label: "Flux Pro 1.1",
+    provider: "Flux",
+    tags: ["image"],
+  },
+  {
+    id: "black-forest-labs/flux-1.1-pro-ultra",
+    label: "Flux 1.1 Pro Ultra",
+    provider: "Flux",
+    tags: ["image"],
+  },
   { id: "black-forest-labs/flux-pro", label: "Flux Pro", provider: "Flux", tags: ["image"] },
   { id: "black-forest-labs/flux-dev", label: "Flux Dev", provider: "Flux", tags: ["image"] },
-  { id: "black-forest-labs/flux-schnell", label: "Flux Schnell", provider: "Flux", tags: ["image", "fast"] },
+  {
+    id: "black-forest-labs/flux-schnell",
+    label: "Flux Schnell",
+    provider: "Flux",
+    tags: ["image", "fast"],
+  },
   // Google image generation
   {
     id: "gemini-2.5-flash-image",
@@ -298,7 +338,12 @@ export let imageModels = [
   { id: "grok-2-image", label: "Grok-2 Image", provider: "xAI", tags: ["image"] },
   { id: "qwen-image", label: "Qwen Image", provider: "Alibaba", tags: ["image"] },
   { id: "recraft", label: "Recraft", provider: "Recraft", tags: ["image"] },
-  { id: "magic-art-7.0", label: "Magic Art 7.0", provider: "Magic Art", tags: ["image", "flagship"] },
+  {
+    id: "magic-art-7.0",
+    label: "Magic Art 7.0",
+    provider: "Magic Art",
+    tags: ["image", "flagship"],
+  },
   { id: "magic-art-6.1", label: "Magic Art 6.1", provider: "Magic Art", tags: ["image"] },
   { id: "magic-art-5.2", label: "Magic Art 5.2", provider: "Magic Art", tags: ["image", "fast"] },
   // Image Text Editor models (Flux Kontext)
@@ -320,16 +365,66 @@ export let imageModels = [
     provider: "Flux",
     tags: ["image", "editor"],
   },
-  { id: "black-forest-labs/flux-kontext-dev", label: "Flux Kontext Dev", provider: "Flux", tags: ["image", "editor"] },
-  { id: "black-forest-labs/flux-depth-dev", label: "Flux Depth Dev", provider: "Flux", tags: ["image", "editor"] },
-  { id: "black-forest-labs/flux-depth-pro", label: "Flux Depth Pro", provider: "Flux", tags: ["image", "editor"] },
-  { id: "black-forest-labs/flux-canny-pro", label: "Flux Canny Pro", provider: "Flux", tags: ["image", "editor"] },
-  { id: "black-forest-labs/flux-canny-dev", label: "Flux Canny Dev", provider: "Flux", tags: ["image", "editor"] },
-  { id: "black-forest-labs/flux-2-pro-editor", label: "Flux 2 Pro (Editor)", provider: "Flux", tags: ["image", "editor"] },
-  { id: "black-forest-labs/flux-2-dev-editor", label: "Flux 2 Dev (Editor)", provider: "Flux", tags: ["image", "editor"] },
-  { id: "black-forest-labs/flux-2-flex-editor", label: "Flux 2 Flex (Editor)", provider: "Flux", tags: ["image", "editor"] },
-  { id: "black-forest-labs/flux-2-max-editor", label: "Flux 2 Max (Editor)", provider: "Flux", tags: ["image", "editor"] },
-  { id: "black-forest-labs/flux-2-klein-4b-editor", label: "Flux 2 Klein 4B (Editor)", provider: "Flux", tags: ["image", "editor", "fast"] },
+  {
+    id: "black-forest-labs/flux-kontext-dev",
+    label: "Flux Kontext Dev",
+    provider: "Flux",
+    tags: ["image", "editor"],
+  },
+  {
+    id: "black-forest-labs/flux-depth-dev",
+    label: "Flux Depth Dev",
+    provider: "Flux",
+    tags: ["image", "editor"],
+  },
+  {
+    id: "black-forest-labs/flux-depth-pro",
+    label: "Flux Depth Pro",
+    provider: "Flux",
+    tags: ["image", "editor"],
+  },
+  {
+    id: "black-forest-labs/flux-canny-pro",
+    label: "Flux Canny Pro",
+    provider: "Flux",
+    tags: ["image", "editor"],
+  },
+  {
+    id: "black-forest-labs/flux-canny-dev",
+    label: "Flux Canny Dev",
+    provider: "Flux",
+    tags: ["image", "editor"],
+  },
+  {
+    id: "black-forest-labs/flux-2-pro-editor",
+    label: "Flux 2 Pro (Editor)",
+    provider: "Flux",
+    tags: ["image", "editor"],
+  },
+  {
+    id: "black-forest-labs/flux-2-dev-editor",
+    label: "Flux 2 Dev (Editor)",
+    provider: "Flux",
+    tags: ["image", "editor"],
+  },
+  {
+    id: "black-forest-labs/flux-2-flex-editor",
+    label: "Flux 2 Flex (Editor)",
+    provider: "Flux",
+    tags: ["image", "editor"],
+  },
+  {
+    id: "black-forest-labs/flux-2-max-editor",
+    label: "Flux 2 Max (Editor)",
+    provider: "Flux",
+    tags: ["image", "editor"],
+  },
+  {
+    id: "black-forest-labs/flux-2-klein-4b-editor",
+    label: "Flux 2 Klein 4B (Editor)",
+    provider: "Flux",
+    tags: ["image", "editor", "fast"],
+  },
   // Google image text editor
   {
     id: "gemini-3-pro-image-preview-editor",
@@ -344,29 +439,71 @@ export let imageModels = [
     tags: ["image", "editor", "fast"],
   },
   // Other image text editor
-  { id: "qwen-image-edit-plus", label: "Qwen Image Edit Plus", provider: "Alibaba", tags: ["image", "editor"] },
+  {
+    id: "qwen-image-edit-plus",
+    label: "Qwen Image Edit Plus",
+    provider: "Alibaba",
+    tags: ["image", "editor"],
+  },
 ];
 
+let lastFetchStatus = {
+  ok: true,
+  lastSync: null,
+  error: null,
+};
+
+export function getModelSyncStatus() {
+  return lastFetchStatus;
+}
+
 export async function initModels() {
+  // L-7: Fetch once eagerly before scheduling the refresh interval so the
+  // /api/models endpoint is populated as soon as the server is ready. The
+  // initial await here does not block startup on failure — fetchModels
+  // swallows errors and falls back to the hard-coded list.
   await fetchModels();
   setInterval(fetchModels, 30 * 60 * 1000).unref();
 }
 
 async function fetchModels() {
   try {
-    const data = await callOneMin('/api/models');
+    const data = await callOneMin("/api/models");
     if (data && Array.isArray(data.models)) {
-      const newChatModels = data.models.filter(m => m.type === 'CHAT');
-      const newCodeModels = data.models.filter(m => m.type === 'CODE_GENERATOR');
-      const newImageModels = data.models.filter(m => m.type === 'IMAGE_GENERATOR' || m.type === 'IMAGE_EDITOR');
+      // H-4: 1min.ai's /api/models response uses different field names across
+      // versions — accept any of `type`, `featureType`, or `modelType` so a
+      // single key mismatch doesn't blank out the picker.
+      const modelType = (m) => m?.type ?? m?.featureType ?? m?.modelType ?? "";
+      const newChatModels = data.models.filter((m) => modelType(m) === "CHAT");
+      const newCodeModels = data.models.filter((m) => modelType(m) === "CODE_GENERATOR");
+      const newImageModels = data.models.filter(
+        (m) => modelType(m) === "IMAGE_GENERATOR" || modelType(m) === "IMAGE_EDITOR",
+      );
 
       if (newChatModels.length > 0) chatModels = newChatModels;
       if (newCodeModels.length > 0) codeModels = newCodeModels;
       if (newImageModels.length > 0) imageModels = newImageModels;
-      
-      logger.info('Models dynamically fetched and updated from 1min.ai API.');
+
+      lastFetchStatus = { ok: true, lastSync: new Date().toISOString(), error: null };
+      logger.info("Models dynamically fetched and updated from 1min.ai API.");
+    } else {
+      // If response is OK but structure is unexpected, treat as silent fallback
+      lastFetchStatus = { ok: true, lastSync: new Date().toISOString(), error: null };
+      logger.debug("Models sync returned unexpected format. Using fallbacks.");
     }
   } catch (err) {
-    logger.debug('Failed to fetch models dynamically. Using hardcoded fallback models.', { error: err.message });
+    if (err.status === 404) {
+      // H-5: 1min.ai has removed the /api/models endpoint from the public API.
+      // We now treat 404 as "feature unavailable" rather than a system error,
+      // avoiding annoying UI toasts while keeping functionality via fallbacks.
+      lastFetchStatus = { ok: true, lastSync: new Date().toISOString(), error: null };
+      logger.info("1min.ai /api/models is unavailable (404). Using hardcoded fallback models.");
+    } else {
+      lastFetchStatus = { ok: false, lastSync: lastFetchStatus.lastSync, error: err.message };
+      logger.error("Failed to fetch models dynamically from 1min.ai API.", {
+        error: err.message,
+        status: err.status,
+      });
+    }
   }
 }

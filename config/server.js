@@ -22,10 +22,19 @@ export const serverConfig = {
     defaultImageModel: process.env.DEFAULT_IMAGE_MODEL || 'gpt-image-2',
     defaultImageEditorModel: process.env.DEFAULT_IMAGE_EDITOR_MODEL || 'gpt-image-2',
 
+    // API base URL override (1min.ai production by default; useful for
+    // local mock servers or staging environments).
+    apiBaseUrl: process.env.ONE_MIN_AI_API_BASE_URL || 'https://api.1min.ai',
+
     // Agent settings
     enableCommandExecution: String(process.env.ENABLE_COMMAND_EXECUTION || 'false').toLowerCase() === 'true',
     commandTimeoutMs: Math.max(1000, parseInt(process.env.COMMAND_TIMEOUT_MS || "30000", 10) || 30000),
     agentAutoApprove: String(process.env.AGENT_AUTO_APPROVE || 'false').toLowerCase() === 'true',
+    // Drives enumeration is intentionally separate from ENABLE_COMMAND_EXECUTION:
+    // /api/fs/drives uses shell tools (powershell/wmic) only for local directory
+    // listing and is safe in any environment, while ENABLE_COMMAND_EXECUTION gates
+    // arbitrary agent command execution which is the high-risk surface.
+    enableDrivesShellLookup: String(process.env.ENABLE_DRIVES_SHELL_LOOKUP || 'true').toLowerCase() === 'true',
 
     // Logging
     logLevel: process.env.LOG_LEVEL || 'info',

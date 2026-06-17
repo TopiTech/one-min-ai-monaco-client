@@ -2,7 +2,7 @@ import "dotenv/config";
 import { serverConfig } from "../config/server.js";
 import logger from "./logger.js";
 
-const API_BASE = "https://api.1min.ai";
+const API_BASE = serverConfig.apiBaseUrl;
 
 function requireApiKey() {
   const apiKey = process.env.ONE_MIN_AI_API_KEY;
@@ -68,15 +68,38 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function parseResponsePayload(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text };
+  }
+}
+
 /**
  * Calls the 1min.ai API with retry logic for 429 errors and timeout support.
  */
 export async function callOneMin(
   pathname,
-  { method = "POST", body, headers = {}, raw = false, signal } = {},
+  {
+    method = "POST",
+    body,
+    headers = {},
+    raw = false,
+    signal,
+    // M-1: When true, retry is disabled entirely because the upstream side
+    // effect would be duplicated (e.g. POST /api/conversations, POST /api/assets).
+    // Callers that mutate state on the upstream should pass `idempotent: false`.
+    idempotent = method.toUpperCase() === "GET",
+  } = {},
 ) {
   const apiKey = requireApiKey();
   const { apiRetryAttempts: maxRetries, apiRetryDelay: retryDelay } = serverConfig;
+  // Disable retries for non-idempotent calls so we never duplicate the side
+  // effect (conversations, asset uploads) on transient network errors.
+  const effectiveRetries = idempotent ? maxRetries : 0;
 
   // 1min.ai documents both `API-KEY` (used in endpoint examples) and
   // `Authorization: Bearer` (shown on the intro page). Send both so the
@@ -100,20 +123,20 @@ export async function callOneMin(
       signal,
     });
 
-  let lastError = new Error(`All ${maxRetries + 1} retry attempts failed for ${pathname}`);
+  let lastError = new Error(`All ${effectiveRetries + 1} retry attempts failed for ${pathname}`);
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  for (let attempt = 0; attempt <= effectiveRetries; attempt++) {
     try {
       if (attempt > 0) {
         const jitter = 1 + (Math.random() * 0.2 - 0.1);
         const waitTime = Math.round(retryDelay * Math.pow(2, attempt - 1) * jitter);
-        logger.warn(`Retry ${attempt}/${maxRetries} for ${pathname} after ${waitTime}ms`);
+        logger.warn(`Retry ${attempt}/${effectiveRetries} for ${pathname} after ${waitTime}ms`);
         await delay(waitTime);
       }
 
       const response = await makeRequest();
 
-      if (response.status === 429 && attempt < maxRetries) {
+      if (response.status === 429 && attempt < effectiveRetries) {
         const retryAfter = response.headers.get("Retry-After");
         const waitTime = retryAfter
           ? Math.min(parseInt(retryAfter, 10) * 1000 + 1000, 60000)
@@ -124,7 +147,7 @@ export async function callOneMin(
       }
 
       if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
+        const payload = await parseResponsePayload(response);
         const err = new Error(`1min.ai request failed: ${response.status}`);
         err.status = response.status;
         err.payload = payload;
@@ -138,9 +161,13 @@ export async function callOneMin(
         : { text: await response.text() };
     } catch (error) {
       lastError = error;
+      if (!lastError.status && lastError.name !== "AbortError") {
+        lastError.status = 502;
+        lastError.code = "UPSTREAM_NETWORK_ERROR";
+      }
       if (error.status && error.status >= 400 && error.status < 500 && error.status !== 429)
         throw error;
-      if (attempt < maxRetries)
+      if (attempt < effectiveRetries)
         logger.warn(`Request failed for ${pathname}, will retry: ${error.message}`);
     }
   }

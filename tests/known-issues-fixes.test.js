@@ -359,19 +359,25 @@ describe("known-issues.md regression fixes", () => {
   });
 
   // ----------------------------------------------------------------
-  // L-1: api() raw responses must decrement _activeRequests
+  // L-1: api() must always release the in-flight counter regardless of
+  // which branch (raw stream, parsed JSON, or thrown error) it exits from.
+  // The implementation centralises this in a try/finally block.
   // ----------------------------------------------------------------
-  describe("L-1: api() raw response counter", () => {
-    test("public/js/api.js decrements _activeRequests before raw early-return", async () => {
+  describe("L-1: api() in-flight counter is always released", () => {
+    test("public/js/api.js decrements _activeRequests in a finally block", async () => {
       const fsPromises = await import("fs/promises");
       const src = await fsPromises.readFile(
         new URL("../public/js/api.js", import.meta.url),
         "utf-8",
       );
-      // The raw branch must contain a decrement
-      const rawBlock = src.match(/if \(fetchOptions\.raw\)\s*\{[\s\S]*?return\s+res;\s*\}/);
-      expect(rawBlock).not.toBeNull();
-      expect(rawBlock[0]).toMatch(/_activeRequests\s*=\s*Math\.max\(0,\s*_activeRequests\s*-\s*1\)/);
+      // The api() function must wrap its body in try/finally and the
+      // finally block must perform the counter decrement + status update.
+      const apiFnMatch = src.match(/async function api\([\s\S]*?\n\}/);
+      expect(apiFnMatch).not.toBeNull();
+      expect(apiFnMatch[0]).toMatch(/try\s*\{[\s\S]*finally\s*\{/);
+      expect(apiFnMatch[0]).toMatch(
+        /finally[\s\S]*_activeRequests\s*=\s*Math\.max\(0,\s*_activeRequests\s*-\s*1\)/,
+      );
     });
   });
 });
