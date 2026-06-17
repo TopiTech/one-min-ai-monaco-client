@@ -40,7 +40,15 @@ async function api(path, options = {}) {
     const res = await fetch(path, { ...fetchOptions, headers, signal: controller.signal });
     clearTimeout(timeoutId);
 
-    if (fetchOptions.raw) return res;
+    if (fetchOptions.raw) {
+      // L-1: even raw responses own their share of in-flight state so the
+      // status indicator accurately reflects activity. Decrement here instead
+      // of relying on the caller (the streaming chat path skips the
+      // post-fetch parse entirely).
+      _activeRequests = Math.max(0, _activeRequests - 1);
+      if (_activeRequests === 0) setStatus("完了", "ok");
+      return res;
+    }
 
     const data = await parseJsonOrTextResponse(res);
     if (!res.ok) throw new Error(data?.error || data?.message || `HTTP ${res.status}`);

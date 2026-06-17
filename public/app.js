@@ -1830,6 +1830,32 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
   log.appendChild(step);
   log.scrollTop = log.scrollHeight;
 
+  // M-9: Fade out the approval step once it has been resolved (after a short
+  // delay so the user can still read the final state). This avoids leaving
+  // stale approval cards on screen that may confuse the user about whether
+  // an action is still pending.
+  let finalized = false;
+  const finalizeStep = () => {
+    if (finalized) return;
+    finalized = true;
+    setTimeout(() => {
+      step.style.transition = "opacity 0.4s ease, max-height 0.4s ease, margin 0.4s ease, padding 0.4s ease";
+      step.style.opacity = "0";
+      step.style.maxHeight = "0";
+      step.style.marginTop = "0";
+      step.style.marginBottom = "0";
+      step.style.paddingTop = "0";
+      step.style.paddingBottom = "0";
+      step.style.overflow = "hidden";
+      setTimeout(() => {
+        step.remove();
+      }, 450);
+    }, 1500);
+  };
+  // M-2: Expose finalizeStep on the step element so external flows (reset,
+  // stop) can clean up pending approval cards without leaving orphan UI.
+  step.__finalizeApproval = finalizeStep;
+
   approveBtn.onclick = () => {
     approveBtn.disabled = true;
     rejectBtn.disabled = true;
@@ -1837,6 +1863,7 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
     approveBtn.textContent = "許可済み";
     approveBtn.style.opacity = "0.7";
     onApprove();
+    finalizeStep();
   };
 
   rejectBtn.onclick = () => {
@@ -1847,6 +1874,7 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
     rejectBtn.style.opacity = "0.7";
     const reason = feedbackInput.value.trim() || "ユーザーによって却下されました";
     onReject(reason);
+    finalizeStep();
   };
 }
 
@@ -2120,6 +2148,20 @@ const AGENT_TOOL_HANDLERS = {
     const { command } = params;
     if (!command) throw new Error("command パラメータが必要です");
 
+    // M-10: Reject nested approval requests. If a previous command is still
+    // awaiting user approval, the resolver would be overwritten and the prior
+    // Promise would hang forever. Force the agent to wait for the user to
+    // resolve the in-flight approval.
+    // M-1: signal this with a distinct marker so the agent loop can skip
+    // burning an iteration (and an LLM call) on a recoverable condition.
+    if (state.agent.resolver) {
+      return {
+        text: "別のコマンドが承認待ちです。先に承認/却下してください。",
+        success: false,
+        retryable: true,
+      };
+    }
+
     setAgentStatus("承認待ち...", "awaiting_approval");
     const runRes = await api(`/api/agent/sessions/${sessionId}/commands`, {
       method: "POST",
@@ -2388,6 +2430,23 @@ ${workspaceFilesText}
 
         if (result.abort) break;
 
+        // M-1: If the handler signals a retryable condition (e.g. another
+        // command is awaiting approval), don't burn an LLM iteration on it —
+        // requeue the same AI output and continue without incrementing
+        // loopCount. This avoids draining maxLoops while the user is
+        // reviewing approvals.
+        if (result.retryable) {
+          state.agent.history.push({ role: "assistant", content: aiText });
+          state.agent.history.push({
+            role: "user",
+            content: `<tool_response>\n${result.text}\n</tool_response>`,
+          });
+          trimAgentHistory(state.agent.history);
+          loopCount = Math.max(0, loopCount - 1);
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          continue;
+        }
+
         toolResultText = result.text;
         toolSuccess = result.success;
       } catch (err) {
@@ -2487,6 +2546,10 @@ dom.stopAgentBtn.onclick = () => {
   if (state.agent.resolver) {
     state.agent.resolver({ abort: true });
   }
+  // M-2: pending approvals become orphans once we stop the agent — clean them up.
+  document
+    .querySelectorAll(".agent-step.approval")
+    .forEach((el) => el.__finalizeApproval?.());
   setAgentStatus("停止", "idle");
   addAgentTimelineStep("thought", "停止", "ユーザーによって停止されました。");
 };
@@ -2499,6 +2562,12 @@ dom.resetAgentBtn.onclick = async () => {
     if (state.agent.resolver) {
       state.agent.resolver({ abort: true });
     }
+    // M-2: Clean up any pending approval cards so they don't outlive the
+    // session (they would otherwise become "orphan" cards that fail if the
+    // user clicks approve after reset).
+    document
+      .querySelectorAll(".agent-step.approval")
+      .forEach((el) => el.__finalizeApproval?.());
     state.agent.sessionId = null;
     state.agent.history = [];
     const log = dom.agentActivityLog;

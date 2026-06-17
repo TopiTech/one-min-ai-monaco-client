@@ -193,12 +193,14 @@ export function isFailedResponse(data) {
 
 export function extractFailureMessage(data) {
   if (!data || typeof data !== "object") return "Upstream returned a failure status";
+  // M-14: Do NOT fall back to data.message — 1min.ai uses that field for
+  // generic lifecycle messages like "Stream completed" even on success,
+  // which would otherwise be surfaced as a misleading failure reason.
   return (
     data?.aiRecord?.aiRecordDetail?.errorMessage ||
     data?.aiRecord?.errorMessage ||
     data?.error?.message ||
     data?.error ||
-    data?.message ||
     "Upstream returned a failure status"
   );
 }

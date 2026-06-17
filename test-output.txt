@@ -1,0 +1,476 @@
+(node:25636) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS tests/web-search.test.js
+(node:40412) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS tests/api-client.test.js
+(node:20816) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:36012) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS tests/fs-guard.test.js
+(node:28668) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:20344) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:41264) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:12436) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:9972) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:6000) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS tests/routes.test.js
+  ● Console
+
+    console.log
+      [36m[2026-06-17T08:24:53.908Z] [INFO] GET /api/models {"status":200,"duration":"3ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.915Z] [INFO] Loaded 95 agent sessions from persistence[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.922Z] [INFO] POST /api/chat {"status":200,"duration":"6ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.926Z] [INFO] POST /api/chat {"status":400,"duration":"0ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.929Z] [INFO] POST /api/images/generate {"status":200,"duration":"0ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.932Z] [INFO] POST /api/images/generate {"status":400,"duration":"0ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.936Z] [INFO] POST /api/code/generate {"status":200,"duration":"1ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.940Z] [INFO] POST /api/code/generate {"status":400,"duration":"1ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.946Z] [INFO] Processing asset upload {"filename":"test.txt","size":5,"mimetype":"text/plain"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.947Z] [INFO] Asset upload successful {"filename":"test.txt"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.947Z] [INFO] POST /api/assets/upload {"status":200,"duration":"4ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.951Z] [INFO] POST /api/code/autocomplete {"status":200,"duration":"1ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+PASS tests/security-fixes.test.js
+  ● Console
+
+    console.log
+      [36m[2026-06-17T08:24:53.908Z] [INFO] GET /api/fs/config {"status":200,"duration":"3ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.914Z] [INFO] Loaded 95 agent sessions from persistence[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [31m[2026-06-17T08:24:53.915Z] [ERROR] API Error: 403 {"error":"Cross-origin requests are not allowed without a valid token","status":403,"method":"GET","url":"/api/fs/config"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.917Z] [INFO] GET /api/fs/config {"status":403,"duration":"2ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [31m[2026-06-17T08:24:53.920Z] [ERROR] API Error: 403 {"error":"Local BFF authentication required or invalid token","status":403,"method":"GET","url":"/api/fs/config"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.921Z] [INFO] GET /api/fs/config {"status":403,"duration":"1ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [31m[2026-06-17T08:24:53.931Z] [ERROR] API Error: 502 {"error":"1min.ai chat failed: credit exceeded","status":502,"method":"POST","url":"/api/chat"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.932Z] [INFO] POST /api/chat {"status":502,"duration":"7ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [31m[2026-06-17T08:24:53.935Z] [ERROR] API Error: 502 {"error":"1min.ai image generation failed: moderation","status":502,"method":"POST","url":"/api/images/generate"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.936Z] [INFO] POST /api/images/generate {"status":502,"duration":"1ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.939Z] [INFO] POST /api/chat {"status":400,"duration":"1ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.941Z] [INFO] POST /api/chat {"status":400,"duration":"0ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.944Z] [INFO] POST /api/chat {"status":400,"duration":"0ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.947Z] [INFO] POST /api/images/generate {"status":400,"duration":"1ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+FAIL tests/known-issues-fixes.test.js
+  ● Console
+
+    console.log
+      [36m[2026-06-17T08:24:53.917Z] [INFO] POST /api/images/generate {"status":400,"duration":"12ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.924Z] [INFO] POST /api/images/generate {"status":200,"duration":"0ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.925Z] [INFO] Loaded 1 agent sessions from persistence[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.928Z] [INFO] POST /api/images/generate {"status":200,"duration":"0ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.931Z] [INFO] POST /api/images/text-editor {"status":400,"duration":"0ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.935Z] [INFO] POST /api/images/text-editor {"status":200,"duration":"0ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [31m[2026-06-17T08:24:53.940Z] [ERROR] API Error: 502 {"error":"1min.ai chat failed: Upstream returned a failure status","status":502,"method":"POST","url":"/api/chat"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.942Z] [INFO] POST /api/chat {"status":502,"duration":"3ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.949Z] [INFO] POST /api/agent/sessions {"status":200,"duration":"4ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.959Z] [INFO] GET /api/agent/sessions/2c3cb61a-02fe-4751-82ab-475e5cbc9d27/search?query=needle {"status":200,"duration":"5ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+  ● known-issues.md regression fixes › M-14: extractFailureMessage ignores data.message › POST /api/chat does not return 'Stream completed' as failure reason
+
+    expect(received).not.toMatch(expected)
+
+    Expected pattern: not /Stream completed/
+    Received string:      "Stream completed"
+
+    [0m [90m 196 |[39m
+     [90m 197 |[39m       expect(res[33m.[39mstatus)[33m.[39mtoBe([35m502[39m)[33m;[39m
+    [31m[1m>[22m[39m[90m 198 |[39m       expect(res[33m.[39mbody[33m.[39merror)[33m.[39mnot[33m.[39mtoMatch([35m/Stream completed/[39m)[33m;[39m
+     [90m     |[39m                                  [31m[1m^[22m[39m
+     [90m 199 |[39m       [90m// Sanity: real extractor used[39m
+     [90m 200 |[39m       expect(real)[33m.[39mtoBeDefined()[33m;[39m
+     [90m 201 |[39m     })[33m;[39m[0m
+
+      at Object.<anonymous> (tests/known-issues-fixes.test.js:198:34)
+
+PASS tests/server.test.js
+  ● Console
+
+    console.log
+      [36m[2026-06-17T08:24:53.911Z] [INFO] GET /api/health {"status":200,"duration":"4ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.918Z] [INFO] Loaded 95 agent sessions from persistence[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.919Z] [INFO] GET /api/health {"status":200,"duration":"1ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [31m[2026-06-17T08:24:53.922Z] [ERROR] API Error: 403 {"error":"Local BFF authentication required or invalid token","status":403,"method":"GET","url":"/api/fs/config"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.924Z] [INFO] GET /api/fs/config {"status":403,"duration":"2ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [31m[2026-06-17T08:24:53.932Z] [ERROR] API Error: 403 {"error":"Local BFF authentication required or invalid token","status":403,"method":"POST","url":"/api/chat"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.934Z] [INFO] POST /api/chat {"status":403,"duration":"7ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.938Z] [INFO] POST /api/chat {"status":200,"duration":"1ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.942Z] [INFO] GET /api/fs/config {"status":200,"duration":"1ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [31m[2026-06-17T08:24:53.946Z] [ERROR] API Error: 403 {"error":"Local BFF authentication required or invalid token","status":403,"method":"GET","url":"/api/fs/config"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.947Z] [INFO] GET /api/fs/config {"status":403,"duration":"1ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [31m[2026-06-17T08:24:53.950Z] [ERROR] API Error: 403 {"error":"Cross-origin requests are not allowed without a valid token","status":403,"method":"GET","url":"/api/fs/config"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.951Z] [INFO] GET /api/fs/config {"status":403,"duration":"1ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.955Z] [INFO] GET /api/fs/config {"status":200,"duration":"1ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.958Z] [INFO] GET /api/models {"status":200,"duration":"0ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.968Z] [INFO] GET /api/fs/read?path=server.js {"status":200,"duration":"3ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [31m[2026-06-17T08:24:53.972Z] [ERROR] API Error: 403 {"error":"Access denied: Path is protected: .env","status":403,"method":"GET","url":"/api/fs/read?path=.env"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.973Z] [INFO] GET /api/fs/read?path=.env {"status":403,"duration":"2ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.976Z] [INFO] POST /api/chat {"status":200,"duration":"0ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+PASS tests/review-fixes.test.js
+  ● Console
+
+    console.log
+      [31m[2026-06-17T08:24:53.915Z] [ERROR] API Error: 502 {"error":"1min.ai conversation creation failed: credit exceeded","status":502,"method":"POST","url":"/api/conversations"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.920Z] [INFO] POST /api/conversations {"status":502,"duration":"13ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.928Z] [INFO] POST /api/conversations {"status":200,"duration":"1ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.928Z] [INFO] Loaded 1 agent sessions from persistence[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [31m[2026-06-17T08:24:53.997Z] [ERROR] API Error: 413 {"error":"File too large","status":413,"method":"POST","url":"/api/assets/upload"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.999Z] [INFO] POST /api/assets/upload {"status":413,"duration":"57ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:54.004Z] [INFO] POST /api/code/generate {"status":200,"duration":"0ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+PASS tests/agent-routes.test.js
+  ● Console
+
+    console.log
+      [36m[2026-06-17T08:24:53.917Z] [INFO] Loaded 95 agent sessions from persistence[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.920Z] [INFO] POST /api/agent/sessions {"status":200,"duration":"15ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.929Z] [INFO] GET /api/agent/sessions/070652a7-59a7-4afb-8c6b-67bb99e5b6ff/dir?path=config {"status":200,"duration":"3ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.935Z] [INFO] POST /api/agent/sessions {"status":200,"duration":"3ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.938Z] [INFO] GET /api/agent/sessions/invalid-id/dir?path=config {"status":404,"duration":"1ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.942Z] [INFO] POST /api/agent/sessions {"status":200,"duration":"2ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [31m[2026-06-17T08:24:53.945Z] [ERROR] API Error: 403 {"error":"Access denied: Path is protected: .env","status":403,"method":"GET","url":"/api/agent/sessions/d26926b0-24a2-437d-825a-033cf3badf8f/dir?path=.env"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.946Z] [INFO] GET /api/agent/sessions/d26926b0-24a2-437d-825a-033cf3badf8f/dir?path=.env {"status":403,"duration":"2ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.951Z] [INFO] POST /api/agent/sessions {"status":200,"duration":"2ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.958Z] [INFO] POST /api/agent/sessions/2862d5b1-e74a-46a2-b239-97d4aeee5991/diff {"status":200,"duration":"4ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.966Z] [INFO] POST /api/agent/sessions {"status":200,"duration":"3ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.972Z] [INFO] POST /api/agent/sessions/d39fe0a6-835b-411e-b4e1-6466e3da53d8/diff {"status":200,"duration":"3ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.977Z] [INFO] POST /api/agent/sessions {"status":200,"duration":"2ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.982Z] [INFO] POST /api/agent/sessions/095962f6-fc55-4640-9051-57a6f19f4a50/diff {"status":200,"duration":"2ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.989Z] [INFO] POST /api/agent/sessions {"status":200,"duration":"2ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.992Z] [INFO] POST /api/agent/sessions/c29a8067-e67d-41ad-ba53-e6df7750badc/diff {"status":400,"duration":"1ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:53.997Z] [INFO] POST /api/agent/sessions {"status":200,"duration":"2ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:54.001Z] [INFO] POST /api/agent/sessions/1bfb36e9-88cb-4100-aea7-ef654c799881/diff {"status":400,"duration":"1ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:54.005Z] [INFO] POST /api/agent/sessions {"status":200,"duration":"2ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+    console.log
+      [36m[2026-06-17T08:24:54.007Z] [INFO] POST /api/agent/sessions/733c3181-b338-4859-af24-9c3789225ff9/diff {"status":400,"duration":"1ms","ip":"::ffff:127.0.0.1"}[0m
+
+      at Logger._log (utils/logger.js:83:17)
+
+PASS tests/command-runner.test.js
+A worker process has failed to exit gracefully and has been force exited. This is likely caused by tests leaking due to improper teardown. Try running with --detectOpenHandles to find leaks. Active timers can also cause this, ensure that .unref() was called on them.
+
+Test Suites: 1 failed, 9 passed, 10 total
+Tests:       1 failed, 145 passed, 146 total
+Snapshots:   0 total
+Time:        2.155 s
+Ran all test suites matching tests/known-issues-fixes.test.js|;|exit|0.
