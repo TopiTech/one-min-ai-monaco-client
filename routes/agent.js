@@ -510,9 +510,10 @@ async function searchInDirectory(dir, query, results, maxResults, depth = 0) {
             // TOCTOU attacks where an attacker swaps a regular file
             // for a symlink pointing outside the allowed roots.
             const revalidated = revalidateRealPath(fullPath);
-            // Read only small files or first 1MB for performance
+            // M-12: TOCTOU defense-in-depth — cap file size at 256KB to shrink
+            // the attack window between fs.stat and fs.readFile.
             const stat = await fs.stat(revalidated);
-            if (stat.size > 1024 * 1024) return; // Skip files > 1MB
+            if (stat.size > 256 * 1024) return; // Skip files > 256KB
 
             const content = await fs.readFile(revalidated, "utf-8");
             const lines = content.split(/\r?\n/);

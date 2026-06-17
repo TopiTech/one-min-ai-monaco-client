@@ -315,6 +315,23 @@ router.post("/conversations", async (req, res, next) => {
   }
 });
 
+/**
+ * M-11/H-1: Parse output_compression as a finite integer in [0, 100], or
+ * return a 400 error. Centralizes NaN handling and range validation so
+ * generate/text-editor cannot send invalid values upstream.
+ */
+function parseOutputCompression(value) {
+  if (value === undefined || value === "") return { ok: true, value: undefined };
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return { ok: false, error: "output_compression must be a finite number" };
+  }
+  if (!Number.isInteger(n) || n < 0 || n > 100) {
+    return { ok: false, error: "output_compression must be an integer between 0 and 100" };
+  }
+  return { ok: true, value: n };
+}
+
 function aspectRatioToSize(aspectRatio) {
   const map = {
     "1:1": "1024x1024",
@@ -355,8 +372,12 @@ router.post("/images/generate", async (req, res, next) => {
       promptObject.quality = quality;
       promptObject.background = background;
       promptObject.output_format = output_format;
-      if (output_compression !== undefined && output_compression !== "") {
-        promptObject.output_compression = Number(output_compression);
+      const oc = parseOutputCompression(output_compression);
+      if (!oc.ok) {
+        return res.status(400).json({ error: oc.error });
+      }
+      if (oc.value !== undefined) {
+        promptObject.output_compression = oc.value;
       }
     } else {
       // Reject gpt-image-only parameters for non-gpt-image models to avoid
@@ -440,6 +461,10 @@ router.post("/images/text-editor", async (req, res, next) => {
       }
     }
 
+    const oc = parseOutputCompression(output_compression);
+    if (!oc.ok) {
+      return res.status(400).json({ error: oc.error });
+    }
     const payload = {
       type: "IMAGE_EDITOR",
       model: selectedModel,
@@ -451,9 +476,7 @@ router.post("/images/text-editor", async (req, res, next) => {
         n: Number(n) || 1,
         background,
         output_format,
-        ...(output_compression !== undefined && output_compression !== ""
-          ? { output_compression: Number(output_compression) }
-          : {}),
+        ...(oc.value !== undefined ? { output_compression: oc.value } : {}),
       },
     };
 

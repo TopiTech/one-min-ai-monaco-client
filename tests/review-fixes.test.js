@@ -36,6 +36,7 @@ jest.unstable_mockModule("../utils/api-client.js", () => ({
       data?.error ||
       "Upstream returned a failure status",
   ),
+  // M-14: data.message is intentionally NOT a fallback in the real implementation.
   normalizeAssetResponse: jest.fn((data) => ({
     key: data?.asset?.key || "",
     url: "",
