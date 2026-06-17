@@ -1,0 +1,27 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    groups:
+      runtime-minor:
+        applies-to: version-updates
+        patterns:
+          - "express"
+          - "helmet"
+          - "multer"
+          - "form-data"
+          - "express-rate-limit"
+          - "dotenv"
+      test-minor:
+        applies-to: version-updates
+        patterns:
+          - "jest"
+          - "supertest"
+    ignore:
+      - dependency-name: "multer"
+        # 1.x is in maintenance mode; pin to LTS line until migration
+        versions: ["2.x"]

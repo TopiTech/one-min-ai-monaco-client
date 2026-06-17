@@ -413,12 +413,20 @@ export function createApp(options = {}) {
     requireToken: requireLocalAuth,
     authToken: localAuthToken,
   });
-  // B-5: Health endpoint does not require auth but minimizes info exposure
+  // B-5: Health endpoint does not require auth but minimizes info exposure.
+  // models.error carries internal 1min.ai error messages that could leak
+  // implementation details to anonymous callers, so expose only a boolean
+  // indicator of whether the last sync succeeded.
   app.use("/api/health", (_req, res) => {
+    const status = getModelSyncStatus();
     res.json({
       ok: true,
       service: "one-min-ai-monaco-client",
-      models: getModelSyncStatus(),
+      models: {
+        ok: status.ok,
+        lastSync: status.lastSync,
+        syncFailed: !status.ok,
+      },
     });
   });
 

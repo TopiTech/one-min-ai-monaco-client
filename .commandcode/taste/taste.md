@@ -1,6 +1,7 @@
 # Taste (Continuously Learned by [CommandCode][cmd])
 
 [cmd]: https://commandcode.ai/
+
 
 # Workflow
 - Review/fix workflow uses prioritized tags: B- (blocker), H- (high), M- (medium), L- (low). Confidence: 0.65

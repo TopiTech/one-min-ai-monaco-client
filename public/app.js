@@ -1,11 +1,23 @@
 /**
  * Main application logic for 1min.ai Monaco Client
- * Depends on: js/api.js, js/dom-style.js, js/models.js, js/toast.js
+ * Depends on: js/api.js, js/dom-style.js, js/models.js, js/toast.js, js/utils.js
  */
 
 import { injectStyle } from "./js/dom-style.js";
 import { loadModels, initModelPickers } from "./js/models.js";
 import { api, assetUrl, extractImages } from "./js/api.js";
+import {
+  SVG_NS,
+  escapeHtml,
+  renderMarkdownSafely,
+  formatMarkdownLike,
+  createSvgIcon,
+  appendStepIcon,
+  stripMarkdownCodeBlock,
+  unescapeXmlText,
+  parseXMLTags,
+  extractText,
+} from "./js/utils.js";
 
 // Helper to get element by ID
 const $ = (id) => document.getElementById(id);
@@ -1647,100 +1659,16 @@ function setAgentStatus(statusText, statusClass) {
   badge.className = `agent-status-badge ${statusClass}`;
 }
 
-function escapeHtml(text) {
-  if (typeof text !== "string") return "";
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+function setStatus(text, cls) {
+  const el = $("status");
+  if (!el) return;
+  el.textContent = text;
+  el.className = cls ? `status-text ${cls}` : "status-text";
 }
 
-function renderMarkdownSafely(element, markdown) {
-  if (!element) return;
-  if (typeof markdown !== "string") {
-    element.textContent = "";
-    return;
-  }
-
-  if (!window.marked || !window.DOMPurify) {
-    element.textContent = markdown;
-    return;
-  }
-
-  element.innerHTML = DOMPurify.sanitize(marked.parse(markdown));
-}
-
-function formatMarkdownLike(text) {
-  if (typeof text !== "string") return "";
-  let html = escapeHtml(text);
-
-  // Format inline code
-  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
-
-  // Format bold text
-  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-
-  return html;
-}
-
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-function createSvgIcon(viewBox, paths) {
-  const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("xmlns", SVG_NS);
-  svg.setAttribute("width", "12");
-  svg.setAttribute("height", "12");
-  svg.setAttribute("viewBox", viewBox);
-  svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "2");
-  svg.setAttribute("stroke-linecap", "round");
-  svg.setAttribute("stroke-linejoin", "round");
-  svg.classList.add("agent-step-icon-svg");
-
-  const path = document.createElementNS(SVG_NS, "path");
-  path.setAttribute("d", paths);
-  svg.appendChild(path);
-  return svg;
-}
-
-function appendStepIcon(container, type) {
-  const iconMap = {
-    thought: {
-      label: "思考",
-      viewBox: "0 0 24 24",
-      paths: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01M12 21a9 9 0 1 0-9-9",
-    },
-    action: {
-      label: "ツール呼び出し",
-      viewBox: "0 0 24 24",
-      paths:
-        "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm8.94-2.83 1.72 2.99a1 1 0 0 1-.41 1.36l-3.06 1.49a1 1 0 0 1-1.26-.27l-1.15-1.4a8 8 0 0 1-1.86.78l-.34 1.65A1 1 0 0 1 14 19h-4a1 1 0 0 1-1-.83l-.34-1.65a8 8 0 0 1-1.86-.78l-1.15 1.4a1 1 0 0 1-1.26.27L1.33 16.5a1 1 0 0 1-.41-1.36l1.72-2.99A8 8 0 0 1 3 10.5c0-.6.07-1.18.21-1.74L1.5 6.5a1 1 0 0 1 .41-1.36l3.06-1.49a1 1 0 0 1 1.26.27l1.15 1.4a8 8 0 0 1 1.86-.78L9.58 3a1 1 0 0 1 1-.83h4a1 1 0 0 1 1 .83l.34 1.65a8 8 0 0 1 1.86.78l1.15-1.4a1 1 0 0 1 1.26-.27l3.06 1.49a1 1 0 0 1 .41 1.36l-1.72 2.99c.14.56.21 1.14.21 1.74z",
-    },
-    result: {
-      label: "実行結果",
-      viewBox: "0 0 24 24",
-      paths: "M20 6 9 17l-5-5",
-    },
-    error: {
-      label: "エラー",
-      viewBox: "0 0 24 24",
-      paths: "M12 9v4m0 4h.01M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z",
-    },
-    approval: {
-      label: "承認要求",
-      viewBox: "0 0 24 24",
-      paths:
-        "M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4m0 4h.01",
-    },
-  };
-
-  const cfg = iconMap[type] || iconMap.thought;
-  container.appendChild(createSvgIcon(cfg.viewBox, cfg.paths));
-  container.appendChild(document.createTextNode(cfg.label + ": "));
-}
+// Pure helper functions (escapeHtml, renderMarkdownSafely, formatMarkdownLike,
+// createSvgIcon, appendStepIcon, stripMarkdownCodeBlock, unescapeXmlText,
+// parseXMLTags) and SVG_NS are imported from js/utils.js.
 
 function addAgentTimelineStep(type, title, body, resultText = null) {
   const log = dom.agentActivityLog;
@@ -1985,81 +1913,6 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
   };
 }
 
-function stripMarkdownCodeBlock(text) {
-  const trimmed = text.trim();
-  const match = trimmed.match(/^```(?:xml|js|javascript|json|text)?\s*\n?([\s\S]*?)\n?```$/i);
-  return match ? match[1].trim() : text;
-}
-
-function unescapeXmlText(value) {
-  return value
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&");
-}
-
-function parseXMLTags(text) {
-  if (!text || typeof text !== "string") return { thought: null, finish: null, toolCall: null };
-  const normalizedText = stripMarkdownCodeBlock(text);
-
-  // Helper to extract by tag name (handles loose/unclosed tags)
-  const extractTag = (input, tag) => {
-    const startTag = `<${tag}>`;
-    const endTag = `</${tag}>`;
-    const startIdx = input.indexOf(startTag);
-    if (startIdx === -1) return null;
-
-    const contentStart = startIdx + startTag.length;
-    const endIdx = input.indexOf(endTag, contentStart);
-    return endIdx !== -1
-      ? input.substring(contentStart, endIdx).trim()
-      : input.substring(contentStart).trim();
-  };
-
-  // 1. Try Tool Call Parsing
-  let toolCall = null;
-  const toolMatch = normalizedText.match(
-    /<call_tool\s+name\s*=\s*["']?([\w-]+)["']?\s*>([\s\S]*?)(?:<\/call_tool>|$)/i,
-  );
-  if (toolMatch) {
-    const params = {};
-    const paramRegex =
-      /<parameter\s+name\s*=\s*["']?([\w-]+)["']?\s*>([\s\S]*?)(?:<\/parameter>|$)/gi;
-    let pMatch;
-    while ((pMatch = paramRegex.exec(toolMatch[2])) !== null) {
-      params[pMatch[1]] = unescapeXmlText(pMatch[2].trim());
-    }
-    toolCall = { name: toolMatch[1], params };
-  }
-
-  const thought = extractTag(normalizedText, "thought");
-  const finish = extractTag(normalizedText, "finish");
-
-  // 2. JSON Fallback
-  if (!toolCall && !finish) {
-    const jsonMatch = normalizedText.match(/\{[\s\S]*?\}/);
-    if (jsonMatch) {
-      try {
-        const data = JSON.parse(jsonMatch[0]);
-        const jsonTool =
-          data.tool || data.toolName || data.call_tool || data.toolCall?.name || data.action;
-        const jsonParams =
-          data.parameters || data.params || data.toolCall?.params || data.arguments || data.args;
-
-        if (jsonTool) toolCall = { name: String(jsonTool), params: jsonParams || {} };
-        if (data.thought && !thought)
-          return { thought: data.thought, finish: data.finish || null, toolCall };
-        if (data.finish && !finish) return { thought, finish: data.finish, toolCall };
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-
-  return { thought, finish, toolCall };
-}
 let diffEditor = null;
 
 async function showDiffDialog(filePath, oldContent, newContent) {

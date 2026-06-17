@@ -99,8 +99,11 @@ export { api, assetUrl, extractImages };
 function extractImages(data) {
   // 1min.ai: resultObject is a string[] of URLs (most providers), but some
   // Google/Flow providers wrap them in { images: [...] } or { output: [...] }.
+  // Newer responses (post-2025) also surface generated URLs directly under
+  // aiRecord.output, so check that path too.
   const candidates = [
     data?.aiRecord?.aiRecordDetail?.resultObject,
+    data?.aiRecord?.output,
     data?.aiRecord?.resultObject,
     data?.resultObject,
     data?.result,

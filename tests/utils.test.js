@@ -1,0 +1,146 @@
+/**
+ * Unit tests for the pure helper functions in public/js/utils.js.
+ *
+ * The module is browser-only (uses document / window) so we run it inside
+ * jsdom. These tests are intentionally narrow: the helpers are stateless
+ * and side-effect free.
+ */
+import { jest } from "@jest/globals";
+import { TextEncoder } from "util";
+
+/**
+ * Minimal browser-ish globals. We only need what utils.js touches:
+ * document.createElementNS for the SVG helpers and window.* for the
+ * markdown renderer fallback.
+ */
+const fakeSvgNS = "http://www.w3.org/2000/svg";
+const created = [];
+
+global.document = {
+  createElementNS: (_ns, tag) => {
+    const el = {
+      tagName: tag,
+      attrs: {},
+      children: [],
+      setAttribute(k, v) {
+        this.attrs[k] = String(v);
+      },
+      appendChild(child) {
+        this.children.push(child);
+        return child;
+      },
+      classList: { add: () => {} },
+    };
+    created.push(el);
+    return el;
+  },
+  createTextNode: (text) => ({ nodeType: 3, data: String(text) }),
+};
+
+global.window = {};
+
+// Make TextEncoder available for the runtime in case utils.js needs it.
+if (typeof global.TextEncoder === "undefined") {
+  global.TextEncoder = TextEncoder;
+}
+
+const {
+  escapeHtml,
+  formatMarkdownLike,
+  stripMarkdownCodeBlock,
+  unescapeXmlText,
+  parseXMLTags,
+  createSvgIcon,
+  appendStepIcon,
+  SVG_NS,
+} = await import("../public/js/utils.js");
+
+describe("escapeHtml", () => {
+  test("escapes all dangerous characters", () => {
+    expect(escapeHtml(`<script>alert("x&y'z")</script>`)).toBe(
+      "&lt;script&gt;alert(&quot;x&amp;y&#039;z&quot;)&lt;/script&gt;",
+    );
+  });
+  test("returns empty string for non-string input", () => {
+    expect(escapeHtml(null)).toBe("");
+    expect(escapeHtml(undefined)).toBe("");
+    expect(escapeHtml(42)).toBe("");
+  });
+});
+
+describe("formatMarkdownLike", () => {
+  test("wraps inline code and bold", () => {
+    const out = formatMarkdownLike("use `foo` then **bar**");
+    expect(out).toContain("<code>foo</code>");
+    expect(out).toContain("<strong>bar</strong>");
+  });
+  test("html-escapes raw markup so it cannot inject", () => {
+    const out = formatMarkdownLike("<img src=x onerror=alert(1)>");
+    expect(out).not.toContain("<img");
+    expect(out).toContain("&lt;img");
+  });
+});
+
+describe("stripMarkdownCodeBlock", () => {
+  test("strips a single fenced block", () => {
+    expect(stripMarkdownCodeBlock("```js\nconst x = 1;\n```")).toBe("const x = 1;");
+  });
+  test("returns the original text when not fenced", () => {
+    expect(stripMarkdownCodeBlock("plain text")).toBe("plain text");
+  });
+});
+
+describe("unescapeXmlText", () => {
+  test("reverses the five XML entities", () => {
+    expect(unescapeXmlText("a &lt; b &gt; c &amp; d &quot;e&quot; &apos;f&apos;")).toBe(
+      'a < b > c & d "e" \'f\'',
+    );
+  });
+});
+
+describe("parseXMLTags", () => {
+  test("extracts thought + call_tool + parameter", () => {
+    const xml = "<thought>thinking</thought><call_tool name=\"read_file\"><parameter name=\"path\">a.js</parameter></call_tool>";
+    const out = parseXMLTags(xml);
+    expect(out.thought).toBe("thinking");
+    expect(out.toolCall).toEqual({ name: "read_file", params: { path: "a.js" } });
+  });
+  test("decodes XML-escaped parameter values", () => {
+    const xml = "<call_tool name=\"write_file\"><parameter name=\"content\">a &lt; b &amp;&amp; c &gt; d</parameter></call_tool>";
+    const out = parseXMLTags(xml);
+    expect(out.toolCall.params.content).toBe("a < b && c > d");
+  });
+  test("extracts finish tag", () => {
+    const out = parseXMLTags("<finish>all done</finish>");
+    expect(out.finish).toBe("all done");
+  });
+  test("falls back to JSON-shaped fragment", () => {
+    const out = parseXMLTags('{"tool": "ls", "params": {"path": "."}}');
+    expect(out.toolCall).toEqual({ name: "ls", params: { path: "." } });
+  });
+  test("returns nulls for empty input", () => {
+    expect(parseXMLTags("")).toEqual({ thought: null, finish: null, toolCall: null });
+    expect(parseXMLTags(null)).toEqual({ thought: null, finish: null, toolCall: null });
+  });
+});
+
+describe("createSvgIcon / appendStepIcon", () => {
+  test("createSvgIcon builds an <svg> with the requested viewBox + path", () => {
+    const svg = createSvgIcon("0 0 1 1", "M0 0");
+    expect(svg.tagName).toBe("svg");
+    expect(svg.attrs.viewBox).toBe("0 0 1 1");
+    expect(svg.children).toHaveLength(1);
+    expect(svg.children[0].attrs.d).toBe("M0 0");
+  });
+  test("appendStepIcon falls back to 'thought' for unknown types", () => {
+    const container = { appendChild: jest.fn() };
+    appendStepIcon(container, "this-type-does-not-exist");
+    expect(container.appendChild).toHaveBeenCalled();
+    // First call is the SVG, second is the text node.
+    const textNode = container.appendChild.mock.calls[1][0];
+    expect(textNode.data.startsWith("思考: ")).toBe(true);
+  });
+  test("SVG_NS is the SVG namespace", () => {
+    expect(SVG_NS).toBe(fakeSvgNS);
+  });
+});
