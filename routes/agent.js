@@ -13,8 +13,21 @@ import fs from "fs/promises";
 import path from "path";
 import logger from "../utils/logger.js";
 
+const MAX_AGENT_READ_SIZE = 10 * 1024 * 1024;
+const SKIPPED_DIRS = new Set(["node_modules", ".git", ".venv"]);
+
 function resolveAgentPath(targetPath, sessionCwd = process.cwd()) {
   return path.isAbsolute(targetPath) ? targetPath : path.join(sessionCwd, targetPath);
+}
+
+function getSession(req, res) {
+  const session = sessions.get(req.params.id);
+  if (!session) {
+    res.status(404).json({ error: "Session not found" });
+    return null;
+  }
+  session.lastAccessedAt = Date.now();
+  return session;
 }
 
 const router = express.Router();
@@ -22,19 +35,26 @@ const router = express.Router();
 // Persistent session storage
 const DATA_DIR = path.join(process.cwd(), ".mimocode", "data");
 const SESSIONS_FILE = path.join(DATA_DIR, "agent_sessions.json");
+const isTestMode = process.env.NODE_ENV === "test";
 
 let sessions = new Map();
 const pendingCommands = new Map();
 
+// Cache the mkdir promise so it only runs once across concurrent calls.
+let _dirReady = null;
 async function ensureDataDir() {
-  try {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-  } catch (err) {
+  if (isTestMode) return;
+  if (_dirReady) return _dirReady;
+  _dirReady = fs.mkdir(DATA_DIR, { recursive: true }).catch((err) => {
+    // Reset so a future call can retry (e.g. after a transient fs error).
+    _dirReady = null;
     logger.error("Failed to create data directory", { error: err.message });
-  }
+  });
+  return _dirReady;
 }
 
 async function loadSessions() {
+  if (isTestMode) return;
   try {
     await ensureDataDir();
     const data = await fs.readFile(SESSIONS_FILE, "utf-8");
@@ -53,19 +73,40 @@ async function loadSessions() {
   }
 }
 
-async function saveSessions() {
+let _saveTimer = null;
+let _pendingSave = false;
+
+async function flushSave() {
+  if (_pendingSave) return;
+  _pendingSave = true;
   try {
     await ensureDataDir();
+    if (isTestMode) return;
+    try {
+      await fs.access(DATA_DIR);
+    } catch {
+      return;
+    }
     const data = JSON.stringify(Object.fromEntries(sessions), null, 2);
-    // M-4: Write to a temp file first, then atomically rename. This prevents
-    // corruption on crash mid-write and surfaces failures loudly instead of
-    // silently desyncing persistence from the in-memory state.
     const tmpFile = SESSIONS_FILE + ".tmp";
     await fs.writeFile(tmpFile, data, "utf-8");
     await fs.rename(tmpFile, SESSIONS_FILE);
   } catch (err) {
     logger.error("Failed to save sessions to file", { error: err.message });
+  } finally {
+    _pendingSave = false;
   }
+}
+
+/**
+ * Debounced session persistence. Coalesces rapid calls (e.g. from
+ * concurrent addHistoryEntry) into a single write after a short delay.
+ */
+function saveSessions() {
+  if (isTestMode) return;
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(flushSave, 50);
+  _saveTimer.unref();
 }
 
 // Load sessions on startup
@@ -101,6 +142,7 @@ const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 function cleanupExpiredSessions() {
   const now = Date.now();
+  let changed = false;
   for (const [id, session] of sessions) {
     // M-5: Never reap a session that is actively executing a command —
     // doing so would orphan the spawned child process and confuse the
@@ -108,12 +150,16 @@ function cleanupExpiredSessions() {
     if (session.status === "running") continue;
     if (now - session.lastAccessedAt > SESSION_TTL_MS) {
       sessions.delete(id);
+      changed = true;
     }
   }
   for (const [token, pending] of pendingCommands) {
     if (now - pending.createdAt > 5 * 60 * 1000) {
       pendingCommands.delete(token);
     }
+  }
+  if (changed) {
+    saveSessions();
   }
 }
 
@@ -158,7 +204,7 @@ router.post("/sessions", async (req, res, next) => {
     }
 
     sessions.set(sessionId, session);
-    await saveSessions();
+    saveSessions();
     res.json({ session });
   } catch (err) {
     next(err);
@@ -169,11 +215,8 @@ router.post("/sessions", async (req, res, next) => {
  * Get session info.
  */
 router.get("/sessions/:id", (req, res) => {
-  const session = sessions.get(req.params.id);
-  if (!session) {
-    return res.status(404).json({ error: "Session not found" });
-  }
-  session.lastAccessedAt = Date.now();
+  const session = getSession(req, res);
+  if (!session) return;
   res.json({ session });
 });
 
@@ -195,11 +238,8 @@ router.get("/sessions", (_req, res) => {
  */
 router.post("/sessions/:id/commands", async (req, res, next) => {
   try {
-    const session = sessions.get(req.params.id);
-    if (!session) {
-      return res.status(404).json({ error: "Session not found" });
-    }
-    session.lastAccessedAt = Date.now();
+    const session = getSession(req, res);
+    if (!session) return;
 
     // Check if command execution is enabled
     if (!serverConfig.enableCommandExecution) {
@@ -304,11 +344,8 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
  */
 router.post("/sessions/:id/approve", async (req, res, next) => {
   try {
-    const session = sessions.get(req.params.id);
-    if (!session) {
-      return res.status(404).json({ error: "Session not found" });
-    }
-    session.lastAccessedAt = Date.now();
+    const session = getSession(req, res);
+    if (!session) return;
 
     const { approvalToken, timeoutMs } = req.body;
     if (!approvalToken || !pendingCommands.has(approvalToken)) {
@@ -379,11 +416,8 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
  */
 router.get("/sessions/:id/files", async (req, res, next) => {
   try {
-    const session = sessions.get(req.params.id);
-    if (!session) {
-      return res.status(404).json({ error: "Session not found" });
-    }
-    session.lastAccessedAt = Date.now();
+    const session = getSession(req, res);
+    if (!session) return;
 
     const filePath = req.query.path;
     if (!filePath) {
@@ -392,6 +426,17 @@ router.get("/sessions/:id/files", async (req, res, next) => {
 
     const resolvedPath = validatePath(resolveAgentPath(filePath, session.cwd));
     assertNotProtectedPath(resolvedPath);
+
+    const stat = await fs.stat(resolvedPath);
+    if (stat.isDirectory()) {
+      return res.status(400).json({ error: "Specified path is a directory" });
+    }
+    if (stat.size > MAX_AGENT_READ_SIZE) {
+      return res.status(413).json({
+        error: `File size (${stat.size} bytes) exceeds maximum read size (${MAX_AGENT_READ_SIZE} bytes)`,
+      });
+    }
+
     const content = await fs.readFile(resolvedPath, "utf-8");
 
     res.json({
@@ -408,11 +453,8 @@ router.get("/sessions/:id/files", async (req, res, next) => {
  */
 router.post("/sessions/:id/files", async (req, res, next) => {
   try {
-    const session = sessions.get(req.params.id);
-    if (!session) {
-      return res.status(404).json({ error: "Session not found" });
-    }
-    session.lastAccessedAt = Date.now();
+    const session = getSession(req, res);
+    if (!session) return;
 
     const { path: filePath, content } = req.body;
     if (!filePath) {
@@ -448,11 +490,8 @@ router.post("/sessions/:id/files", async (req, res, next) => {
  */
 router.get("/sessions/:id/search", async (req, res, next) => {
   try {
-    const session = sessions.get(req.params.id);
-    if (!session) {
-      return res.status(404).json({ error: "Session not found" });
-    }
-    session.lastAccessedAt = Date.now();
+    const session = getSession(req, res);
+    if (!session) return;
 
     const { query, dir, maxResults = 20 } = req.query;
     if (!query) {
@@ -493,13 +532,7 @@ async function searchInDirectory(dir, query, results, maxResults, depth = 0) {
       entries.map(async (entry) => {
         if (results.length >= maxResults) return;
 
-        // Skip common directories and hidden files
-        if (
-          entry.name === "node_modules" ||
-          entry.name === ".git" ||
-          entry.name === ".venv" ||
-          entry.name.startsWith(".")
-        ) {
+        if (SKIPPED_DIRS.has(entry.name) || entry.name.startsWith(".")) {
           return;
         }
 
@@ -508,21 +541,22 @@ async function searchInDirectory(dir, query, results, maxResults, depth = 0) {
         try {
           validatePath(fullPath);
         } catch {
-          return; // Skip paths outside allowed directories
+          return;
         }
 
         if (entry.isDirectory()) {
-          await searchInDirectory(fullPath, query, results, maxResults, depth + 1);
+          try {
+            const revalidatedDir = revalidateRealPath(fullPath);
+            assertNotProtectedPath(revalidatedDir);
+            await searchInDirectory(revalidatedDir, query, results, maxResults, depth + 1);
+          } catch {
+            // Skip directories that fail re-validation or are protected
+          }
         } else if (entry.isFile()) {
           try {
-            // Re-resolve symlinks at the moment of read to mitigate
-            // TOCTOU attacks where an attacker swaps a regular file
-            // for a symlink pointing outside the allowed roots.
             const revalidated = revalidateRealPath(fullPath);
-            // M-12: TOCTOU defense-in-depth — cap file size at 256KB to shrink
-            // the attack window between fs.stat and fs.readFile.
             const stat = await fs.stat(revalidated);
-            if (stat.size > 256 * 1024) return; // Skip files > 256KB
+            if (stat.size > 256 * 1024) return;
 
             const content = await fs.readFile(revalidated, "utf-8");
             const lines = content.split(/\r?\n/);
@@ -543,8 +577,6 @@ async function searchInDirectory(dir, query, results, maxResults, depth = 0) {
         }
       }),
     );
-    // L-4: Promise.all runs in parallel so results may slightly exceed maxResults;
-    // trim the array to the hard limit after all entries are processed.
     if (results.length > maxResults) {
       results.splice(maxResults);
     }
@@ -558,11 +590,8 @@ async function searchInDirectory(dir, query, results, maxResults, depth = 0) {
  */
 router.get("/sessions/:id/dir", async (req, res, next) => {
   try {
-    const session = sessions.get(req.params.id);
-    if (!session) {
-      return res.status(404).json({ error: "Session not found" });
-    }
-    session.lastAccessedAt = Date.now();
+    const session = getSession(req, res);
+    if (!session) return;
 
     const dirPath = req.query.path || session.cwd;
     const resolvedPath = validatePath(dirPath);
@@ -593,11 +622,8 @@ router.get("/sessions/:id/dir", async (req, res, next) => {
  */
 router.post("/sessions/:id/diff", async (req, res, next) => {
   try {
-    const session = sessions.get(req.params.id);
-    if (!session) {
-      return res.status(404).json({ error: "Session not found" });
-    }
-    session.lastAccessedAt = Date.now();
+    const session = getSession(req, res);
+    if (!session) return;
 
     const { path: filePath, diff, dryRun = false } = req.body;
     if (!filePath) {

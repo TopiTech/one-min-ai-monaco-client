@@ -5,7 +5,7 @@ import {
   isFailedResponse,
   extractFailureMessage,
 } from "../utils/api-client.js";
-import { chatModels, codeModels, imageModels } from "../config/models.js";
+import { getChatModels, getCodeModels, getImageModels } from "../config/models.js";
 import { parseWebSearchParams, buildCodePayload } from "../utils/web-search.js";
 import logger from "../utils/logger.js";
 
@@ -165,7 +165,7 @@ function parseChatRequest(body) {
 
 // Available models endpoint
 router.get("/models", (_req, res) => {
-  res.json({ chatModels, codeModels, imageModels });
+  res.json({ chatModels: getChatModels(), codeModels: getCodeModels(), imageModels: getImageModels() });
 });
 
 router.post("/chat", async (req, res, next) => {
@@ -323,7 +323,9 @@ router.post("/conversations", async (req, res, next) => {
  * generate/text-editor cannot send invalid values upstream.
  */
 function parseOutputCompression(value) {
-  if (value === undefined || value === "") return { ok: true, value: undefined };
+  if (value === undefined || value === "" || (typeof value === "string" && value.trim() === "")) {
+    return { ok: true, value: undefined };
+  }
   const n = Number(value);
   if (!Number.isFinite(n)) {
     return { ok: false, error: "output_compression must be a finite number" };
@@ -461,25 +463,38 @@ router.post("/images/text-editor", async (req, res, next) => {
       if (Math.max(w, h) / Math.min(w, h) > 3) {
         return res.status(400).json({ error: "aspect ratio must be <= 3:1" });
       }
+    } else {
+      // Non-gpt-image models (Flux Kontext etc.) also expect WxH size.
+      if (size && !/^\d+x\d+$/.test(String(size))) {
+        return res.status(400).json({ error: "size must be in WxH format (e.g. 1024x1024)" });
+      }
     }
 
     const oc = parseOutputCompression(output_compression);
     if (!oc.ok) {
       return res.status(400).json({ error: oc.error });
     }
+
+    const promptObject = {
+      imageUrl: String(imageUrl).trim(),
+      prompt: String(prompt).trim(),
+      size,
+      n: Number(n) || 1,
+      output_format,
+    };
+
+    // gpt-image-only parameters
+    if (isGptImage) {
+      promptObject.quality = quality;
+      promptObject.background = background;
+      if (oc.value !== undefined) {
+        promptObject.output_compression = oc.value;
+      }
+    }
     const payload = {
       type: "IMAGE_EDITOR",
       model: selectedModel,
-      promptObject: {
-        imageUrl: String(imageUrl).trim(),
-        prompt: String(prompt).trim(),
-        size,
-        quality,
-        n: Number(n) || 1,
-        background,
-        output_format,
-        ...(oc.value !== undefined ? { output_compression: oc.value } : {}),
-      },
+      promptObject,
     };
 
     const data = await callOneMin("/api/features", {
@@ -500,6 +515,35 @@ router.post("/images/text-editor", async (req, res, next) => {
 
 const MAX_CODE_LENGTH = 100_000;
 const MAX_PROMPT_LENGTH = 50_000;
+
+function validateLineColumn(line, column) {
+  const lineNum = Number(line);
+  const colNum = Number(column);
+  if (!Number.isInteger(lineNum) || lineNum < 1 || lineNum > 1_000_000) {
+    return { error: "line must be a positive integer" };
+  }
+  if (!Number.isInteger(colNum) || colNum < 1 || colNum > 1_000_000) {
+    return { error: "column must be a positive integer" };
+  }
+  return { lineNum, colNum };
+}
+
+function buildCodeContext(code, line, column, contextLines = 100) {
+  const lines = code.split(/\r?\n/);
+  const lineIndex = line - 1;
+  const colIndex = column - 1;
+
+  const linesBefore = lines.slice(0, lineIndex);
+  const currentLine = lines[lineIndex] || "";
+  const beforeCurrent = currentLine.substring(0, colIndex);
+  const afterCurrent = currentLine.substring(colIndex);
+  const linesAfter = lines.slice(lineIndex + 1);
+
+  const beforeCode = [...linesBefore.slice(-contextLines), beforeCurrent].join("\n");
+  const afterCode = [afterCurrent, ...linesAfter.slice(0, contextLines)].join("\n");
+
+  return { beforeCode, afterCode };
+}
 
 /**
  * M-2: Sanitize a value before embedding it into an AI prompt.
@@ -587,16 +631,8 @@ router.post("/code/autocomplete", async (req, res, next) => {
     if (code === undefined || line === undefined || column === undefined) {
       return res.status(400).json({ error: "code, line, and column are required" });
     }
-    // M-7: line/column must be finite positive integers; otherwise the
-    // .split() math below produces empty context and wastes a token.
-    const lineNum = Number(line);
-    const colNum = Number(column);
-    if (!Number.isInteger(lineNum) || lineNum < 1 || lineNum > 1_000_000) {
-      return res.status(400).json({ error: "line must be a positive integer" });
-    }
-    if (!Number.isInteger(colNum) || colNum < 1 || colNum > 1_000_000) {
-      return res.status(400).json({ error: "column must be a positive integer" });
-    }
+    const { error: lcErr, lineNum, colNum } = validateLineColumn(line, column);
+    if (lcErr) return res.status(400).json({ error: lcErr });
     if (String(code).length > MAX_CODE_LENGTH)
       return res.status(400).json({ error: `code exceeds ${MAX_CODE_LENGTH} characters` });
 
@@ -606,19 +642,7 @@ router.post("/code/autocomplete", async (req, res, next) => {
       maxWord,
     });
 
-    const lines = code.split(/\r?\n/);
-    const lineIndex = line - 1;
-    const colIndex = column - 1;
-
-    const linesBefore = lines.slice(0, lineIndex);
-    const currentLine = lines[lineIndex] || "";
-    const beforeCurrent = currentLine.substring(0, colIndex);
-    const afterCurrent = currentLine.substring(colIndex);
-    const linesAfter = lines.slice(lineIndex + 1);
-
-    // Trim context lines to save tokens/credits for inline completions (Local window only)
-    const beforeCode = [...linesBefore.slice(-100), beforeCurrent].join("\n");
-    const afterCode = [afterCurrent, ...linesAfter.slice(0, 100)].join("\n");
+    const { beforeCode, afterCode } = buildCodeContext(code, lineNum, colNum, 100);
 
     const prompt = `あなたはAIコーディングアシスタントです。ユーザーがエディタでコードを入力中であり、カーソルの直後に続くべきコード（数行〜最大20行程度）を提案してください。
 必ず提案するコード「のみ」を出力してください。説明、マークダウンのコードブロック記号(\`\`\`)、解説、挨拶などは絶対に含めないでください。
@@ -681,14 +705,8 @@ router.post("/code/inline-chat", async (req, res, next) => {
     if (!userPrompt || code === undefined || line === undefined || column === undefined) {
       return res.status(400).json({ error: "prompt, code, line, and column are required" });
     }
-    const lineNum = Number(line);
-    const colNum = Number(column);
-    if (!Number.isInteger(lineNum) || lineNum < 1 || lineNum > 1_000_000) {
-      return res.status(400).json({ error: "line must be a positive integer" });
-    }
-    if (!Number.isInteger(colNum) || colNum < 1 || colNum > 1_000_000) {
-      return res.status(400).json({ error: "column must be a positive integer" });
-    }
+    const { error: lcErr, lineNum, colNum } = validateLineColumn(line, column);
+    if (lcErr) return res.status(400).json({ error: lcErr });
     if (String(userPrompt).length > MAX_PROMPT_LENGTH)
       return res.status(400).json({ error: `prompt exceeds ${MAX_PROMPT_LENGTH} characters` });
     if (String(code).length > MAX_CODE_LENGTH)
@@ -700,19 +718,7 @@ router.post("/code/inline-chat", async (req, res, next) => {
       maxWord,
     });
 
-    const lines = code.split(/\r?\n/);
-    const lineIndex = line - 1;
-    const colIndex = column - 1;
-
-    const linesBefore = lines.slice(0, lineIndex);
-    const currentLine = lines[lineIndex] || "";
-    const beforeCurrent = currentLine.substring(0, colIndex);
-    const afterCurrent = currentLine.substring(colIndex);
-    const linesAfter = lines.slice(lineIndex + 1);
-
-    // Trim context lines to save tokens/credits for inline chat editing (Local window only)
-    const beforeCode = [...linesBefore.slice(-150), beforeCurrent].join("\n");
-    const afterCode = [afterCurrent, ...linesAfter.slice(0, 150)].join("\n");
+    const { beforeCode, afterCode } = buildCodeContext(code, lineNum, colNum, 150);
 
     const prompt = `あなたは熟練のソフトウェアエンジニアです。エディタのカーソル位置でユーザー指示を実行し、挿入または変更すべきコードを出力してください。
 必ず提案するコード「のみ」を出力し、説明やマークダウンのコードブロック記号(\`\`\`)は一切含めないでください。

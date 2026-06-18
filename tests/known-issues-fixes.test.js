@@ -288,8 +288,13 @@ describe("known-issues.md regression fixes", () => {
       );
       // Hard-cap must be present in the implementation
       expect(src).toMatch(/256\s*\*\s*1024/);
-      // Old 1MB cap must NOT be present
-      expect(src).not.toMatch(/1024\s*\*\s*1024/);
+      // Old 1MB cap for search must NOT be present (the standalone "1024 * 1024"
+      // pattern is now only used in MAX_AGENT_READ_SIZE, not in searchInDirectory)
+      const searchFunc = src.slice(
+        src.indexOf("async function searchInDirectory"),
+        src.indexOf("router.get(\"/sessions/:id/dir\""),
+      );
+      expect(searchFunc).not.toMatch(/1024\s*\*\s*1024/);
     });
   });
 
