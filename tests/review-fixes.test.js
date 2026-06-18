@@ -129,4 +129,50 @@ describe('Review Fixes', () => {
       expect(response.body.error).toBe('prompt is required');
     });
   });
+
+  describe('Error payload containment in production', () => {
+    let originalEnv;
+
+    beforeAll(() => {
+      originalEnv = process.env.NODE_ENV;
+    });
+
+    afterAll(() => {
+      process.env.NODE_ENV = originalEnv;
+    });
+
+    test('should hide raw json payload in production', async () => {
+      process.env.NODE_ENV = 'production';
+      
+      const errorWithRawPayload = new Error('1min.ai request failed: 400');
+      errorWithRawPayload.status = 400;
+      errorWithRawPayload.payload = { internal_error_code: 999, raw_sensitive_details: 'secret' };
+      callOneMin.mockRejectedValue(errorWithRawPayload);
+
+      const response = await request(app)
+        .post('/api/chat')
+        .send({ prompt: 'test' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('Upstream request failed with structured payload');
+      expect(JSON.stringify(response.body)).not.toContain('secret');
+      expect(JSON.stringify(response.body)).not.toContain('internal_error_code');
+    });
+
+    test('should expose raw json payload in non-production environments', async () => {
+      process.env.NODE_ENV = 'development';
+      
+      const errorWithRawPayload = new Error('1min.ai request failed: 400');
+      errorWithRawPayload.status = 400;
+      errorWithRawPayload.payload = { internal_error_code: 999, raw_sensitive_details: 'secret' };
+      callOneMin.mockRejectedValue(errorWithRawPayload);
+
+      const response = await request(app)
+        .post('/api/chat')
+        .send({ prompt: 'test' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe(JSON.stringify(errorWithRawPayload.payload));
+    });
+  });
 });

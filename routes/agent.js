@@ -74,11 +74,16 @@ async function loadSessions() {
 }
 
 let _saveTimer = null;
-let _pendingSave = false;
+let _isWriting = false;
+let _needsSave = false;
 
 async function flushSave() {
-  if (_pendingSave) return;
-  _pendingSave = true;
+  if (_isWriting) {
+    _needsSave = true;
+    return;
+  }
+  _isWriting = true;
+  _needsSave = false;
   try {
     await ensureDataDir();
     if (isTestMode) return;
@@ -94,7 +99,10 @@ async function flushSave() {
   } catch (err) {
     logger.error("Failed to save sessions to file", { error: err.message });
   } finally {
-    _pendingSave = false;
+    _isWriting = false;
+    if (_needsSave) {
+      saveSessions();
+    }
   }
 }
 

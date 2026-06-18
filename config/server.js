@@ -26,15 +26,20 @@ export const serverConfig = {
     // local mock servers or staging environments).
     apiBaseUrl: process.env.ONE_MIN_AI_API_BASE_URL || 'https://api.1min.ai',
 
+    // Rate limiting
+    rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 60 * 1000), // 1 minute
+    rateLimitMax: Number(process.env.RATE_LIMIT_MAX || 180),
+    rateLimitAutocompleteMax: Number(process.env.RATE_LIMIT_AUTOCOMPLETE_MAX || 600),
+    rateLimitChatMax: Number(process.env.RATE_LIMIT_CHAT_MAX || 300),
+
     // Agent settings
     enableCommandExecution: String(process.env.ENABLE_COMMAND_EXECUTION || 'false').toLowerCase() === 'true',
     commandTimeoutMs: Math.max(1000, parseInt(process.env.COMMAND_TIMEOUT_MS || "30000", 10) || 30000),
     agentAutoApprove: String(process.env.AGENT_AUTO_APPROVE || 'false').toLowerCase() === 'true',
-    // Drives enumeration is intentionally separate from ENABLE_COMMAND_EXECUTION:
-    // /api/fs/drives uses shell tools (powershell/wmic) only for local directory
-    // listing and is safe in any environment, while ENABLE_COMMAND_EXECUTION gates
-    // arbitrary agent command execution which is the high-risk surface.
     enableDrivesShellLookup: String(process.env.ENABLE_DRIVES_SHELL_LOOKUP || 'true').toLowerCase() === 'true',
+
+    // Session
+    sessionTtlMs: Number(process.env.SESSION_TTL_MS || 30 * 60 * 1000), // 30 minutes
 
     // Logging
     logLevel: process.env.LOG_LEVEL || 'info',

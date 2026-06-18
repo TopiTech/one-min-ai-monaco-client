@@ -5,6 +5,7 @@ import { promisify } from "util";
 import path from "path";
 import {
   validatePath,
+  revalidateRealPath,
   PROJECT_ROOT,
   getAllowedRoots,
   getDefaultRoot,
@@ -243,7 +244,11 @@ router.get("/read", async (req, res, next) => {
     const resolvedPath = validatePath(String(filePath));
     assertNotProtectedPath(resolvedPath);
 
-    const stat = await fs.stat(resolvedPath);
+    // Hardened path validation: follow symlinks and re-verify boundaries to prevent TOCTOU
+    const realPath = revalidateRealPath(resolvedPath);
+    assertNotProtectedPath(realPath);
+
+    const stat = await fs.stat(realPath);
     if (stat.isDirectory()) {
       return res.status(400).json({ error: "Specified path is a directory" });
     }
@@ -255,7 +260,7 @@ router.get("/read", async (req, res, next) => {
         });
     }
 
-    const ext = path.extname(resolvedPath).toLowerCase();
+    const ext = path.extname(realPath).toLowerCase();
     if (BINARY_EXTENSIONS.has(ext)) {
       return res.status(400).json({ error: "Cannot read binary files as text in the editor." });
     }
@@ -263,7 +268,7 @@ router.get("/read", async (req, res, next) => {
     // M-9: Even when the extension is text-like, perform a content-based
     // binary check. Files renamed (e.g. exe.txt) should still be refused
     // from the text editor to avoid corrupting the Monaco buffer.
-    const buffer = await fs.readFile(resolvedPath);
+    const buffer = await fs.readFile(realPath);
     if (detectBinaryContent(buffer)) {
       return res
         .status(400)
@@ -271,7 +276,7 @@ router.get("/read", async (req, res, next) => {
     }
 
     const content = buffer.toString("utf-8");
-    res.json({ path: resolvedPath, content });
+    res.json({ path: realPath, content });
   } catch (err) {
     next(err);
   }

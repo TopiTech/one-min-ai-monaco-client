@@ -244,13 +244,15 @@ function collectProcessOutput(child, timeoutMs, onOutput) {
       }
     });
 
+    let forceKillTimeoutId = null;
+
     const timeoutId = setTimeout(() => {
       timedOut = true;
       killed = true;
       child.kill(platform() === "win32" ? "SIGKILL" : "SIGTERM");
 
       // Force kill after grace period
-      setTimeout(() => {
+      forceKillTimeoutId = setTimeout(() => {
         if (!child.killed) {
           child.kill("SIGKILL");
         }
@@ -259,6 +261,9 @@ function collectProcessOutput(child, timeoutMs, onOutput) {
 
     child.on("close", (exitCode) => {
       clearTimeout(timeoutId);
+      if (forceKillTimeoutId) {
+        clearTimeout(forceKillTimeoutId);
+      }
 
       if (killed && exitCode === null) {
         exitCode = timedOut ? 124 : 1; // 124 = timeout exit code
@@ -274,6 +279,9 @@ function collectProcessOutput(child, timeoutMs, onOutput) {
 
     child.on("error", (err) => {
       clearTimeout(timeoutId);
+      if (forceKillTimeoutId) {
+        clearTimeout(forceKillTimeoutId);
+      }
       reject(new Error(`Failed to execute command: ${err.message}`));
     });
   });

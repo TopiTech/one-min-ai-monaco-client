@@ -24,6 +24,11 @@ import {
   parseXMLTags,
   extractText,
 } from "./js/utils.js";
+import { initTheme, toggleTheme as toggleThemeFn, updateThemeUI, isDarkTheme } from "./js/theme.js";
+import { bootstrapSettings } from "./js/settings.js";
+import { createChatManager, createChatState } from "./js/chat.js";
+import { createImageManager, createImageState } from "./js/image.js";
+import { createeditorManager, createEditorState } from "./js/editor.js";
 
 // Helper to get element by ID
 const $ = (id) => document.getElementById(id);
@@ -122,57 +127,10 @@ const state = {
   creditSaving: false,
 };
 
-// LocalStorage keys
-const STORAGE_KEY_WEB_SEARCH = "monaco_client_code_web_search";
-const STORAGE_KEY_NUM_OF_SITE = "monaco_client_code_num_of_site";
-const STORAGE_KEY_MAX_WORD = "monaco_client_code_max_word";
-const STORAGE_KEY_CHAT_WEB_SEARCH = "monaco_client_chat_web_search";
-const STORAGE_KEY_CHAT_NUM_OF_SITE = "monaco_client_chat_num_of_site";
-const STORAGE_KEY_CHAT_MAX_WORD = "monaco_client_chat_max_word";
-const STORAGE_KEY_THEME = "monaco_client_theme";
-
-function initTheme() {
-  const saved = localStorage.getItem(STORAGE_KEY_THEME);
-  if (saved) {
-    document.documentElement.setAttribute("data-theme", saved);
-  }
-  updateThemeUI();
-}
-
-let _themeToggleTimer = null;
+// Theme toggle handler
 function toggleTheme() {
-  if (_themeToggleTimer) return;
-  _themeToggleTimer = setTimeout(() => {
-    _themeToggleTimer = null;
-  }, 200);
-  const current = document.documentElement.getAttribute("data-theme");
-  let next;
-  if (current === "light") {
-    next = "dark";
-  } else if (current === "dark") {
-    next = "light";
-  } else {
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    next = prefersDark ? "light" : "dark";
-  }
-  document.documentElement.setAttribute("data-theme", next);
-  localStorage.setItem(STORAGE_KEY_THEME, next);
-  updateThemeUI();
-  if (EditorManager.instance) {
-    EditorManager.instance.updateOptions({ theme: next === "light" ? "vs" : "vs-dark" });
-  }
-}
-
-function updateThemeUI() {
-  const theme = document.documentElement.getAttribute("data-theme");
-  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const isDark = theme === "dark" || (!theme && prefersDark);
-  const iconDark = $("themeIconDark");
-  const iconLight = $("themeIconLight");
-  const label = $("themeLabel");
-  if (iconDark) iconDark.classList.toggle("is-hidden", isDark);
-  if (iconLight) iconLight.classList.toggle("is-hidden", !isDark);
-  if (label) label.textContent = isDark ? "ライトモード" : "ダークモード";
+  const next = toggleThemeFn();
+  editorManager.updateTheme();
 }
 
 document.addEventListener(
@@ -184,104 +142,7 @@ document.addEventListener(
   { once: true },
 );
 
-function initCodeGeneratorSettings() {
-  const wsInput = $("codeWebSearch");
-  const nosInput = $("codeNumOfSite");
-  const mwInput = $("codeMaxWord");
-
-  if (!wsInput || !nosInput || !mwInput) return;
-
-  // Restore
-  const savedWebSearch = localStorage.getItem(STORAGE_KEY_WEB_SEARCH);
-  if (savedWebSearch !== null) {
-    wsInput.checked = savedWebSearch === "true";
-  }
-  const savedNumOfSite = localStorage.getItem(STORAGE_KEY_NUM_OF_SITE);
-  if (savedNumOfSite !== null) {
-    nosInput.value = savedNumOfSite;
-  }
-  const savedMaxWord = localStorage.getItem(STORAGE_KEY_MAX_WORD);
-  if (savedMaxWord !== null) {
-    mwInput.value = savedMaxWord;
-  }
-
-  // Save on change
-  wsInput.addEventListener("change", () => {
-    localStorage.setItem(STORAGE_KEY_WEB_SEARCH, wsInput.checked);
-  });
-  nosInput.addEventListener("change", () => {
-    let val = parseInt(nosInput.value);
-    if (isNaN(val) || val < 1) val = 1;
-    if (val > 10) val = 10;
-    nosInput.value = val;
-    localStorage.setItem(STORAGE_KEY_NUM_OF_SITE, val);
-  });
-  mwInput.addEventListener("change", () => {
-    let val = parseInt(mwInput.value);
-    if (isNaN(val) || val < 100) val = 100;
-    if (val > 10000) val = 10000;
-    mwInput.value = val;
-    localStorage.setItem(STORAGE_KEY_MAX_WORD, val);
-  });
-}
-
-function initChatSettings() {
-  const wsInput = $("webSearch");
-  const nosInput = $("chatNumOfSite");
-  const mwInput = $("chatMaxWord");
-  const settingsBox = $("chatWebSearchSettings");
-
-  if (!wsInput || !nosInput || !mwInput || !settingsBox) return;
-
-  const updateVisibility = () => {
-    settingsBox.classList.toggle("is-shown", wsInput.checked);
-  };
-
-  // Restore
-  const savedWebSearch = localStorage.getItem(STORAGE_KEY_CHAT_WEB_SEARCH);
-  if (savedWebSearch !== null) {
-    wsInput.checked = savedWebSearch === "true";
-  }
-  const savedNumOfSite = localStorage.getItem(STORAGE_KEY_CHAT_NUM_OF_SITE);
-  if (savedNumOfSite !== null) {
-    nosInput.value = savedNumOfSite;
-  }
-  const savedMaxWord = localStorage.getItem(STORAGE_KEY_CHAT_MAX_WORD);
-  if (savedMaxWord !== null) {
-    mwInput.value = savedMaxWord;
-  }
-
-  updateVisibility();
-
-  // Save on change
-  wsInput.addEventListener("change", () => {
-    localStorage.setItem(STORAGE_KEY_CHAT_WEB_SEARCH, wsInput.checked);
-    updateVisibility();
-  });
-  nosInput.addEventListener("change", () => {
-    let val = parseInt(nosInput.value);
-    if (isNaN(val) || val < 1) val = 1;
-    if (val > 10) val = 10;
-    nosInput.value = val;
-    localStorage.setItem(STORAGE_KEY_CHAT_NUM_OF_SITE, val);
-  });
-  mwInput.addEventListener("change", () => {
-    let val = parseInt(mwInput.value);
-    if (isNaN(val) || val < 100) val = 100;
-    if (val > 10000) val = 10000;
-    mwInput.value = val;
-    localStorage.setItem(STORAGE_KEY_CHAT_MAX_WORD, val);
-  });
-}
-
-// Call on startup
-let _settingsInitDone = false;
-function bootstrapSettings() {
-  if (_settingsInitDone) return;
-  _settingsInitDone = true;
-  initCodeGeneratorSettings();
-  initChatSettings();
-}
+// Initialize settings on startup
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", bootstrapSettings, { once: true });
 } else {
@@ -295,7 +156,7 @@ for (const btn of document.querySelectorAll(".nav")) {
     btn.classList.add("active");
     $(btn.dataset.view).classList.add("active");
     $("viewTitle").textContent = btn.textContent.trim();
-    if (btn.dataset.view === "coding") setTimeout(() => EditorManager.instance?.layout(), 100);
+    if (btn.dataset.view === "coding") setTimeout(() => editorManager.layout(), 100);
   });
 }
 
@@ -308,163 +169,37 @@ $("healthBtn").onclick = async () => {
   }
 };
 
-// chat
-function pruneChatLog() {
-  const log = dom.chatLog;
-  if (!log) return;
-  while (log.children.length > state.chat.maxMessages) {
-    log.removeChild(log.firstChild);
-  }
-}
+// Initialize managers
+const chatState = createChatState();
+const imageState = createImageState();
+const editorState = createEditorState();
 
-function pruneImageGallery() {
-  const gallery = dom.imageGallery;
-  if (!gallery) return;
-  while (gallery.children.length > state.image.maxCards) {
-    gallery.removeChild(gallery.lastChild);
-  }
-}
+const chatManager = createChatManager(dom, { chat: chatState });
+const imageManager = createImageManager(dom);
+const editorManager = createeditorManager(editorState);
 
-function addMsg(role, content, images = []) {
-  const div = document.createElement("div");
-  div.className = `msg ${role === "user" ? "user" : "ai"}`;
+// Merge state for compatibility
+const state = {
+  chat: chatState,
+  image: imageState,
+  editor: editorState,
+  agent: {
+    active: false,
+    sessionId: null,
+    history: [],
+    chatId: null,
+    resolver: null,
+  },
+  creditSaving: false,
+};
 
-  // Role label (safe text content)
-  const roleSpan = document.createElement("span");
-  roleSpan.className = "role";
-  roleSpan.textContent = role;
-  div.appendChild(roleSpan);
-
-  // Add images if present
-  if (images && images.length > 0) {
-    const imagesDiv = document.createElement("div");
-    imagesDiv.className = "msg-images";
-    for (const img of images) {
-      const imgEl = document.createElement("img");
-      imgEl.className = "msg-image";
-      imgEl.alt = "attached";
-      imgEl.src = img.url || img.assetUrl || img;
-      imgEl.onerror = function () {
-        this.classList.add("is-error-hidden");
-      };
-      imagesDiv.appendChild(imgEl);
-    }
-    div.appendChild(imagesDiv);
-  }
-
-  // Add text content
-  const contentDiv = document.createElement("div");
-  contentDiv.className = "msg-content";
-  if (role === "ai") {
-    renderMarkdownSafely(contentDiv, content);
-  } else {
-    contentDiv.textContent = content;
-  }
-  div.appendChild(contentDiv);
-
-  dom.chatLog.appendChild(div);
-  dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
-  pruneChatLog();
-}
-
-// Image attachment handling
-function updateAttachmentPreview() {
-  const container = dom.attachmentPreviews;
-  const attachmentsArea = dom.chatAttachments;
-  const attachments = state.chat.attachments;
-
-  if (!container || !attachmentsArea) return;
-
-  if (attachments.length === 0) {
-    attachmentsArea.classList.add("u-hidden");
-    container.textContent = "";
-    return;
-  }
-
-  attachmentsArea.classList.remove("u-hidden");
-  container.textContent = "";
-
-  attachments.forEach((att, index) => {
-    const thumb = document.createElement("div");
-    thumb.className = "attachment-thumb";
-
-    const removeButton = document.createElement("button");
-    removeButton.type = "button";
-    removeButton.className = "remove-attachment";
-    removeButton.dataset.index = index;
-    removeButton.textContent = "×";
-
-    if (att.type === "image" && att.previewUrl) {
-      const img = document.createElement("img");
-      img.src = att.previewUrl;
-      img.alt = "preview";
-      img.onerror = function () {
-        this.classList.add("is-error-hidden");
-      };
-      thumb.appendChild(img);
-    } else {
-      const ext = att.file.name.split(".").pop().toUpperCase();
-
-      const icon = document.createElement("div");
-      icon.className = "attachment-file-icon";
-      // Trusted SVG icon
-      const svgIcon = document.createElementNS(SVG_NS, "svg");
-      svgIcon.setAttribute("width", "24");
-      svgIcon.setAttribute("height", "24");
-      svgIcon.setAttribute("viewBox", "0 0 24 24");
-      svgIcon.setAttribute("fill", "none");
-      svgIcon.setAttribute("stroke", "currentColor");
-      svgIcon.setAttribute("stroke-width", "2");
-      const path = document.createElementNS(SVG_NS, "path");
-      path.setAttribute("d", "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z");
-      svgIcon.appendChild(path);
-      const poly = document.createElementNS(SVG_NS, "polyline");
-      poly.setAttribute("points", "14 2 14 8 20 8");
-      svgIcon.appendChild(poly);
-      icon.appendChild(svgIcon);
-
-      const extSpan = document.createElement("span");
-      extSpan.className = "attachment-file-ext";
-      extSpan.textContent = ext;
-      icon.appendChild(extSpan);
-
-      const nameSpan = document.createElement("span");
-      nameSpan.className = "attachment-file-name";
-      nameSpan.textContent =
-        att.file.name.length > 20 ? att.file.name.slice(0, 17) + "..." : att.file.name;
-      nameSpan.title = att.file.name;
-
-      thumb.appendChild(icon);
-      thumb.appendChild(nameSpan);
-    }
-
-    thumb.appendChild(removeButton);
-    if (att.uploading) {
-      const spinner = document.createElement("div");
-      spinner.className = "upload-spinner";
-      thumb.appendChild(spinner);
-    }
-
-    container.appendChild(thumb);
-  });
-
-  // Bind remove buttons
-  container.querySelectorAll(".remove-attachment").forEach((btn) => {
-    btn.onclick = () => {
-      const idx = parseInt(btn.dataset.index);
-      const attachments = state.chat.attachments;
-      if (attachments[idx].previewUrl) URL.revokeObjectURL(attachments[idx].previewUrl);
-      attachments.splice(idx, 1);
-      updateAttachmentPreview();
-    };
-  });
-}
+// Use chat manager for sending and aborting
+$("abortChat").onclick = () => chatManager.abortChat();
+dom.sendChatBtn.onclick = () => chatManager.sendChat(setStatus);
 
 // Attach image button
 if (dom.attachImageBtn) {
-  dom.attachImageBtn.onclick = () => {
-    dom.chatImageInput.click();
-  };
+  dom.attachImageBtn.onclick = () => dom.chatImageInput.click();
 }
 
 // File input change
@@ -487,307 +222,10 @@ if (dom.chatImageInput) {
       state.chat.attachments.push(att);
     }
 
-    updateAttachmentPreview();
+    chatManager.updateAttachmentPreview();
     e.target.value = "";
   };
 }
-
-// Upload attachments to 1min.ai Asset API (concurrency-controlled)
-async function uploadAttachments() {
-  const attachments = state.chat.attachments;
-  const pending = attachments.filter((att) => !att.assetKey);
-
-  if (pending.length === 0) {
-    return attachments.map((att) => ({
-      type: att.type || "image",
-      assetKey: att.assetKey,
-      url: att.assetUrl,
-    }));
-  }
-
-  for (const att of pending) {
-    att.uploading = true;
-  }
-  updateAttachmentPreview();
-
-  // M-5: Limit concurrency to 3 simultaneous uploads to stay within 1min.ai
-  // limits and avoid browser connection pooling bottlenecks.
-  const CONCURRENCY_LIMIT = 3;
-  const queue = [...pending];
-  const results = new Array(pending.length);
-
-  const worker = async () => {
-    while (queue.length > 0) {
-      const index = pending.length - queue.length;
-      const att = queue.shift();
-      try {
-        const fd = new FormData();
-        fd.append("asset", att.file);
-        const data = await api("/api/assets/upload", { method: "POST", body: fd });
-        const key =
-          data?.key || data?.asset?.key || data?.fileContent?.path || data?.asset?.location || "";
-        const url = data?.url || (key ? assetUrl(key) : "");
-        att.assetKey = key;
-        att.assetUrl = url;
-        att.uploading = false;
-        results[index] = {
-          status: "fulfilled",
-          value: { type: att.type || "image", assetKey: key, url },
-        };
-      } catch (err) {
-        att.uploading = false;
-        results[index] = { status: "rejected", reason: err };
-        toast.error(`アップロード失敗 (${att.file.name}): ${err.message || "不明なエラー"}`);
-      }
-      updateAttachmentPreview();
-    }
-  };
-
-  const workers = Array(Math.min(CONCURRENCY_LIMIT, queue.length))
-    .fill(null)
-    .map(() => worker());
-
-  await Promise.all(workers);
-
-  return attachments
-    .filter((att) => att.assetKey)
-    .map((att) => ({ type: att.type || "image", assetKey: att.assetKey, url: att.assetUrl }));
-}
-
-$("abortChat").onclick = () => {
-  if (state.chat.abortController) {
-    state.chat.abortController.abort();
-    state.chat.abortController = null;
-  }
-};
-
-dom.sendChatBtn.onclick = async () => {
-  const prompt = dom.chatPrompt.value.trim();
-  const attachments = state.chat.attachments;
-  if (!prompt && attachments.length === 0) return;
-
-  const sendBtn = dom.sendChatBtn;
-  const abortBtn = dom.abortChatBtn;
-  sendBtn.disabled = true;
-  sendBtn.classList.add("u-hidden");
-  abortBtn.classList.add("is-shown");
-
-  state.chat.abortController = new AbortController();
-
-  const imagePreviews = attachments.map((att) => ({ url: att.previewUrl }));
-  addMsg("user", prompt || "(画像のみ)", imagePreviews);
-  dom.chatPrompt.value = "";
-
-  const aiMsgDiv = document.createElement("div");
-  aiMsgDiv.className = "msg ai";
-  const aiRoleSpan = document.createElement("span");
-  aiRoleSpan.className = "role";
-  aiRoleSpan.textContent = "ai";
-  aiMsgDiv.appendChild(aiRoleSpan);
-  const aiContentDiv = document.createElement("div");
-  aiContentDiv.className = "msg-content";
-  aiContentDiv.innerHTML = '<span class="streaming-cursor">▊</span>';
-  aiMsgDiv.appendChild(aiContentDiv);
-  dom.chatLog.appendChild(aiMsgDiv);
-  dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
-
-  setStatus("通信中...", "warn");
-  let fullText = "";
-
-  try {
-    const uploadedAttachments = await uploadAttachments();
-
-    const apiAttachments = {};
-    const imageKeys = uploadedAttachments
-      .filter((a) => a.type === "image" && a.assetKey)
-      .map((a) => a.assetKey);
-    const fileKeys = uploadedAttachments
-      .filter((a) => a.type === "file" && a.assetKey)
-      .map((a) => a.assetKey);
-    if (imageKeys.length > 0) apiAttachments.images = imageKeys;
-    if (fileKeys.length > 0) apiAttachments.files = fileKeys;
-
-    const response = await api("/api/chat/stream", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt,
-        model: dom.chatModel.value,
-        conversationId: dom.conversationId.value || undefined,
-        webSearch: dom.webSearch.checked,
-        numOfSite: dom.chatNumOfSite?.value ? parseInt(dom.chatNumOfSite.value) : undefined,
-        maxWord: dom.chatMaxWord?.value ? parseInt(dom.chatMaxWord.value) : undefined,
-        withMemories: dom.withMemories?.checked || false,
-        isMixed: dom.isMixed?.checked || false,
-        brandVoiceId: dom.brandVoiceId?.value?.trim() || undefined,
-        attachments: Object.keys(apiAttachments).length > 0 ? apiAttachments : undefined,
-      }),
-      signal: state.chat.abortController.signal,
-      raw: true,
-    });
-
-    if (!response.ok) {
-      if (response.status === 422) {
-        throw new Error("無効なリクエスト形式");
-      } else if (response.status >= 500) {
-        throw new Error("サーバーエラー");
-      } else {
-        throw new Error(`HTTP ${response.status}`);
-      }
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let streamDone = false;
-    let streamError = null;
-    let currentEvent = "content";
-
-    // Safety: abort streaming after 5 minutes to prevent infinite hangs
-    const MAX_STREAM_MS = 5 * 60 * 1000;
-    const streamTimeoutId = setTimeout(() => {
-      if (!streamDone) {
-        streamDone = true;
-        streamError = new Error("ストリーミングがタイムアウトしました（5分）");
-        reader.cancel().catch(() => { });
-      }
-    }, MAX_STREAM_MS);
-    // H-3: Throttle markdown re-renders to avoid CPU spikes during streaming.
-    // Long responses with frequent chunks would otherwise re-parse on every
-    // single delta. We render at most once per RAF (~60fps) and always on the
-    // final [DONE] chunk.
-    let renderScheduled = false;
-    const scheduleRender = () => {
-      if (renderScheduled) return;
-      renderScheduled = true;
-      const run = () => {
-        renderScheduled = false;
-        if (fullText) {
-          renderMarkdownSafely(aiContentDiv, fullText);
-          dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
-        }
-      };
-      if (typeof requestAnimationFrame === "function") {
-        requestAnimationFrame(run);
-      } else {
-        setTimeout(run, 16);
-      }
-    };
-
-    while (!streamDone) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop();
-
-      for (const line of lines) {
-        // 1min.ai may use bare `data:` lines (no event: prefix). The OpenAI
-        // streaming convention puts `data:` on every line and the SSE
-        // terminator is `data: [DONE]`. Treat both styles as the default
-        // content channel.
-        if (line.startsWith("event: ")) {
-          currentEvent = line.slice(7).trim();
-          continue;
-        }
-
-        if (!line.startsWith("data:")) continue;
-        const dataStr = line.replace(/^data:\s*/, "").trim();
-        if (!dataStr) continue;
-
-        // Standard OpenAI SSE terminator: stop reading and finalize.
-        if (dataStr === "[DONE]") {
-          streamDone = true;
-          break;
-        }
-
-        try {
-          const data = JSON.parse(dataStr);
-
-          if (currentEvent === "error") {
-            streamError = new Error(data?.error || data?.message || "Stream error");
-            streamDone = true;
-            break;
-          }
-
-          if (currentEvent === "done") {
-            streamDone = true;
-            break;
-          }
-
-          if (currentEvent === "result") {
-            // 1min.ai streams may end with a final result event containing
-            // the entire aiRecord. Use it as a fallback if no content chunks
-            // were received.
-            const text = extractText(data?.aiRecord || data);
-            if (text && !fullText) {
-              fullText = text;
-              renderMarkdownSafely(aiContentDiv, fullText);
-            }
-            continue;
-          }
-
-          const content =
-            data?.content ||
-            data?.choices?.[0]?.delta?.content ||
-            data?.choices?.[0]?.message?.content ||
-            data?.message?.content ||
-            data?.delta?.content ||
-            data?.text;
-          if (content) {
-            fullText += content;
-            scheduleRender();
-          }
-
-          // OpenAI-compatible finish marker; some providers use this instead
-          // of a `[DONE]` sentinel. Treat it as a graceful stream end.
-          const finishReason = data?.choices?.[0]?.finish_reason;
-          if (finishReason && finishReason !== "null") {
-            console.log(`Stream finished: ${finishReason}`);
-            streamDone = true;
-            break;
-          }
-        } catch (jsonErr) {
-          // Non-JSON data line or malformed, skip
-          console.debug("SSE non-JSON chunk:", dataStr);
-        }
-      }
-    }
-
-    clearTimeout(streamTimeoutId);
-    if (streamError) throw streamError;
-    // Final render to ensure any throttled content is visible.
-    if (fullText) renderMarkdownSafely(aiContentDiv, fullText);
-
-    if (!fullText) {
-      fullText = "(応答が空でした)";
-    }
-
-    renderMarkdownSafely(aiContentDiv, fullText);
-    pruneChatLog();
-  } catch (e) {
-    if (e.name === "AbortError") {
-      fullText += "\n\n*(キャンセルされました)*";
-      renderMarkdownSafely(aiContentDiv, fullText);
-      setStatus("キャンセルしました", "warn");
-    } else {
-      const message = e?.message || "不明なエラー";
-      console.error("Chat Stream Error:", e);
-      aiContentDiv.textContent = `エラー: ${message}`;
-      toast.error(`チャットエラー: ${message}`);
-      setStatus("エラー", "error");
-    }
-  } finally {
-    state.chat.abortController = null;
-    sendBtn.disabled = false;
-    sendBtn.classList.remove("u-hidden");
-    abortBtn.classList.remove("is-shown");
-    setStatus("準備完了");
-    state.chat.attachments.length = 0;
-    updateAttachmentPreview();
-  }
-};
 
 // Check health on startup
 async function checkHealth() {
@@ -1159,11 +597,11 @@ function renderTabs() {
 }
 
 async function switchToTab(filePath) {
-  const model = EditorManager.getOrCreateModel(filePath);
+  const model = editorManager.getOrCreateModel(filePath);
 
   if (model) {
-    if (EditorManager.instance) {
-      EditorManager.instance.setModel(model);
+    if (editorManager.instance) {
+      editorManager.instance.setModel(model);
       state.editor.activeFilePath = filePath;
       dom.currentFileName.textContent = filePath.replace(/\\/g, "/").split("/").pop();
       dom.currentFileName.title = filePath;
@@ -1205,8 +643,8 @@ async function closeTab(filePath) {
       await switchToTab(nextActivePath);
     } else {
       state.editor.activeFilePath = null;
-      if (EditorManager.instance) {
-        EditorManager.instance.setModel(monaco.editor.createModel("", "plaintext"));
+      if (editorManager.instance) {
+        editorManager.instance.setModel(monaco.editor.createModel("", "plaintext"));
       }
       dom.currentFileName.textContent = "ファイルが選択されていません";
       dom.currentFileName.title = "";
@@ -1217,139 +655,12 @@ async function closeTab(filePath) {
   renderTabs();
 }
 
-// ============================================================
-// Monaco Editor Management
-// ============================================================
-const EditorManager = {
-  instance: null,
-  activeModel: null,
 
-  init() {
-    const savedTheme = localStorage.getItem(STORAGE_KEY_THEME);
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const isDark = savedTheme === "dark" || (!savedTheme && prefersDark);
 
-    this.instance = monaco.editor.create($("editor"), {
-      value: `/* ⬅ 左のツリーからファイルを選択するか、パスを入力して読み込んでください */\n`,
-      language: "plaintext",
-      theme: isDark ? "vs-dark" : "vs",
-      automaticLayout: true,
-      minimap: { enabled: true },
-      fontSize: 14,
-      wordWrap: "on",
-      inlineSuggest: { enabled: true },
-    });
-
-    window.editor = this.instance; // Maintain global for compatibility
-
-    const container = $("editor");
-    if (container) {
-      const observer = new ResizeObserver(() => {
-        if (this.instance) this.instance.layout();
-      });
-      observer.observe(container);
-    }
-
-    this.instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      saveFile();
-    });
-
-    this.instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI, () => {
-      toggleInlineChat();
-    });
-
-    this.registerProviders();
-  },
-
-  registerProviders() {
-    const languages = [
-      "javascript",
-      "typescript",
-      "python",
-      "html",
-      "css",
-      "json",
-      "markdown",
-      "plaintext",
-    ];
-    for (const lang of languages) {
-      monaco.languages.registerInlineCompletionsProvider(lang, {
-        provideInlineCompletions: async (model, position, context, token) => {
-          await new Promise((resolve) => setTimeout(resolve, 400));
-          if (token.isCancellationRequested) return;
-
-          try {
-            const data = await api("/api/code/autocomplete", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                code: model.getValue(),
-                line: position.lineNumber,
-                column: position.column,
-                fileName: state.editor.activeFilePath
-                  ? state.editor.activeFilePath.split(/[\\/]/).pop()
-                  : "untitled",
-                language: model.getLanguageId(),
-                model: dom.codeModel.value,
-                webSearch: dom.codeWebSearch?.checked || false,
-                numOfSite: dom.codeNumOfSite?.value ? parseInt(dom.codeNumOfSite.value) : undefined,
-                maxWord: dom.codeMaxWord?.value ? parseInt(dom.codeMaxWord.value) : undefined,
-              }),
-              signal: token.signal,
-            });
-            if (!data.suggestion || token.isCancellationRequested) return;
-
-            return {
-              items: [
-                {
-                  insertText: data.suggestion,
-                  range: new monaco.Range(
-                    position.lineNumber,
-                    position.column,
-                    position.lineNumber,
-                    position.column,
-                  ),
-                },
-              ],
-            };
-          } catch (e) {
-            if (e.name !== "AbortError") console.error("Autocomplete error:", e);
-          }
-        },
-        freeInlineCompletions: () => { },
-      });
-    }
-  },
-
-  getOrCreateModel(filePath, content, language) {
-    const fileUri = monaco.Uri.file(filePath);
-    let model = monaco.editor.getModel(fileUri);
-    if (model) {
-      if (content !== undefined) model.setValue(content);
-    } else {
-      model = monaco.editor.createModel(content || "", language, fileUri);
-    }
-    return model;
-  },
-
-  disposeUnusedModels() {
-    const allModels = monaco.editor.getModels();
-    if (allModels.length > state.editor.maxOpenModels) {
-      const active = this.instance?.getModel();
-      const openTabs = state.editor.openTabs;
-      const unused = allModels.filter(
-        (m) => m !== active && !openTabs.includes(m.uri.fsPath) && m.uri.scheme === "file",
-      );
-      for (const m of unused.slice(0, allModels.length - state.editor.maxOpenModels)) {
-        m.dispose();
-      }
-    }
-  },
-};
-
+// Initialize Monaco Editor
 require.config({ paths: { vs: "/vs" } });
 require(["vs/editor/editor.main"], () => {
-  EditorManager.init();
+  editorManager.init();
 });
 
 const inlineChatWidget = {
@@ -1406,7 +717,7 @@ const inlineChatWidget = {
   },
   getPosition: function () {
     return {
-      position: EditorManager.instance.getPosition(),
+      position: editorManager.instance.getPosition(),
       preference: [
         monaco.editor.ContentWidgetPositionPreference.BELOW,
         monaco.editor.ContentWidgetPositionPreference.ABOVE,
@@ -1416,7 +727,7 @@ const inlineChatWidget = {
 };
 
 async function submitInlineChat() {
-  if (!state.editor.activeFilePath || !EditorManager.instance) return;
+  if (!state.editor.activeFilePath || !editorManager.instance) return;
   const domNode = state.editor.inlineChatDom;
   const input = domNode.querySelector("#inlineChatPrompt");
   const status = domNode.querySelector("#inlineChatStatus");
@@ -1427,10 +738,10 @@ async function submitInlineChat() {
   status.className = "inline-chat-status is-shown loading";
   input.disabled = true;
 
-  const code = EditorManager.instance.getValue();
-  const position = EditorManager.instance.getPosition();
+  const code = editorManager.instance.getValue();
+  const position = editorManager.instance.getPosition();
   const fileName = state.editor.activeFilePath.split(/[\\/]/).pop();
-  const language = EditorManager.instance.getModel()?.getLanguageId() || "plaintext";
+  const language = editorManager.instance.getModel()?.getLanguageId() || "plaintext";
 
   try {
     const data = await api("/api/code/inline-chat", {
@@ -1466,7 +777,7 @@ async function submitInlineChat() {
         );
         const id = { major: 1, minor: 1 };
         const op = { identifier: id, range: range, text: data.code, forceMoveMarkers: true };
-        EditorManager.instance.executeEdits("copilot-inline-chat", [op]);
+        editorManager.instance.executeEdits("copilot-inline-chat", [op]);
         toast.success("コードを適用しました");
       } else {
         toast.info("生成されたコードを破棄しました");
@@ -1491,7 +802,7 @@ function toggleInlineChat() {
   if (state.editor.isInlineChatOpen) {
     closeInlineChat();
   } else {
-    EditorManager.instance.addContentWidget(inlineChatWidget);
+    editorManager.instance.addContentWidget(inlineChatWidget);
     state.editor.isInlineChatOpen = true;
     setTimeout(() => {
       const input = state.editor.inlineChatDom?.querySelector("#inlineChatPrompt");
@@ -1502,9 +813,9 @@ function toggleInlineChat() {
 
 function closeInlineChat() {
   if (state.editor.isInlineChatOpen) {
-    EditorManager.instance.removeContentWidget(inlineChatWidget);
+    editorManager.instance.removeContentWidget(inlineChatWidget);
     state.editor.isInlineChatOpen = false;
-    EditorManager.instance.focus();
+    editorManager.instance.focus();
   }
 }
 
@@ -1595,21 +906,98 @@ async function renderTreeNodes(items, container, depth = 0) {
         openFile(item.path);
       };
     }
+
+    node.onkeydown = async (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        node.click();
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const next = getNextVisibleNode(node);
+        if (next) next.focus();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const prev = getPrevVisibleNode(node);
+        if (prev) prev.focus();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        if (item.isDirectory) {
+          if (!node.classList.contains("expanded")) {
+            node.click();
+          } else {
+            const group = node.nextElementSibling;
+            if (group && group.classList.contains("tree-children")) {
+              const firstChild = group.querySelector(".tree-node");
+              if (firstChild) firstChild.focus();
+            }
+          }
+        }
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        if (item.isDirectory && node.classList.contains("expanded")) {
+          node.click();
+        } else {
+          const group = node.parentElement;
+          if (group && group.classList.contains("tree-children")) {
+            const parentNode = group.previousElementSibling;
+            if (parentNode && parentNode.classList.contains("tree-node")) {
+              parentNode.focus();
+            }
+          }
+        }
+      }
+    };
   }
+}
+
+function getVisibleNodes() {
+  const tree = dom.fileTree;
+  if (!tree) return [];
+  return Array.from(tree.querySelectorAll(".tree-node")).filter((n) => {
+    let parentGroup = n.parentElement;
+    while (parentGroup && parentGroup !== tree) {
+      if (
+        parentGroup.classList.contains("tree-children") &&
+        !parentGroup.classList.contains("is-expanded")
+      ) {
+        return false;
+      }
+      parentGroup = parentGroup.parentElement;
+    }
+    return true;
+  });
+}
+
+function getNextVisibleNode(node) {
+  const visible = getVisibleNodes();
+  const idx = visible.indexOf(node);
+  if (idx !== -1 && idx < visible.length - 1) {
+    return visible[idx + 1];
+  }
+  return null;
+}
+
+function getPrevVisibleNode(node) {
+  const visible = getVisibleNodes();
+  const idx = visible.indexOf(node);
+  if (idx > 0) {
+    return visible[idx - 1];
+  }
+  return null;
 }
 
 async function openFile(filePath) {
   try {
     const data = await api(`/api/fs/read?path=${encodeURIComponent(filePath)}`);
-    if (EditorManager.instance) {
-      const model = EditorManager.getOrCreateModel(filePath, data.content);
-      EditorManager.instance.setModel(model);
+    if (editorManager.instance) {
+      const model = editorManager.getOrCreateModel(filePath, data.content);
+      editorManager.instance.setModel(model);
 
       if (!state.editor.openTabs.includes(filePath)) {
         state.editor.openTabs.push(filePath);
       }
 
-      EditorManager.disposeUnusedModels();
+      editorManager.disposeUnusedModels();
 
       state.editor.activeFilePath = filePath;
       dom.currentFileName.textContent = filePath.replace(/\\/g, "/").split("/").pop();
@@ -1629,8 +1017,8 @@ async function openFile(filePath) {
 let _saveStatusTimer = null;
 
 async function saveFile() {
-  if (!state.editor.activeFilePath || !EditorManager.instance) return;
-  const content = EditorManager.instance.getValue();
+  if (!state.editor.activeFilePath || !editorManager.instance) return;
+  const content = editorManager.instance.getValue();
   try {
     setStatus("保存中...", "warn");
     await api("/api/fs/write", {

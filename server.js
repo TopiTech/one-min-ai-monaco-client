@@ -188,8 +188,8 @@ function mapMulterError(err) {
 
 function buildRateLimit(config) {
   return rateLimit({
-    windowMs: 1 * 60 * 1000,
-    max: 180,
+    windowMs: serverConfig.rateLimitWindowMs,
+    max: serverConfig.rateLimitMax,
     message: { error: "Too many requests, please try again later." },
     standardHeaders: true,
     legacyHeaders: false,
@@ -197,15 +197,20 @@ function buildRateLimit(config) {
   });
 }
 
-// L-1: Higher limit for autocomplete and streaming as they are triggered frequently
-const autocompleteRateLimit = buildRateLimit({ max: 600, windowMs: 1 * 60 * 1000 });
-const aiChatRateLimit = buildRateLimit({ max: 300, windowMs: 1 * 60 * 1000 });
+const autocompleteRateLimit = buildRateLimit({ max: serverConfig.rateLimitAutocompleteMax });
+const aiChatRateLimit = buildRateLimit({ max: serverConfig.rateLimitChatMax });
 
 function normalizePayloadError(err) {
   if (!err?.payload) return null;
   if (typeof err.payload === "string") return err.payload;
   if (typeof err.payload === "object") {
-    return err.payload.error || err.payload.message || JSON.stringify(err.payload);
+    const isProd = process.env.NODE_ENV === "production";
+    const msg = err.payload.error || err.payload.message;
+    if (msg && typeof msg === "string") return msg;
+    if (isProd) {
+      return "Upstream request failed with structured payload";
+    }
+    return JSON.stringify(err.payload);
   }
   return null;
 }
@@ -348,6 +353,37 @@ export function createApp(options = {}) {
       crossOriginEmbedderPolicy: false,
     }),
   );
+
+  // CORS middleware: Restrict access exclusively to localhost/127.0.0.1 origins
+  app.use((req, res, next) => {
+    const origin = req.get("origin");
+    if (origin) {
+      const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(origin);
+      if (isLocalhost) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-local-bff-token, Authorization, Cookie");
+        res.setHeader("Access-Control-Allow-Credentials", "true");
+        res.setHeader("Access-Control-Max-Age", "86400");
+      } else {
+        logger.warn("CORS request blocked from origin", { origin });
+        return res.status(403).json({ error: "CORS request blocked: Only localhost origins are allowed" });
+      }
+    }
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(204);
+    }
+    next();
+  });
+
+  // Security headers for all responses
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    next();
+  });
 
   if (enableRateLimit) {
     // Apply specific (higher) rate limits for high-frequency API endpoints first

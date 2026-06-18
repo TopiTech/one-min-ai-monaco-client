@@ -12,16 +12,44 @@ export function getAllChatModels() { return _allChatModels; }
 export function getAllCodeModels() { return _allCodeModels; }
 export function getAllImageModels() { return _allImageModels; }
 
+const FALLBACK_CHAT_MODELS = [
+  { id: "gpt-4o-mini", label: "GPT-4o mini", provider: "OpenAI", tags: ["fast"] },
+  { id: "gpt-4o", label: "GPT-4o", provider: "OpenAI", tags: ["flagship"] },
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", provider: "Anthropic", tags: ["flagship"] },
+  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", provider: "Google", tags: ["fast"] },
+  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", provider: "Google", tags: ["flagship"] },
+  { id: "deepseek-chat", label: "DeepSeek Chat", provider: "DeepSeek", tags: ["fast"] },
+  { id: "deepseek-reasoner", label: "DeepSeek Reasoner", provider: "DeepSeek", tags: ["reasoning"] },
+];
+
+const FALLBACK_CODE_MODELS = [
+  { id: "qwen3-coder-plus", label: "Qwen3 Coder Plus", provider: "Alibaba", tags: ["code", "flagship"] },
+  { id: "qwen3-coder-flash", label: "Qwen3 Coder Flash", provider: "Alibaba", tags: ["code", "fast"] },
+  { id: "claude-sonnet-4-6", label: "Claude 4.6 Sonnet", provider: "Anthropic", tags: ["code", "flagship"] },
+  { id: "deepseek-chat", label: "DeepSeek V3.2 Chat", provider: "DeepSeek", tags: ["code", "fast"] },
+];
+
+const FALLBACK_IMAGE_MODELS = [
+  { id: "gpt-image-2", label: "GPT Image 2", provider: "OpenAI", tags: ["image", "flagship", "editor"] },
+  { id: "gpt-image-1-mini", label: "GPT Image 1 Mini", provider: "OpenAI", tags: ["image", "fast", "editor"] },
+  { id: "black-forest-labs/flux-2-max", label: "Flux 2 Max", provider: "Flux", tags: ["image", "flagship"] },
+  { id: "black-forest-labs/flux-kontext-pro", label: "Flux Kontext Pro", provider: "Flux", tags: ["image", "flagship", "editor"] },
+  { id: "qwen-image-edit-plus", label: "Qwen Image Edit Plus", provider: "Alibaba", tags: ["image", "editor"] },
+];
+
 export async function loadModels() {
   try {
     const data = await api("/api/models");
-    _allChatModels = Array.isArray(data.chatModels) ? data.chatModels : [];
-    _allCodeModels = Array.isArray(data.codeModels) ? data.codeModels : [];
-    _allImageModels = Array.isArray(data.imageModels) ? data.imageModels : [];
+    _allChatModels = Array.isArray(data.chatModels) && data.chatModels.length > 0 ? data.chatModels : FALLBACK_CHAT_MODELS;
+    _allCodeModels = Array.isArray(data.codeModels) && data.codeModels.length > 0 ? data.codeModels : FALLBACK_CODE_MODELS;
+    _allImageModels = Array.isArray(data.imageModels) && data.imageModels.length > 0 ? data.imageModels : FALLBACK_IMAGE_MODELS;
   } catch (e) {
-    console.warn("モデルリストの取得に失敗:", e);
+    console.warn("モデルリストの取得に失敗。フォールバックを適用します:", e);
+    _allChatModels = FALLBACK_CHAT_MODELS;
+    _allCodeModels = FALLBACK_CODE_MODELS;
+    _allImageModels = FALLBACK_IMAGE_MODELS;
     if (typeof toast !== "undefined") {
-      toast.error(`モデルリストの取得に失敗しました: ${e?.message || e}`);
+      toast.warning("モデルリストの取得に失敗しました。オフライン用フォールバックを適用します。");
     }
   }
 }
@@ -277,6 +305,25 @@ function closeModelPicker() {
   _activePickerType = null;
 }
 
+function navigatePickerItems(direction) {
+  const list = document.getElementById("modelPickerList");
+  if (!list) return;
+  const items = Array.from(list.querySelectorAll(".model-picker-item"));
+  if (!items.length) return;
+
+  const currentIdx = items.findIndex((item) => item === document.activeElement);
+  let nextIdx;
+  if (currentIdx === -1) {
+    nextIdx = direction === "down" ? 0 : items.length - 1;
+  } else {
+    nextIdx = direction === "down"
+      ? Math.min(currentIdx + 1, items.length - 1)
+      : Math.max(currentIdx - 1, 0);
+  }
+  items[nextIdx].focus();
+  items[nextIdx].scrollIntoView({ block: "nearest" });
+}
+
 export function initModelPickers() {
   document.querySelectorAll(".model-picker-btn").forEach((btn) => {
     btn.addEventListener("click", (e) => {
@@ -294,12 +341,19 @@ export function initModelPickers() {
     if (e.key === "Escape" && _activePickerType) {
       closeModelPicker();
     }
-    if (e.key === "Enter" && _activePickerType) {
-      const target = e.target;
-      const tag = target?.tagName;
+    if (_activePickerType) {
+      const tag = e.target?.tagName;
       if (tag === "TEXTAREA" || tag === "BUTTON") return;
-      e.preventDefault();
-      selectActivePickerItem();
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        navigatePickerItems("down");
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        navigatePickerItems("up");
+      } else if (e.key === "Enter" && e.target?.classList?.contains("model-picker-item")) {
+        e.preventDefault();
+        e.target.click();
+      }
     }
   });
 }

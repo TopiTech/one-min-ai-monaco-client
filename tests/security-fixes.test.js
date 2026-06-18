@@ -275,4 +275,85 @@ describe("Security fixes regression", () => {
       expect(() => revalidateRealPath(outside)).toThrow(/Access denied/);
     });
   });
+
+  describe("CORS middleware restrictions", () => {
+    test("allows localhost origins", async () => {
+      const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
+      const res = await request(app)
+        .get("/api/health")
+        .set("Origin", "http://localhost:3000");
+      expect(res.status).toBe(200);
+      expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:3000");
+    });
+
+    test("allows 127.0.0.1 origins with any port", async () => {
+      const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
+      const res = await request(app)
+        .get("/api/health")
+        .set("Origin", "https://127.0.0.1:8080");
+      expect(res.status).toBe(200);
+      expect(res.headers["access-control-allow-origin"]).toBe("https://127.0.0.1:8080");
+    });
+
+    test("rejects external non-localhost origins", async () => {
+      const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
+      const res = await request(app)
+        .get("/api/health")
+        .set("Origin", "https://evil.example.com");
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain("CORS request blocked");
+    });
+  });
+
+  describe("FS read revalidation (symlinks)", () => {
+    let tmpDir;
+    let outsideDir;
+    let app;
+
+    beforeAll(async () => {
+      tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "fs-read-symlink-"));
+      outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), "fs-read-outside-"));
+      app = createApp({ requireLocalAuth: false, enableRateLimit: false });
+    });
+
+    afterAll(async () => {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+      await fs.rm(outsideDir, { recursive: true, force: true });
+    });
+
+    test("successfully reads file inside allowed roots", async () => {
+      process.env.ALLOWED_ROOTS = tmpDir;
+      const file = path.join(tmpDir, "ok.txt");
+      await fs.writeFile(file, "content inside");
+
+      const res = await request(app)
+        .get("/api/fs/read")
+        .query({ path: file });
+
+      expect(res.status).toBe(200);
+      expect(res.body.content).toBe("content inside");
+    });
+
+    test("rejects symlink pointing outside allowed roots", async () => {
+      process.env.ALLOWED_ROOTS = tmpDir;
+      const outsideFile = path.join(outsideDir, "secret.txt");
+      await fs.writeFile(outsideFile, "secret content");
+
+      const linkFile = path.join(tmpDir, "link.txt");
+      try {
+        await fs.symlink(outsideFile, linkFile);
+      } catch (e) {
+        // On Windows, symlink creation might fail if not running with developer mode or admin.
+        // If it fails, skip the assertion.
+        return;
+      }
+
+      const res = await request(app)
+        .get("/api/fs/read")
+        .query({ path: linkFile });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain("Access denied: Path is outside the allowed directories");
+    });
+  });
 });
