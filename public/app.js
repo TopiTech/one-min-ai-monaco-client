@@ -99,21 +99,9 @@ const dom = {
 // Application State
 // ============================================================
 const state = {
-  chat: {
-    attachments: [],
-    abortController: null,
-    maxMessages: 200,
-  },
-  image: {
-    maxCards: 50,
-  },
-  editor: {
-    activeFilePath: null,
-    openTabs: [],
-    maxOpenModels: 20,
-    isInlineChatOpen: false,
-    inlineChatDom: null,
-  },
+  chat: null,
+  image: null,
+  editor: null,
   agent: {
     active: false,
     sessionId: null,
@@ -179,19 +167,9 @@ const imageManager = createImageManager(dom);
 const editorManager = createeditorManager(editorState);
 
 // Merge state for compatibility
-const state = {
-  chat: chatState,
-  image: imageState,
-  editor: editorState,
-  agent: {
-    active: false,
-    sessionId: null,
-    history: [],
-    chatId: null,
-    resolver: null,
-  },
-  creditSaving: false,
-};
+state.chat = chatState;
+state.image = imageState;
+state.editor = editorState;
 
 // Use chat manager for sending and aborting
 $("abortChat").onclick = () => chatManager.abortChat();
