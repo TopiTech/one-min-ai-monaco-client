@@ -3,7 +3,6 @@ import express from "express";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import multer from "multer";
-import FormData from "form-data";
 import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
@@ -236,14 +235,14 @@ async function handleAssetUpload(req, res, next) {
       .replace(/[^a-zA-Z0-9._-]/g, "_")
       .substring(0, 255);
     const formData = new FormData();
-    formData.append("asset", req.file.buffer, {
-      filename: safeName,
-      contentType: req.file.mimetype || "application/octet-stream",
-    });
+    formData.append(
+      "asset",
+      new Blob([req.file.buffer], { type: req.file.mimetype || "application/octet-stream" }),
+      safeName,
+    );
 
     const data = await callOneMin("/api/assets", {
       method: "POST",
-      headers: formData.getHeaders(),
       body: formData,
       idempotent: false,
     });
@@ -344,7 +343,7 @@ export function createApp(options = {}) {
           "object-src": ["'none'"],
           "media-src": ["'self'"],
           "frame-src": ["'none'"],
-          "worker-src": ["'self'", "blob:"],
+          "worker-src": ["'self'", "blob:", "https://cdn.jsdelivr.net"],
         },
       },
       crossOriginEmbedderPolicy: false,
