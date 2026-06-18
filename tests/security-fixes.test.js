@@ -356,4 +356,80 @@ describe("Security fixes regression", () => {
       expect(res.body.error).toContain("Access denied: Path is outside the allowed directories");
     });
   });
+
+  describe("Host header validation (DNS Rebinding protection)", () => {
+    test("accepts request with localhost host header", async () => {
+      const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
+      const res = await request(app).get("/api/health").set("host", "localhost:3000");
+      expect(res.status).toBe(200);
+    });
+
+    test("accepts request with 127.0.0.1 host header", async () => {
+      const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
+      const res = await request(app).get("/api/health").set("host", "127.0.0.1");
+      expect(res.status).toBe(200);
+    });
+
+    test("rejects request with external host header", async () => {
+      const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
+      const res = await request(app).get("/api/health").set("host", "evil.example.com");
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain("Access denied: Invalid Host header");
+    });
+  });
+
+  describe("Agent files symlink revalidation", () => {
+    let tmpDir;
+    let outsideDir;
+    let app;
+    let sessionId;
+
+    beforeAll(async () => {
+      tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-symlink-"));
+      outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-outside-"));
+      app = createApp({ requireLocalAuth: false, enableRateLimit: false });
+      
+      process.env.ALLOWED_ROOTS = tmpDir;
+      const res = await request(app)
+        .post("/api/agent/sessions")
+        .send({ cwd: tmpDir });
+      sessionId = res.body.session.id;
+    });
+
+    afterAll(async () => {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+      await fs.rm(outsideDir, { recursive: true, force: true });
+    });
+
+    test("successfully reads file inside agent workspace", async () => {
+      const file = path.join(tmpDir, "ok.txt");
+      await fs.writeFile(file, "agent content");
+
+      const res = await request(app)
+        .get(`/api/agent/sessions/${sessionId}/files`)
+        .query({ path: "ok.txt" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.content).toBe("agent content");
+    });
+
+    test("rejects agent reading symlink pointing outside allowed roots", async () => {
+      const outsideFile = path.join(outsideDir, "secret.txt");
+      await fs.writeFile(outsideFile, "secret content");
+
+      const linkFile = path.join(tmpDir, "link.txt");
+      try {
+        await fs.symlink(outsideFile, linkFile);
+      } catch (e) {
+        return;
+      }
+
+      const res = await request(app)
+        .get(`/api/agent/sessions/${sessionId}/files`)
+        .query({ path: "link.txt" });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain("Access denied: Path is outside the allowed directories");
+    });
+  });
 });

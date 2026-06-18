@@ -294,11 +294,23 @@ router.post("/write", async (req, res, next) => {
     const resolvedPath = validatePath(String(filePath));
     assertNotWriteProtectedPath(resolvedPath);
 
-    const dir = path.dirname(resolvedPath);
+    // TOCTOU mitigation: if file already exists, re-verify real path before overwrite
+    let realPath = resolvedPath;
+    try {
+      const stat = await fs.stat(resolvedPath);
+      if (stat.isFile()) {
+        realPath = revalidateRealPath(resolvedPath);
+        assertNotWriteProtectedPath(realPath);
+      }
+    } catch (err) {
+      if (err.code !== "ENOENT") throw err;
+    }
+
+    const dir = path.dirname(realPath);
     await fs.mkdir(dir, { recursive: true });
 
-    await fs.writeFile(resolvedPath, content, "utf-8");
-    res.json({ ok: true, path: resolvedPath });
+    await fs.writeFile(realPath, content, "utf-8");
+    res.json({ ok: true, path: realPath });
   } catch (err) {
     next(err);
   }
@@ -315,15 +327,27 @@ router.post("/create", async (req, res, next) => {
     const resolvedPath = validatePath(String(targetPath));
     assertNotWriteProtectedPath(resolvedPath);
 
-    if (type === "directory") {
-      await fs.mkdir(resolvedPath, { recursive: true });
-    } else {
-      const dir = path.dirname(resolvedPath);
-      await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(resolvedPath, content, "utf-8");
+    // TOCTOU mitigation: if target already exists, re-verify real path before write
+    let realPath = resolvedPath;
+    try {
+      const stat = await fs.stat(resolvedPath);
+      if (stat.isFile() || stat.isDirectory()) {
+        realPath = revalidateRealPath(resolvedPath);
+        assertNotWriteProtectedPath(realPath);
+      }
+    } catch (err) {
+      if (err.code !== "ENOENT") throw err;
     }
 
-    res.json({ ok: true, path: resolvedPath, type });
+    if (type === "directory") {
+      await fs.mkdir(realPath, { recursive: true });
+    } else {
+      const dir = path.dirname(realPath);
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(realPath, content, "utf-8");
+    }
+
+    res.json({ ok: true, path: realPath, type });
   } catch (err) {
     next(err);
   }
@@ -340,14 +364,18 @@ router.post("/delete", async (req, res, next) => {
     const resolvedPath = validatePath(String(targetPath));
     assertNotWriteProtectedPath(resolvedPath);
 
-    const stat = await fs.stat(resolvedPath);
+    // Target must exist to be deleted, resolve symlinks
+    const realPath = revalidateRealPath(resolvedPath);
+    assertNotWriteProtectedPath(realPath);
+
+    const stat = await fs.stat(realPath);
     if (stat.isDirectory()) {
-      await fs.rm(resolvedPath, { recursive: true, force: true });
+      await fs.rm(realPath, { recursive: true, force: true });
     } else {
-      await fs.unlink(resolvedPath);
+      await fs.unlink(realPath);
     }
 
-    res.json({ ok: true, path: resolvedPath });
+    res.json({ ok: true, path: realPath });
   } catch (err) {
     next(err);
   }
@@ -368,8 +396,24 @@ router.post("/rename", async (req, res, next) => {
     assertNotWriteProtectedPath(resolvedOld);
     assertNotWriteProtectedPath(resolvedNew);
 
-    await fs.rename(resolvedOld, resolvedNew);
-    res.json({ ok: true, oldPath: resolvedOld, newPath: resolvedNew });
+    // Old path must exist, resolve symlinks
+    const realOld = revalidateRealPath(resolvedOld);
+    assertNotWriteProtectedPath(realOld);
+
+    // New path may or may not exist
+    let realNew = resolvedNew;
+    try {
+      const stat = await fs.stat(resolvedNew);
+      if (stat.isFile() || stat.isDirectory()) {
+        realNew = revalidateRealPath(resolvedNew);
+        assertNotWriteProtectedPath(realNew);
+      }
+    } catch (err) {
+      if (err.code !== "ENOENT") throw err;
+    }
+
+    await fs.rename(realOld, realNew);
+    res.json({ ok: true, oldPath: realOld, newPath: realNew });
   } catch (err) {
     next(err);
   }

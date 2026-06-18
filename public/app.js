@@ -28,7 +28,7 @@ import { initTheme, toggleTheme as toggleThemeFn, updateThemeUI, isDarkTheme } f
 import { bootstrapSettings } from "./js/settings.js";
 import { createChatManager, createChatState } from "./js/chat.js";
 import { createImageManager, createImageState } from "./js/image.js";
-import { createeditorManager, createEditorState } from "./js/editor.js";
+import { createEditorManager, createEditorState } from "./js/editor.js";
 
 // Helper to get element by ID
 const $ = (id) => document.getElementById(id);
@@ -164,7 +164,7 @@ const editorState = createEditorState();
 
 const chatManager = createChatManager(dom, { chat: chatState });
 const imageManager = createImageManager(dom);
-const editorManager = createeditorManager(editorState);
+const editorManager = createEditorManager(editorState);
 
 // Merge state for compatibility
 state.chat = chatState;

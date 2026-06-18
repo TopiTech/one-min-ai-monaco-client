@@ -434,8 +434,10 @@ router.get("/sessions/:id/files", async (req, res, next) => {
 
     const resolvedPath = validatePath(resolveAgentPath(filePath, session.cwd));
     assertNotProtectedPath(resolvedPath);
+    const realPath = revalidateRealPath(resolvedPath);
+    assertNotProtectedPath(realPath);
 
-    const stat = await fs.stat(resolvedPath);
+    const stat = await fs.stat(realPath);
     if (stat.isDirectory()) {
       return res.status(400).json({ error: "Specified path is a directory" });
     }
@@ -445,10 +447,10 @@ router.get("/sessions/:id/files", async (req, res, next) => {
       });
     }
 
-    const content = await fs.readFile(resolvedPath, "utf-8");
+    const content = await fs.readFile(realPath, "utf-8");
 
     res.json({
-      path: resolvedPath,
+      path: realPath,
       content,
     });
   } catch (err) {
@@ -474,19 +476,32 @@ router.post("/sessions/:id/files", async (req, res, next) => {
 
     const resolvedPath = validatePath(resolveAgentPath(filePath, session.cwd));
     assertNotWriteProtectedPath(resolvedPath);
-    const dir = path.dirname(resolvedPath);
+
+    // TOCTOU mitigation: if file already exists, re-verify real path before overwrite
+    let realPath = resolvedPath;
+    try {
+      const stat = await fs.stat(resolvedPath);
+      if (stat.isFile()) {
+        realPath = revalidateRealPath(resolvedPath);
+        assertNotWriteProtectedPath(realPath);
+      }
+    } catch (err) {
+      if (err.code !== "ENOENT") throw err;
+    }
+
+    const dir = path.dirname(realPath);
     await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(resolvedPath, content || "", "utf-8");
+    await fs.writeFile(realPath, content || "", "utf-8");
 
     addHistoryEntry(session, {
       type: "write",
-      path: resolvedPath,
+      path: realPath,
       timestamp: new Date().toISOString(),
     });
 
     res.json({
       ok: true,
-      path: resolvedPath,
+      path: realPath,
     });
   } catch (err) {
     next(err);
@@ -644,8 +659,10 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
     const agentPath = resolveAgentPath(filePath, session.cwd);
     const resolvedPath = validatePath(agentPath);
     assertNotWriteProtectedPath(resolvedPath);
+    const realPath = revalidateRealPath(resolvedPath);
+    assertNotWriteProtectedPath(realPath);
 
-    const content = await fs.readFile(resolvedPath, "utf-8");
+    const content = await fs.readFile(realPath, "utf-8");
 
     // M-13: Construct the regex inside the handler so its `lastIndex` is
     // reset on every call. Reusing a module-level /g regex would otherwise
@@ -806,18 +823,18 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
     const newContent = fileLines.join(eol);
 
     if (!dryRun) {
-      await fs.writeFile(resolvedPath, newContent, "utf-8");
+      await fs.writeFile(realPath, newContent, "utf-8");
 
       addHistoryEntry(session, {
         type: "diff",
-        path: resolvedPath,
+        path: realPath,
         timestamp: new Date().toISOString(),
       });
     }
 
     res.json({
       ok: true,
-      path: resolvedPath,
+      path: realPath,
       // M-5: Only return newContent on dryRun to avoid sending large file contents
       // unnecessarily when the write has already been committed to disk.
       ...(dryRun ? { newContent } : {}),

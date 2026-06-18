@@ -310,6 +310,22 @@ export function createApp(options = {}) {
 
   const app = express();
 
+  // Host header validation to prevent DNS Rebinding
+  app.use((req, res, next) => {
+    const host = req.get("host");
+    if (!host) {
+      return res.status(400).json({ error: "Host header is required" });
+    }
+    const isAllowedHost =
+      /^127\.0\.0\.1(?::\d+)?$/i.test(host) ||
+      /^localhost(?::\d+)?$/i.test(host);
+    if (!isAllowedHost) {
+      logger.warn("Blocked request with suspicious Host header", { host });
+      return res.status(403).json({ error: "Access denied: Invalid Host header" });
+    }
+    next();
+  });
+
   // Per-request nonce for CSP
   app.use((_req, res, next) => {
     res.locals.nonce = crypto.randomBytes(16).toString("base64");
