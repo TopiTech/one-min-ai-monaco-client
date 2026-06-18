@@ -81,10 +81,11 @@ describe('Review Fixes', () => {
   });
 
   describe('Static files with X-Content-Type-Options', () => {
-    test('should serve static files without error', async () => {
+    test('should serve static JS files with X-Content-Type-Options nosniff', async () => {
       const response = await request(app).get('/js/api.js');
-      // Either 200 (file exists) or 404 (file not found) is acceptable
-      expect([200, 404]).toContain(response.status);
+      if (response.status === 200) {
+        expect(response.headers['x-content-type-options']).toBe('nosniff');
+      }
     });
   });
 

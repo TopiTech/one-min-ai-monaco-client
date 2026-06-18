@@ -267,20 +267,28 @@ function sanitizePayload(payload) {
   if (!payload) return null;
   if (typeof payload !== "object") return payload;
   try {
-    const sanitized = JSON.parse(JSON.stringify(payload));
     const sensitiveKeys = ["api_key", "apikey", "key", "token", "auth", "authorization", "secret"];
+    const seen = new WeakSet();
     const walk = (obj) => {
-      if (!obj || typeof obj !== "object") return;
+      if (!obj || typeof obj !== "object") return obj;
+      if (seen.has(obj)) return "[Circular]";
+      seen.add(obj);
+      if (Array.isArray(obj)) {
+        return obj.map((item) => walk(item));
+      }
+      const result = {};
       for (const key in obj) {
-        if (typeof obj[key] === "object" && obj[key] !== null) {
-          walk(obj[key]);
-        } else if (sensitiveKeys.some((sk) => key.toLowerCase().includes(sk))) {
-          obj[key] = "[MASKED]";
+        if (sensitiveKeys.some((sk) => key.toLowerCase().includes(sk))) {
+          result[key] = "[MASKED]";
+        } else if (typeof obj[key] === "object" && obj[key] !== null) {
+          result[key] = walk(obj[key]);
+        } else {
+          result[key] = obj[key];
         }
       }
+      return result;
     };
-    walk(sanitized);
-    return sanitized;
+    return walk(payload);
   } catch (e) {
     return "[Unable to sanitize details]";
   }
@@ -313,7 +321,6 @@ export function createApp(options = {}) {
             "'self'",
             "https://cdn.jsdelivr.net",
             (_req, res) => `'nonce-${res.locals.nonce}'`,
-            "'unsafe-inline'",
             "blob:",
           ],
           // style-src intentionally omits the per-request nonce. CSP
@@ -369,8 +376,7 @@ export function createApp(options = {}) {
       // Expose nonce to client-side JS via meta tag (for dynamic <style> elements)
       html = html.replace(
         /<head(\s*[^>]*)>/i,
-        (match, attrs) =>
-          `<head${attrs}><meta name="csp-nonce" content="${nonce}">`,
+        (match, attrs) => `<head${attrs}><meta name="csp-nonce" content="${nonce}">`,
       );
 
       // Set the token as HttpOnly cookie (CSRF mitigation) AND inject a
@@ -475,16 +481,41 @@ export function createApp(options = {}) {
   return app;
 }
 
+function validateEnvironment() {
+  const required = ["ONE_MIN_AI_API_KEY"];
+  const missing = required.filter(
+    (key) => !process.env[key] || process.env[key].includes("your_1min_ai_api_key_here"),
+  );
+  if (missing.length > 0) {
+    logger.error("Missing required environment variables", { missing });
+    process.exit(1);
+  }
+
+  // Warning for important but optional configs
+  if (!process.env.ALLOWED_ROOTS) {
+    logger.warn("ALLOWED_ROOTS is not set. Defaulting to project root only.");
+  }
+  if (!process.env.LOCAL_BFF_AUTH_TOKEN) {
+    logger.info("LOCAL_BFF_AUTH_TOKEN not set. A random token will be generated.");
+  }
+}
+
 if (process.env.NODE_ENV !== "test") {
-  initModels().then(() => {
-    createApp().listen(serverConfig.port, "127.0.0.1", () => {
-      logger.info(`1min.ai Monaco client running: http://127.0.0.1:${serverConfig.port}`);
-      logger.info("Server configuration", {
-        port: serverConfig.port,
-        maxFileSize: serverConfig.maxFileSize,
-        apiTimeout: serverConfig.apiTimeout,
-        apiRetryAttempts: serverConfig.apiRetryAttempts,
+  validateEnvironment();
+  initModels()
+    .then(() => {
+      createApp().listen(serverConfig.port, "127.0.0.1", () => {
+        logger.info(`1min.ai Monaco client running: http://127.0.0.1:${serverConfig.port}`);
+        logger.info("Server configuration", {
+          port: serverConfig.port,
+          maxFileSize: serverConfig.maxFileSize,
+          apiTimeout: serverConfig.apiTimeout,
+          apiRetryAttempts: serverConfig.apiRetryAttempts,
+        });
       });
+    })
+    .catch((err) => {
+      logger.error("Failed to initialize models or start server", { error: err.message });
+      process.exit(1);
     });
-  });
 }

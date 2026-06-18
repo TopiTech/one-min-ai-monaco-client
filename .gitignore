@@ -5,9 +5,12 @@ node_modules
 .DS_Store
 npm-debug.log*
 logs/
-.mimocode/data/agent_sessions.json
+.mimocode/
 temp_diff.txt
 test-output.log
 test-output.txt
+all_defs.txt
+calls.txt
+defs.txt
 coverage/
 *.log

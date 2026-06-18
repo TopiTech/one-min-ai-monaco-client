@@ -53,13 +53,19 @@ http://localhost:3000
 | --- | --- | --- | --- |
 | `ONE_MIN_AI_API_KEY` | はい | なし | 1min.ai APIキー。`.env` にのみ保存してください。 |
 | `PORT` | いいえ | `3000` | ローカルExpressサーバーの待ち受けポート。 |
+| `NODE_ENV` | いいえ | `development` | `production` にするとスタックトレースを隠し、セキュアCookieを有効化。 |
 | `DEFAULT_CHAT_MODEL` | いいえ | `gpt-4o-mini` | チャットとコード生成のデフォルトモデル。 |
-| `DEFAULT_IMAGE_MODEL` | いいえ | `black-forest-labs/flux-schnell` | 画像生成のデフォルトモデル。 |
+| `DEFAULT_CODE_MODEL` | いいえ | `qwen3-coder-plus` | コード生成のデフォルトモデル。 |
+| `DEFAULT_IMAGE_MODEL` | いいえ | `gpt-image-2` | 画像生成のデフォルトモデル。 |
 | `DEFAULT_IMAGE_EDITOR_MODEL` | いいえ | `gpt-image-2` | 画像テキストエディタのデフォルトモデル。 |
+| `ONE_MIN_AI_API_BASE_URL` | いいえ | `https://api.1min.ai` | 1min.ai APIのベースURL。モックサーバーやステージング向け。 |
 | `ALLOWED_ROOTS` | いいえ | 現在のプロジェクトルート | 参照・編集可能なルート一覧。カンマ区切り。 |
 | `ENABLE_COMMAND_EXECUTION` | いいえ | `false` | エージェントのコマンド実行を有効化します。 |
 | `COMMAND_TIMEOUT_MS` | いいえ | `30000` | コマンド実行のタイムアウト時間。 |
 | `AGENT_AUTO_APPROVE` | いいえ | `false` | 承認なし実行の可否。原則 false。 |
+| `LOCAL_BFF_AUTH_TOKEN` | いいえ | 自動生成 | ローカルBFF認証トークン。未設定なら毎回自動生成。 |
+| `LOG_LEVEL` | いいえ | `info` | ログレベル（`error`, `warn`, `info`, `debug`）。 |
+| `LOG_TO_FILE` | いいえ | `false` | `true` でログファイル出力を有効化。 |
 
 ## 構成
 
@@ -75,7 +81,7 @@ public/app.js              # フロントエンドロジック
 public/js/api.js           # フロントエンド共通API関数
 public/js/models.js        # モデルピッカーロジック
 public/styles.css          # スタイル
-docs/implementation-plan.md # 画像チャット・フォルダ選択・AIコーディングエージェント強化の計画
+docs/api-specifications.md  # 1min.ai API仕様
 package.json
 ```
 
@@ -132,7 +138,7 @@ package.json
 このアプリは以下の1min.ai APIを利用します。
 
 - Base URL: `https://api.1min.ai`
-- 認証: 現在のクライアント実装では `API-KEY` ヘッダーを使用します。
+- 認証: `API-KEY` ヘッダーを使用します（公式ドキュメント準拠）。クライアントは互換性のために `Authorization: Bearer` ヘッダーも同時に送信します。
 - Chat with AI API: `POST /api/chat-with-ai`
 - AI Feature API: `POST /api/features`
 - Asset API: `POST /api/assets`

@@ -4,7 +4,13 @@
  */
 
 import { injectStyle } from "./js/dom-style.js";
-import { loadModels, initModelPickers } from "./js/models.js";
+import {
+  loadModels,
+  initModelPickers,
+  getAllChatModels,
+  getAllCodeModels,
+  getAllImageModels,
+} from "./js/models.js";
 import { api, assetUrl, extractImages } from "./js/api.js";
 import {
   SVG_NS,
@@ -152,8 +158,8 @@ function toggleTheme() {
   document.documentElement.setAttribute("data-theme", next);
   localStorage.setItem(STORAGE_KEY_THEME, next);
   updateThemeUI();
-  if (window.editor) {
-    window.editor.updateOptions({ theme: next === "light" ? "vs" : "vs-dark" });
+  if (EditorManager.instance) {
+    EditorManager.instance.updateOptions({ theme: next === "light" ? "vs" : "vs-dark" });
   }
 }
 
@@ -289,7 +295,7 @@ for (const btn of document.querySelectorAll(".nav")) {
     btn.classList.add("active");
     $(btn.dataset.view).classList.add("active");
     $("viewTitle").textContent = btn.textContent.trim();
-    if (btn.dataset.view === "coding") setTimeout(() => window.editor?.layout(), 100);
+    if (btn.dataset.view === "coding") setTimeout(() => EditorManager.instance?.layout(), 100);
   });
 }
 
@@ -301,9 +307,6 @@ $("healthBtn").onclick = async () => {
     toast.error(`ヘルスチェック失敗: ${e.message}`);
   }
 };
-
-const MAX_CHAT_MESSAGES = 200;
-const MAX_IMAGE_CARDS = 50;
 
 // chat
 function pruneChatLog() {
@@ -550,8 +553,6 @@ async function uploadAttachments() {
     .filter((att) => att.assetKey)
     .map((att) => ({ type: att.type || "image", assetKey: att.assetKey, url: att.assetUrl }));
 }
-
-let currentChatAbortController = null;
 
 $("abortChat").onclick = () => {
   if (state.chat.abortController) {
@@ -903,14 +904,14 @@ function renderImages(data, sourceImageUrl = null) {
 
       injectStyle(
         `.${cmpId} .image-before { clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%); } ` +
-        `.${cmpId} .slider-divider { left: 50%; }`,
+          `.${cmpId} .slider-divider { left: 50%; }`,
       );
 
       range.addEventListener("input", (e) => {
         const val = e.target.value;
         injectStyle(
           `.${cmpId} .image-before { clip-path: polygon(0 0, ${val}% 0, ${val}% 100%, 0 100%); } ` +
-          `.${cmpId} .slider-divider { left: ${val}%; }`,
+            `.${cmpId} .slider-divider { left: ${val}%; }`,
         );
       });
       card.appendChild(slider);
@@ -1069,10 +1070,7 @@ function updateEditorImagePreview(imageUrl) {
   const value = (imageUrl || input?.value || "").trim();
 
   const currentModelId = dom.imageModel.value;
-  const modelObj =
-    typeof _allImageModels !== "undefined"
-      ? _allImageModels.find((m) => m.id === currentModelId)
-      : null;
+  const modelObj = getAllImageModels().find((m) => m.id === currentModelId) || null;
 
   if (!value) {
     if (preview) preview.classList.remove("is-shown");
@@ -1088,10 +1086,9 @@ function updateEditorImagePreview(imageUrl) {
       modelObj.tags.includes("editor") &&
       !modelObj.tags.includes("image")
     ) {
-      const defaultGen = (typeof _allImageModels !== "undefined" &&
-        _allImageModels.find(
-          (m) => !m.tags || !m.tags.includes("editor") || m.id.startsWith("gpt-image"),
-        )) || { id: "gpt-image-2", label: "GPT Image 2" };
+      const defaultGen = getAllImageModels().find(
+        (m) => !m.tags || !m.tags.includes("editor") || m.id.startsWith("gpt-image"),
+      ) || { id: "gpt-image-2", label: "GPT Image 2" };
       dom.imageModel.value = defaultGen.id;
       dom.imageModelLabel.textContent = defaultGen.label;
     }
@@ -1110,8 +1107,7 @@ function updateEditorImagePreview(imageUrl) {
   // Switch model if current model doesn't support editing
   const isEditorModel = modelObj && modelObj.tags && modelObj.tags.includes("editor");
   if (!isEditorModel) {
-    const defaultEditor = (typeof _allImageModels !== "undefined" &&
-      _allImageModels.find((m) => m.tags && m.tags.includes("editor"))) || {
+    const defaultEditor = getAllImageModels().find((m) => m.tags && m.tags.includes("editor")) || {
       id: "gpt-image-2",
       label: "GPT Image 2",
     };
@@ -1163,23 +1159,18 @@ function renderTabs() {
 }
 
 async function switchToTab(filePath) {
-  const fileUri = monaco.Uri.file(filePath);
-  let model = monaco.editor.getModel(fileUri);
+  const model = EditorManager.getOrCreateModel(filePath);
 
   if (model) {
-    if (window.editor) {
-      window.editor.setModel(model);
+    if (EditorManager.instance) {
+      EditorManager.instance.setModel(model);
       state.editor.activeFilePath = filePath;
       dom.currentFileName.textContent = filePath.replace(/\\/g, "/").split("/").pop();
       dom.currentFileName.title = filePath;
       dom.saveFileBtn.disabled = false;
 
       document.querySelectorAll(".tree-node.file").forEach((x) => {
-        if (x.dataset.path === filePath) {
-          x.classList.add("active");
-        } else {
-          x.classList.remove("active");
-        }
+        x.classList.toggle("active", x.dataset.path === filePath);
       });
       renderTabs();
     }
@@ -1214,8 +1205,8 @@ async function closeTab(filePath) {
       await switchToTab(nextActivePath);
     } else {
       state.editor.activeFilePath = null;
-      if (window.editor) {
-        window.editor.setModel(monaco.editor.createModel("", "plaintext"));
+      if (EditorManager.instance) {
+        EditorManager.instance.setModel(monaco.editor.createModel("", "plaintext"));
       }
       dom.currentFileName.textContent = "ファイルが選択されていません";
       dom.currentFileName.title = "";
@@ -1226,95 +1217,139 @@ async function closeTab(filePath) {
   renderTabs();
 }
 
+// ============================================================
+// Monaco Editor Management
+// ============================================================
+const EditorManager = {
+  instance: null,
+  activeModel: null,
+
+  init() {
+    const savedTheme = localStorage.getItem(STORAGE_KEY_THEME);
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const isDark = savedTheme === "dark" || (!savedTheme && prefersDark);
+
+    this.instance = monaco.editor.create($("editor"), {
+      value: `/* ⬅ 左のツリーからファイルを選択するか、パスを入力して読み込んでください */\n`,
+      language: "plaintext",
+      theme: isDark ? "vs-dark" : "vs",
+      automaticLayout: true,
+      minimap: { enabled: true },
+      fontSize: 14,
+      wordWrap: "on",
+      inlineSuggest: { enabled: true },
+    });
+
+    window.editor = this.instance; // Maintain global for compatibility
+
+    const container = $("editor");
+    if (container) {
+      const observer = new ResizeObserver(() => {
+        if (this.instance) this.instance.layout();
+      });
+      observer.observe(container);
+    }
+
+    this.instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      saveFile();
+    });
+
+    this.instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI, () => {
+      toggleInlineChat();
+    });
+
+    this.registerProviders();
+  },
+
+  registerProviders() {
+    const languages = [
+      "javascript",
+      "typescript",
+      "python",
+      "html",
+      "css",
+      "json",
+      "markdown",
+      "plaintext",
+    ];
+    for (const lang of languages) {
+      monaco.languages.registerInlineCompletionsProvider(lang, {
+        provideInlineCompletions: async (model, position, context, token) => {
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          if (token.isCancellationRequested) return;
+
+          try {
+            const data = await api("/api/code/autocomplete", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                code: model.getValue(),
+                line: position.lineNumber,
+                column: position.column,
+                fileName: state.editor.activeFilePath
+                  ? state.editor.activeFilePath.split(/[\\/]/).pop()
+                  : "untitled",
+                language: model.getLanguageId(),
+                model: dom.codeModel.value,
+                webSearch: dom.codeWebSearch?.checked || false,
+                numOfSite: dom.codeNumOfSite?.value ? parseInt(dom.codeNumOfSite.value) : undefined,
+                maxWord: dom.codeMaxWord?.value ? parseInt(dom.codeMaxWord.value) : undefined,
+              }),
+              signal: token.signal,
+            });
+            if (!data.suggestion || token.isCancellationRequested) return;
+
+            return {
+              items: [
+                {
+                  insertText: data.suggestion,
+                  range: new monaco.Range(
+                    position.lineNumber,
+                    position.column,
+                    position.lineNumber,
+                    position.column,
+                  ),
+                },
+              ],
+            };
+          } catch (e) {
+            if (e.name !== "AbortError") console.error("Autocomplete error:", e);
+          }
+        },
+        freeInlineCompletions: () => {},
+      });
+    }
+  },
+
+  getOrCreateModel(filePath, content, language) {
+    const fileUri = monaco.Uri.file(filePath);
+    let model = monaco.editor.getModel(fileUri);
+    if (model) {
+      if (content !== undefined) model.setValue(content);
+    } else {
+      model = monaco.editor.createModel(content || "", language, fileUri);
+    }
+    return model;
+  },
+
+  disposeUnusedModels() {
+    const allModels = monaco.editor.getModels();
+    if (allModels.length > state.editor.maxOpenModels) {
+      const active = this.instance?.getModel();
+      const openTabs = state.editor.openTabs;
+      const unused = allModels.filter(
+        (m) => m !== active && !openTabs.includes(m.uri.fsPath) && m.uri.scheme === "file",
+      );
+      for (const m of unused.slice(0, allModels.length - state.editor.maxOpenModels)) {
+        m.dispose();
+      }
+    }
+  },
+};
+
 require.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/min/vs" } });
-require(["vs/editor/editor.main"], function () {
-  const savedTheme = localStorage.getItem(STORAGE_KEY_THEME);
-  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const isDark = savedTheme === "dark" || (!savedTheme && prefersDark);
-
-  window.editor = monaco.editor.create($("editor"), {
-    value: `/* ⬅ 左のツリーからファイルを選択するか、パスを入力して読み込んでください */\n`,
-    language: "plaintext",
-    theme: isDark ? "vs-dark" : "vs",
-    automaticLayout: true,
-    minimap: { enabled: true },
-    fontSize: 14,
-    wordWrap: "on",
-    inlineSuggest: { enabled: true },
-  });
-
-  const container = $("editor");
-  if (container) {
-    const observer = new ResizeObserver(() => {
-      if (window.editor) window.editor.layout();
-    });
-    observer.observe(container);
-  }
-
-  window.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-    saveFile();
-  });
-
-  window.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI, () => {
-    toggleInlineChat();
-  });
-
-  const languages = [
-    "javascript",
-    "typescript",
-    "python",
-    "html",
-    "css",
-    "json",
-    "markdown",
-    "plaintext",
-  ];
-  for (const lang of languages) {
-    monaco.languages.registerInlineCompletionsProvider(lang, {
-      provideInlineCompletions: async function (model, position, context, token) {
-        await new Promise((resolve) => setTimeout(resolve, 400));
-        if (token.isCancellationRequested) return;
-
-        const code = model.getValue();
-        const line = position.lineNumber;
-        const column = position.column;
-
-        try {
-          const data = await api("/api/code/autocomplete", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              code,
-              line,
-              column,
-              fileName: state.editor.activeFilePath
-                ? state.editor.activeFilePath.split(/[\\/]/).pop()
-                : "untitled",
-              language: model.getLanguageId(),
-              model: dom.codeModel.value,
-              webSearch: dom.codeWebSearch?.checked || false,
-              numOfSite: dom.codeNumOfSite?.value ? parseInt(dom.codeNumOfSite.value) : undefined,
-              maxWord: dom.codeMaxWord?.value ? parseInt(dom.codeMaxWord.value) : undefined,
-            }),
-            signal: token.signal,
-          });
-          if (!data.suggestion || token.isCancellationRequested) return;
-
-          return {
-            items: [
-              {
-                insertText: data.suggestion,
-                range: new monaco.Range(line, column, line, column),
-              },
-            ],
-          };
-        } catch (e) {
-          if (e.name !== "AbortError") console.error("Autocomplete error:", e);
-        }
-      },
-      freeInlineCompletions: function () {},
-    });
-  }
+require(["vs/editor/editor.main"], () => {
+  EditorManager.init();
 });
 
 const inlineChatWidget = {
@@ -1371,7 +1406,7 @@ const inlineChatWidget = {
   },
   getPosition: function () {
     return {
-      position: window.editor.getPosition(),
+      position: EditorManager.instance.getPosition(),
       preference: [
         monaco.editor.ContentWidgetPositionPreference.BELOW,
         monaco.editor.ContentWidgetPositionPreference.ABOVE,
@@ -1381,7 +1416,7 @@ const inlineChatWidget = {
 };
 
 async function submitInlineChat() {
-  if (!state.editor.activeFilePath || !window.editor) return;
+  if (!state.editor.activeFilePath || !EditorManager.instance) return;
   const domNode = state.editor.inlineChatDom;
   const input = domNode.querySelector("#inlineChatPrompt");
   const status = domNode.querySelector("#inlineChatStatus");
@@ -1392,10 +1427,10 @@ async function submitInlineChat() {
   status.className = "inline-chat-status is-shown loading";
   input.disabled = true;
 
-  const code = window.editor.getValue();
-  const position = window.editor.getPosition();
+  const code = EditorManager.instance.getValue();
+  const position = EditorManager.instance.getPosition();
   const fileName = state.editor.activeFilePath.split(/[\\/]/).pop();
-  const language = window.editor.getModel()?.getLanguageId() || "plaintext";
+  const language = EditorManager.instance.getModel()?.getLanguageId() || "plaintext";
 
   try {
     const data = await api("/api/code/inline-chat", {
@@ -1431,7 +1466,7 @@ async function submitInlineChat() {
         );
         const id = { major: 1, minor: 1 };
         const op = { identifier: id, range: range, text: data.code, forceMoveMarkers: true };
-        window.editor.executeEdits("copilot-inline-chat", [op]);
+        EditorManager.instance.executeEdits("copilot-inline-chat", [op]);
         toast.success("コードを適用しました");
       } else {
         toast.info("生成されたコードを破棄しました");
@@ -1456,7 +1491,7 @@ function toggleInlineChat() {
   if (state.editor.isInlineChatOpen) {
     closeInlineChat();
   } else {
-    window.editor.addContentWidget(inlineChatWidget);
+    EditorManager.instance.addContentWidget(inlineChatWidget);
     state.editor.isInlineChatOpen = true;
     setTimeout(() => {
       const input = state.editor.inlineChatDom?.querySelector("#inlineChatPrompt");
@@ -1467,9 +1502,9 @@ function toggleInlineChat() {
 
 function closeInlineChat() {
   if (state.editor.isInlineChatOpen) {
-    window.editor.removeContentWidget(inlineChatWidget);
+    EditorManager.instance.removeContentWidget(inlineChatWidget);
     state.editor.isInlineChatOpen = false;
-    window.editor.focus();
+    EditorManager.instance.focus();
   }
 }
 
@@ -1566,30 +1601,15 @@ async function renderTreeNodes(items, container, depth = 0) {
 async function openFile(filePath) {
   try {
     const data = await api(`/api/fs/read?path=${encodeURIComponent(filePath)}`);
-    if (window.editor) {
-      const fileUri = monaco.Uri.file(filePath);
-      let model = monaco.editor.getModel(fileUri);
-      if (model) {
-        model.setValue(data.content);
-      } else {
-        model = monaco.editor.createModel(data.content, undefined, fileUri);
-      }
-      window.editor.setModel(model);
+    if (EditorManager.instance) {
+      const model = EditorManager.getOrCreateModel(filePath, data.content);
+      EditorManager.instance.setModel(model);
 
       if (!state.editor.openTabs.includes(filePath)) {
         state.editor.openTabs.push(filePath);
       }
 
-      // Dispose unused models (keep max 20 open, excluding active or open tab models)
-      const allModels = monaco.editor.getModels();
-      if (allModels.length > state.editor.maxOpenModels) {
-        const unused = allModels.filter(
-          (m) => m !== window.editor.getModel() && !state.editor.openTabs.includes(m.uri.fsPath),
-        );
-        for (const m of unused.slice(0, allModels.length - state.editor.maxOpenModels)) {
-          m.dispose();
-        }
-      }
+      EditorManager.disposeUnusedModels();
 
       state.editor.activeFilePath = filePath;
       dom.currentFileName.textContent = filePath.replace(/\\/g, "/").split("/").pop();
@@ -1597,11 +1617,7 @@ async function openFile(filePath) {
       dom.saveFileBtn.disabled = false;
 
       document.querySelectorAll(".tree-node.file").forEach((x) => {
-        if (x.dataset.path === filePath) {
-          x.classList.add("active");
-        } else {
-          x.classList.remove("active");
-        }
+        x.classList.toggle("active", x.dataset.path === filePath);
       });
       renderTabs();
     }
@@ -1613,8 +1629,8 @@ async function openFile(filePath) {
 let _saveStatusTimer = null;
 
 async function saveFile() {
-  if (!state.editor.activeFilePath || !window.editor) return;
-  const content = window.editor.getValue();
+  if (!state.editor.activeFilePath || !EditorManager.instance) return;
+  const content = EditorManager.instance.getValue();
   try {
     setStatus("保存中...", "warn");
     await api("/api/fs/write", {
@@ -1663,7 +1679,7 @@ function setStatus(text, cls) {
   const el = $("status");
   if (!el) return;
   el.textContent = text;
-  el.className = cls ? `status-text ${cls}` : "status-text";
+  el.className = cls ? `status ${cls}` : "status";
 }
 
 // Pure helper functions (escapeHtml, renderMarkdownSafely, formatMarkdownLike,
@@ -1727,9 +1743,7 @@ function addAgentTimelineStep(type, title, body, resultText = null) {
     toggleDiv.onclick = () => {
       const willBeHidden = !thoughtBox.classList.contains("u-hidden");
       thoughtBox.classList.toggle("u-hidden", willBeHidden);
-      toggleSpan.textContent = willBeHidden
-        ? "▶ 思考プロセスを展開"
-        : "▼ 思考プロセスを折りたたむ";
+      toggleSpan.textContent = willBeHidden ? "▶ 思考プロセスを展開" : "▼ 思考プロセスを折りたたむ";
     };
 
     card.appendChild(toggleDiv);
@@ -2955,44 +2969,47 @@ function applyCreditSavingMode() {
       }
     }
 
-    if (typeof _allChatModels !== "undefined" && _allChatModels.length > 0) {
+    const chatModels = getAllChatModels();
+    if (chatModels.length > 0) {
       const currentChat = $("chatModel")?.value;
-      const currentModelObj = _allChatModels.find((m) => m.id === currentChat);
+      const currentModelObj = chatModels.find((m) => m.id === currentChat);
       if (
         currentChat &&
         (!currentModelObj || !currentModelObj.tags || !currentModelObj.tags.includes("fast"))
       ) {
         const fallback =
-          _allChatModels.find((m) => m.id === "gpt-4o-mini") ||
-          _allChatModels.find((m) => m.tags && m.tags.includes("fast"));
+          chatModels.find((m) => m.id === "gpt-4o-mini") ||
+          chatModels.find((m) => m.tags && m.tags.includes("fast"));
         if (fallback) selectModelForPicker("chatModel", fallback);
       }
     }
 
-    if (typeof _allCodeModels !== "undefined" && _allCodeModels.length > 0) {
+    const codeModels = getAllCodeModels();
+    if (codeModels.length > 0) {
       const currentCode = $("codeModel")?.value;
-      const currentModelObj = _allCodeModels.find((m) => m.id === currentCode);
+      const currentModelObj = codeModels.find((m) => m.id === currentCode);
       if (
         currentCode &&
         (!currentModelObj || !currentModelObj.tags || !currentModelObj.tags.includes("fast"))
       ) {
         const fallback =
-          _allCodeModels.find((m) => m.id === "qwen3-coder-flash") ||
-          _allCodeModels.find((m) => m.tags && m.tags.includes("fast"));
+          codeModels.find((m) => m.id === "qwen3-coder-flash") ||
+          codeModels.find((m) => m.tags && m.tags.includes("fast"));
         if (fallback) selectModelForPicker("codeModel", fallback);
       }
     }
 
-    if (typeof _allImageModels !== "undefined" && _allImageModels.length > 0) {
+    const imgModels = getAllImageModels();
+    if (imgModels.length > 0) {
       const currentImage = $("imageModel")?.value;
-      const currentModelObj = _allImageModels.find((m) => m.id === currentImage);
+      const currentModelObj = imgModels.find((m) => m.id === currentImage);
       if (
         currentImage &&
         (!currentModelObj || !currentModelObj.tags || !currentModelObj.tags.includes("fast"))
       ) {
         const fallback =
-          _allImageModels.find((m) => m.id === "gpt-image-1-mini") ||
-          _allImageModels.find((m) => m.tags && m.tags.includes("fast"));
+          imgModels.find((m) => m.id === "gpt-image-1-mini") ||
+          imgModels.find((m) => m.tags && m.tags.includes("fast"));
         if (fallback) selectModelForPicker("imageModel", fallback);
       }
     }

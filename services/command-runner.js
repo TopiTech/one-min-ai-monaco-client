@@ -368,13 +368,13 @@ export async function executeCommand(command, options = {}) {
 
 /**
  * Kill a running command process.
- * @param {import('child_process').ChildProcess} process The process to kill.
+ * @param {import('child_process').ChildProcess} childProcess The process to kill.
  * @param {boolean} force Whether to force kill (SIGKILL).
  */
-export function killProcess(process, force = false) {
-  if (process && !process.killed) {
+export function killProcess(childProcess, force = false) {
+  if (childProcess && !childProcess.killed) {
     try {
-      process.kill(force ? "SIGKILL" : "SIGTERM");
+      childProcess.kill(force ? "SIGKILL" : "SIGTERM");
     } catch (err) {
       if (err.code === "ESRCH") {
         return;

@@ -120,7 +120,10 @@ export function validatePath(targetPath) {
   const normalizedRealPath = process.platform === "win32" ? realPath.toLowerCase() : realPath;
   const isAllowed = realRoots.some((root) => {
     const normalizedRoot = process.platform === "win32" ? root.toLowerCase() : root;
-    return normalizedRealPath === normalizedRoot || normalizedRealPath.startsWith(normalizedRoot + path.sep);
+    return (
+      normalizedRealPath === normalizedRoot ||
+      normalizedRealPath.startsWith(normalizedRoot + path.sep)
+    );
   });
 
   if (!isAllowed) {
@@ -139,9 +142,17 @@ function normalizePathForMatching(targetPath) {
 function isProtectedByPrefixes(relativePath, prefixes) {
   const normalizedRelativePath = normalizePathForMatching(relativePath);
   return prefixes.some((prefix) => {
-    const normalizedPrefix = normalizePathForMatching(prefix).replace(/\/$/, "");
+    const normalizedPrefix = normalizePathForMatching(prefix);
+    if (normalizedPrefix.endsWith("/")) {
+      const dirPrefix = normalizedPrefix.slice(0, -1);
+      return (
+        normalizedRelativePath === dirPrefix || normalizedRelativePath.startsWith(`${dirPrefix}/`)
+      );
+    }
+    // For file-like prefixes (e.g. ".env."), match exactly or as a prefix
     return (
       normalizedRelativePath === normalizedPrefix ||
+      normalizedRelativePath.startsWith(normalizedPrefix) ||
       normalizedRelativePath.startsWith(`${normalizedPrefix}/`)
     );
   });
@@ -187,13 +198,15 @@ export function isProtectedPath(resolvedPath) {
  * @returns {boolean} True if the path is protected from destructive operations.
  */
 export function isWriteProtectedPath(resolvedPath) {
-  if (getAllowedRoots().some((root) => {
-    try {
-      return fs.realpathSync(root) === resolvedPath;
-    } catch {
-      return path.resolve(root) === resolvedPath;
-    }
-  })) {
+  if (
+    getAllowedRoots().some((root) => {
+      try {
+        return fs.realpathSync(root) === resolvedPath;
+      } catch {
+        return path.resolve(root) === resolvedPath;
+      }
+    })
+  ) {
     return true;
   }
   return getAllowedRoots().some((root) =>
@@ -270,8 +283,7 @@ export function revalidateRealPath(resolvedPath) {
   const isAllowed = realRoots.some((root) => {
     const normalizedRoot = process.platform === "win32" ? root.toLowerCase() : root;
     return (
-      normalizedReal === normalizedRoot ||
-      normalizedReal.startsWith(normalizedRoot + path.sep)
+      normalizedReal === normalizedRoot || normalizedReal.startsWith(normalizedRoot + path.sep)
     );
   });
   if (!isAllowed) {

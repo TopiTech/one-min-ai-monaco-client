@@ -39,8 +39,20 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = serverConfig.apiT
       ...fetchOpts,
       signal: controller.signal,
     });
+
+    // B-2: For non-streaming responses, we can clear the timeout after headers.
+    // However, for streaming, the caller must be able to keep the signal alive.
+    // The current callOneMin structure returns the promise after headers or full JSON.
+    // If it's a raw response (streaming), the timeoutId must be cleared by the caller
+    // or we need a way to track body completion.
+    // For now, we clear it if we are about to return, but we provide the signal to the caller.
+    if (!options.isStreaming) {
+      clearTimeout(timeoutId);
+    }
+
     return response;
   } catch (error) {
+    clearTimeout(timeoutId); // Ensure cleanup on error
     if (error.name === "AbortError") {
       if (options.signal && options.signal.aborted) {
         const err = new Error("Request aborted by client");
@@ -54,7 +66,9 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = serverConfig.apiT
     }
     throw error;
   } finally {
-    clearTimeout(timeoutId);
+    if (!options.isStreaming) {
+      clearTimeout(timeoutId);
+    }
     if (options.signal && onAbort) {
       options.signal.removeEventListener("abort", onAbort);
     }
@@ -121,6 +135,7 @@ export async function callOneMin(
       headers: baseHeaders,
       body,
       signal,
+      isStreaming: raw,
     });
 
   let lastError = new Error(`All ${effectiveRetries + 1} retry attempts failed for ${pathname}`);
@@ -255,13 +270,20 @@ export function normalizeOneMinResponse(data) {
 
 /**
  * Normalizes asset API responses into a stable key/url shape.
+ *
+ * - `key`: the 1min.ai asset key (e.g. "images/2024_...") used in
+ *   subsequent API calls such as attachments.images.
+ * - `url`: the full HTTPS URL to access the uploaded file. We prefer
+ *   `asset.location` (the S3 URL returned by 1min.ai) because the
+ *   synthetic `https://asset.1min.ai/...` domain is not guaranteed to
+ *   resolve.
  */
 export function normalizeAssetResponse(data) {
   const asset = data?.asset || {};
-  const key = asset.key || data?.fileContent?.path || asset.location || data?.path || "";
-  return {
-    key,
-    url: key && !/^https?:\/\//.test(key) ? `https://asset.1min.ai/${key.replace(/^\//, "")}` : key,
-    raw: data,
-  };
+  const key = asset.key || data?.fileContent?.path || data?.path || "";
+  const location = asset.location || "";
+  const url =
+    location ||
+    (key && !/^https?:\/\//.test(key) ? `https://asset.1min.ai/${key.replace(/^\//, "")}` : key);
+  return { key, url, raw: data };
 }

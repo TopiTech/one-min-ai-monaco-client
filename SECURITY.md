@@ -24,8 +24,9 @@ This is an MVP BFF server. The following are **not** implemented and
 should be addressed before exposing the service beyond localhost:
 
 - Authentication of end users (only a local BFF token is enforced).
-- CSRF tokens (the app relies on `SameSite=Strict` cookies plus same-origin
-  origin checks).
+- CSRF mitigation uses a double-submit cookie pattern (`HttpOnly` cookie +
+  `x-local-bff-token` header + same-origin check). There are no
+  traditional anti-CSRF tokens.
 - Audit logging of agent command executions and file modifications.
 - Sandboxed execution for `ENABLE_COMMAND_EXECUTION=true`.
 

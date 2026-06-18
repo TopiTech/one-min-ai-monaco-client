@@ -8,6 +8,10 @@ let _activePickerBtn = null;
 let _activePickerType = null;
 let _activeTag = "all";
 
+export function getAllChatModels() { return _allChatModels; }
+export function getAllCodeModels() { return _allCodeModels; }
+export function getAllImageModels() { return _allImageModels; }
+
 export async function loadModels() {
   try {
     const data = await api("/api/models");

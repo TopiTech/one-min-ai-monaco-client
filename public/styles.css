@@ -1899,20 +1899,6 @@ select:focus-visible {
 }
 
 /* Skip Link */
-.skip-link {
-  position: absolute;
-  top: -40px;
-  left: 0;
-  background: var(--accent);
-  color: #000;
-  padding: 8px 16px;
-  z-index: 10000;
-  transition: top 0.2s;
-}
-
-.skip-link:focus {
-  top: 0;
-}
 
 /* Light Mode */
 /* Light theme - system preference (default) */
@@ -2706,10 +2692,6 @@ select:focus-visible {
 
 .u-inline-flex {
   display: inline-flex !important;
-}
-
-.u-hidden {
-  display: none !important;
 }
 
 /* Labels */

@@ -162,17 +162,12 @@ describe("Server Factory", () => {
         enableRateLimit: false,
       });
 
-      const response = (await protectedApp.request)
-        ? await request(protectedApp)
-            .get("/api/fs/config")
-            .set("x-local-bff-token", "secret-token")
-            .set("Cookie", "__bff_session=secret-token")
-            .set("host", "127.0.0.1")
-            .set("origin", "http://127.0.0.1")
-        : await request(protectedApp)
-            .get("/api/fs/config")
-            .set("x-local-bff-token", "secret-token")
-            .set("Cookie", "__bff_session=secret-token");
+      const response = await request(protectedApp)
+        .get("/api/fs/config")
+        .set("x-local-bff-token", "secret-token")
+        .set("Cookie", "__bff_session=secret-token")
+        .set("host", "127.0.0.1")
+        .set("origin", "http://127.0.0.1");
 
       expect(response.status).toBe(200);
     });
