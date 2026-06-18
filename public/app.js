@@ -649,7 +649,7 @@ dom.sendChatBtn.onclick = async () => {
       if (!streamDone) {
         streamDone = true;
         streamError = new Error("ストリーミングがタイムアウトしました（5分）");
-        reader.cancel().catch(() => {});
+        reader.cancel().catch(() => { });
       }
     }, MAX_STREAM_MS);
     // H-3: Throttle markdown re-renders to avoid CPU spikes during streaming.
@@ -904,14 +904,14 @@ function renderImages(data, sourceImageUrl = null) {
 
       injectStyle(
         `.${cmpId} .image-before { clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%); } ` +
-          `.${cmpId} .slider-divider { left: 50%; }`,
+        `.${cmpId} .slider-divider { left: 50%; }`,
       );
 
       range.addEventListener("input", (e) => {
         const val = e.target.value;
         injectStyle(
           `.${cmpId} .image-before { clip-path: polygon(0 0, ${val}% 0, ${val}% 100%, 0 100%); } ` +
-            `.${cmpId} .slider-divider { left: ${val}%; }`,
+          `.${cmpId} .slider-divider { left: ${val}%; }`,
         );
       });
       card.appendChild(slider);
@@ -1316,7 +1316,7 @@ const EditorManager = {
             if (e.name !== "AbortError") console.error("Autocomplete error:", e);
           }
         },
-        freeInlineCompletions: () => {},
+        freeInlineCompletions: () => { },
       });
     }
   },
@@ -1347,7 +1347,7 @@ const EditorManager = {
   },
 };
 
-require.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/min/vs" } });
+require.config({ paths: { vs: "/vs" } });
 require(["vs/editor/editor.main"], () => {
   EditorManager.init();
 });

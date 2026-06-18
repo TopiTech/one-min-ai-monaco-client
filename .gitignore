@@ -9,8 +9,10 @@ logs/
 temp_diff.txt
 test-output.log
 test-output.txt
+coverage.log
 all_defs.txt
 calls.txt
 defs.txt
 coverage/
 *.log
+public/vs/

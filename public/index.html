@@ -6,12 +6,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#030712" />
   <title>1min.ai Monaco Client</title>
-  <!-- L-12: preconnect to Google Fonts + Monaco CDN to reduce FOUC and
-       shorten the waterfall when loading the editor and the Plus Jakarta
-       Sans webfont. -->
+  <!-- L-12: preconnect to Google Fonts to reduce FOUC and
+       shorten the waterfall when loading the Plus Jakarta Sans webfont.
+       Monaco is served locally so no CDN preconnect is needed. -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
@@ -88,8 +87,8 @@
           stroke-width="2">
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
         </svg>
-        <svg id="themeIconLight" class="theme-icon is-hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" stroke-width="2">
+        <svg id="themeIconLight" class="theme-icon is-hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="5"></circle>
           <line x1="12" y1="1" x2="12" y2="3"></line>
           <line x1="12" y1="21" x2="12" y2="23"></line>
@@ -211,7 +210,8 @@
                   <label for="chatMaxWord" class="label-muted-sm">
                     最大単語数
                   </label>
-                  <input id="chatMaxWord" type="number" min="100" max="10000" step="100" value="1000" class="input-sm" />
+                  <input id="chatMaxWord" type="number" min="100" max="10000" step="100" value="1000"
+                    class="input-sm" />
                 </div>
               </div>
             </div>
@@ -443,7 +443,8 @@
             </div>
 
             <!-- Scrollable Chat Log -->
-            <div id="agentActivityLog" class="agent-timeline agent-activity-log" role="log" aria-live="polite" aria-label="エージェントチャットログ">
+            <div id="agentActivityLog" class="agent-timeline agent-activity-log" role="log" aria-live="polite"
+              aria-label="エージェントチャットログ">
               <div class="timeline-placeholder timeline-placeholder-inline">
                 指示を入力して、エージェントとのチャットを開始してください。
               </div>
@@ -491,7 +492,8 @@
                     <label for="codeMaxWord" class="label-muted-xxs">
                       最大単語数/サイト
                     </label>
-                    <input id="codeMaxWord" type="number" min="100" max="10000" step="100" value="1000" class="input-xs" />
+                    <input id="codeMaxWord" type="number" min="100" max="10000" step="100" value="1000"
+                      class="input-xs" />
                   </div>
                 </div>
               </div>
@@ -620,7 +622,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.5/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/min/vs/loader.js"></script>
+  <script src="/vs/loader.js"></script>
   <script type="module" src="./js/api.js"></script>
   <script type="module" src="./js/dom-style.js"></script>
   <script type="module" src="./js/models.js"></script>

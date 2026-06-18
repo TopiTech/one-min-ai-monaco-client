@@ -157,7 +157,7 @@ package.json
 
 - `.env` をGitにコミットしないでください。本リポジトリの `.gitignore` は `.env` を除外していますが、**もし `.env` を誤ってコミットしてしまった場合は必ず 1min.ai 側で API キーを再生成（ローテーション）してください**。Git の履歴に残ったキーは `git filter-repo` 等での除去後も危険です。
 - `/api/fs/*` はプロジェクト配下のファイルを読み書きできます。`.env`、`.git`、`node_modules`、サーバー実装ファイルなどの保護パスは削除・上書き・改名からガードしています。公開サーバーで動かさないでください。
-- Asset uploadは現在のローカル実装では `25MB` までです。1min.ai公式のAsset APIドキュメントでは上限例として `50MB` が記載されています。
+- Asset uploadはデフォルトで `25MB` までです（`MAX_FILE_SIZE` 環境変数で変更可能）。1min.ai公式のAsset APIドキュメントでは上限例として `50MB` が記載されています。
 - 公式ドキュメントではレート制限のデフォルトは `180 requests per minute` とされています。Asset APIページには `100 requests per minute` / `5 simultaneous uploads` の記載もあるため、実際のプラン制限は1min.ai側で確認してください。
 - 生成画像のURL表示は、1min.ai側の返却形式・権限設定に依存します。画像が直接表示されない場合でも、Raw JSON内の `resultObject` やAsset情報を確認してください。
 - これはMVPです。実運用では認証、レート制限、監査ログ、サンドボックス実行、CSRF対策などを追加してください。

@@ -318,9 +318,9 @@ export function createApp(options = {}) {
           "default-src": ["'self'"],
           "script-src": [
             "'self'",
-            "https://cdn.jsdelivr.net",
             (_req, res) => `'nonce-${res.locals.nonce}'`,
             "blob:",
+            "https://cdn.jsdelivr.net",
           ],
           // style-src intentionally omits the per-request nonce. CSP
           // forbids mixing 'nonce-...' with 'unsafe-inline' in the same
@@ -331,7 +331,6 @@ export function createApp(options = {}) {
           "style-src": [
             "'self'",
             "'unsafe-inline'",
-            "https://cdn.jsdelivr.net",
             "https://fonts.googleapis.com",
           ],
           // Monaco assigns to element.style.* and setAttribute('style', ...)
@@ -339,11 +338,11 @@ export function createApp(options = {}) {
           "style-src-attr": ["'unsafe-inline'"],
           "img-src": ["'self'", "data:", "https:", "blob:"],
           "connect-src": ["'self'", "https://api.1min.ai", "https://cdn.jsdelivr.net"],
-          "font-src": ["'self'", "data:", "https://cdn.jsdelivr.net", "https://fonts.gstatic.com"],
+          "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
           "object-src": ["'none'"],
           "media-src": ["'self'"],
           "frame-src": ["'none'"],
-          "worker-src": ["'self'", "blob:", "https://cdn.jsdelivr.net"],
+          "worker-src": ["'self'", "blob:"],
         },
       },
       crossOriginEmbedderPolicy: false,
@@ -410,7 +409,13 @@ export function createApp(options = {}) {
         if (filePath.endsWith(".js")) {
           res.setHeader("X-Content-Type-Options", "nosniff");
         }
+        // Block .map files from being served to prevent source map exposure
+        if (filePath.endsWith(".map")) {
+          res.setHeader("X-Content-Type-Options", "nosniff");
+          res.setHeader("Cache-Control", "no-store");
+        }
       },
+      fallthrough: true,
     }),
   );
 

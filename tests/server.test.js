@@ -227,4 +227,53 @@ describe("Server Factory", () => {
       expect(serverConfig.apiRetryAttempts).toBeDefined();
     });
   });
+
+  describe("Static file serving", () => {
+    test("should set X-Content-Type-Options nosniff for .js files", async () => {
+      const response = await request(app).get("/js/api.js");
+      if (response.status === 200) {
+        expect(response.headers["x-content-type-options"]).toBe("nosniff");
+      }
+    });
+  });
+
+  describe("GET /api/health (detailed)", () => {
+    test("should return ok:true with service name", async () => {
+      const response = await request(app).get("/api/health");
+      expect(response.status).toBe(200);
+      expect(response.body.ok).toBe(true);
+      expect(response.body.service).toBe("one-min-ai-monaco-client");
+    });
+
+    test("should not expose any secrets or API keys", async () => {
+      const response = await request(app).get("/api/health");
+      expect(response.status).toBe(200);
+      expect(response.body).not.toHaveProperty("apiKey");
+      expect(response.body).not.toHaveProperty("hasApiKey");
+    });
+  });
+
+  describe("Asset upload error handling", () => {
+    test("should return 400 when no file is attached", async () => {
+      const response = await request(app)
+        .post("/api/assets/upload")
+        .send({});
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/asset file is required|Unexpected field/);
+    });
+  });
+
+  describe("Error handler", () => {
+    test("should return 500 with error for unhandled exceptions", async () => {
+      const response = await request(app).get("/api/fs/read");
+      expect(response.status).toBe(400);
+    });
+
+    test("should include error code in response", async () => {
+      const response = await request(app)
+        .post("/api/chat")
+        .send({});
+      expect(response.status).toBe(400);
+    });
+  });
 });

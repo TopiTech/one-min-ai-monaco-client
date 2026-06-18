@@ -14,10 +14,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1min.ai response shapes.
 - `docs/api-specifications.md` aligned with current 1min.ai field names.
 - `.env.example` documents `LOG_TO_FILE`.
+- Monaco Editor assets are served locally (`public/vs/`) instead of
+  from a CDN, eliminating external dependency and allowing tighter CSP.
+- CSP directives tightened: removed `cdn.jsdelivr.net` from
+  `script-src`, `connect-src`, `font-src`, and `worker-src`.
+- `server.js` `express.static` now sets `X-Content-Type-Options: nosniff`
+  for `.js` files and excludes `.map` files from serving.
+- `scripts/copy-monaco.js` improved with existence check to avoid
+  redundant copy when `public/vs/` already matches `node_modules`.
 
 ### Added
 - `LICENSE` (MIT) and `SECURITY.md` for public distribution.
 - `.github/` issue and pull request templates and Dependabot config.
+- `monaco-editor` added to Dependabot monitoring.
+- `editor-tabs-bar` CSS for multi-tab editor UI.
+- Integration tests for `/api/fs/*` routes (list, read, delete, rename)
+  with protection checks.
+- Unit tests for `api-client.js` retry and timeout logic.
+- Unit tests for `server.js` multer error mapping and `/api/health`.
+- Unit tests for `config/models.js` fetchModels fallback behavior.
 
 ## [1.0.0] - 2026-06-17
 

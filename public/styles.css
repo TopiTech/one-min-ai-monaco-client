@@ -726,6 +726,72 @@ button.ghost:hover {
   font-family: monospace;
 }
 
+.editor-tabs-bar {
+  display: flex;
+  overflow-x: auto;
+  gap: 0;
+  background: rgba(10, 15, 30, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.editor-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.editor-tab:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.editor-tab.active {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font-weight: 600;
+  border-bottom: 2px solid var(--accent);
+}
+
+.editor-tab span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.close-tab-btn {
+  font-size: 0.72rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.editor-tab:hover .close-tab-btn,
+.editor-tab.active .close-tab-btn {
+  opacity: 0.6;
+}
+
+.close-tab-btn:hover {
+  opacity: 1 !important;
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .explorer-path-box {
   display: flex;
   gap: 8px;

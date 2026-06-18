@@ -16,6 +16,10 @@ updates:
           - "form-data"
           - "express-rate-limit"
           - "dotenv"
+      editor-minor:
+        applies-to: version-updates
+        patterns:
+          - "monaco-editor"
       test-minor:
         applies-to: version-updates
         patterns:
