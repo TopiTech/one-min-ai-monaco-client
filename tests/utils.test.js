@@ -93,20 +93,22 @@ describe("stripMarkdownCodeBlock", () => {
 describe("unescapeXmlText", () => {
   test("reverses the five XML entities", () => {
     expect(unescapeXmlText("a &lt; b &gt; c &amp; d &quot;e&quot; &apos;f&apos;")).toBe(
-      'a < b > c & d "e" \'f\'',
+      "a < b > c & d \"e\" 'f'",
     );
   });
 });
 
 describe("parseXMLTags", () => {
   test("extracts thought + call_tool + parameter", () => {
-    const xml = "<thought>thinking</thought><call_tool name=\"read_file\"><parameter name=\"path\">a.js</parameter></call_tool>";
+    const xml =
+      '<thought>thinking</thought><call_tool name="read_file"><parameter name="path">a.js</parameter></call_tool>';
     const out = parseXMLTags(xml);
     expect(out.thought).toBe("thinking");
     expect(out.toolCall).toEqual({ name: "read_file", params: { path: "a.js" } });
   });
   test("decodes XML-escaped parameter values", () => {
-    const xml = "<call_tool name=\"write_file\"><parameter name=\"content\">a &lt; b &amp;&amp; c &gt; d</parameter></call_tool>";
+    const xml =
+      '<call_tool name="write_file"><parameter name="content">a &lt; b &amp;&amp; c &gt; d</parameter></call_tool>';
     const out = parseXMLTags(xml);
     expect(out.toolCall.params.content).toBe("a < b && c > d");
   });
@@ -121,6 +123,75 @@ describe("parseXMLTags", () => {
   test("returns nulls for empty input", () => {
     expect(parseXMLTags("")).toEqual({ thought: null, finish: null, toolCall: null });
     expect(parseXMLTags(null)).toEqual({ thought: null, finish: null, toolCall: null });
+  });
+  test("handles JSON with nested params", () => {
+    const input = JSON.stringify({
+      tool: "read_file",
+      parameters: { path: "/tmp/a.js", options: { recursive: true } },
+    });
+    const out = parseXMLTags(input);
+    expect(out.toolCall).toEqual({
+      name: "read_file",
+      params: { path: "/tmp/a.js", options: { recursive: true } },
+    });
+  });
+  test("handles JSON with action field", () => {
+    const input = JSON.stringify({ action: "write_file", args: { content: "hello world" } });
+    const out = parseXMLTags(input);
+    expect(out.toolCall).toEqual({ name: "write_file", params: { content: "hello world" } });
+  });
+  test("handles malformed XML gracefully", () => {
+    const input = String.fromCharCode(60) + "thought>partial";
+    const out = parseXMLTags(input);
+    expect(out.thought).toBe("partial");
+    expect(out.finish).toBeNull();
+    expect(out.toolCall).toBeNull();
+  });
+  test("handles non-string input", () => {
+    expect(parseXMLTags(42)).toEqual({ thought: null, finish: null, toolCall: null });
+    expect(parseXMLTags({})).toEqual({ thought: null, finish: null, toolCall: null });
+  });
+  test("extracts multiple parameters", () => {
+    var dq = String.fromCharCode(34);
+    var cp = String.fromCharCode(60) + "/parameter>";
+    var cc = String.fromCharCode(60) + "/call_tool>";
+    var input =
+      String.fromCharCode(60) +
+      "call_tool name=" +
+      dq +
+      "read_file" +
+      dq +
+      ">" +
+      String.fromCharCode(60) +
+      "parameter name=" +
+      dq +
+      "path" +
+      dq +
+      ">a.js" +
+      cp +
+      String.fromCharCode(60) +
+      "parameter name=" +
+      dq +
+      "encoding" +
+      dq +
+      ">utf-8" +
+      cp +
+      cc;
+    const out = parseXMLTags(input);
+    expect(out.toolCall).toEqual({ name: "read_file", params: { path: "a.js", encoding: "utf-8" } });
+  });
+  test("handles unquoted XML attribute", () => {
+    var input =
+      String.fromCharCode(60) +
+      "call_tool name=git_status>" +
+      String.fromCharCode(60) +
+      "parameter name=repo>/tmp/my-repo" +
+      String.fromCharCode(60) +
+      "/parameter>" +
+      String.fromCharCode(60) +
+      "/call_tool>";
+    const out = parseXMLTags(input);
+    expect(out.toolCall).toEqual({ name: "git_status", params: { repo: "/tmp/my-repo" } });
   });
 });
 

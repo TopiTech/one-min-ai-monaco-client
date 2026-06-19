@@ -73,16 +73,7 @@ export function createEditorManager(state) {
   }
 
   function registerProviders() {
-    const languages = [
-      "javascript",
-      "typescript",
-      "python",
-      "html",
-      "css",
-      "json",
-      "markdown",
-      "plaintext",
-    ];
+    const languages = ["javascript", "typescript", "python", "html", "css", "json", "markdown", "plaintext"];
     for (const lang of languages) {
       monaco.languages.registerInlineCompletionsProvider(lang, {
         provideInlineCompletions: async (model, position, context, token) => {
@@ -97,9 +88,7 @@ export function createEditorManager(state) {
                 code: model.getValue(),
                 line: position.lineNumber,
                 column: position.column,
-                fileName: state.activeFilePath
-                  ? state.activeFilePath.split(/[\\/]/).pop()
-                  : "untitled",
+                fileName: state.activeFilePath ? state.activeFilePath.split(/[\\/]/).pop() : "untitled",
                 language: model.getLanguageId(),
                 model: document.getElementById("codeModel")?.value,
                 webSearch: document.getElementById("codeWebSearch")?.checked || false,
@@ -199,6 +188,8 @@ export function createEditorManager(state) {
     getLanguageId,
     focus,
     layout,
-    get instance() { return _instance; },
+    get instance() {
+      return _instance;
+    },
   };
 }

@@ -137,9 +137,7 @@ describe("config/models.js", () => {
   describe("fetchModels handles different model type field names", () => {
     test("accepts featureType as alternative to type", async () => {
       mockFetchJson({
-        models: [
-          { featureType: "CHAT", id: "alt-chat-model", label: "Alt Chat" },
-        ],
+        models: [{ featureType: "CHAT", id: "alt-chat-model", label: "Alt Chat" }],
       });
 
       const { initModels, getModelSyncStatus } = await import("../config/models.js");

@@ -162,17 +162,14 @@ export async function callOneMin(
 
       if (raw) return response;
       const contentType = response.headers.get("content-type") || "";
-      return contentType.includes("application/json")
-        ? response.json()
-        : { text: await response.text() };
+      return contentType.includes("application/json") ? response.json() : { text: await response.text() };
     } catch (error) {
       lastError = error;
       if (!lastError.status && lastError.name !== "AbortError") {
         lastError.status = 502;
         lastError.code = "UPSTREAM_NETWORK_ERROR";
       }
-      if (error.status && error.status >= 400 && error.status < 500 && error.status !== 429)
-        throw error;
+      if (error.status && error.status >= 400 && error.status < 500 && error.status !== 429) throw error;
       if (attempt < effectiveRetries)
         logger.warn(`Request failed for ${pathname}, will retry: ${error.message}`);
     }
@@ -195,9 +192,7 @@ function firstTextCandidate(data) {
   for (const c of candidates) {
     if (typeof c === "string") return c || undefined;
     if (Array.isArray(c)) {
-      const joined = c
-        .map((x) => (typeof x === "string" ? x : JSON.stringify(x, null, 2)))
-        .join("\n");
+      const joined = c.map((x) => (typeof x === "string" ? x : JSON.stringify(x, null, 2))).join("\n");
       return joined || undefined;
     }
     if (c && typeof c === "object") return JSON.stringify(c, null, 2);
@@ -243,9 +238,7 @@ export function extractFailureMessage(data) {
  */
 export function normalizeOneMinResponse(data) {
   const resultObject =
-    data?.aiRecord?.aiRecordDetail?.resultObject ??
-    data?.aiRecord?.resultObject ??
-    data?.resultObject;
+    data?.aiRecord?.aiRecordDetail?.resultObject ?? data?.aiRecord?.resultObject ?? data?.resultObject;
 
   return {
     text: firstTextCandidate(data),
@@ -274,7 +267,6 @@ export function normalizeAssetResponse(data) {
   const key = asset.key || data?.fileContent?.path || data?.path || "";
   const location = asset.location || "";
   const url =
-    location ||
-    (key && !/^https?:\/\//.test(key) ? `https://asset.1min.ai/${key.replace(/^\//, "")}` : key);
+    location || (key && !/^https?:\/\//.test(key) ? `https://asset.1min.ai/${key.replace(/^\//, "")}` : key);
   return { key, url, raw: data };
 }

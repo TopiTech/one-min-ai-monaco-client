@@ -122,8 +122,7 @@ export function createChatManager(dom, state) {
 
         const nameSpan = document.createElement("span");
         nameSpan.className = "attachment-file-name";
-        nameSpan.textContent =
-          att.file.name.length > 20 ? att.file.name.slice(0, 17) + "..." : att.file.name;
+        nameSpan.textContent = att.file.name.length > 20 ? att.file.name.slice(0, 17) + "..." : att.file.name;
         nameSpan.title = att.file.name;
         thumb.appendChild(nameSpan);
       }
@@ -175,12 +174,11 @@ export function createChatManager(dom, state) {
         const att = queue.shift();
         dom.chatLog.setAttribute("aria-busy", "true");
 
-    try {
+        try {
           const fd = new FormData();
           fd.append("asset", att.file);
           const data = await api("/api/assets/upload", { method: "POST", body: fd });
-          const key =
-            data?.key || data?.asset?.key || data?.fileContent?.path || data?.asset?.location || "";
+          const key = data?.key || data?.asset?.key || data?.fileContent?.path || data?.asset?.location || "";
           const url = data?.url || (key ? assetUrl(key) : "");
           att.assetKey = key;
           att.assetUrl = url;

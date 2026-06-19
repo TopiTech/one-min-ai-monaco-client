@@ -23,8 +23,7 @@ let styleEl = null;
 
 function ensureStyleElement() {
   if (styleEl && document.head.contains(styleEl)) return styleEl;
-  const nonce =
-    document.querySelector('meta[name="csp-nonce"]')?.content || undefined;
+  const nonce = document.querySelector('meta[name="csp-nonce"]')?.content || undefined;
   styleEl = document.getElementById(STYLE_ELEMENT_ID);
   if (!styleEl) {
     styleEl = document.createElement("style");

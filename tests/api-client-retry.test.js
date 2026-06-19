@@ -43,7 +43,9 @@ function textResponse(text, status = 200) {
     ok: status >= 200 && status < 300,
     status,
     headers: new Map([["content-type", "text/plain"]]),
-    json: async () => { throw new Error("not json"); },
+    json: async () => {
+      throw new Error("not json");
+    },
     text: async () => text,
   });
 }
@@ -92,7 +94,7 @@ describe("api-client callOneMin", () => {
         body: "{}",
         idempotent: true,
         signal: abortController.signal,
-      })
+      }),
     ).rejects.toMatchObject({ status: 499 });
   });
 
@@ -106,7 +108,7 @@ describe("api-client callOneMin", () => {
       callOneMin("/api/chat-with-ai", {
         method: "POST",
         body: "{}",
-      })
+      }),
     ).rejects.toMatchObject({ status: 400 });
   });
 

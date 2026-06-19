@@ -187,6 +187,14 @@ state.editor = editorState;
 $("abortChat").onclick = () => chatManager.abortChat();
 dom.sendChatBtn.onclick = () => chatManager.sendChat(setStatus);
 
+// Ctrl+Enter to send chat
+dom.chatPrompt.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    chatManager.sendChat(setStatus);
+  }
+});
+
 // Attach image button
 if (dom.attachImageBtn) {
   dom.attachImageBtn.onclick = () => dom.chatImageInput.click();
@@ -228,12 +236,9 @@ async function checkHealth() {
       setStatus("ヘルスチェック失敗", "err");
     } else if (data.models && !data.models.ok) {
       console.warn("Model sync failure:", data.models.error);
-      toast.warning(
-        `モデル情報の同期に失敗しています。以前のデータを使用します: ${data.models.error}`,
-        {
-          duration: 8000,
-        },
-      );
+      toast.warning(`モデル情報の同期に失敗しています。以前のデータを使用します: ${data.models.error}`, {
+        duration: 8000,
+      });
     }
   } catch (e) {
     console.error("Health check failed:", e);
@@ -249,11 +254,7 @@ $("createConversation").onclick = async () => {
       body: JSON.stringify({ title: dom.conversationTitle.value, model: dom.chatModel.value }),
     });
     const id =
-      data?.conversation?.uuid ||
-      data?.uuid ||
-      data?.aiRecord?.conversationId ||
-      data?.conversationId ||
-      "";
+      data?.conversation?.uuid || data?.uuid || data?.aiRecord?.conversationId || data?.conversationId || "";
     dom.conversationId.value = id;
     toast.success("会話を作成しました", { duration: 5000 });
   } catch (e) {
@@ -449,10 +450,7 @@ function getVisibleNodes() {
   return Array.from(tree.querySelectorAll(".tree-node")).filter((n) => {
     let parentGroup = n.parentElement;
     while (parentGroup && parentGroup !== tree) {
-      if (
-        parentGroup.classList.contains("tree-children") &&
-        !parentGroup.classList.contains("is-expanded")
-      ) {
+      if (parentGroup.classList.contains("tree-children") && !parentGroup.classList.contains("is-expanded")) {
         return false;
       }
       parentGroup = parentGroup.parentElement;
@@ -893,9 +891,7 @@ const AGENT_TOOL_HANDLERS = {
     const { path: filePath } = params;
     if (!filePath) throw new Error("path パラメータが必要です");
     const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
-    const data = await api(
-      `/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`,
-    );
+    const data = await api(`/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`);
     await openFile(fullPath);
     return { text: data.content, success: true };
   },
@@ -917,9 +913,7 @@ const AGENT_TOOL_HANDLERS = {
     if (diff === undefined) throw new Error("diff パラメータが必要です");
     const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
 
-    const current = await api(
-      `/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`,
-    );
+    const current = await api(`/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`);
     const preview = await api(`/api/agent/sessions/${sessionId}/diff`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -940,9 +934,7 @@ const AGENT_TOOL_HANDLERS = {
   list_directory: async ({ sessionId, workspaceRoot, params }) => {
     const dirPath = params.path || "";
     const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, dirPath);
-    const data = await api(
-      `/api/agent/sessions/${sessionId}/dir?path=${encodeURIComponent(fullPath)}`,
-    );
+    const data = await api(`/api/agent/sessions/${sessionId}/dir?path=${encodeURIComponent(fullPath)}`);
     const text = data.items?.length
       ? data.items.map((i) => `- ${i.isDirectory ? "[Dir] " : "[File] "}${i.name}`).join("\n")
       : "ディレクトリは空または存在しません。";
@@ -951,9 +943,7 @@ const AGENT_TOOL_HANDLERS = {
   search_files: async ({ sessionId, workspaceRoot, params }) => {
     const { query } = params;
     if (!query) throw new Error("query パラメータが必要です");
-    const data = await api(
-      `/api/agent/sessions/${sessionId}/search?query=${encodeURIComponent(query)}`,
-    );
+    const data = await api(`/api/agent/sessions/${sessionId}/search?query=${encodeURIComponent(query)}`);
     const text = data.results?.length
       ? data.results.map((r) => `${r.file}:${r.line}: ${r.content}`).join("\n")
       : "検索結果なし";
@@ -1016,10 +1006,8 @@ const AGENT_TOOL_HANDLERS = {
 
     state.agent.resolver = null;
     if (approvalResult.abort) return { text: "ABORTED", success: false, abort: true };
-    if (!approvalResult.approved)
-      return { text: `拒否されました: ${approvalResult.reason}`, success: false };
-    if (approvalResult.error)
-      return { text: `エラー: ${approvalResult.error.message}`, success: false };
+    if (!approvalResult.approved) return { text: `拒否されました: ${approvalResult.reason}`, success: false };
+    if (approvalResult.error) return { text: `エラー: ${approvalResult.error.message}`, success: false };
 
     const { result } = approvalResult;
     return {
@@ -1053,11 +1041,7 @@ async function runAgentLoop(initialInstruction) {
         `エージェントセッションが開始されました。\nワークスペース: ${workspaceRoot}`,
       );
     } catch (e) {
-      addAgentTimelineStep(
-        "error",
-        "セッション作成失敗",
-        `セッションの初期化に失敗しました: ${e.message}`,
-      );
+      addAgentTimelineStep("error", "セッション作成失敗", `セッションの初期化に失敗しました: ${e.message}`);
       setAgentStatus("エラー", "error");
       return;
     }
@@ -1157,9 +1141,7 @@ ${workspaceFilesText}
 `;
 
   if (state.agent.history.length === 0) {
-    state.agent.history = [
-      { role: "user", content: `${sysPrompt}\n\n【指示】\n${initialInstruction}` },
-    ];
+    state.agent.history = [{ role: "user", content: `${sysPrompt}\n\n【指示】\n${initialInstruction}` }];
   } else {
     state.agent.history.push({
       role: "user",
@@ -1169,7 +1151,13 @@ ${workspaceFilesText}
   }
 
   let loopCount = 0;
-  const maxLoops = 20;
+  let maxLoops = 20;
+  try {
+    const agentConfig = await api("/api/agent/config");
+    if (agentConfig.maxLoops) maxLoops = agentConfig.maxLoops;
+  } catch {
+    // Use default
+  }
 
   while (state.agent.active && loopCount < maxLoops) {
     loopCount++;

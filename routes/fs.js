@@ -51,8 +51,7 @@ router.get("/config", (_req, res) => {
     root: PROJECT_ROOT,
     defaultRoot,
     allowedRoots,
-    enableCommandExecution:
-      String(process.env.ENABLE_COMMAND_EXECUTION || "false").toLowerCase() === "true",
+    enableCommandExecution: String(process.env.ENABLE_COMMAND_EXECUTION || "false").toLowerCase() === "true",
   });
 });
 
@@ -163,9 +162,7 @@ router.post("/workspace/select", async (req, res, next) => {
     const resolvedDir = validatePath(dir);
     if (isProtectedPathForListing(resolvedDir)) {
       const relativePath = path.relative(PROJECT_ROOT, resolvedDir).replace(/\\/g, "/");
-      return res
-        .status(403)
-        .json({ error: `Access denied: Cannot select protected path: ${relativePath}` });
+      return res.status(403).json({ error: `Access denied: Cannot select protected path: ${relativePath}` });
     }
 
     const stat = await fs.stat(resolvedDir);
@@ -253,11 +250,9 @@ router.get("/read", async (req, res, next) => {
       return res.status(400).json({ error: "Specified path is a directory" });
     }
     if (stat.size > MAX_READ_SIZE) {
-      return res
-        .status(413)
-        .json({
-          error: `File size (${stat.size} bytes) exceeds maximum read size (${MAX_READ_SIZE} bytes)`,
-        });
+      return res.status(413).json({
+        error: `File size (${stat.size} bytes) exceeds maximum read size (${MAX_READ_SIZE} bytes)`,
+      });
     }
 
     const ext = path.extname(realPath).toLowerCase();
@@ -270,9 +265,7 @@ router.get("/read", async (req, res, next) => {
     // from the text editor to avoid corrupting the Monaco buffer.
     const buffer = await fs.readFile(realPath);
     if (detectBinaryContent(buffer)) {
-      return res
-        .status(400)
-        .json({ error: "Cannot read binary files as text in the editor." });
+      return res.status(400).json({ error: "Cannot read binary files as text in the editor." });
     }
 
     const content = buffer.toString("utf-8");

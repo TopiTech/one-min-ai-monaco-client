@@ -62,13 +62,11 @@ describe("known-issues.md regression fixes", () => {
       callOneMin.mockResolvedValue({ aiRecord: { status: "SUCCESS" } });
       const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
-      const res = await request(app)
-        .post("/api/images/generate")
-        .send({
-          prompt: "a cat",
-          model: "gpt-image-2",
-          output_compression: "abc",
-        });
+      const res = await request(app).post("/api/images/generate").send({
+        prompt: "a cat",
+        model: "gpt-image-2",
+        output_compression: "abc",
+      });
 
       expect(res.status).toBe(400);
       expect(res.body.error).toMatch(/output_compression/);
@@ -79,13 +77,11 @@ describe("known-issues.md regression fixes", () => {
       callOneMin.mockResolvedValue({ aiRecord: { status: "SUCCESS" } });
       const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
-      const res = await request(app)
-        .post("/api/images/generate")
-        .send({
-          prompt: "a cat",
-          model: "gpt-image-2",
-          output_compression: 75,
-        });
+      const res = await request(app).post("/api/images/generate").send({
+        prompt: "a cat",
+        model: "gpt-image-2",
+        output_compression: 75,
+      });
 
       expect(res.status).toBe(200);
       expect(callOneMin).toHaveBeenCalledTimes(1);
@@ -113,14 +109,12 @@ describe("known-issues.md regression fixes", () => {
       callOneMin.mockResolvedValue({ aiRecord: { status: "SUCCESS" } });
       const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
-      const res = await request(app)
-        .post("/api/images/text-editor")
-        .send({
-          imageUrl: "https://example.com/x.png",
-          prompt: "change background",
-          model: "gpt-image-2",
-          output_compression: 999,
-        });
+      const res = await request(app).post("/api/images/text-editor").send({
+        imageUrl: "https://example.com/x.png",
+        prompt: "change background",
+        model: "gpt-image-2",
+        output_compression: 999,
+      });
 
       expect(res.status).toBe(400);
       expect(callOneMin).not.toHaveBeenCalled();
@@ -130,13 +124,11 @@ describe("known-issues.md regression fixes", () => {
       callOneMin.mockResolvedValue({ aiRecord: { status: "SUCCESS" } });
       const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
-      const res = await request(app)
-        .post("/api/images/generate")
-        .send({
-          prompt: "a cat",
-          model: "gpt-image-2",
-          output_compression: "",
-        });
+      const res = await request(app).post("/api/images/generate").send({
+        prompt: "a cat",
+        model: "gpt-image-2",
+        output_compression: "",
+      });
 
       expect(res.status).toBe(200);
       const sentBody = JSON.parse(callOneMin.mock.calls[0][1].body);
@@ -147,14 +139,12 @@ describe("known-issues.md regression fixes", () => {
       callOneMin.mockResolvedValue({ aiRecord: { status: "SUCCESS" } });
       const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
-      const res = await request(app)
-        .post("/api/images/text-editor")
-        .send({
-          imageUrl: "https://example.com/x.png",
-          prompt: "change background",
-          model: "gpt-image-2",
-          output_compression: "not-a-number",
-        });
+      const res = await request(app).post("/api/images/text-editor").send({
+        imageUrl: "https://example.com/x.png",
+        prompt: "change background",
+        model: "gpt-image-2",
+        output_compression: "not-a-number",
+      });
 
       expect(res.status).toBe(400);
       expect(res.body.error).toMatch(/output_compression/);
@@ -165,14 +155,12 @@ describe("known-issues.md regression fixes", () => {
       callOneMin.mockResolvedValue({ aiRecord: { status: "SUCCESS" } });
       const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
-      const res = await request(app)
-        .post("/api/images/text-editor")
-        .send({
-          imageUrl: "https://example.com/x.png",
-          prompt: "change background",
-          model: "gpt-image-2",
-          output_compression: 50,
-        });
+      const res = await request(app).post("/api/images/text-editor").send({
+        imageUrl: "https://example.com/x.png",
+        prompt: "change background",
+        model: "gpt-image-2",
+        output_compression: 50,
+      });
 
       expect(res.status).toBe(200);
       const sentBody = JSON.parse(callOneMin.mock.calls[0][1].body);
@@ -224,10 +212,7 @@ describe("known-issues.md regression fixes", () => {
       // a fresh copy from the source path.
       const fsPromises = await import("fs/promises");
       const path = await import("path");
-      const src = await fsPromises.readFile(
-        new URL("../utils/api-client.js", import.meta.url),
-        "utf-8",
-      );
+      const src = await fsPromises.readFile(new URL("../utils/api-client.js", import.meta.url), "utf-8");
       // The fallback chain must not include data.message
       expect(src).not.toMatch(/data\?\.message\s*\|\|/);
       // And the public function must still exist
@@ -282,17 +267,14 @@ describe("known-issues.md regression fixes", () => {
 
     test("searchInDirectory source enforces 256KB cap", async () => {
       const fsPromises = await import("fs/promises");
-      const src = await fsPromises.readFile(
-        new URL("../routes/agent.js", import.meta.url),
-        "utf-8",
-      );
+      const src = await fsPromises.readFile(new URL("../routes/agent.js", import.meta.url), "utf-8");
       // Hard-cap must be present in the implementation
       expect(src).toMatch(/256\s*\*\s*1024/);
       // Old 1MB cap for search must NOT be present (the standalone "1024 * 1024"
       // pattern is now only used in MAX_AGENT_READ_SIZE, not in searchInDirectory)
       const searchFunc = src.slice(
         src.indexOf("async function searchInDirectory"),
-        src.indexOf("router.get(\"/sessions/:id/dir\""),
+        src.indexOf('router.get("/sessions/:id/dir"'),
       );
       expect(searchFunc).not.toMatch(/1024\s*\*\s*1024/);
     });
@@ -304,10 +286,7 @@ describe("known-issues.md regression fixes", () => {
   describe("M-10: run_command guards against nested approval", () => {
     test("public/app.js rejects new run_command when resolver is busy", async () => {
       const fsPromises = await import("fs/promises");
-      const src = await fsPromises.readFile(
-        new URL("../public/app.js", import.meta.url),
-        "utf-8",
-      );
+      const src = await fsPromises.readFile(new URL("../public/app.js", import.meta.url), "utf-8");
       // Must check for an existing resolver before issuing a new command
       expect(src).toMatch(/state\.agent\.resolver/);
       expect(src).toMatch(/別のコマンドが承認待ち/);
@@ -320,10 +299,7 @@ describe("known-issues.md regression fixes", () => {
   describe("M-9: approval step fade-out", () => {
     test("public/app.js removes approval step after decision", async () => {
       const fsPromises = await import("fs/promises");
-      const src = await fsPromises.readFile(
-        new URL("../public/app.js", import.meta.url),
-        "utf-8",
-      );
+      const src = await fsPromises.readFile(new URL("../public/app.js", import.meta.url), "utf-8");
       // finalizeStep helper must fade and remove the step element
       expect(src).toMatch(/finalizeStep/);
       expect(src).toMatch(/step\.remove\(\)/);
@@ -336,10 +312,7 @@ describe("known-issues.md regression fixes", () => {
   describe("M-2: orphan approval cleanup on reset/stop", () => {
     test("public/app.js finalizes pending approvals on reset and stop", async () => {
       const fsPromises = await import("fs/promises");
-      const src = await fsPromises.readFile(
-        new URL("../public/app.js", import.meta.url),
-        "utf-8",
-      );
+      const src = await fsPromises.readFile(new URL("../public/app.js", import.meta.url), "utf-8");
       // Both handlers must iterate .agent-step.approval and call finalize
       expect(src).toMatch(/__finalizeApproval/);
       expect((src.match(/agent-step\.approval/g) || []).length).toBeGreaterThanOrEqual(2);
@@ -353,10 +326,7 @@ describe("known-issues.md regression fixes", () => {
   describe("M-1: retryable run_command guard", () => {
     test("public/app.js sets retryable: true on nested-approval guard", async () => {
       const fsPromises = await import("fs/promises");
-      const src = await fsPromises.readFile(
-        new URL("../public/app.js", import.meta.url),
-        "utf-8",
-      );
+      const src = await fsPromises.readFile(new URL("../public/app.js", import.meta.url), "utf-8");
       expect(src).toMatch(/retryable:\s*true/);
       // And the loop must decrement loopCount on retryable
       expect(src).toMatch(/loopCount\s*=\s*Math\.max\(0,\s*loopCount\s*-\s*1\)/);
@@ -371,10 +341,7 @@ describe("known-issues.md regression fixes", () => {
   describe("L-1: api() in-flight counter is always released", () => {
     test("public/js/api.js decrements _activeRequests in a finally block", async () => {
       const fsPromises = await import("fs/promises");
-      const src = await fsPromises.readFile(
-        new URL("../public/js/api.js", import.meta.url),
-        "utf-8",
-      );
+      const src = await fsPromises.readFile(new URL("../public/js/api.js", import.meta.url), "utf-8");
       // The api() function must wrap its body in try/finally and the
       // finally block must perform the counter decrement + status update.
       const apiFnMatch = src.match(/async function api\([\s\S]*?\n\}/);

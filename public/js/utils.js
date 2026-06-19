@@ -185,8 +185,7 @@ export function parseXMLTags(text) {
   );
   if (toolMatch) {
     const params = {};
-    const paramRegex =
-      /<parameter\s+name\s*=\s*["']?([\w-]+)["']?\s*>([\s\S]*?)(?:<\/parameter>|$)/gi;
+    const paramRegex = /<parameter\s+name\s*=\s*["']?([\w-]+)["']?\s*>([\s\S]*?)(?:<\/parameter>|$)/gi;
     let pMatch;
     while ((pMatch = paramRegex.exec(toolMatch[2])) !== null) {
       params[pMatch[1]] = unescapeXmlText(pMatch[2].trim());
@@ -203,13 +202,11 @@ export function parseXMLTags(text) {
     for (const candidate of extractBalancedObjects(normalizedText)) {
       try {
         const data = JSON.parse(candidate);
-        const jsonTool =
-          data.tool || data.toolName || data.call_tool || data.toolCall?.name || data.action;
+        const jsonTool = data.tool || data.toolName || data.call_tool || data.toolCall?.name || data.action;
         const jsonParams =
           data.parameters || data.params || data.toolCall?.params || data.arguments || data.args;
         if (jsonTool) toolCall = { name: String(jsonTool), params: jsonParams || {} };
-        if (data.thought && !thought)
-          return { thought: data.thought, finish: data.finish || null, toolCall };
+        if (data.thought && !thought) return { thought: data.thought, finish: data.finish || null, toolCall };
         if (data.finish && !finish) return { thought, finish: data.finish, toolCall };
         if (toolCall) break;
       } catch {

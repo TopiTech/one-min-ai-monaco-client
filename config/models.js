@@ -484,9 +484,9 @@ async function fetchModels() {
         (m) => modelType(m) === "IMAGE_GENERATOR" || modelType(m) === "IMAGE_EDITOR",
       );
 
-      if (newChatModels.length > 0) _chatModels.length = 0, _chatModels.push(...newChatModels);
-      if (newCodeModels.length > 0) _codeModels.length = 0, _codeModels.push(...newCodeModels);
-      if (newImageModels.length > 0) _imageModels.length = 0, _imageModels.push(...newImageModels);
+      if (newChatModels.length > 0) ((_chatModels.length = 0), _chatModels.push(...newChatModels));
+      if (newCodeModels.length > 0) ((_codeModels.length = 0), _codeModels.push(...newCodeModels));
+      if (newImageModels.length > 0) ((_imageModels.length = 0), _imageModels.push(...newImageModels));
 
       lastFetchStatus = { ok: true, lastSync: new Date().toISOString(), error: null };
       logger.info("Models dynamically fetched and updated from 1min.ai API.");

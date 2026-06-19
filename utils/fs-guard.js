@@ -81,9 +81,7 @@ export function validatePath(targetPath) {
   }
 
   const isAbsolute = path.isAbsolute(targetPath);
-  const resolvedPath = isAbsolute
-    ? path.resolve(targetPath)
-    : path.resolve(PROJECT_ROOT, targetPath);
+  const resolvedPath = isAbsolute ? path.resolve(targetPath) : path.resolve(PROJECT_ROOT, targetPath);
   const allowedRoots = getAllowedRoots();
 
   let realPath;
@@ -120,10 +118,7 @@ export function validatePath(targetPath) {
   const normalizedRealPath = process.platform === "win32" ? realPath.toLowerCase() : realPath;
   const isAllowed = realRoots.some((root) => {
     const normalizedRoot = process.platform === "win32" ? root.toLowerCase() : root;
-    return (
-      normalizedRealPath === normalizedRoot ||
-      normalizedRealPath.startsWith(normalizedRoot + path.sep)
-    );
+    return normalizedRealPath === normalizedRoot || normalizedRealPath.startsWith(normalizedRoot + path.sep);
   });
 
   if (!isAllowed) {
@@ -145,9 +140,7 @@ function isProtectedByPrefixes(relativePath, prefixes) {
     const normalizedPrefix = normalizePathForMatching(prefix);
     if (normalizedPrefix.endsWith("/")) {
       const dirPrefix = normalizedPrefix.slice(0, -1);
-      return (
-        normalizedRelativePath === dirPrefix || normalizedRelativePath.startsWith(`${dirPrefix}/`)
-      );
+      return normalizedRelativePath === dirPrefix || normalizedRelativePath.startsWith(`${dirPrefix}/`);
     }
     // For file-like prefixes (e.g. ".env."), match exactly or as a prefix
     return (
@@ -185,9 +178,7 @@ function isPathProtectedByRoot(resolvedPath, root, prefixes) {
  * @returns {boolean} True if the path is protected.
  */
 export function isProtectedPath(resolvedPath) {
-  return getAllowedRoots().some((root) =>
-    isPathProtectedByRoot(resolvedPath, root, PROTECTED_PATH_PREFIXES),
-  );
+  return getAllowedRoots().some((root) => isPathProtectedByRoot(resolvedPath, root, PROTECTED_PATH_PREFIXES));
 }
 
 /**
@@ -246,9 +237,7 @@ export function assertNotProtectedPath(resolvedPath) {
 export function assertNotWriteProtectedPath(resolvedPath) {
   if (isWriteProtectedPath(resolvedPath)) {
     const relativePath = path.relative(PROJECT_ROOT, resolvedPath).replace(/\\/g, "/");
-    const err = new Error(
-      `Access denied: Path is protected from write operations: ${relativePath}`,
-    );
+    const err = new Error(`Access denied: Path is protected from write operations: ${relativePath}`);
     err.status = 403;
     throw err;
   }
@@ -282,9 +271,7 @@ export function revalidateRealPath(resolvedPath) {
   const normalizedReal = process.platform === "win32" ? real.toLowerCase() : real;
   const isAllowed = realRoots.some((root) => {
     const normalizedRoot = process.platform === "win32" ? root.toLowerCase() : root;
-    return (
-      normalizedReal === normalizedRoot || normalizedReal.startsWith(normalizedRoot + path.sep)
-    );
+    return normalizedReal === normalizedRoot || normalizedReal.startsWith(normalizedRoot + path.sep);
   });
   if (!isAllowed) {
     const err = new Error("Access denied: Path is outside the allowed directories");

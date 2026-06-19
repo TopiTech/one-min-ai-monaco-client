@@ -123,9 +123,7 @@ describe("Security fixes regression", () => {
       });
       const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
-      const res = await request(app)
-        .post("/api/chat")
-        .send({ prompt: "hi" });
+      const res = await request(app).post("/api/chat").send({ prompt: "hi" });
 
       expect(res.status).toBe(502);
       expect(res.body.error).toMatch(/credit exceeded/);
@@ -150,9 +148,7 @@ describe("Security fixes regression", () => {
       callOneMin.mockResolvedValue({ aiRecord: { status: "SUCCESS" } });
       const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
-      const res = await request(app)
-        .post("/api/chat")
-        .send({ prompt: "hi", attachments: [] });
+      const res = await request(app).post("/api/chat").send({ prompt: "hi", attachments: [] });
 
       expect(res.status).toBe(400);
     });
@@ -173,9 +169,7 @@ describe("Security fixes regression", () => {
       const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
       const images = Array.from({ length: 17 }, (_, i) => `key${i}`);
-      const res = await request(app)
-        .post("/api/chat")
-        .send({ prompt: "hi", attachments: { images } });
+      const res = await request(app).post("/api/chat").send({ prompt: "hi", attachments: { images } });
 
       expect(res.status).toBe(400);
     });
@@ -186,13 +180,11 @@ describe("Security fixes regression", () => {
       callOneMin.mockResolvedValue({ aiRecord: { status: "SUCCESS" } });
       const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
-      const res = await request(app)
-        .post("/api/images/generate")
-        .send({
-          prompt: "a cat",
-          model: "black-forest-labs/flux-schnell",
-          quality: "high",
-        });
+      const res = await request(app).post("/api/images/generate").send({
+        prompt: "a cat",
+        model: "black-forest-labs/flux-schnell",
+        quality: "high",
+      });
 
       expect(res.status).toBe(400);
     });
@@ -215,7 +207,9 @@ describe("Security fixes regression", () => {
     });
 
     test("blocks powershell -EncodedCommand", () => {
-      expect(checkCommandSafety("powershell -EncodedCommand ZQBjAGgAbwAgACIAdABlAHMAdAAiAA==").safe).toBe(false);
+      expect(checkCommandSafety("powershell -EncodedCommand ZQBjAGgAbwAgACIAdABlAHMAdAAiAA==").safe).toBe(
+        false,
+      );
     });
 
     test("blocks cmd.exe /c", () => {
@@ -279,27 +273,21 @@ describe("Security fixes regression", () => {
   describe("CORS middleware restrictions", () => {
     test("allows localhost origins", async () => {
       const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
-      const res = await request(app)
-        .get("/api/health")
-        .set("Origin", "http://localhost:3000");
+      const res = await request(app).get("/api/health").set("Origin", "http://localhost:3000");
       expect(res.status).toBe(200);
       expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:3000");
     });
 
     test("allows 127.0.0.1 origins with any port", async () => {
       const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
-      const res = await request(app)
-        .get("/api/health")
-        .set("Origin", "https://127.0.0.1:8080");
+      const res = await request(app).get("/api/health").set("Origin", "https://127.0.0.1:8080");
       expect(res.status).toBe(200);
       expect(res.headers["access-control-allow-origin"]).toBe("https://127.0.0.1:8080");
     });
 
     test("rejects external non-localhost origins", async () => {
       const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
-      const res = await request(app)
-        .get("/api/health")
-        .set("Origin", "https://evil.example.com");
+      const res = await request(app).get("/api/health").set("Origin", "https://evil.example.com");
       expect(res.status).toBe(403);
       expect(res.body.error).toContain("CORS request blocked");
     });
@@ -326,9 +314,7 @@ describe("Security fixes regression", () => {
       const file = path.join(tmpDir, "ok.txt");
       await fs.writeFile(file, "content inside");
 
-      const res = await request(app)
-        .get("/api/fs/read")
-        .query({ path: file });
+      const res = await request(app).get("/api/fs/read").query({ path: file });
 
       expect(res.status).toBe(200);
       expect(res.body.content).toBe("content inside");
@@ -348,9 +334,7 @@ describe("Security fixes regression", () => {
         return;
       }
 
-      const res = await request(app)
-        .get("/api/fs/read")
-        .query({ path: linkFile });
+      const res = await request(app).get("/api/fs/read").query({ path: linkFile });
 
       expect(res.status).toBe(403);
       expect(res.body.error).toContain("Access denied: Path is outside the allowed directories");
@@ -388,11 +372,9 @@ describe("Security fixes regression", () => {
       tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-symlink-"));
       outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-outside-"));
       app = createApp({ requireLocalAuth: false, enableRateLimit: false });
-      
+
       process.env.ALLOWED_ROOTS = tmpDir;
-      const res = await request(app)
-        .post("/api/agent/sessions")
-        .send({ cwd: tmpDir });
+      const res = await request(app).post("/api/agent/sessions").send({ cwd: tmpDir });
       sessionId = res.body.session.id;
     });
 
@@ -405,9 +387,7 @@ describe("Security fixes regression", () => {
       const file = path.join(tmpDir, "ok.txt");
       await fs.writeFile(file, "agent content");
 
-      const res = await request(app)
-        .get(`/api/agent/sessions/${sessionId}/files`)
-        .query({ path: "ok.txt" });
+      const res = await request(app).get(`/api/agent/sessions/${sessionId}/files`).query({ path: "ok.txt" });
 
       expect(res.status).toBe(200);
       expect(res.body.content).toBe("agent content");

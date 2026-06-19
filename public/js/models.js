@@ -13,9 +13,15 @@ let _modelsCache = []; // cached models for current picker session
 let _searchHandler = null;
 let _tabHandlers = [];
 
-export function getAllChatModels() { return _allChatModels; }
-export function getAllCodeModels() { return _allCodeModels; }
-export function getAllImageModels() { return _allImageModels; }
+export function getAllChatModels() {
+  return _allChatModels;
+}
+export function getAllCodeModels() {
+  return _allCodeModels;
+}
+export function getAllImageModels() {
+  return _allImageModels;
+}
 
 const FALLBACK_CHAT_MODELS = [
   { id: "gpt-4o-mini", label: "GPT-4o mini", provider: "OpenAI", tags: ["fast"] },
@@ -36,18 +42,38 @@ const FALLBACK_CODE_MODELS = [
 
 const FALLBACK_IMAGE_MODELS = [
   { id: "gpt-image-2", label: "GPT Image 2", provider: "OpenAI", tags: ["image", "flagship", "editor"] },
-  { id: "gpt-image-1-mini", label: "GPT Image 1 Mini", provider: "OpenAI", tags: ["image", "fast", "editor"] },
+  {
+    id: "gpt-image-1-mini",
+    label: "GPT Image 1 Mini",
+    provider: "OpenAI",
+    tags: ["image", "fast", "editor"],
+  },
   { id: "black-forest-labs/flux-2-max", label: "Flux 2 Max", provider: "Flux", tags: ["image", "flagship"] },
-  { id: "black-forest-labs/flux-kontext-pro", label: "Flux Kontext Pro", provider: "Flux", tags: ["image", "flagship", "editor"] },
-  { id: "qwen-image-edit-plus", label: "Qwen Image Edit Plus", provider: "Alibaba", tags: ["image", "editor"] },
+  {
+    id: "black-forest-labs/flux-kontext-pro",
+    label: "Flux Kontext Pro",
+    provider: "Flux",
+    tags: ["image", "flagship", "editor"],
+  },
+  {
+    id: "qwen-image-edit-plus",
+    label: "Qwen Image Edit Plus",
+    provider: "Alibaba",
+    tags: ["image", "editor"],
+  },
 ];
 
 export async function loadModels() {
   try {
     const data = await api("/api/models");
-    _allChatModels = Array.isArray(data.chatModels) && data.chatModels.length > 0 ? data.chatModels : FALLBACK_CHAT_MODELS;
-    _allCodeModels = Array.isArray(data.codeModels) && data.codeModels.length > 0 ? data.codeModels : FALLBACK_CODE_MODELS;
-    _allImageModels = Array.isArray(data.imageModels) && data.imageModels.length > 0 ? data.imageModels : FALLBACK_IMAGE_MODELS;
+    _allChatModels =
+      Array.isArray(data.chatModels) && data.chatModels.length > 0 ? data.chatModels : FALLBACK_CHAT_MODELS;
+    _allCodeModels =
+      Array.isArray(data.codeModels) && data.codeModels.length > 0 ? data.codeModels : FALLBACK_CODE_MODELS;
+    _allImageModels =
+      Array.isArray(data.imageModels) && data.imageModels.length > 0
+        ? data.imageModels
+        : FALLBACK_IMAGE_MODELS;
   } catch (e) {
     console.warn("モデルリストの取得に失敗。フォールバックを適用します:", e);
     _allChatModels = FALLBACK_CHAT_MODELS;
@@ -82,10 +108,12 @@ function getProviderColor(provider) {
 }
 
 function providerToSlug(provider) {
-  return String(provider || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "default";
+  return (
+    String(provider || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "default"
+  );
 }
 
 function renderPickerList(models, search = "", tag = "all") {
@@ -214,37 +242,25 @@ function openModelPicker(btn, type) {
   _activeTag = "all";
 
   btn.setAttribute("aria-expanded", "true");
-  let models =
-    type === "image" ? _allImageModels : type === "code" ? _allCodeModels : _allChatModels;
+  let models = type === "image" ? _allImageModels : type === "code" ? _allCodeModels : _allChatModels;
 
   if (typeof state !== "undefined" && state.creditSaving) {
     models = models.filter((m) => m.tags && m.tags.includes("fast"));
   }
 
   if (type === "image") {
-    const isEditMode = !!(document.getElementById("editorImageUrl")?.value?.trim());
+    const isEditMode = !!document.getElementById("editorImageUrl")?.value?.trim();
     if (isEditMode) {
-      const allowedIds = [
-        "gpt-image-2",
-        "gpt-image-1-mini",
-        "black-forest-labs/flux-2-max",
-        "black-forest-labs/flux-2-max-editor",
-        "gemini-2.5-flash-image",
-        "gemini-2.5-flash-image-preview",
-        "gemini-3.1-flash-image-preview",
-        "gemini-3.1-flash-image-preview-editor",
-        "qwen-image-edit-plus"
-      ];
-      models = _allImageModels.filter(m => allowedIds.includes(m.id));
+      // Show only models with the "editor" tag for image editing
+      models = _allImageModels.filter((m) => m.tags && m.tags.includes("editor"));
     } else {
-      const allowedIds = [
-        "gpt-image-2",
-        "gpt-image-1-mini",
-        "black-forest-labs/flux-2-max",
-        "gemini-2.5-flash-image",
-        "gemini-3.1-flash-image-preview"
-      ];
-      models = _allImageModels.filter(m => allowedIds.includes(m.id));
+      // For generation: show flagship + fast models (exclude editor-only models)
+      models = _allImageModels.filter((m) => {
+        if (!m.tags) return true;
+        if (m.tags.includes("editor") && !m.tags.includes("flagship") && !m.tags.includes("fast"))
+          return false;
+        return true;
+      });
     }
   }
 
@@ -382,9 +398,7 @@ function navigatePickerItems(direction) {
   if (currentIdx === -1) {
     nextIdx = direction === "down" ? 0 : items.length - 1;
   } else {
-    nextIdx = direction === "down"
-      ? Math.min(currentIdx + 1, items.length - 1)
-      : Math.max(currentIdx - 1, 0);
+    nextIdx = direction === "down" ? Math.min(currentIdx + 1, items.length - 1) : Math.max(currentIdx - 1, 0);
   }
   items[nextIdx].focus();
   items[nextIdx].scrollIntoView({ block: "nearest" });

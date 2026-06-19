@@ -64,7 +64,7 @@ describe("CSP style-src directive", () => {
     expect(styleSrcAttr).toMatch(/'unsafe-inline'/);
   });
 
-  test("GET / injects a <meta name=\"csp-nonce\"> tag and a per-request nonce in <script> tags", async () => {
+  test('GET / injects a <meta name="csp-nonce"> tag and a per-request nonce in <script> tags', async () => {
     process.env.NODE_ENV = "test";
     const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 

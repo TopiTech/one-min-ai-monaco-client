@@ -1,5 +1,6 @@
 import express from "express";
 import crypto from "crypto";
+import { spawn } from "child_process";
 import { executeCommand, checkCommandSafety } from "../services/command-runner.js";
 import {
   validatePath,
@@ -510,6 +511,106 @@ router.post("/sessions/:id/files", async (req, res, next) => {
 /**
  * Search files within session context.
  */
+let _isRgAvailable = null;
+async function checkRgAvailable() {
+  if (_isRgAvailable !== null) return _isRgAvailable;
+  return new Promise((resolve) => {
+    const child = spawn("rg", ["--version"], { stdio: "ignore" });
+    child.on("close", (code) => {
+      _isRgAvailable = code === 0;
+      resolve(_isRgAvailable);
+    });
+    child.on("error", () => {
+      _isRgAvailable = false;
+      resolve(false);
+    });
+  });
+}
+
+async function searchWithRg(dir, query, maxResults) {
+  return new Promise((resolve) => {
+    const args = [
+      "--line-number",
+      "--no-heading",
+      "--color",
+      "never",
+      "--fixed-strings",
+      "--ignore-case",
+      "--max-filesize",
+      "256K",
+      "--glob",
+      "!.git",
+      "--glob",
+      "!node_modules",
+      "--glob",
+      "!.venv",
+      "--",
+      query,
+      dir,
+    ];
+
+    const child = spawn("rg", args);
+    let stdout = "";
+    child.stdout.on("data", (data) => {
+      stdout += data.toString();
+    });
+
+    child.on("close", (code) => {
+      if (code !== 0 && code !== 1) {
+        resolve(null);
+        return;
+      }
+
+      const results = [];
+      const lines = stdout.split(/\r?\n/);
+      for (const line of lines) {
+        if (results.length >= maxResults) break;
+        if (!line.trim()) continue;
+
+        const parts = line.split(":");
+        if (parts.length >= 3) {
+          let file;
+          let lineNumStr;
+          let content;
+
+          if (process.platform === "win32" && parts[0].length === 1 && /^[a-zA-Z]$/.test(parts[0])) {
+            file = parts[0] + ":" + parts[1];
+            lineNumStr = parts[2];
+            content = parts.slice(3).join(":");
+          } else {
+            file = parts[0];
+            lineNumStr = parts[1];
+            content = parts.slice(2).join(":");
+          }
+
+          const lineNum = parseInt(lineNumStr, 10);
+          if (!isNaN(lineNum)) {
+            try {
+              const resolvedFile = validatePath(file);
+              assertNotProtectedPath(resolvedFile);
+              results.push({
+                file: resolvedFile,
+                line: lineNum,
+                content: content.trim(),
+              });
+            } catch {
+              // Ignore matches in files outside allowed roots or protected paths
+            }
+          }
+        }
+      }
+      resolve(results);
+    });
+
+    child.on("error", () => {
+      resolve(null);
+    });
+  });
+}
+
+/**
+ * Search files within session context.
+ */
 router.get("/sessions/:id/search", async (req, res, next) => {
   try {
     const session = getSession(req, res);
@@ -526,9 +627,16 @@ router.get("/sessions/:id/search", async (req, res, next) => {
 
     const limit = Math.max(1, Math.min(parseInt(maxResults) || 20, 100));
 
-    // Simple recursive search (for production, use ripgrep or similar)
-    const results = [];
-    await searchInDirectory(resolvedSearchDir, query, results, limit);
+    let results = null;
+    const rgAvailable = await checkRgAvailable();
+    if (rgAvailable) {
+      results = await searchWithRg(resolvedSearchDir, query, limit);
+    }
+
+    if (results === null) {
+      results = [];
+      await searchInDirectory(resolvedSearchDir, query, results, limit);
+    }
 
     res.json({
       query,
@@ -540,7 +648,9 @@ router.get("/sessions/:id/search", async (req, res, next) => {
 });
 
 /**
- * Simple file content search with parallel processing.
+ * Simple file content search with controlled sequential processing.
+ * Sequential processing prevents race conditions on the shared `results` array
+ * while still being fast enough for local filesystem searches.
  */
 async function searchInDirectory(dir, query, results, maxResults, depth = 0) {
   if (results.length >= maxResults || depth > 8) return;
@@ -549,58 +659,52 @@ async function searchInDirectory(dir, query, results, maxResults, depth = 0) {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     const lowerQuery = query.toLowerCase();
 
-    // Process entries in parallel batches to optimize I/O
-    await Promise.all(
-      entries.map(async (entry) => {
-        if (results.length >= maxResults) return;
+    for (const entry of entries) {
+      if (results.length >= maxResults) break;
 
-        if (SKIPPED_DIRS.has(entry.name) || entry.name.startsWith(".")) {
-          return;
-        }
+      if (SKIPPED_DIRS.has(entry.name) || entry.name.startsWith(".")) {
+        continue;
+      }
 
-        const fullPath = path.join(dir, entry.name);
+      const fullPath = path.join(dir, entry.name);
 
+      try {
+        validatePath(fullPath);
+      } catch {
+        continue;
+      }
+
+      if (entry.isDirectory()) {
         try {
-          validatePath(fullPath);
+          const revalidatedDir = revalidateRealPath(fullPath);
+          assertNotProtectedPath(revalidatedDir);
+          await searchInDirectory(revalidatedDir, query, results, maxResults, depth + 1);
         } catch {
-          return;
+          // Skip directories that fail re-validation or are protected
         }
+      } else if (entry.isFile()) {
+        try {
+          const revalidated = revalidateRealPath(fullPath);
+          const stat = await fs.stat(revalidated);
+          if (stat.size > 256 * 1024) continue;
 
-        if (entry.isDirectory()) {
-          try {
-            const revalidatedDir = revalidateRealPath(fullPath);
-            assertNotProtectedPath(revalidatedDir);
-            await searchInDirectory(revalidatedDir, query, results, maxResults, depth + 1);
-          } catch {
-            // Skip directories that fail re-validation or are protected
-          }
-        } else if (entry.isFile()) {
-          try {
-            const revalidated = revalidateRealPath(fullPath);
-            const stat = await fs.stat(revalidated);
-            if (stat.size > 256 * 1024) return;
+          const content = await fs.readFile(revalidated, "utf-8");
+          const lines = content.split(/\r?\n/);
 
-            const content = await fs.readFile(revalidated, "utf-8");
-            const lines = content.split(/\r?\n/);
-
-            for (let i = 0; i < lines.length; i++) {
-              if (lines[i].toLowerCase().includes(lowerQuery)) {
-                results.push({
-                  file: revalidated,
-                  line: i + 1,
-                  content: lines[i].trim(),
-                });
-                if (results.length >= maxResults) break;
-              }
+          for (let i = 0; i < lines.length; i++) {
+            if (results.length >= maxResults) break;
+            if (lines[i].toLowerCase().includes(lowerQuery)) {
+              results.push({
+                file: revalidated,
+                line: i + 1,
+                content: lines[i].trim(),
+              });
             }
-          } catch {
-            // Skip binary or unreadable files, or paths that fail re-validation
           }
+        } catch {
+          // Skip binary or unreadable files, or paths that fail re-validation
         }
-      }),
-    );
-    if (results.length > maxResults) {
-      results.splice(maxResults);
+      }
     }
   } catch {
     // Skip inaccessible directories
@@ -621,9 +725,7 @@ router.get("/sessions/:id/dir", async (req, res, next) => {
 
     const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
     const items = entries
-      .filter(
-        (entry) => entry.name !== ".git" && entry.name !== "node_modules" && entry.name !== ".venv",
-      )
+      .filter((entry) => entry.name !== ".git" && entry.name !== "node_modules" && entry.name !== ".venv")
       .map((entry) => ({
         name: entry.name,
         isDirectory: entry.isDirectory(),
@@ -775,10 +877,9 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
       // (or upstream agent) is expected to add surrounding context lines
       // until the match becomes unique.
       if (matchCount > 1) {
-        logger.warn(
-          `SEARCH block matched ${matchCount} times in ${resolvedPath}; requiring disambiguation`,
-          { searchLines: searchLines.length },
-        );
+        logger.warn(`SEARCH block matched ${matchCount} times in ${resolvedPath}; requiring disambiguation`, {
+          searchLines: searchLines.length,
+        });
         return res.status(400).json({
           error: `置換対象の SEARCH ブロックのコードがファイル内に複数存在するため、一意に特定できません。前後の行も含めて指定してください：\n${block.search}`,
         });
@@ -837,9 +938,7 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
       // M-5: Only return newContent on dryRun to avoid sending large file contents
       // unnecessarily when the write has already been committed to disk.
       ...(dryRun ? { newContent } : {}),
-      message: dryRun
-        ? "プレビューを生成しました。"
-        : `${blocks.length}個のブロックの置換に成功しました。`,
+      message: dryRun ? "プレビューを生成しました。" : `${blocks.length}個のブロックの置換に成功しました。`,
     });
   } catch (err) {
     next(err);
@@ -854,6 +953,7 @@ router.get("/config", (_req, res) => {
     enableCommandExecution: serverConfig.enableCommandExecution,
     commandTimeoutMs: serverConfig.commandTimeoutMs,
     agentAutoApprove: serverConfig.agentAutoApprove,
+    maxLoops: serverConfig.agentMaxLoops,
     allowedRoots: getAllowedRoots(),
   });
 });

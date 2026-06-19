@@ -94,15 +94,11 @@ describe("FS Routes", () => {
       const filePath = path.join(tmpDir, "roundtrip.txt");
       const content = "hello fs routes\n";
 
-      const writeRes = await request(app)
-        .post("/api/fs/write")
-        .send({ path: filePath, content });
+      const writeRes = await request(app).post("/api/fs/write").send({ path: filePath, content });
       expect(writeRes.status).toBe(200);
       expect(writeRes.body.ok).toBe(true);
 
-      const readRes = await request(app)
-        .get("/api/fs/read")
-        .query({ path: filePath });
+      const readRes = await request(app).get("/api/fs/read").query({ path: filePath });
       expect(readRes.status).toBe(200);
       expect(readRes.body.content).toBe(content);
     });
@@ -113,9 +109,7 @@ describe("FS Routes", () => {
     });
 
     test("write rejects missing path", async () => {
-      const res = await request(app)
-        .post("/api/fs/write")
-        .send({ content: "x" });
+      const res = await request(app).post("/api/fs/write").send({ content: "x" });
       expect(res.status).toBe(400);
     });
 
@@ -145,9 +139,7 @@ describe("FS Routes", () => {
 
     test("creates a directory", async () => {
       const dirPath = path.join(tmpDir, "new-dir");
-      const res = await request(app)
-        .post("/api/fs/create")
-        .send({ path: dirPath, type: "directory" });
+      const res = await request(app).post("/api/fs/create").send({ path: dirPath, type: "directory" });
       expect(res.status).toBe(200);
       expect(res.body.type).toBe("directory");
 
@@ -164,9 +156,7 @@ describe("FS Routes", () => {
       const filePath = path.join(tmpDir, "to-delete.txt");
       await fs.writeFile(filePath, "delete me");
 
-      const res = await request(app)
-        .post("/api/fs/delete")
-        .send({ path: filePath });
+      const res = await request(app).post("/api/fs/delete").send({ path: filePath });
       expect(res.status).toBe(200);
       expect(res.body.ok).toBe(true);
 
@@ -188,9 +178,7 @@ describe("FS Routes", () => {
       const newPath = path.join(tmpDir, "new.txt");
       await fs.writeFile(oldPath, "rename me");
 
-      const res = await request(app)
-        .post("/api/fs/rename")
-        .send({ oldPath, newPath });
+      const res = await request(app).post("/api/fs/rename").send({ oldPath, newPath });
       expect(res.status).toBe(200);
       expect(res.body.ok).toBe(true);
 
@@ -200,9 +188,7 @@ describe("FS Routes", () => {
     });
 
     test("rejects missing parameters", async () => {
-      const res = await request(app)
-        .post("/api/fs/rename")
-        .send({ oldPath: "/a" });
+      const res = await request(app).post("/api/fs/rename").send({ oldPath: "/a" });
       expect(res.status).toBe(400);
     });
   });
@@ -212,23 +198,17 @@ describe("FS Routes", () => {
   // ----------------------------------------------------------------
   describe("Protection checks", () => {
     test("read blocks protected .env path", async () => {
-      const res = await request(app)
-        .get("/api/fs/read")
-        .query({ path: ".env" });
+      const res = await request(app).get("/api/fs/read").query({ path: ".env" });
       expect(res.status).toBe(403);
     });
 
     test("write blocks protected server.js path", async () => {
-      const res = await request(app)
-        .post("/api/fs/write")
-        .send({ path: "server.js", content: "bad" });
+      const res = await request(app).post("/api/fs/write").send({ path: "server.js", content: "bad" });
       expect(res.status).toBe(403);
     });
 
     test("delete blocks protected package.json path", async () => {
-      const res = await request(app)
-        .post("/api/fs/delete")
-        .send({ path: "package.json" });
+      const res = await request(app).post("/api/fs/delete").send({ path: "package.json" });
       expect(res.status).toBe(403);
     });
 
@@ -243,9 +223,7 @@ describe("FS Routes", () => {
       const binPath = path.join(tmpDir, "image.png");
       // Write a file with a PNG magic header
       await fs.writeFile(binPath, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]));
-      const res = await request(app)
-        .get("/api/fs/read")
-        .query({ path: binPath });
+      const res = await request(app).get("/api/fs/read").query({ path: binPath });
       expect(res.status).toBe(400);
     });
   });

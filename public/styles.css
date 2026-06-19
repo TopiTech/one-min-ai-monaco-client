@@ -531,7 +531,7 @@ button.ghost:hover {
   margin-top: 14px;
 }
 
-.row>* {
+.row > * {
   min-width: 0;
 }
 
@@ -915,7 +915,7 @@ button.ghost:hover {
   color: var(--text-muted);
 }
 
-.tree-node.expanded>.node-toggle {
+.tree-node.expanded > .node-toggle {
   transform: rotate(90deg);
 }
 
@@ -2078,7 +2078,6 @@ select:focus-visible {
 
 /* Reduced Motion */
 @media (prefers-reduced-motion: reduce) {
-
   *,
   *::before,
   *::after {
@@ -2463,8 +2462,6 @@ select:focus-visible {
   text-align: center;
 }
 
-
-
 /* Skeleton loading animations */
 @keyframes skeleton-shimmer {
   0% {
@@ -2477,10 +2474,12 @@ select:focus-visible {
 }
 
 .skeleton {
-  background: linear-gradient(90deg,
-      var(--glass-bg, rgba(255, 255, 255, 0.1)) 25%,
-      rgba(255, 255, 255, 0.2) 50%,
-      var(--glass-bg, rgba(255, 255, 255, 0.1)) 75%);
+  background: linear-gradient(
+    90deg,
+    var(--glass-bg, rgba(255, 255, 255, 0.1)) 25%,
+    rgba(255, 255, 255, 0.2) 50%,
+    var(--glass-bg, rgba(255, 255, 255, 0.1)) 75%
+  );
   background-size: 200% 100%;
   animation: skeleton-shimmer 1.5s ease-in-out infinite;
   border-radius: 6px;
@@ -3392,22 +3391,54 @@ select:focus-visible {
 
 /* Model picker group header provider colors
    (replaces inline style.setProperty('--provider-color', ...)) */
-.model-picker-group-header--openai { --provider-color: #10a37f; }
-.model-picker-group-header--anthropic { --provider-color: #d4793c; }
-.model-picker-group-header--google { --provider-color: #4285f4; }
-.model-picker-group-header--deepseek { --provider-color: #5b6cf9; }
-.model-picker-group-header--xai { --provider-color: #e7e7e7; }
-.model-picker-group-header--mistral { --provider-color: #ff7000; }
-.model-picker-group-header--alibaba { --provider-color: #ff6a00; }
-.model-picker-group-header--perplexity { --provider-color: #20b2aa; }
-.model-picker-group-header--cohere { --provider-color: #39d3aa; }
-.model-picker-group-header--meta { --provider-color: #0866ff; }
-.model-picker-group-header--flux { --provider-color: #a855f7; }
-.model-picker-group-header--magic-art { --provider-color: #ec4899; }
-.model-picker-group-header--stability { --provider-color: #7c3aed; }
-.model-picker-group-header--leonardo { --provider-color: #f59e0b; }
-.model-picker-group-header--ideogram { --provider-color: #06b6d4; }
-.model-picker-group-header--recraft { --provider-color: #84cc16; }
+.model-picker-group-header--openai {
+  --provider-color: #10a37f;
+}
+.model-picker-group-header--anthropic {
+  --provider-color: #d4793c;
+}
+.model-picker-group-header--google {
+  --provider-color: #4285f4;
+}
+.model-picker-group-header--deepseek {
+  --provider-color: #5b6cf9;
+}
+.model-picker-group-header--xai {
+  --provider-color: #e7e7e7;
+}
+.model-picker-group-header--mistral {
+  --provider-color: #ff7000;
+}
+.model-picker-group-header--alibaba {
+  --provider-color: #ff6a00;
+}
+.model-picker-group-header--perplexity {
+  --provider-color: #20b2aa;
+}
+.model-picker-group-header--cohere {
+  --provider-color: #39d3aa;
+}
+.model-picker-group-header--meta {
+  --provider-color: #0866ff;
+}
+.model-picker-group-header--flux {
+  --provider-color: #a855f7;
+}
+.model-picker-group-header--magic-art {
+  --provider-color: #ec4899;
+}
+.model-picker-group-header--stability {
+  --provider-color: #7c3aed;
+}
+.model-picker-group-header--leonardo {
+  --provider-color: #f59e0b;
+}
+.model-picker-group-header--ideogram {
+  --provider-color: #06b6d4;
+}
+.model-picker-group-header--recraft {
+  --provider-color: #84cc16;
+}
 
 /* Inline chat widget size (was inline style.maxWidth/width) */
 .inline-chat-widget {
@@ -3430,7 +3461,9 @@ select:focus-visible {
 }
 
 @keyframes blink {
-  50% { opacity: 0; }
+  50% {
+    opacity: 0;
+  }
 }
 
 /* Streaming indicator dots */
@@ -3460,8 +3493,16 @@ select:focus-visible {
 }
 
 @keyframes streaming-dot {
-  0%, 80%, 100% { transform: scale(0.4); opacity: 0.4; }
-  40% { transform: scale(1); opacity: 1; }
+  0%,
+  80%,
+  100% {
+    transform: scale(0.4);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 /* Model Credit Cost Badges */
@@ -3504,12 +3545,12 @@ select:focus-visible {
     grid-template-rows: auto auto;
     gap: 16px;
   }
-  
+
   .assistant.agent-panel {
     grid-column: 1 / -1;
     max-height: 500px;
   }
-  
+
   #editor {
     height: 55vh;
   }
@@ -3521,7 +3562,7 @@ select:focus-visible {
     height: auto;
     overflow-y: auto;
   }
-  
+
   .sidebar {
     border-right: none;
     border-bottom: 1px solid var(--glass-border);
@@ -3533,56 +3574,55 @@ select:focus-visible {
     justify-content: space-between;
     gap: 12px;
   }
-  
+
   .sidebar-resize-handle {
     display: none;
   }
-  
+
   .brand {
     margin-bottom: 0;
   }
-  
+
   .sidebar .nav {
     width: auto;
     margin: 0;
     padding: 8px 12px;
     font-size: 0.85rem;
   }
-  
+
   .sidebar .hint,
   .sidebar .credit-save-box,
   .sidebar .theme-toggle {
     display: none;
   }
-  
+
   .main {
     height: auto;
   }
-  
+
   .view {
     padding: 16px 20px;
     height: auto;
     overflow-y: visible;
   }
-  
+
   .panel.two {
     grid-template-columns: 1fr;
     gap: 16px;
   }
-  
+
   .ide {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto;
   }
-  
+
   .files.card,
   .editorWrap.card,
   .assistant.card {
     grid-column: 1;
   }
-  
+
   #editor {
     height: 50vh;
   }
 }
-

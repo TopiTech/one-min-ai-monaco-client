@@ -122,8 +122,7 @@ export function createImageManager(dom) {
       infoRow.appendChild(link);
 
       if (sourceImageUrl) {
-        const modelName =
-          document.getElementById("imageModelLabel")?.textContent?.trim() || "AI Model";
+        const modelName = document.getElementById("imageModelLabel")?.textContent?.trim() || "AI Model";
         const modelLabel = document.createElement("span");
         modelLabel.textContent = `編集モデル: ${modelName}`;
         modelLabel.className = "image-card-model";
@@ -216,8 +215,7 @@ export function createImageManager(dom) {
     try {
       const data = await api("/api/assets/upload", { method: "POST", body: fd });
       dom.assetResult.textContent = JSON.stringify(data, null, 2);
-      const key =
-        data?.key || data?.asset?.key || data?.fileContent?.path || data?.asset?.location || "";
+      const key = data?.key || data?.asset?.key || data?.fileContent?.path || data?.asset?.location || "";
       const url = data?.url || (key ? assetUrl(key) : "");
       if (key) {
         dom.editorImageUrl.value = url || key;
@@ -256,12 +254,7 @@ export function createImageManager(dom) {
       if (textToImgParams) textToImgParams.classList.remove("is-hidden");
       if (btnText) btnText.textContent = "画像を生成";
 
-      if (
-        modelObj &&
-        modelObj.tags &&
-        modelObj.tags.includes("editor") &&
-        !modelObj.tags.includes("image")
-      ) {
+      if (modelObj && modelObj.tags && modelObj.tags.includes("editor") && !modelObj.tags.includes("image")) {
         const defaultGen = getAllImageModels().find(
           (m) => !m.tags || !m.tags.includes("editor") || m.id.startsWith("gpt-image"),
         ) || { id: "gpt-image-2", label: "GPT Image 2" };

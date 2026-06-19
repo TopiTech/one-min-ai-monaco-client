@@ -67,6 +67,7 @@ http://localhost:3000
 | `ENABLE_COMMAND_EXECUTION` | いいえ | `false` | エージェントのコマンド実行を有効化します。 |
 | `COMMAND_TIMEOUT_MS` | いいえ | `30000` | コマンド実行のタイムアウト時間。 |
 | `AGENT_AUTO_APPROVE` | いいえ | `false` | 承認なし実行の可否。原則 false。 |
+| `AGENT_MAX_LOOPS` | いいえ | `20` | エージェントの最大ループ反復回数 (1-100)。 |
 | `LOCAL_BFF_AUTH_TOKEN` | いいえ | 自動生成 | ローカルBFF認証トークン。未設定なら毎回自動生成。 |
 | `LOG_LEVEL` | いいえ | `info` | ログレベル（`error`, `warn`, `info`, `debug`）。 |
 | `LOG_TO_FILE` | いいえ | `false` | `true` でログファイル出力を有効化。 |

@@ -132,9 +132,7 @@ describe("Server Factory", () => {
         enableRateLimit: false,
       });
 
-      const response = await request(protectedApp)
-        .get("/api/fs/config")
-        .set("sec-fetch-site", "same-origin");
+      const response = await request(protectedApp).get("/api/fs/config").set("sec-fetch-site", "same-origin");
 
       expect(response.status).toBe(403);
     });
@@ -255,9 +253,7 @@ describe("Server Factory", () => {
 
   describe("Asset upload error handling", () => {
     test("should return 400 when no file is attached", async () => {
-      const response = await request(app)
-        .post("/api/assets/upload")
-        .send({});
+      const response = await request(app).post("/api/assets/upload").send({});
       expect(response.status).toBe(400);
       expect(response.body.error).toMatch(/asset file is required|Unexpected field/);
     });
@@ -270,9 +266,7 @@ describe("Server Factory", () => {
     });
 
     test("should include error code in response", async () => {
-      const response = await request(app)
-        .post("/api/chat")
-        .send({});
+      const response = await request(app).post("/api/chat").send({});
       expect(response.status).toBe(400);
     });
   });

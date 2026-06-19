@@ -87,7 +87,10 @@ const SHELL_INJECTION_PATTERN = /[\n\r;|`<>&]|&&|\|\||\$\(|\$\{|%(?:0[aAdD]|\d{2
 
 function normalizeCommandName(commandName) {
   if (!commandName) return "";
-  return commandName.replace(/\.exe$/i, "").replace(/\.cmd$/i, "").toLowerCase();
+  return commandName
+    .replace(/\.exe$/i, "")
+    .replace(/\.cmd$/i, "")
+    .toLowerCase();
 }
 
 function parseCommand(command) {
@@ -174,8 +177,9 @@ function getSafeEnv() {
 function buildWindowsCommand(commandParts) {
   return commandParts
     .map((part) => {
-      if (/\s/.test(part) || /[&|<>()%!^]/.test(part)) {
-        return `"${part.replace(/"/g, "")}"`;
+      if (/\s/.test(part) || /[&|<>()%!^"']/.test(part) || part.includes("%")) {
+        // Escape inner double quotes and wrap in double quotes
+        return `"${part.replace(/"/g, '""')}"`;
       }
       return part;
     })
@@ -358,7 +362,10 @@ export async function executeCommand(command, options = {}) {
 
   // Clamp timeout between 1 second and configured max
   const rawTimeout = timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const clampedTimeout = Math.max(1000, Math.min(Number(rawTimeout) || DEFAULT_TIMEOUT_MS, serverConfig.commandTimeoutMs || DEFAULT_TIMEOUT_MS));
+  const clampedTimeout = Math.max(
+    1000,
+    Math.min(Number(rawTimeout) || DEFAULT_TIMEOUT_MS, serverConfig.commandTimeoutMs || DEFAULT_TIMEOUT_MS),
+  );
 
   let tokens;
   try {

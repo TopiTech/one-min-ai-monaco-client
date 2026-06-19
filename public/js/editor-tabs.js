@@ -123,8 +123,7 @@ export function createEditorTabManager(editorState, editorManager, dom) {
 
     if (editorState.activeFilePath === filePath) {
       if (editorState.openTabs.length > 0) {
-        const nextActivePath =
-          editorState.openTabs[Math.min(tabIndex, editorState.openTabs.length - 1)];
+        const nextActivePath = editorState.openTabs[Math.min(tabIndex, editorState.openTabs.length - 1)];
 
         (async () => {
           try {

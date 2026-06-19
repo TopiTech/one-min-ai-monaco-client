@@ -1,10 +1,5 @@
 import express from "express";
-import {
-  callOneMin,
-  extractText,
-  isFailedResponse,
-  extractFailureMessage,
-} from "../utils/api-client.js";
+import { callOneMin, extractText, isFailedResponse, extractFailureMessage } from "../utils/api-client.js";
 import { getChatModels, getCodeModels, getImageModels } from "../config/models.js";
 import { parseWebSearchParams, buildCodePayload } from "../utils/web-search.js";
 import logger from "../utils/logger.js";
@@ -12,6 +7,16 @@ import logger from "../utils/logger.js";
 const router = express.Router();
 
 import { serverConfig } from "../config/server.js";
+
+async function parseResponsePayload(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text };
+  }
+}
 
 function getDefaultModel(type) {
   if (type === "CODE_GENERATOR") return serverConfig.defaultCodeModel;
@@ -32,9 +37,7 @@ function validateAttachments(attachments) {
   // upstream payload from being polluted with arbitrary strings that
   // downstream providers may interpret differently.
   const looksLikeAssetRef = (s) =>
-    typeof s === "string" &&
-    (s.length <= 1024) &&
-    (/^https?:\/\//i.test(s) || /^[A-Za-z0-9._/-]+$/.test(s));
+    typeof s === "string" && s.length <= 1024 && (/^https?:\/\//i.test(s) || /^[A-Za-z0-9._/-]+$/.test(s));
 
   const out = {};
   if (attachments.images !== undefined) {
@@ -42,9 +45,7 @@ function validateAttachments(attachments) {
       !Array.isArray(attachments.images) ||
       attachments.images.some((x) => typeof x !== "string" || !looksLikeAssetRef(x))
     ) {
-      const err = new Error(
-        "attachments.images must be an array of URLs or 1min.ai asset keys",
-      );
+      const err = new Error("attachments.images must be an array of URLs or 1min.ai asset keys");
       err.status = 400;
       throw err;
     }
@@ -61,9 +62,7 @@ function validateAttachments(attachments) {
       !Array.isArray(attachments.files) ||
       attachments.files.some((x) => typeof x !== "string" || !looksLikeAssetRef(x))
     ) {
-      const err = new Error(
-        "attachments.files must be an array of URLs or 1min.ai asset keys",
-      );
+      const err = new Error("attachments.files must be an array of URLs or 1min.ai asset keys");
       err.status = 400;
       throw err;
     }
@@ -143,7 +142,9 @@ function parseChatRequest(body) {
   const MAX_PROMPT_LENGTH = 50000;
   const promptStr = String(prompt);
   if (promptStr.length > MAX_PROMPT_LENGTH) {
-    return { error: { status: 400, message: `prompt exceeds maximum length of ${MAX_PROMPT_LENGTH} characters` } };
+    return {
+      error: { status: 400, message: `prompt exceeds maximum length of ${MAX_PROMPT_LENGTH} characters` },
+    };
   }
 
   let safeAttachments;
@@ -229,11 +230,13 @@ router.post("/chat/stream", async (req, res, next) => {
     }
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorPayload = await parseResponsePayload(response);
       const isDev = process.env.NODE_ENV === "development";
       return res.status(response.status).json({
         error: `1min.ai API error: ${response.status}`,
-        details: isDev ? errorText : "Upstream API Error",
+        details: isDev
+          ? errorPayload?.error?.message || errorPayload?.message || "Upstream API Error"
+          : "Upstream API Error",
       });
     }
 
@@ -311,9 +314,7 @@ router.post("/conversations", async (req, res, next) => {
       idempotent: false,
     });
     if (isFailedResponse(data)) {
-      const err = new Error(
-        `1min.ai conversation creation failed: ${extractFailureMessage(data)}`,
-      );
+      const err = new Error(`1min.ai conversation creation failed: ${extractFailureMessage(data)}`);
       err.status = 502;
       err.payload = data;
       throw err;
@@ -367,8 +368,7 @@ router.post("/images/generate", async (req, res, next) => {
       output_compression,
       size,
     } = req.body;
-    if (!prompt || !String(prompt).trim())
-      return res.status(400).json({ error: "prompt is required" });
+    if (!prompt || !String(prompt).trim()) return res.status(400).json({ error: "prompt is required" });
 
     // #14: Validate num_outputs range
     const numOutputsNum = Number(num_outputs);
@@ -379,7 +379,9 @@ router.post("/images/generate", async (req, res, next) => {
     // #15: Validate output_format against allowed values
     const ALLOWED_OUTPUT_FORMATS = ["png", "webp", "jpeg", "jpg"];
     if (output_format && !ALLOWED_OUTPUT_FORMATS.includes(output_format)) {
-      return res.status(400).json({ error: `output_format must be one of: ${ALLOWED_OUTPUT_FORMATS.join(", ")}` });
+      return res
+        .status(400)
+        .json({ error: `output_format must be one of: ${ALLOWED_OUTPUT_FORMATS.join(", ")}` });
     }
 
     const selectedModel = model || getDefaultModel("IMAGE_GENERATOR");
@@ -407,8 +409,7 @@ router.post("/images/generate", async (req, res, next) => {
       // silent 422 from the upstream API.
       if (quality !== "medium" || background !== "auto" || output_compression !== undefined) {
         return res.status(400).json({
-          error:
-            "quality, background, and output_compression are only supported by gpt-image-* models",
+          error: "quality, background, and output_compression are only supported by gpt-image-* models",
         });
       }
       promptObject.num_outputs = Number(num_outputs) || 1;
@@ -472,9 +473,7 @@ router.post("/images/text-editor", async (req, res, next) => {
         return res.status(400).json({ error: "width and height must be divisible by 16" });
       }
       if (w * h < 655360 || w * h > 8294400) {
-        return res
-          .status(400)
-          .json({ error: "total pixels must be between 655,360 and 8,294,400" });
+        return res.status(400).json({ error: "total pixels must be between 655,360 and 8,294,400" });
       }
       if (Math.max(w, h) > 3840) {
         return res.status(400).json({ error: "max edge must be <= 3840px" });
@@ -636,17 +635,7 @@ router.post("/code/generate", async (req, res, next) => {
 
 router.post("/code/autocomplete", async (req, res, next) => {
   try {
-    const {
-      code,
-      line,
-      column,
-      fileName,
-      language,
-      model,
-      webSearch = false,
-      numOfSite,
-      maxWord,
-    } = req.body;
+    const { code, line, column, fileName, language, model, webSearch = false, numOfSite, maxWord } = req.body;
     if (code === undefined || line === undefined || column === undefined) {
       return res.status(400).json({ error: "code, line, and column are required" });
     }
@@ -803,10 +792,7 @@ router.post("/agent/chat", async (req, res, next) => {
     const { prompt, messages, model, webSearch = false, numOfSite, maxWord } = req.body;
 
     // Accept either prompt (string) or messages (array) — messages is preferred.
-    const promptText =
-      Array.isArray(messages) && messages.length > 0
-        ? flattenMessages(messages)
-        : prompt;
+    const promptText = Array.isArray(messages) && messages.length > 0 ? flattenMessages(messages) : prompt;
 
     if (!promptText || !String(promptText).trim())
       return res.status(400).json({ error: "prompt or messages is required" });
