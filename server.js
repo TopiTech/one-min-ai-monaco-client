@@ -70,7 +70,12 @@ function parseCookies(cookieHeader) {
     if (!name) return;
     const value = rest.join(`=`).trim();
     if (!value) return;
-    list[name] = decodeURIComponent(value);
+    try {
+      list[name] = decodeURIComponent(value);
+    } catch {
+      // Malformed percent-encoding in cookie value — store raw and continue
+      list[name] = value;
+    }
   });
   return list;
 }
@@ -84,7 +89,10 @@ function localBffAuth({ requireToken = true, authToken } = {}) {
 
   // B-1: Require explicit authToken to prevent accidental re-evaluation of createLocalAuthToken()
   if (!authToken) {
-    throw new Error("localBffAuth: authToken must be provided explicitly when requireToken=true");
+    throw new Error(
+      "localBffAuth: authToken must be provided explicitly when requireToken=true. " +
+      "Set LOCAL_BFF_AUTH_TOKEN in .env or pass localAuthToken option to createApp().",
+    );
   }
 
   return (req, res, next) => {
@@ -110,6 +118,15 @@ function localBffAuth({ requireToken = true, authToken } = {}) {
     const host = req.get("host");
     const secFetchSite = req.get("sec-fetch-site");
     const referer = req.get("referer");
+
+    // B-1: Sec-Fetch-Site is a browser-enforced header that cannot be
+    // forged by simple fetch() calls. When it is explicitly "cross-site",
+    // reject immediately without falling through to the heuristic checks.
+    if (secFetchSite === "cross-site") {
+      const err = new Error("Cross-origin requests are not allowed");
+      err.status = 403;
+      return next(err);
+    }
 
     const isSameOrigin = (() => {
       if (origin) {
@@ -387,6 +404,11 @@ export function createApp(options = {}) {
       }
     }
     if (req.method === "OPTIONS") {
+      // B-3: Even for preflight, verify the requested origin is localhost.
+      if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(origin)) {
+        logger.warn("CORS preflight blocked from origin", { origin });
+        return res.status(403).json({ error: "CORS preflight blocked: Only localhost origins are allowed" });
+      }
       return res.sendStatus(204);
     }
     next();
@@ -398,7 +420,22 @@ export function createApp(options = {}) {
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
     next();
+  });
+
+  // A-6: Register health endpoint before rate-limit middleware so it's always accessible.
+  app.use("/api/health", (_req, res) => {
+    const status = getModelSyncStatus();
+    res.json({
+      ok: true,
+      service: "one-min-ai-monaco-client",
+      models: {
+        ok: status.ok,
+        lastSync: status.lastSync,
+        syncFailed: !status.ok,
+      },
+    });
   });
 
   if (enableRateLimit) {
@@ -411,8 +448,8 @@ export function createApp(options = {}) {
   }
 
   app.use(logger.requestLogger());
-  app.use(express.json({ limit: serverConfig.maxJsonBodySize }));
 
+  // Serve index.html (before express.json() since this is a GET)
   app.get(["/", "/index.html"], (req, res) => {
     try {
       const htmlPath = path.join(__dirname, "public", "index.html");
@@ -454,17 +491,22 @@ export function createApp(options = {}) {
     }
   });
 
+  // #1: Block source map files before they reach express.static
+  app.use((req, _res, next) => {
+    if (req.path.endsWith(".map")) {
+      const err = new Error("Source map access denied");
+      err.status = 403;
+      return next(err);
+    }
+    next();
+  });
+
   app.use(
     express.static(path.join(__dirname, "public"), {
       index: false,
       setHeaders: (res, filePath) => {
         if (filePath.endsWith(".js")) {
           res.setHeader("X-Content-Type-Options", "nosniff");
-        }
-        // Block .map files from being served to prevent source map exposure
-        if (filePath.endsWith(".map")) {
-          res.setHeader("X-Content-Type-Options", "nosniff");
-          res.setHeader("Cache-Control", "no-store");
         }
       },
       fallthrough: true,
@@ -474,22 +516,6 @@ export function createApp(options = {}) {
   const protectedApiAuth = localBffAuth({
     requireToken: requireLocalAuth,
     authToken: localAuthToken,
-  });
-  // B-5: Health endpoint does not require auth but minimizes info exposure.
-  // models.error carries internal 1min.ai error messages that could leak
-  // implementation details to anonymous callers, so expose only a boolean
-  // indicator of whether the last sync succeeded.
-  app.use("/api/health", (_req, res) => {
-    const status = getModelSyncStatus();
-    res.json({
-      ok: true,
-      service: "one-min-ai-monaco-client",
-      models: {
-        ok: status.ok,
-        lastSync: status.lastSync,
-        syncFailed: !status.ok,
-      },
-    });
   });
 
   app.post(
@@ -501,10 +527,11 @@ export function createApp(options = {}) {
         handleAssetUpload(req, res, next);
       });
     },
-    (err, _req, res, next) => {
-      next(err);
-    },
   );
+
+  // Apply express.json() after the asset upload route (which uses multer)
+  // so it never consumes multipart body streams (Q-9).
+  app.use(express.json({ limit: serverConfig.maxJsonBodySize }));
 
   // B-5: Single auth layer at /api level. Sub-routes are mounted inside one protected router
   // to avoid double invocation of protectedApiAuth.
@@ -552,7 +579,9 @@ function validateEnvironment() {
     logger.warn("ALLOWED_ROOTS is not set. Defaulting to project root only.");
   }
   if (!process.env.LOCAL_BFF_AUTH_TOKEN) {
-    logger.info("LOCAL_BFF_AUTH_TOKEN not set. A random token will be generated.");
+    logger.warn("LOCAL_BFF_AUTH_TOKEN not set. A random token will be generated on each restart. " +
+      "Browser sessions will be invalidated when the server restarts. " +
+      "Set LOCAL_BFF_AUTH_TOKEN in .env for persistent sessions.");
   }
 }
 

@@ -145,7 +145,6 @@ function addHistoryEntry(session, entry) {
   saveSessions(); // Persist after change
 }
 
-const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 function cleanupExpiredSessions() {
@@ -156,7 +155,7 @@ function cleanupExpiredSessions() {
     // doing so would orphan the spawned child process and confuse the
     // client waiting on the response.
     if (session.status === "running") continue;
-    if (now - session.lastAccessedAt > SESSION_TTL_MS) {
+    if (now - session.lastAccessedAt > serverConfig.sessionTtlMs) {
       sessions.delete(id);
       changed = true;
     }

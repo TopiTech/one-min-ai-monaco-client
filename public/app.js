@@ -3,7 +3,6 @@
  * Depends on: js/api.js, js/dom-style.js, js/models.js, js/toast.js, js/utils.js
  */
 
-import { injectStyle } from "./js/dom-style.js";
 import {
   loadModels,
   initModelPickers,
@@ -11,7 +10,7 @@ import {
   getAllCodeModels,
   getAllImageModels,
 } from "./js/models.js";
-import { api, assetUrl, extractImages } from "./js/api.js";
+import { api } from "./js/api.js";
 import {
   SVG_NS,
   escapeHtml,
@@ -29,6 +28,8 @@ import { bootstrapSettings } from "./js/settings.js";
 import { createChatManager, createChatState } from "./js/chat.js";
 import { createImageManager, createImageState } from "./js/image.js";
 import { createEditorManager, createEditorState } from "./js/editor.js";
+import { createInlineChatManager } from "./js/inline-chat.js";
+import { createEditorTabManager } from "./js/editor-tabs.js";
 
 // Helper to get element by ID
 const $ = (id) => document.getElementById(id);
@@ -121,19 +122,20 @@ function toggleTheme() {
   editorManager.updateTheme();
 }
 
-document.addEventListener(
-  "DOMContentLoaded",
-  () => {
-    initTheme();
-    $("themeToggle")?.addEventListener("click", toggleTheme);
-  },
-  { once: true },
-);
-
-// Initialize settings on startup
+// Initialize theme and settings on DOM ready
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", bootstrapSettings, { once: true });
+  document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+      initTheme();
+      $("themeToggle")?.addEventListener("click", toggleTheme);
+      bootstrapSettings();
+    },
+    { once: true },
+  );
 } else {
+  initTheme();
+  $("themeToggle")?.addEventListener("click", toggleTheme);
   bootstrapSettings();
 }
 
@@ -165,6 +167,16 @@ const editorState = createEditorState();
 const chatManager = createChatManager(dom, { chat: chatState });
 const imageManager = createImageManager(dom);
 const editorManager = createEditorManager(editorState);
+
+// Create tab and inline-chat managers
+const tabManager = createEditorTabManager(editorState, editorManager, dom);
+const inlineChatManager = createInlineChatManager(editorState, editorManager, dom);
+
+// Expose for editor.js keyboard shortcuts (saveFile, toggleInlineChat).
+// These are needed because editor.js is initialized asynchronously via AMD loader
+// and cannot import from app.js directly.
+window.saveFile = tabManager.saveFile;
+window.toggleInlineChat = inlineChatManager.toggleInlineChat;
 
 // Merge state for compatibility
 state.chat = chatState;
@@ -249,223 +261,9 @@ $("createConversation").onclick = async () => {
   }
 };
 
-// images
-function renderImages(data, sourceImageUrl = null) {
-  const images = extractImages(data);
-  const gallery = dom.imageGallery;
-  if (!gallery) return;
+// Image operations delegated to imageManager
 
-  if (!images.length) {
-    const pre = document.createElement("pre");
-    pre.className = "json";
-    pre.textContent = JSON.stringify(data, null, 2);
-    gallery.prepend(pre);
-    return;
-  }
-
-  // Diff-based update: collect existing card URLs
-  const existingCards = new Map();
-  gallery.querySelectorAll(".imageCard").forEach((card) => {
-    const imgEl = card.querySelector("img:not(.image-before)");
-    const link = card.querySelector("a");
-    const key = (imgEl && imgEl.src) || (link && link.href) || "";
-    if (key) existingCards.set(key, card);
-  });
-
-  const newUrls = new Set();
-  for (const img of images) {
-    const url = assetUrl(img);
-    newUrls.add(url);
-
-    // Skip if card with same URL already exists
-    if (existingCards.has(url)) continue;
-
-    const card = document.createElement("div");
-    card.className = "imageCard";
-
-    if (sourceImageUrl) {
-      // Create slider comparison card
-      const sourceUrl = assetUrl(sourceImageUrl);
-      const cmpId = `cmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const slider = document.createElement("div");
-      slider.className = `image-comparison-slider ${cmpId}`;
-
-      const afterImg = document.createElement("img");
-      afterImg.src = url;
-      afterImg.alt = "After";
-      afterImg.className = "image-after";
-      slider.appendChild(afterImg);
-
-      const beforeImg = document.createElement("img");
-      beforeImg.src = sourceUrl;
-      beforeImg.alt = "Before";
-      beforeImg.className = "image-before";
-      slider.appendChild(beforeImg);
-
-      const range = document.createElement("input");
-      range.type = "range";
-      range.min = "0";
-      range.max = "100";
-      range.value = "50";
-      range.className = "slider-range";
-      range.setAttribute("aria-label", "画像比較スライダー");
-      slider.appendChild(range);
-
-      const divider = document.createElement("div");
-      divider.className = "slider-divider";
-      const handle = document.createElement("div");
-      handle.className = "slider-handle";
-      divider.appendChild(handle);
-      slider.appendChild(divider);
-
-      injectStyle(
-        `.${cmpId} .image-before { clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%); } ` +
-        `.${cmpId} .slider-divider { left: 50%; }`,
-      );
-
-      range.addEventListener("input", (e) => {
-        const val = e.target.value;
-        injectStyle(
-          `.${cmpId} .image-before { clip-path: polygon(0 0, ${val}% 0, ${val}% 100%, 0 100%); } ` +
-          `.${cmpId} .slider-divider { left: ${val}%; }`,
-        );
-      });
-      card.appendChild(slider);
-    } else {
-      const imgEl = document.createElement("img");
-      imgEl.src = url;
-      imgEl.alt = "AI生成画像";
-      imgEl.onerror = function () {
-        this.classList.add("is-error-hidden");
-      };
-      card.appendChild(imgEl);
-    }
-
-    // Info row under the image/slider
-    const infoRow = document.createElement("div");
-    infoRow.className = "image-card-info";
-
-    const link = document.createElement("a");
-    link.href = url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = img.length > 30 ? img.slice(0, 27) + "..." : img;
-    link.title = img;
-    link.className = "image-card-link";
-    infoRow.appendChild(link);
-
-    if (sourceImageUrl) {
-      const modelName =
-        document.getElementById("imageModelLabel")?.textContent?.trim() || "AI Model";
-      const modelLabel = document.createElement("span");
-      modelLabel.textContent = `編集モデル: ${modelName}`;
-      modelLabel.className = "image-card-model";
-      infoRow.appendChild(modelLabel);
-    }
-
-    card.appendChild(infoRow);
-    gallery.prepend(card);
-  }
-
-  // Remove cards whose URLs are no longer present
-  existingCards.forEach((card, url) => {
-    if (!newUrls.has(url)) card.remove();
-  });
-
-  pruneImageGallery();
-}
-
-dom.generateImage.onclick = async () => {
-  const imageUrl = dom.editorImageUrl.value.trim();
-  const prompt = dom.imagePrompt.value.trim();
-  const model = dom.imageModel.value;
-
-  if (!prompt) {
-    toast.warning("プロンプトを入力してください");
-    return;
-  }
-
-  const isEditMode = !!imageUrl;
-
-  try {
-    let data;
-    if (isEditMode) {
-      data = await api("/api/images/text-editor", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageUrl,
-          prompt,
-          model,
-          size: $("editorSize").value.trim(),
-          quality: $("editorQuality").value,
-          n: $("editorN").value,
-          background: $("editorBackground").value,
-          output_format: $("editorOutputFormat").value,
-          output_compression: $("editorOutputCompression").value || undefined,
-        }),
-      });
-      toast.success("画像を編集しました");
-      dom.assetResult.textContent = JSON.stringify(data, null, 2);
-      renderImages(data, imageUrl);
-    } else {
-      data = await api("/api/images/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt,
-          model,
-          num_outputs: $("numOutputs").value,
-          aspect_ratio: $("aspectRatio").value,
-        }),
-      });
-      toast.success("画像を生成しました");
-      dom.assetResult.textContent = JSON.stringify(data, null, 2);
-      renderImages(data);
-    }
-  } catch (e) {
-    toast.error(`処理に失敗しました: ${e.message}`);
-  }
-};
-
-async function performAssetUpload(file) {
-  if (!file) return;
-  const generateBtn = dom.generateImage;
-  const assetInput = $("assetInput");
-
-  if (generateBtn) generateBtn.disabled = true;
-  if (assetInput) assetInput.disabled = true;
-  setStatus("アップロード中...", "warn");
-
-  const fd = new FormData();
-  fd.append("asset", file);
-  try {
-    const data = await api("/api/assets/upload", { method: "POST", body: fd });
-    dom.assetResult.textContent = JSON.stringify(data, null, 2);
-    const key =
-      data?.key || data?.asset?.key || data?.fileContent?.path || data?.asset?.location || "";
-    const url = data?.url || (key ? assetUrl(key) : "");
-    if (key) {
-      dom.editorImageUrl.value = url || key;
-      updateEditorImagePreview(url || key);
-    }
-    toast.success("アップロード完了");
-  } catch (e) {
-    toast.error(`アセットのアップロードに失敗しました: ${e.message}`);
-  } finally {
-    if (generateBtn) generateBtn.disabled = false;
-    if (assetInput) assetInput.disabled = false;
-    setStatus("準備完了", "ok");
-  }
-}
-
-// Auto-upload on file selection
-$("assetInput").onchange = async (e) => {
-  const file = e.target.files[0];
-  if (file) {
-    await performAssetUpload(file);
-  }
-};
+dom.generateImage.onclick = () => imageManager.generateImage();
 
 dom.uploadAsset.onclick = async () => {
   const file = $("assetInput").files[0];
@@ -473,329 +271,43 @@ dom.uploadAsset.onclick = async () => {
     toast.warning("画像ファイルを選択してください");
     return;
   }
-  await performAssetUpload(file);
+  await imageManager.performAssetUpload(file, setStatus);
 };
 
-function updateEditorImagePreview(imageUrl) {
-  const input = dom.editorImageUrl;
-  const preview = dom.editorImagePreview;
-  const clearBtn = dom.clearImageBtn;
-  const imgToImgParams = $("imageToImageParams");
-  const textToImgParams = $("textToImageParams");
-  const btnText = $("generateImageBtnText");
-  const value = (imageUrl || input?.value || "").trim();
-
-  const currentModelId = dom.imageModel.value;
-  const modelObj = getAllImageModels().find((m) => m.id === currentModelId) || null;
-
-  if (!value) {
-    if (preview) preview.classList.remove("is-shown");
-    if (clearBtn) clearBtn.classList.remove("is-shown");
-    if (imgToImgParams) imgToImgParams.classList.remove("is-shown");
-    if (textToImgParams) textToImgParams.classList.remove("is-hidden");
-    if (btnText) btnText.textContent = "画像を生成";
-
-    // Switch model if current model is editor-only
-    if (
-      modelObj &&
-      modelObj.tags &&
-      modelObj.tags.includes("editor") &&
-      !modelObj.tags.includes("image")
-    ) {
-      const defaultGen = getAllImageModels().find(
-        (m) => !m.tags || !m.tags.includes("editor") || m.id.startsWith("gpt-image"),
-      ) || { id: "gpt-image-2", label: "GPT Image 2" };
-      dom.imageModel.value = defaultGen.id;
-      dom.imageModelLabel.textContent = defaultGen.label;
-    }
-    return;
+$("assetInput").onchange = async (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    await imageManager.performAssetUpload(file, setStatus);
   }
-
-  if (preview) {
-    preview.src = assetUrl(value);
-    preview.classList.add("is-shown");
-  }
-  if (clearBtn) clearBtn.classList.add("is-shown");
-  if (imgToImgParams) imgToImgParams.classList.add("is-shown");
-  if (textToImgParams) textToImgParams.classList.add("is-hidden");
-  if (btnText) btnText.textContent = "画像を編集";
-
-  // Switch model if current model doesn't support editing
-  const isEditorModel = modelObj && modelObj.tags && modelObj.tags.includes("editor");
-  if (!isEditorModel) {
-    const defaultEditor = getAllImageModels().find((m) => m.tags && m.tags.includes("editor")) || {
-      id: "gpt-image-2",
-      label: "GPT Image 2",
-    };
-    dom.imageModel.value = defaultEditor.id;
-    dom.imageModelLabel.textContent = defaultEditor.label;
-  }
-}
-
-dom.editorImageUrl.oninput = () => updateEditorImagePreview();
-
-dom.clearImageBtn.onclick = () => {
-  dom.editorImageUrl.value = "";
-  $("assetInput").value = "";
-  updateEditorImagePreview();
 };
 
-// Monaco editor
-function renderTabs() {
-  const container = dom.editorTabsBar;
-  if (!container) return;
-  container.textContent = "";
+dom.editorImageUrl.oninput = () => imageManager.updateEditorImagePreview();
 
-  state.editor.openTabs.forEach((pathVal) => {
-    const fileName = pathVal.replace(/\\/g, "/").split("/").pop();
-    const tabEl = document.createElement("div");
-    tabEl.className = `editor-tab ${pathVal === state.editor.activeFilePath ? "active" : ""}`;
-    tabEl.title = pathVal;
+dom.clearImageBtn.onclick = () => imageManager.clearImage();
 
-    const nameSpan = document.createElement("span");
-    nameSpan.textContent = fileName;
-    nameSpan.onclick = () => {
-      if (pathVal !== state.editor.activeFilePath) {
-        switchToTab(pathVal);
-      }
-    };
-    tabEl.appendChild(nameSpan);
-
-    const closeBtn = document.createElement("span");
-    closeBtn.className = "close-tab-btn";
-    closeBtn.textContent = "×";
-    closeBtn.onclick = (e) => {
-      e.stopPropagation();
-      closeTab(pathVal);
-    };
-    tabEl.appendChild(closeBtn);
-
-    container.appendChild(tabEl);
-  });
-}
-
-async function switchToTab(filePath) {
-  const model = editorManager.getOrCreateModel(filePath);
-
-  if (model) {
-    if (editorManager.instance) {
-      editorManager.instance.setModel(model);
-      state.editor.activeFilePath = filePath;
-      dom.currentFileName.textContent = filePath.replace(/\\/g, "/").split("/").pop();
-      dom.currentFileName.title = filePath;
-      dom.saveFileBtn.disabled = false;
-
-      document.querySelectorAll(".tree-node.file").forEach((x) => {
-        x.classList.toggle("active", x.dataset.path === filePath);
-      });
-      renderTabs();
-    }
-  } else {
-    await openFile(filePath);
-  }
-}
-
-async function closeTab(filePath) {
-  const tabIndex = state.editor.openTabs.indexOf(filePath);
-  if (tabIndex === -1) return;
-
-  const accepted = await toast.confirm(`タブを閉じますか？未保存の変更は失われます。`, {
-    confirmText: "閉じる",
-    cancelText: "キャンセル",
-    type: "warning",
-  });
-  if (!accepted) return;
-
-  state.editor.openTabs.splice(tabIndex, 1);
-
-  const fileUri = monaco.Uri.file(filePath);
-  const model = monaco.editor.getModel(fileUri);
-  if (model) {
-    model.dispose();
-  }
-
-  if (state.editor.activeFilePath === filePath) {
-    if (state.editor.openTabs.length > 0) {
-      const nextActivePath =
-        state.editor.openTabs[Math.min(tabIndex, state.editor.openTabs.length - 1)];
-      await switchToTab(nextActivePath);
-    } else {
-      state.editor.activeFilePath = null;
-      if (editorManager.instance) {
-        editorManager.instance.setModel(monaco.editor.createModel("", "plaintext"));
-      }
-      dom.currentFileName.textContent = "ファイルが選択されていません";
-      dom.currentFileName.title = "";
-      dom.saveFileBtn.disabled = true;
-      document.querySelectorAll(".tree-node.file").forEach((x) => x.classList.remove("active"));
-    }
-  }
-  renderTabs();
-}
-
-
+// Editor tab management (delegated to tabManager)
+const renderTabs = () => tabManager.renderTabs();
+const switchToTab = (filePath) => tabManager.switchToTab(filePath);
+const closeTab = (filePath) => tabManager.closeTab(filePath);
+const closeTabInternal = (filePath) => tabManager.closeTabInternal(filePath);
+const openFile = (filePath) => tabManager.openFile(filePath);
+const saveFile = () => tabManager.saveFile();
 
 // Initialize Monaco Editor
 require.config({ paths: { vs: "/vs" } });
 require(["vs/editor/editor.main"], () => {
   editorManager.init();
+}, (err) => {
+  // #22: Monaco AMD loader failure — show user-visible error
+  const msg = err?.message || err || "Failed to load Monaco Editor from CDN";
+  toast.error(`Monaco Editor の読み込みに失敗しました: ${msg}`);
+  console.error("Monaco AMD load error:", err);
 });
 
-const inlineChatWidget = {
-  getId: () => "inline.chat.widget",
-  getDomNode: function () {
-    if (!state.editor.inlineChatDom) {
-      state.editor.inlineChatDom = document.createElement("div");
-      state.editor.inlineChatDom.className = "inline-chat-widget";
-      state.editor.inlineChatDom.setAttribute("role", "dialog");
-      state.editor.inlineChatDom.setAttribute("aria-label", "AIインラインチャット");
-
-      const inputRow = document.createElement("div");
-      inputRow.className = "inline-chat-input-row";
-
-      const promptInput = document.createElement("input");
-      promptInput.type = "text";
-      promptInput.id = "inlineChatPrompt";
-      promptInput.placeholder = "AIへの指示を入力 (例: ループを追加)...";
-      promptInput.setAttribute("aria-label", "AIへの指示");
-
-      const submitBtn = document.createElement("button");
-      submitBtn.type = "button";
-      submitBtn.id = "inlineChatSubmit";
-      submitBtn.textContent = "送信";
-      submitBtn.setAttribute("aria-label", "送信");
-
-      inputRow.appendChild(promptInput);
-      inputRow.appendChild(submitBtn);
-
-      const statusDiv = document.createElement("div");
-      statusDiv.id = "inlineChatStatus";
-      statusDiv.className = "inline-chat-status";
-      statusDiv.textContent = "生成中...";
-      statusDiv.setAttribute("role", "status");
-      statusDiv.setAttribute("aria-live", "polite");
-
-      state.editor.inlineChatDom.appendChild(inputRow);
-      state.editor.inlineChatDom.appendChild(statusDiv);
-
-      promptInput.onkeydown = async (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          await submitInlineChat();
-        } else if (e.key === "Escape") {
-          closeInlineChat();
-        }
-      };
-
-      submitBtn.onclick = async () => {
-        await submitInlineChat();
-      };
-    }
-    return state.editor.inlineChatDom;
-  },
-  getPosition: function () {
-    return {
-      position: editorManager.instance.getPosition(),
-      preference: [
-        monaco.editor.ContentWidgetPositionPreference.BELOW,
-        monaco.editor.ContentWidgetPositionPreference.ABOVE,
-      ],
-    };
-  },
-};
-
-async function submitInlineChat() {
-  if (!state.editor.activeFilePath || !editorManager.instance) return;
-  const domNode = state.editor.inlineChatDom;
-  const input = domNode.querySelector("#inlineChatPrompt");
-  const status = domNode.querySelector("#inlineChatStatus");
-  const prompt = input.value.trim();
-  if (!prompt) return;
-
-  status.classList.add("is-shown");
-  status.className = "inline-chat-status is-shown loading";
-  input.disabled = true;
-
-  const code = editorManager.instance.getValue();
-  const position = editorManager.instance.getPosition();
-  const fileName = state.editor.activeFilePath.split(/[\\/]/).pop();
-  const language = editorManager.instance.getModel()?.getLanguageId() || "plaintext";
-
-  try {
-    const data = await api("/api/code/inline-chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt,
-        code,
-        line: position.lineNumber,
-        column: position.column,
-        fileName,
-        language,
-        model: dom.codeModel.value,
-        webSearch: dom.codeWebSearch?.checked || false,
-        numOfSite: dom.codeNumOfSite?.value ? parseInt(dom.codeNumOfSite.value) : undefined,
-        maxWord: dom.codeMaxWord?.value ? parseInt(dom.codeMaxWord.value) : undefined,
-      }),
-    });
-
-    if (data.code) {
-      const accepted = await toast.confirm("AIがコードを生成しました。適用しますか？", {
-        confirmText: "適用",
-        cancelText: "破棄",
-        type: "info",
-      });
-
-      if (accepted) {
-        const range = new monaco.Range(
-          position.lineNumber,
-          position.column,
-          position.lineNumber,
-          position.column,
-        );
-        const id = { major: 1, minor: 1 };
-        const op = { identifier: id, range: range, text: data.code, forceMoveMarkers: true };
-        editorManager.instance.executeEdits("copilot-inline-chat", [op]);
-        toast.success("コードを適用しました");
-      } else {
-        toast.info("生成されたコードを破棄しました");
-      }
-    }
-  } catch (e) {
-    toast.error(`AIコード生成に失敗しました: ${e.message}`);
-  } finally {
-    status.classList.remove("is-shown", "loading");
-    status.className = "inline-chat-status";
-    input.disabled = false;
-    input.value = "";
-    closeInlineChat();
-  }
-}
-
-function toggleInlineChat() {
-  if (!state.editor.activeFilePath) {
-    toast.warning("ファイルを編集するには、左のツリーからファイルを開いてください。");
-    return;
-  }
-  if (state.editor.isInlineChatOpen) {
-    closeInlineChat();
-  } else {
-    editorManager.instance.addContentWidget(inlineChatWidget);
-    state.editor.isInlineChatOpen = true;
-    setTimeout(() => {
-      const input = state.editor.inlineChatDom?.querySelector("#inlineChatPrompt");
-      if (input) input.focus();
-    }, 50);
-  }
-}
-
-function closeInlineChat() {
-  if (state.editor.isInlineChatOpen) {
-    editorManager.instance.removeContentWidget(inlineChatWidget);
-    state.editor.isInlineChatOpen = false;
-    editorManager.instance.focus();
-  }
-}
+// Inline chat (delegated to inlineChatManager)
+const inlineChatWidget = inlineChatManager.widget;
+const submitInlineChat = inlineChatManager.submitInlineChat;
+// toggleInlineChat and closeInlineChat are set on window above via inlineChatManager
 
 async function loadWorkspace(dirPath = null) {
   try {
@@ -837,7 +349,10 @@ async function renderTreeNodes(items, container, depth = 0) {
 
     const toggle = document.createElement("span");
     toggle.className = "node-toggle";
-    toggle.textContent = item.isDirectory ? "▶" : "";
+    if (item.isDirectory) {
+      // UI-11: Use SVG arrow for expand/collapse instead of text characters
+      toggle.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
+    }
     node.appendChild(toggle);
 
     const icon = document.createElement("span");
@@ -864,7 +379,7 @@ async function renderTreeNodes(items, container, depth = 0) {
         node.setAttribute("aria-expanded", String(isExpanded));
         if (isExpanded) {
           childrenContainer.classList.add("is-expanded");
-          toggle.textContent = "▼";
+          toggle.classList.add("expanded");
           if (childrenContainer.childElementCount === 0) {
             try {
               const res = await api(`/api/fs/list?dir=${encodeURIComponent(item.path)}`);
@@ -875,7 +390,7 @@ async function renderTreeNodes(items, container, depth = 0) {
           }
         } else {
           childrenContainer.classList.remove("is-expanded");
-          toggle.textContent = "▶";
+          toggle.classList.remove("expanded");
         }
       };
     } else {
@@ -964,56 +479,7 @@ function getPrevVisibleNode(node) {
   return null;
 }
 
-async function openFile(filePath) {
-  try {
-    const data = await api(`/api/fs/read?path=${encodeURIComponent(filePath)}`);
-    if (editorManager.instance) {
-      const model = editorManager.getOrCreateModel(filePath, data.content);
-      editorManager.instance.setModel(model);
-
-      if (!state.editor.openTabs.includes(filePath)) {
-        state.editor.openTabs.push(filePath);
-      }
-
-      editorManager.disposeUnusedModels();
-
-      state.editor.activeFilePath = filePath;
-      dom.currentFileName.textContent = filePath.replace(/\\/g, "/").split("/").pop();
-      dom.currentFileName.title = filePath;
-      dom.saveFileBtn.disabled = false;
-
-      document.querySelectorAll(".tree-node.file").forEach((x) => {
-        x.classList.toggle("active", x.dataset.path === filePath);
-      });
-      renderTabs();
-    }
-  } catch (e) {
-    toast.error(`ファイルの読み込みに失敗しました: ${e.message}`);
-  }
-}
-
-let _saveStatusTimer = null;
-
-async function saveFile() {
-  if (!state.editor.activeFilePath || !editorManager.instance) return;
-  const content = editorManager.instance.getValue();
-  try {
-    setStatus("保存中...", "warn");
-    await api("/api/fs/write", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: state.editor.activeFilePath, content }),
-    });
-    setStatus("保存完了", "ok");
-    toast.success("ファイルを保存しました");
-    if (_saveStatusTimer) clearTimeout(_saveStatusTimer);
-    _saveStatusTimer = setTimeout(() => {
-      if ($("status")?.textContent === "保存完了") setStatus("準備完了");
-    }, 2000);
-  } catch (e) {
-    toast.error(`ファイルの保存に失敗しました: ${e.message}`);
-  }
-}
+// openFile and saveFile are delegated to tabManager (see editor tab aliases above)
 
 $("explorerRefresh").onclick = () => {
   const pathVal = dom.explorerPath.value.trim();
@@ -1362,10 +828,19 @@ async function showDiffDialog(filePath, oldContent, newContent) {
         if (diffEditor) diffEditor.setModel(null);
         originalModel.dispose();
         modifiedModel.dispose();
+        document.removeEventListener("keydown", onKey);
         resolve(val);
       };
       $("diffApply").onclick = () => cleanup(true);
       $("diffCancel").onclick = () => cleanup(false);
+
+      // #19: Close diff dialog on Escape, cleaning up ResizeObserver
+      const onKey = (e) => {
+        if (e.key === "Escape" && !modal.classList.contains("u-hidden")) {
+          cleanup(false);
+        }
+      };
+      document.addEventListener("keydown", onKey);
     });
   } catch (error) {
     console.error("showDiffDialog error:", error);
@@ -1700,16 +1175,13 @@ ${workspaceFilesText}
     loopCount++;
     setAgentStatus("思考中...", "thinking");
 
-    // Compile full conversation history into a single prompt string for stateless execution
-    const compiledPrompt = state.agent.history.map((msg) => msg.content).join("\n\n");
-
     let chatRes;
     try {
       chatRes = await api("/api/agent/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: compiledPrompt,
+          messages: state.agent.history,
           model: modelSelected,
           webSearch: false,
         }),
@@ -2395,3 +1867,50 @@ function applyCreditSavingMode() {
 initWorkspace();
 initFolderPicker();
 initCreditSavingMode();
+
+// UI-3: Sidebar resize via drag handle
+(function initSidebarResize() {
+  const handle = document.querySelector(".sidebar-resize-handle");
+  if (!handle) return;
+  const sidebar = handle.closest(".sidebar");
+  if (!sidebar) return;
+  const root = document.documentElement;
+
+  let isDragging = false;
+
+  handle.addEventListener("mousedown", (e) => {
+    isDragging = true;
+    e.preventDefault();
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    if (!isDragging) return;
+    const minW = parseInt(getComputedStyle(root).getPropertyValue("--sidebar-min-width")) || 200;
+    const maxW = parseInt(getComputedStyle(root).getPropertyValue("--sidebar-max-width")) || 320;
+    let w = e.clientX;
+    if (w < minW) w = minW;
+    if (w > maxW) w = maxW;
+    root.style.setProperty("--sidebar-width", w + "px");
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (isDragging) {
+      isDragging = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+  });
+
+  // Keyboard support
+  handle.addEventListener("keydown", (e) => {
+    const current = parseInt(getComputedStyle(root).getPropertyValue("--sidebar-width")) || 280;
+    const step = e.shiftKey ? 20 : 5;
+    if (e.key === "ArrowLeft") {
+      root.style.setProperty("--sidebar-width", Math.max(200, current - step) + "px");
+    } else if (e.key === "ArrowRight") {
+      root.style.setProperty("--sidebar-width", Math.min(320, current + step) + "px");
+    }
+  });
+})();

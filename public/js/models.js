@@ -7,6 +7,11 @@ let _allImageModels = [];
 let _activePickerBtn = null;
 let _activePickerType = null;
 let _activeTag = "all";
+let _modelsCache = []; // cached models for current picker session
+
+// Shared handler refs for cleanup
+let _searchHandler = null;
+let _tabHandlers = [];
 
 export function getAllChatModels() { return _allChatModels; }
 export function getAllCodeModels() { return _allCodeModels; }
@@ -224,6 +229,8 @@ function openModelPicker(btn, type) {
     }
   }
 
+  _modelsCache = models;
+
   const dropdown = document.getElementById("modelPickerDropdown");
   const search = document.getElementById("modelPickerSearch");
 
@@ -233,12 +240,20 @@ function openModelPicker(btn, type) {
   });
 
   search.value = "";
-  renderPickerList(models, "", "all");
+  refreshPickerList();
+
+  // A11Y-5: Set aria-selected on initial render
+  const firstItem = document.querySelector("#modelPickerList .model-picker-item");
+  if (firstItem) firstItem.setAttribute("aria-selected", "true");
+
+  // Cache current inline styles to restore later
+  const prevDisplay = dropdown.style.display;
+
+  // Hide before making visible to prevent layout shift
+  dropdown.style.visibility = "hidden";
 
   dropdown.classList.remove("u-hidden");
   dropdown.classList.add("u-flex");
-  dropdown.classList.add("is-positioning");
-  injectStyle("#modelPickerDropdown.is-positioning { visibility: hidden; }");
 
   const rect = btn.getBoundingClientRect();
   const dropH = dropdown.offsetHeight || 480;
@@ -259,30 +274,48 @@ function openModelPicker(btn, type) {
   }
 
   const leftPx = Math.min(rect.left, window.innerWidth - dropW - 8);
-  injectStyle(
-    `#modelPickerDropdown { top: ${topPx}px; left: ${leftPx}px; width: ${dropW}px; max-height: ${maxHeightPx}px; }`,
-  );
-  dropdown.classList.remove("is-positioning");
+
+  // Apply calculated positions directly to avoid layout shift
+  dropdown.style.top = `${topPx}px`;
+  dropdown.style.left = `${leftPx}px`;
+  dropdown.style.width = `${dropW}px`;
+  dropdown.style.maxHeight = `${maxHeightPx}px`;
+  dropdown.style.visibility = "";
 
   search.focus();
 
-  const updateList = () => renderPickerList(models, search.value, _activeTag);
+  // Attach search handler (removed on close)
+  if (_searchHandler) {
+    search.removeEventListener("input", _searchHandler);
+  }
+  _searchHandler = refreshPickerList;
+  search.addEventListener("input", _searchHandler);
 
-  search.oninput = updateList;
-
+  // Attach tab click handlers via capsuled function references
+  _tabHandlers.forEach((h) => h.remove());
+  _tabHandlers = [];
   document.querySelectorAll(".picker-tab").forEach((tab) => {
-    tab.onclick = () => {
+    const handler = () => {
       document.querySelectorAll(".picker-tab").forEach((t) => t.classList.remove("active"));
       tab.classList.add("active");
       _activeTag = tab.dataset.tag;
-      updateList();
+      refreshPickerList();
     };
+    tab.addEventListener("click", handler);
+    _tabHandlers.push({ remove: () => tab.removeEventListener("click", handler) });
   });
 
   document.removeEventListener("click", closePicker);
   setTimeout(() => {
     document.addEventListener("click", closePicker);
   }, 10);
+}
+
+/** Re-render the picker list from current cache/state */
+function refreshPickerList() {
+  const search = document.getElementById("modelPickerSearch");
+  if (!search) return;
+  renderPickerList(_modelsCache, search.value, _activeTag);
 }
 
 function closePicker(e) {
@@ -295,11 +328,25 @@ function closePicker(e) {
 
 function closeModelPicker() {
   const dropdown = document.getElementById("modelPickerDropdown");
+  const search = document.getElementById("modelPickerSearch");
   if (dropdown) {
     dropdown.classList.add("u-hidden");
     dropdown.classList.remove("u-flex");
-    injectStyle("#modelPickerDropdown { top: auto; left: auto; width: auto; max-height: 480px; }");
+    // Clear inline positioning styles set by openModelPicker
+    dropdown.style.top = "";
+    dropdown.style.left = "";
+    dropdown.style.width = "";
+    dropdown.style.maxHeight = "";
+    dropdown.style.visibility = "";
   }
+  // Clean up event handlers to prevent listener leaks
+  if (search && _searchHandler) {
+    search.removeEventListener("input", _searchHandler);
+    _searchHandler = null;
+  }
+  _tabHandlers.forEach((h) => h.remove());
+  _tabHandlers = [];
+  _modelsCache = [];
   if (_activePickerBtn) _activePickerBtn.setAttribute("aria-expanded", "false");
   _activePickerBtn = null;
   _activePickerType = null;

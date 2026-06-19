@@ -202,13 +202,14 @@ export function createImageManager(dom) {
     }
   }
 
-  async function performAssetUpload(file) {
+  async function performAssetUpload(file, onStatusChange) {
     if (!file) return;
     const generateBtn = dom.generateImage;
     const assetInput = document.getElementById("assetInput");
 
     if (generateBtn) generateBtn.disabled = true;
     if (assetInput) assetInput.disabled = true;
+    if (onStatusChange) onStatusChange("アップロード中...", "warn");
 
     const fd = new FormData();
     fd.append("asset", file);
@@ -232,6 +233,7 @@ export function createImageManager(dom) {
     } finally {
       if (generateBtn) generateBtn.disabled = false;
       if (assetInput) assetInput.disabled = false;
+      if (onStatusChange) onStatusChange("準備完了", "ok");
     }
   }
 

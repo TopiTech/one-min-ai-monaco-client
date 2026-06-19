@@ -1,12 +1,6 @@
 const statusEl = document.getElementById("status");
 
 function getBffToken() {
-  // Prefer explicit same-origin cookie; fall back to data attribute set in body.
-  const cookies = document.cookie.split(";").map((c) => c.trim());
-  for (const c of cookies) {
-    const [k, ...rest] = c.split("=");
-    if (k === "__bff_session") return decodeURIComponent(rest.join("="));
-  }
   return document.body?.dataset?.bffToken || "";
 }
 

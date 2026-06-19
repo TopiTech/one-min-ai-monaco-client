@@ -137,6 +137,24 @@ package.json
 4. 必要に応じて「最初のコードブロックをエディタに適用」で結果をエディタに反映する。
 5. `Ctrl+S` で保存、`Ctrl+I` でインラインチャットを開けます。
 
+## Monaco Editorのローカルコピー設定（オフライン開発向け）
+
+デフォルトでは Monaco Editor は CDN (`https://cdn.jsdelivr.net`) から読み込まれます。
+完全オフライン環境や特定バージョンを固定したい場合は、以下の手順で `public/vs/` に配置します。
+
+```bash
+# 1. プロジェクトルートで Monaco Editor をインストール
+npm install monaco-editor
+
+# 2. public/vs/ にコピー（もしくはシンボリックリンク）
+cp -r node_modules/monaco-editor/min/vs public/vs
+# Windows: xcopy /E /I node_modules\monaco-editor\min\vs public\vs
+```
+
+配置後は `public/index.html` に変更は不要です（`require.config({ paths: { vs: "/vs" } })` により自動的に `public/vs/` を参照します）。
+
+> **注意**: プロジェクトの `.gitignore` に `public/vs/` が含まれていることを確認してください。Monaco Editorはライセンス上、再頒布可能ですが巨大なバイナリであるため、Git管理する必要はありません。
+
 ## 1min.ai APIとの連携
 
 このアプリは以下の1min.ai APIを利用します。
@@ -172,3 +190,14 @@ package.json
 - Asset uploadのフィールド名は、1min.ai公式ドキュメントに従い `asset` を使用しています。
 - `/api/fs/*` はローカル開発向けです。公開環境で利用する場合は、認証、CSRF対策、監査ログ、実行サンドボックス、保護パスの運用ポリシーを強化してください。
 - コーディングエージェントのコマンド実行は `ENABLE_COMMAND_EXECUTION=true` にした場合のみ有効です。実運用では承認フローとログ監査を必須にしてください。
+- （Q-2）エージェントのファイル検索は現在 `grep` / `findstr` に依存しています。`ripgrep` をオプションの依存関係として追加し、高速な検索を提供することを検討してください。
+
+## ソーシャルプレビュー画像
+
+GitHubリポジトリのソーシャルプレビュー画像は `docs/screenshots/og-image.png` に配置することで設定できます。
+推奨サイズ: 1280×640px。画像がない場合はデフォルトのOGPが使用されます。
+
+## ライセンス
+
+このプロジェクトは明示的なライセンスが設定されていません。
+詳しくはリポジトリオーナーにお問い合わせください。

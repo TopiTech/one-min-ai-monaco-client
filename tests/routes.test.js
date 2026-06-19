@@ -161,4 +161,118 @@ describe('AI Routes Integration Tests', () => {
       expect(response.body.suggestion).toBe('console.log("world");');
     });
   });
+
+  describe('POST /api/images/text-editor', () => {
+    test('should return edited image response', async () => {
+      callOneMin.mockResolvedValue({
+        aiRecord: {
+          uuid: 'edit-uuid-123',
+          aiRecordDetail: {
+            resultObject: ['images/edited-result.png'],
+          },
+        },
+      });
+
+      const response = await request(app)
+        .post('/api/images/text-editor')
+        .send({
+          imageUrl: 'images/source.png',
+          prompt: 'change background to sunset',
+          model: 'gpt-image-2',
+        });
+
+      expect(response.status).toBe(200);
+      expect(callOneMin).toHaveBeenCalledWith('/api/features', expect.any(Object));
+    });
+
+    test('should return 400 if imageUrl is missing', async () => {
+      const response = await request(app)
+        .post('/api/images/text-editor')
+        .send({ prompt: 'edit', model: 'gpt-image-2' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('imageUrl');
+    });
+
+    test('should return 400 if WxH size is malformed for gpt-image', async () => {
+      const response = await request(app)
+        .post('/api/images/text-editor')
+        .send({
+          imageUrl: 'images/source.png',
+          prompt: 'edit',
+          model: 'gpt-image-2',
+          size: 'invalid-size',
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('size must be in WxH format');
+    });
+  });
+
+  describe('POST /api/agent/chat', () => {
+    test('should accept prompt string and return agent response', async () => {
+      callOneMin.mockResolvedValue({
+        result: 'I will fix this bug.',
+      });
+
+      const response = await request(app)
+        .post('/api/agent/chat')
+        .send({
+          prompt: 'Fix the bug in the code',
+          model: 'claude-sonnet-4-6',
+          webSearch: false,
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('text');
+      expect(response.body.text).toBe('I will fix this bug.');
+      expect(response.body).toHaveProperty('raw');
+      expect(callOneMin).toHaveBeenCalledWith('/api/features', expect.any(Object));
+    });
+
+    test('should accept messages array and flatten into prompt', async () => {
+      callOneMin.mockResolvedValue({
+        result: 'Based on the conversation, here is the fix.',
+      });
+
+      const response = await request(app)
+        .post('/api/agent/chat')
+        .send({
+          messages: [
+            { role: 'user', content: 'Read the file utils/helper.js' },
+            { role: 'assistant', content: 'I read the file. It exports an add function.' },
+            { role: 'user', content: 'Add a multiply function' },
+          ],
+          model: 'claude-sonnet-4-6',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.text).toBe('Based on the conversation, here is the fix.');
+
+      // Verify that the flattened prompt contains role markers
+      const sentBody = JSON.parse(callOneMin.mock.calls.at(-1)[1].body);
+      expect(sentBody.promptObject.prompt).toContain('[USER]');
+      expect(sentBody.promptObject.prompt).toContain('[ASSISTANT]');
+      expect(sentBody.promptObject.prompt).toContain('Read the file');
+      expect(sentBody.promptObject.prompt).toContain('Add a multiply function');
+    });
+
+    test('should return 400 when both prompt and messages are missing', async () => {
+      const response = await request(app)
+        .post('/api/agent/chat')
+        .send({ model: 'claude-sonnet-4-6' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('prompt');
+    });
+
+    test('should return 400 when messages is an empty array', async () => {
+      const response = await request(app)
+        .post('/api/agent/chat')
+        .send({ messages: [], model: 'claude-sonnet-4-6' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('prompt');
+    });
+  });
 });

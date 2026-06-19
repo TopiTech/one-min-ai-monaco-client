@@ -58,6 +58,11 @@ export function escapeHtml(text) {
  * Render a markdown string into an element using marked + DOMPurify
  * when those globals are available, falling back to plain text rendering
  * when either is missing (e.g. before the CDN script finishes loading).
+ *
+ * @warning DANGEROUS if either library or its configuration is
+ * compromised. Keep DOMPurify + marked up-to-date. Never assign raw
+ * user/AI text to innerHTML anywhere else in the app; funnel all
+ * untrusted HTML through this single function.
  */
 export function renderMarkdownSafely(element, markdown) {
   if (!element) return;
@@ -149,6 +154,12 @@ export function unescapeXmlText(value) {
  * into a structured object. Falls back to a JSON-shaped fragment when
  * the model returns JSON instead of XML, so the agent loop can keep
  * working across providers.
+ *
+ * @warning Uses JSON.parse() on AI-generated content. The catch clause
+ * prevents crashes from malformed output, but a malicious provider
+ * response could trigger prototype poisoning or denial-of-service via
+ * deeply nested structures. Consider a size/recursion limit if the BFF
+ * is ever used to relay third-party model output.
  */
 export function parseXMLTags(text) {
   const empty = { thought: null, finish: null, toolCall: null };

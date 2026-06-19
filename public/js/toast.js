@@ -6,7 +6,6 @@
 const toastContainer = document.createElement('div');
 toastContainer.id = 'toast-container';
 toastContainer.setAttribute('role', 'alert');
-toastContainer.setAttribute('aria-live', 'polite');
 document.body.appendChild(toastContainer);
 
 const toastStyles = document.createElement('style');

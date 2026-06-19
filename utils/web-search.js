@@ -1,4 +1,3 @@
-import crypto from 'crypto';
 import { serverConfig } from '../config/server.js';
 
 /**
@@ -62,7 +61,7 @@ export function buildCodePayload({ prompt, model, webSearch, parsedNumOfSite, pa
   return {
     type: "CODE_GENERATOR",
     model: model || serverConfig.defaultCodeModel,
-    conversationId: `CODE_GEN_${crypto.randomUUID()}`,
+    conversationId: `CODE_GENERATOR`,
     promptObject: {
       prompt,
       webSearch: Boolean(webSearch),

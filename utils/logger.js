@@ -65,7 +65,16 @@ class Logger {
                 // is visible downstream.
                 let serialized = JSON.stringify(meta, (_k, v) => {
                     if (typeof v === "string" && v.length > 1024) {
-                        return v.slice(0, 1024) + "...[truncated]";
+                        // Q-5: Avoid splitting surrogate pairs when truncating
+                        let truncated = v.slice(0, 1024);
+                        const last = truncated.length - 1;
+                        if (last >= 0) {
+                            const code = truncated.charCodeAt(last);
+                            if (code >= 0xD800 && code <= 0xDBFF) {
+                                truncated = truncated.slice(0, last);
+                            }
+                        }
+                        return truncated + "...[truncated]";
                     }
                     if (typeof v === "function" || typeof v === "undefined") return undefined;
                     return v;

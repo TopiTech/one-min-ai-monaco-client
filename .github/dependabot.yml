@@ -5,27 +5,42 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+      time: "09:00"
+      timezone: "Asia/Tokyo"
     open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "automerge"
     groups:
       runtime-minor:
-        applies-to: version-updates
         patterns:
           - "express"
           - "helmet"
+          - "cookie-parser"
           - "multer"
-          - "form-data"
-          - "express-rate-limit"
-          - "dotenv"
-      editor-minor:
-        applies-to: version-updates
+          - "morgan"
+        update-types:
+          - "minor"
+          - "patch"
+      runtime-major:
         patterns:
-          - "monaco-editor"
-      test-minor:
-        applies-to: version-updates
+          - "express"
+          - "helmet"
+          - "cookie-parser"
+          - "multer"
+          - "morgan"
+        update-types:
+          - "major"
+      dev-minor:
         patterns:
           - "jest"
           - "supertest"
+          - "nodemon"
+        update-types:
+          - "minor"
+          - "patch"
     ignore:
-      - dependency-name: "multer"
-        # 1.x is in maintenance mode; pin to LTS line until migration
-        versions: ["2.x"]
+      # GH-5: monaco-editor major versions require manual verification
+      # because the bundled vs/ directory must be synced.
+      - dependency-name: "monaco-editor"
+        update-types: ["version-update:semver-major"]

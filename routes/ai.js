@@ -139,6 +139,13 @@ function parseChatRequest(body) {
     return { error: { status: 400, message: "prompt is required" } };
   }
 
+  // #4: Enforce max prompt length consistent with /code endpoints
+  const MAX_PROMPT_LENGTH = 50000;
+  const promptStr = String(prompt);
+  if (promptStr.length > MAX_PROMPT_LENGTH) {
+    return { error: { status: 400, message: `prompt exceeds maximum length of ${MAX_PROMPT_LENGTH} characters` } };
+  }
+
   let safeAttachments;
   try {
     safeAttachments = validateAttachments(attachments);
@@ -362,6 +369,18 @@ router.post("/images/generate", async (req, res, next) => {
     } = req.body;
     if (!prompt || !String(prompt).trim())
       return res.status(400).json({ error: "prompt is required" });
+
+    // #14: Validate num_outputs range
+    const numOutputsNum = Number(num_outputs);
+    if (numOutputsNum < 1 || numOutputsNum > 10 || isNaN(numOutputsNum)) {
+      return res.status(400).json({ error: "num_outputs must be between 1 and 10" });
+    }
+
+    // #15: Validate output_format against allowed values
+    const ALLOWED_OUTPUT_FORMATS = ["png", "webp", "jpeg", "jpg"];
+    if (output_format && !ALLOWED_OUTPUT_FORMATS.includes(output_format)) {
+      return res.status(400).json({ error: `output_format must be one of: ${ALLOWED_OUTPUT_FORMATS.join(", ")}` });
+    }
 
     const selectedModel = model || getDefaultModel("IMAGE_GENERATOR");
     const isGptImage = selectedModel.startsWith("gpt-image");
@@ -764,11 +783,33 @@ ${afterCode}
   }
 });
 
+/**
+ * Flatten a messages array into a single prompt string.
+ * Maintains role labels so the LLM can infer conversation flow.
+ */
+function flattenMessages(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return null;
+  return messages
+    .map((m) => {
+      const role = (m.role || "user").toUpperCase();
+      const content = typeof m.content === "string" ? m.content : "";
+      return `[${role}]\n${content}`;
+    })
+    .join("\n\n");
+}
+
 router.post("/agent/chat", async (req, res, next) => {
   try {
-    const { prompt, model, webSearch = false, numOfSite, maxWord } = req.body;
-    if (!prompt || !String(prompt).trim())
-      return res.status(400).json({ error: "prompt is required" });
+    const { prompt, messages, model, webSearch = false, numOfSite, maxWord } = req.body;
+
+    // Accept either prompt (string) or messages (array) — messages is preferred.
+    const promptText =
+      Array.isArray(messages) && messages.length > 0
+        ? flattenMessages(messages)
+        : prompt;
+
+    if (!promptText || !String(promptText).trim())
+      return res.status(400).json({ error: "prompt or messages is required" });
 
     const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({
       webSearch,
@@ -777,7 +818,7 @@ router.post("/agent/chat", async (req, res, next) => {
     });
 
     const payload = buildCodePayload({
-      prompt: String(prompt),
+      prompt: String(promptText),
       model,
       webSearch: parsedWebSearch,
       parsedNumOfSite,

@@ -13,6 +13,17 @@ export function initTheme() {
     document.documentElement.setAttribute("data-theme", saved);
   }
   updateThemeUI();
+
+  // A11Y-4: Listen to OS prefers-color-scheme changes when no saved preference
+  if (!saved) {
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+      // Only auto-switch if user has never explicitly set a theme
+      if (!localStorage.getItem(STORAGE_KEY_THEME)) {
+        document.documentElement.setAttribute("data-theme", e.matches ? "dark" : "light");
+        updateThemeUI();
+      }
+    });
+  }
 }
 
 export function toggleTheme() {

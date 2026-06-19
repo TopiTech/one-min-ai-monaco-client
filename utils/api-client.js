@@ -17,11 +17,11 @@ function requireApiKey() {
 }
 
 /**
- * Fetch with timeout support using AbortController
+ * Fetch with timeout support using AbortSignal.timeout (Node 18+)
  */
 async function fetchWithTimeout(url, options = {}, timeoutMs = serverConfig.apiTimeout) {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   let onAbort;
   if (options.signal) {
@@ -29,9 +29,13 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = serverConfig.apiT
       controller.abort();
     } else {
       onAbort = () => controller.abort();
-      options.signal.addEventListener("abort", onAbort);
+      options.signal.addEventListener("abort", onAbort, { once: true });
     }
   }
+
+  // Forward timeout abort to controller
+  const onTimeout = () => controller.abort();
+  timeoutSignal.addEventListener("abort", onTimeout, { once: true });
 
   try {
     const { signal, ...fetchOpts } = options;
@@ -40,19 +44,8 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = serverConfig.apiT
       signal: controller.signal,
     });
 
-    // B-2: For non-streaming responses, we can clear the timeout after headers.
-    // However, for streaming, the caller must be able to keep the signal alive.
-    // The current callOneMin structure returns the promise after headers or full JSON.
-    // If it's a raw response (streaming), the timeoutId must be cleared by the caller
-    // or we need a way to track body completion.
-    // For now, we clear it if we are about to return, but we provide the signal to the caller.
-    if (!options.isStreaming) {
-      clearTimeout(timeoutId);
-    }
-
     return response;
   } catch (error) {
-    clearTimeout(timeoutId); // Ensure cleanup on error
     if (error.name === "AbortError") {
       if (options.signal && options.signal.aborted) {
         const err = new Error("Request aborted by client");
@@ -66,12 +59,10 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = serverConfig.apiT
     }
     throw error;
   } finally {
-    if (!options.isStreaming) {
-      clearTimeout(timeoutId);
-    }
     if (options.signal && onAbort) {
       options.signal.removeEventListener("abort", onAbort);
     }
+    // AbortSignal.timeout cleans itself up; no manual clear needed.
   }
 }
 

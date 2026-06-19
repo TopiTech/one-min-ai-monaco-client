@@ -21,8 +21,22 @@ export function createChatManager(dom, state) {
   function pruneChatLog() {
     const log = dom.chatLog;
     if (!log) return;
+
+    // UI-10: Preserve scroll position when pruning from the top
+    const isAtBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 80;
+    let scrollOffset = 0;
+    if (!isAtBottom) {
+      // User has scrolled up; track the visual anchor
+      scrollOffset = log.scrollTop;
+    }
+
     while (log.children.length > MAX_MESSAGES) {
       log.removeChild(log.firstChild);
+    }
+
+    if (!isAtBottom) {
+      // Restore approximate scroll position
+      log.scrollTop = Math.max(0, log.scrollTop);
     }
   }
 
@@ -159,7 +173,9 @@ export function createChatManager(dom, state) {
       while (queue.length > 0) {
         const index = pending.length - queue.length;
         const att = queue.shift();
-        try {
+        dom.chatLog.setAttribute("aria-busy", "true");
+
+    try {
           const fd = new FormData();
           fd.append("asset", att.file);
           const data = await api("/api/assets/upload", { method: "POST", body: fd });
@@ -398,6 +414,7 @@ export function createChatManager(dom, state) {
         setStatus("エラー", "error");
       }
     } finally {
+      dom.chatLog.setAttribute("aria-busy", "false");
       state.chat.abortController = null;
       sendBtn.disabled = false;
       sendBtn.classList.remove("u-hidden");

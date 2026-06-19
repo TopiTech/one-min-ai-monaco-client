@@ -29,6 +29,11 @@
   --sidebar-width: 280px;
   --sidebar-min-width: 200px;
   --sidebar-max-width: 320px;
+
+  /* Agent timeline max-height (UI-8: CSS variable for dynamic sizing) */
+  --agent-log-max-h: 520px;
+  --agent-step-result-max-h: 150px;
+  --agent-step-thought-max-h: 150px;
 }
 
 * {
@@ -151,6 +156,23 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
+  position: relative;
+}
+
+/* UI-3: Sidebar resize handle */
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 4px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background 0.15s ease;
+}
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle:active {
+  background: rgba(124, 156, 255, 0.3);
 }
 
 .brand {
@@ -583,6 +605,28 @@ button.ghost:hover {
     Courier New,
     monospace;
   font-size: 0.85rem;
+}
+
+/* Prevent markdown tables from overflowing the message bubble */
+.msg table {
+  max-width: 100%;
+  overflow-x: auto;
+  display: block;
+  margin: 8px 0;
+  border-collapse: collapse;
+}
+
+.msg th,
+.msg td {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.msg th {
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 600;
 }
 
 /* Result Blocks */
@@ -2001,6 +2045,8 @@ select:focus-visible {
 
 :root[data-theme="light"] .liquid-blob {
   opacity: 0.3;
+  mix-blend-mode: multiply;
+  filter: blur(120px);
 }
 
 /* Theme toggle button */
@@ -2291,7 +2337,7 @@ select:focus-visible {
   padding: 8px;
   font-family: monospace;
   font-size: 0.75rem;
-  max-height: 150px;
+  max-height: var(--agent-step-result-max-h);
   overflow-y: auto;
   white-space: pre;
   color: #34d399;
@@ -2559,6 +2605,29 @@ select:focus-visible {
 .image-comparison-slider .slider-handle::after {
   border-left: 5px solid #fff;
   margin-left: 2px;
+}
+
+/* Image comparison object-fit toggle (UI-2) */
+.fit-toggle {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 5;
+  background: rgba(0, 0, 0, 0.6);
+  color: #ccc;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 0.7rem;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+.fit-toggle:hover {
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+}
+.image-comparison-slider img.fit-contain {
+  object-fit: contain;
 }
 
 /* ============================================================
@@ -3047,7 +3116,7 @@ select:focus-visible {
   flex-direction: column;
   gap: 12px;
   min-height: 250px;
-  max-height: 520px;
+  max-height: var(--agent-log-max-h);
   padding-right: 4px;
   margin-top: 8px;
 }

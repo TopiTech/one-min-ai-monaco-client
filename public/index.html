@@ -40,6 +40,7 @@
 
   <div id="app">
     <aside class="sidebar">
+      <div class="sidebar-resize-handle" role="separator" tabindex="0" aria-label="サイドバー幅変更"></div>
       <div class="brand">
         <div class="logo">1m</div>
         <div>
@@ -48,13 +49,13 @@
         </div>
       </div>
 
-      <button type="button" class="nav active" data-view="chat" role="button" aria-label="通常チャット">
+      <button type="button" class="nav active" data-view="chat" role="button" aria-label="通常チャット" title="通常チャット">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
         </svg>
         <span>通常チャット</span>
       </button>
-      <button type="button" class="nav" data-view="image" role="button" aria-label="画像生成 / テキスト編集">
+      <button type="button" class="nav" data-view="image" role="button" aria-label="画像生成 / テキスト編集" title="画像生成 / テキスト編集">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
           <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
           <circle cx="8.5" cy="8.5" r="1.5"></circle>
@@ -62,7 +63,7 @@
         </svg>
         <span>画像生成 / テキスト編集</span>
       </button>
-      <button type="button" class="nav" data-view="coding" role="button" aria-label="コーディング">
+      <button type="button" class="nav" data-view="coding" role="button" aria-label="コーディング" title="コーディング">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
           <polyline points="16 18 22 12 16 6"></polyline>
           <polyline points="8 6 2 12 8 18"></polyline>
@@ -70,7 +71,7 @@
         <span>コーディング</span>
       </button>
 
-      <button type="button" class="nav" data-view="settings" role="button" aria-label="設定">
+      <button type="button" class="nav" data-view="settings" role="button" aria-label="設定" title="設定">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
           <circle cx="12" cy="12" r="3"></circle>
           <path
@@ -147,7 +148,7 @@
 
             <div class="row">
               <!-- Model Picker for Chat -->
-              <button id="chatModelBtn" class="model-picker-btn" data-model-type="chat" data-target-input="chatModel">
+              <button id="chatModelBtn" class="model-picker-btn" data-model-type="chat" data-target-input="chatModel" aria-haspopup="dialog" aria-controls="modelPickerDropdown">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" stroke-width="2">
                   <circle cx="12" cy="12" r="3"></circle>
@@ -245,7 +246,7 @@
                 元画像 (画像編集を行う場合のみ指定してください)
               </h3>
               <div class="row u-mb-10">
-                <input id="assetInput" type="file" accept="image/*" class="u-flex-2" />
+                <input id="assetInput" type="file" accept="image/*,video/*,audio/*,application/pdf,text/*,application/json,application/xml,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="u-flex-2" />
                 <button type="button" id="uploadAsset" class="u-flex-1">アップロード</button>
               </div>
               <div class="row image-preview-row">
@@ -261,7 +262,7 @@
               <div class="u-flex-2">
                 <!-- Model Picker for Image Generation / Edit -->
                 <button id="imageModelBtn" class="model-picker-btn" data-model-type="image"
-                  data-target-input="imageModel">
+                  data-target-input="imageModel" aria-haspopup="dialog" aria-controls="modelPickerDropdown">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
                     stroke="currentColor" stroke-width="2">
                     <rect x="3" y="3" width="18" height="18" rx="2"></rect>
@@ -438,8 +439,7 @@
                 <line x1="12" y1="16" x2="12" y2="12"></line>
                 <line x1="12" y1="8" x2="12.01" y2="8"></line>
               </svg>
-              <span><strong>推奨:</strong> エージェント機能は複雑なツール操作を伴うため、Tool Calling に強いモデル（GPT-4o, Claude 3.5 Sonnet, Gemini
-                2.5 Pro 等）を選択することを強く推奨します。</span>
+              <span><strong>推奨:</strong> エージェント機能は複雑なツール操作を伴うため、Tool Calling に強いモデル（GPT-4o, Claude 4.6 Sonnet, Gemini 2.5 Pro 等）を選択することを強く推奨します。</span>
             </div>
 
             <!-- Scrollable Chat Log -->
@@ -462,7 +462,7 @@
                       コーディングモデル
                     </label>
                     <button id="codeModelBtn" class="model-picker-btn is-small" data-model-type="code"
-                      data-target-input="codeModel">
+                      data-target-input="codeModel" aria-haspopup="dialog" aria-controls="modelPickerDropdown">
                       <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"
                         stroke="currentColor" stroke-width="2">
                         <polyline points="16 18 22 12 16 6"></polyline>
