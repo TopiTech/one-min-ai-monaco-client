@@ -147,6 +147,25 @@ function renderPickerList(models, search = "", tag = "all") {
       labelSpan.textContent = m.label;
       contentRow.appendChild(labelSpan);
 
+      // Dynamic credit cost badge based on tags
+      let costBadge = null;
+      if (m.tags) {
+        if (m.tags.includes("reasoning")) {
+          costBadge = { text: "思考・多消費", class: "cost-high-reasoning", icon: "🧠💰💰" };
+        } else if (m.tags.includes("flagship")) {
+          costBadge = { text: "高消費", class: "cost-high", icon: "💰💰" };
+        } else if (m.tags.includes("fast")) {
+          costBadge = { text: "省エネ", class: "cost-low", icon: "⚡💰" };
+        }
+      }
+
+      if (costBadge) {
+        const bSpan = document.createElement("span");
+        bSpan.className = `model-cost-badge ${costBadge.class}`;
+        bSpan.textContent = `${costBadge.icon} ${costBadge.text}`;
+        contentRow.appendChild(bSpan);
+      }
+
       // Tags display
       if (m.tags && m.tags.length > 0) {
         const tagsDiv = document.createElement("div");

@@ -299,7 +299,7 @@ require(["vs/editor/editor.main"], () => {
   editorManager.init();
 }, (err) => {
   // #22: Monaco AMD loader failure — show user-visible error
-  const msg = err?.message || err || "Failed to load Monaco Editor from CDN";
+  const msg = err?.message || err || "Failed to load Monaco Editor from local assets or server";
   toast.error(`Monaco Editor の読み込みに失敗しました: ${msg}`);
   console.error("Monaco AMD load error:", err);
 });
