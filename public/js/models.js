@@ -214,6 +214,10 @@ function renderPickerList(models, search = "", tag = "all") {
       idSpan.textContent = m.id;
       item.appendChild(idSpan);
 
+      // Assign a stable id for aria-activedescendant support
+      if (!item.id) {
+        item.id = `picker-opt-${m.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+      }
       item.onclick = () => selectModel(m);
       list.appendChild(item);
     }
@@ -433,6 +437,11 @@ export function initModelPickers() {
       } else if (e.key === "Enter" && e.target?.classList?.contains("model-picker-item")) {
         e.preventDefault();
         e.target.click();
+      }
+    }
+  });
+}
+.target.click();
       }
     }
   });

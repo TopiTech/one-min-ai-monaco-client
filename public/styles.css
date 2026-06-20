@@ -78,6 +78,12 @@ body {
   opacity: 0.45;
   mix-blend-mode: screen;
   animation: float-blob 25s infinite alternate ease-in-out;
+  /* P-3: Hint to the browser to promote this element to its own compositing
+   * layer so the GPU handles the animation without triggering layout/paint.
+   * This is applied unconditionally (not via @media) because the element is
+   * already GPU-composited due to filter:blur; the hint simply makes the
+   * promotion explicit and avoids jank on the first frame. */
+  will-change: transform;
 }
 
 .blob-1 {
@@ -137,10 +143,20 @@ body {
   }
 }
 
-/* M-11: Respect users who opted out of motion (accessibility + GPU savings). */
+/* M-11: Respect users who opted out of motion (accessibility + GPU savings).
+ * Also hide the blobs entirely (not just stop animation) to eliminate the
+ * GPU cost of filter: blur(120px) for users who prefer reduced motion.
+ */
 @media (prefers-reduced-motion: reduce) {
-  .liquid-blob {
-    animation: none;
+  .liquid-bg-container {
+    display: none !important;
+  }
+}
+
+/* UI-1: Mobile — allow body scroll since #app switches to auto height */
+@media (max-width: 768px) {
+  body {
+    overflow-y: auto;
   }
 }
 

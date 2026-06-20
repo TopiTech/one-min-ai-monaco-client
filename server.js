@@ -94,6 +94,13 @@ function compareAuthToken(a, b) {
   return crypto.timingSafeEqual(hashA, hashB);
 }
 
+// QUAL-4: We intentionally parse cookies manually rather than adding the
+// `cookie-parser` package. This server only needs to read one HttpOnly cookie
+// (the BFF auth token) from the raw `Cookie` header. Adding cookie-parser
+// would pull in an extra dependency, expose signed-cookie parsing that we
+// don't need, and run for every request — including static file serving.
+// If signed cookies or complex cookie handling is ever required, switch to
+// cookie-parser at that point.
 function parseCookies(cookieHeader) {
   const list = {};
   if (!cookieHeader) return list;
@@ -227,14 +234,17 @@ function mapMulterError(err) {
   return err;
 }
 
-function buildRateLimit(config) {
+// QUAL-1: Renamed parameter from "config" to "overrides" to avoid confusion
+// with the module-level `serverConfig` object. This parameter carries per-route
+// overrides (e.g. a tighter `max`) that are spread on top of the defaults.
+function buildRateLimit(overrides = {}) {
   return rateLimit({
     windowMs: serverConfig.rateLimitWindowMs,
     max: serverConfig.rateLimitMax,
     message: { error: "Too many requests, please try again later." },
     standardHeaders: true,
     legacyHeaders: false,
-    ...config,
+    ...overrides,
   });
 }
 
@@ -493,9 +503,11 @@ export function createApp(options = {}) {
       ok: true,
       service: "one-min-ai-monaco-client",
       models: {
+        // QUAL-2: `ok` is the single source of truth for model sync status.
+        // `syncFailed: !ok` was redundant and could cause confusion if the two
+        // fields ever got out of sync.
         ok: status.ok,
         lastSync: status.lastSync,
-        syncFailed: !status.ok,
       },
     });
   });
@@ -628,9 +640,9 @@ export function createApp(options = {}) {
         "asset.1min.ai.s3.us-east-1.amazonaws.com",
         "asset.1min.ai.s3.amazonaws.com",
       ];
-      const isAllowedHost = allowedHosts.some(
-        (h) => parsed.hostname === h || parsed.hostname.endsWith(".amazonaws.com"),
-      );
+      const isAllowedHost =
+        allowedHosts.some((h) => parsed.hostname === h) ||
+        /^asset\.1min\.ai\.s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname);
       if (!isAllowedHost) {
         return res.status(403).json({ error: "Access denied: Untrusted asset host" });
       }

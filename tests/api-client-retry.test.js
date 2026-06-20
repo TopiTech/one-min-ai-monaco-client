@@ -194,6 +194,26 @@ describe("api-client callOneMin", () => {
     });
     expect(data).toEqual({ text: "plain text response" });
   });
+
+  test("handles errors with read-only properties safely (DOMException imitation)", async () => {
+    const err = new Error("Mock DOMException");
+    Object.defineProperty(err, "code", {
+      get() { return "READONLY_CODE"; },
+      configurable: true
+    });
+    globalThis.fetch = jest.fn(async () => {
+      throw err;
+    });
+
+    const { callOneMin } = await import("../utils/api-client.js");
+    await expect(
+      callOneMin("/api/chat-with-ai", {
+        method: "POST",
+        body: "{}",
+        idempotent: false,
+      }),
+    ).rejects.toThrow("Mock DOMException");
+  });
 });
 
 describe("isFailedResponse", () => {

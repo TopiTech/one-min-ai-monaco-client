@@ -29,6 +29,10 @@ const ALLOWED_COMMAND_NAMES = new Set([
   "python3",
   "pip",
   "pipenv",
+  // NOTE: "ping" and "sleep" are included for basic network/timing diagnostics in
+  // agent workflows. Both are bounded by COMMAND_TIMEOUT_MS (default 30s) to
+  // mitigate denial-of-service via "ping -t" or "sleep 86400". If you do not
+  // need these commands, remove them from this list for a tighter security posture.
   "ping",
   "sleep",
   "exit",

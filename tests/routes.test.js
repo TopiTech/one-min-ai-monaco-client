@@ -295,5 +295,14 @@ describe("AI Routes Integration Tests", () => {
       expect(response.status).toBe(403);
       expect(response.body.error).toContain("Untrusted asset host");
     });
+
+    test("should reject untrusted Amazon S3 hosts", async () => {
+      const response = await request(app)
+        .get("/api/assets/proxy")
+        .query({ url: "https://evil-bucket.s3.amazonaws.com/malicious.png" });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toContain("Untrusted asset host");
+    });
   });
 });

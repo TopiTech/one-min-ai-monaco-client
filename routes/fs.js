@@ -226,8 +226,12 @@ router.get("/list", async (req, res, next) => {
           isDirectory: entry.isDirectory(),
         });
         if (items.length >= MAX_LIST_ENTRIES) {
-          const nextEntry = await dir.read();
-          if (nextEntry !== null) {
+          // Peek at the next entry to determine if truncation occurred.
+          // We intentionally discard this entry — the contract is that
+          // `truncated: true` signals the client to refine the query rather
+          // than to page through all entries.
+          const peeked = await dir.read();
+          if (peeked !== null) {
             truncated = true;
           }
           break;

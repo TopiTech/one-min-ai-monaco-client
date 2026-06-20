@@ -52,6 +52,15 @@ describe("api-client", () => {
       expect(extractText(data)).toBe("Content here");
     });
 
+    test("should extract text from aiRecord.output (image URL fallback)", () => {
+      const data = {
+        aiRecord: {
+          output: "images/2024_09_30_03_47_31_072_210865.webp",
+        },
+      };
+      expect(extractText(data)).toBe("images/2024_09_30_03_47_31_072_210865.webp");
+    });
+
     test("should handle array result", () => {
       const data = {
         aiRecord: {

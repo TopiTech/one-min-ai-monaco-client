@@ -156,6 +156,23 @@ const ICONS = {
 };
 
 /**
+ * Safely parse an SVG string using DOMParser and return the SVGElement.
+ * Using DOMParser instead of innerHTML avoids the pattern of directly
+ * injecting HTML strings, reducing the risk of XSS if icon strings
+ * were ever made dynamic in the future.
+ */
+function parseSvgIcon(svgString) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgString, "image/svg+xml");
+  const svgEl = doc.documentElement;
+  // DOMParser returns an <parsererror> element on failure — check for it.
+  if (svgEl.tagName === "parsererror" || svgEl.querySelector("parsererror")) {
+    return null;
+  }
+  return svgEl;
+}
+
+/**
  * Show a toast notification
  * @param {string} message - The message to display
  * @param {Object} options - Configuration options
@@ -172,7 +189,9 @@ function showToast(message, options = {}) {
 
   const icon = document.createElement("div");
   icon.className = "toast-icon";
-  icon.innerHTML = ICONS[type] || ICONS.info;
+  // SEC: Use DOMParser instead of innerHTML to avoid the innerHTML pattern.
+  const svgEl = parseSvgIcon(ICONS[type] || ICONS.info);
+  if (svgEl) icon.appendChild(svgEl);
 
   const content = document.createElement("div");
   content.className = "toast-content";
@@ -185,7 +204,10 @@ function showToast(message, options = {}) {
     const closeBtn = document.createElement("button");
     closeBtn.className = "toast-close";
     closeBtn.setAttribute("aria-label", "閉じる");
-    closeBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+    const closeSvg = parseSvgIcon(
+      `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
+    );
+    if (closeSvg) closeBtn.appendChild(closeSvg);
     closeBtn.onclick = () => removeToast(toast);
     toast.appendChild(closeBtn);
   }

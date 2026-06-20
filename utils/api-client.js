@@ -77,6 +77,23 @@ function createCombinedSignal(a, b) {
 }
 
 /**
+ * Safely assigns a property to an error object, handling frozen/sealed
+ * errors gracefully. Falls back to Object.defineProperty if direct
+ * assignment fails, and silently ignores if the error is sealed/frozen.
+ */
+function safeDefineProperty(obj, key, value) {
+  try {
+    obj[key] = value;
+  } catch {
+    try {
+      Object.defineProperty(obj, key, { value, writable: true, configurable: true });
+    } catch {
+      // ignore if sealed/frozen
+    }
+  }
+}
+
+/**
  * Delay helper for retry logic
  */
 function delay(ms) {
@@ -175,11 +192,11 @@ export async function callOneMin(
       return contentType.includes("application/json") ? response.json() : { text: await response.text() };
     } catch (error) {
       lastError = error;
-      if (!lastError.status && lastError.name !== "AbortError") {
-        lastError.status = 502;
-        lastError.code = "UPSTREAM_NETWORK_ERROR";
+      if (lastError && typeof lastError === "object" && !lastError.status && lastError.name !== "AbortError") {
+        safeDefineProperty(lastError, "status", 502);
+        safeDefineProperty(lastError, "code", "UPSTREAM_NETWORK_ERROR");
       }
-      if (error.status && error.status >= 400 && error.status < 500 && error.status !== 429) throw error;
+      if (error && error.status && error.status >= 400 && error.status < 500 && error.status !== 429) throw error;
       if (attempt < effectiveRetries)
         logger.warn(`Request failed for ${pathname}, will retry: ${error.message}`);
     }
@@ -192,6 +209,10 @@ function firstTextCandidate(data) {
   const candidates = [
     data?.aiRecord?.aiRecordDetail?.resultObject,
     data?.aiRecord?.aiRecordDetail?.result,
+    // 画像URLの取得に aiRecord.output をフォールバックとして追加。
+    // 1min.ai が画像生成時に resultObject の代わりに output に URL を
+    // 返すケースがある（CHANGELOG 参照）。
+    data?.aiRecord?.output,
     data?.aiRecord?.resultObject,
     data?.result,
     data?.message,

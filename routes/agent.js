@@ -36,10 +36,86 @@ const router = express.Router();
 // Persistent session storage
 const DATA_DIR = path.join(process.cwd(), ".mimocode", "data");
 const SESSIONS_FILE = path.join(DATA_DIR, "agent_sessions.json");
+// Pending commands also persist to disk so approval tokens survive a
+// server restart (within their 5-minute expiry window).
+const PENDING_COMMANDS_FILE = path.join(DATA_DIR, "pending_commands.json");
 const isTestMode = process.env.NODE_ENV === "test";
 
 let sessions = new Map();
 const pendingCommands = new Map();
+
+// --- Pending Commands Persistence ---
+
+// Cache the pending-commands-load promise so it runs exactly once.
+let _pendingLoadReady = null;
+
+async function loadPendingCommands() {
+  if (isTestMode) return;
+  if (_pendingLoadReady) return _pendingLoadReady;
+  _pendingLoadReady = (async () => {
+    try {
+      await ensureDataDir();
+      const data = await fs.readFile(PENDING_COMMANDS_FILE, "utf-8");
+      const parsed = JSON.parse(data);
+      const now = Date.now();
+      const FIVE_MIN = 5 * 60 * 1000;
+      for (const [token, pending] of Object.entries(parsed)) {
+        // Discard tokens that already expired while the server was down.
+        if (now - pending.createdAt > FIVE_MIN) continue;
+        pendingCommands.set(token, pending);
+      }
+      logger.info(`Loaded ${pendingCommands.size} pending commands from persistence`);
+    } catch (err) {
+      if (err.code !== "ENOENT") {
+        logger.error("Failed to load pending commands from file", { error: err.message });
+      }
+    }
+  })();
+  return _pendingLoadReady;
+}
+
+let _pendingSaveTimer = null;
+let _pendingIsWriting = false;
+let _pendingNeedsSave = false;
+
+async function flushPendingSave() {
+  if (_pendingIsWriting) {
+    _pendingNeedsSave = true;
+    return;
+  }
+  _pendingIsWriting = true;
+  _pendingNeedsSave = false;
+  try {
+    await ensureDataDir();
+    if (isTestMode) return;
+    try {
+      await fs.access(DATA_DIR);
+    } catch {
+      return;
+    }
+    const data = JSON.stringify(Object.fromEntries(pendingCommands), null, 2);
+    const tmpFile = PENDING_COMMANDS_FILE + ".tmp";
+    await fs.writeFile(tmpFile, data, { encoding: "utf-8", mode: 0o600 });
+    await fs.rename(tmpFile, PENDING_COMMANDS_FILE);
+  } catch (err) {
+    logger.error("Failed to save pending commands to file", { error: err.message });
+  } finally {
+    _pendingIsWriting = false;
+    if (_pendingNeedsSave) {
+      savePendingCommands();
+    }
+  }
+}
+
+function savePendingCommands() {
+  if (isTestMode) return;
+  if (_pendingSaveTimer) clearTimeout(_pendingSaveTimer);
+  _pendingSaveTimer = setTimeout(flushPendingSave, 50);
+  _pendingSaveTimer.unref();
+}
+
+// Load pending commands on startup alongside sessions
+loadPendingCommands();
 
 // Cache the mkdir promise so it only runs once across concurrent calls.
 let _dirReady = null;
@@ -104,7 +180,10 @@ async function flushSave() {
       return value;
     }, 2);
     const tmpFile = SESSIONS_FILE + ".tmp";
-    await fs.writeFile(tmpFile, data, "utf-8");
+    // SEC-4: Restrict file permissions to owner-only (rw-------) so other
+    // users on the same host cannot read session history. On Windows this
+    // has no effect but is harmless.
+    await fs.writeFile(tmpFile, data, { encoding: "utf-8", mode: 0o600 });
     await fs.rename(tmpFile, SESSIONS_FILE);
   } catch (err) {
     logger.error("Failed to save sessions to file", { error: err.message });
@@ -216,7 +295,18 @@ router.post("/sessions", async (req, res, next) => {
 
     const MAX_SESSIONS = parseInt(process.env.AGENT_MAX_SESSIONS, 10) || 50;
     if (sessions.size >= MAX_SESSIONS) {
-      const oldestId = Array.from(sessions.entries()).reduce((a, b) =>
+      // M-5: Never evict a session that is actively running a command —
+      // killing it would orphan the spawned child process. Prefer evicting
+      // the oldest idle/non-running session instead.
+      const evictableEntries = Array.from(sessions.entries()).filter(
+        ([, s]) => s.status !== "running",
+      );
+      if (evictableEntries.length === 0) {
+        return res.status(503).json({
+          error: "Maximum concurrent sessions reached and all sessions are currently running. Try again later.",
+        });
+      }
+      const oldestId = evictableEntries.reduce((a, b) =>
         a[1].lastAccessedAt < b[1].lastAccessedAt ? a : b,
       )[0];
       sessions.delete(oldestId);
@@ -302,6 +392,7 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
       if (pendingCommands.size >= MAX_PENDING_COMMANDS) {
         const oldestToken = pendingCommands.keys().next().value;
         pendingCommands.delete(oldestToken);
+        savePendingCommands();
       }
 
       const approvalToken = crypto.randomUUID();
@@ -402,6 +493,7 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
 
     const pending = pendingCommands.get(approvalToken);
     pendingCommands.delete(approvalToken);
+    savePendingCommands();
 
     // Verify session ID matches
     if (pending.sessionId !== req.params.id) {

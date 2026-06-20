@@ -281,22 +281,49 @@ router.post("/chat/stream", async (req, res, next) => {
       logger.info("Stream request aborted as client disconnected.");
       if (!res.headersSent) {
         res.status(499).json({ error: "Client Closed Request" });
-      } else {
+      } else if (!res.writableEnded) {
         res.end();
       }
       return;
     }
     if (!res.headersSent) {
       next(err);
-    } else {
+    } else if (!res.writableEnded) {
       res.end();
     }
   }
 });
 
+// Allowed conversation types that map to valid 1min.ai API feature types.
+const ALLOWED_CONVERSATION_TYPES = [
+  "UNIFY_CHAT_WITH_AI",
+  "CODE_GENERATOR",
+  "IMAGE_GENERATOR",
+];
+
+const conversationCreateSchema = z.object({
+  title: z.preprocess(
+    (val) => (val === undefined || val === null ? "New AI Conversation" : String(val)),
+    z.string().min(1).max(500).default("New AI Conversation"),
+  ),
+  model: z.string().max(200).optional(),
+  type: z.preprocess(
+    (val) => (val === undefined || val === null ? "UNIFY_CHAT_WITH_AI" : String(val)),
+    z.string().refine(
+      (val) => ALLOWED_CONVERSATION_TYPES.includes(val),
+      { message: `type must be one of: ${ALLOWED_CONVERSATION_TYPES.join(", ")}` },
+    ).default("UNIFY_CHAT_WITH_AI"),
+  ),
+});
+
 router.post("/conversations", async (req, res, next) => {
   try {
-    const { title = "New AI Conversation", model, type = "UNIFY_CHAT_WITH_AI" } = req.body;
+    const result = conversationCreateSchema.safeParse(req.body);
+    if (!result.success) {
+      const errorMsg = result.error.issues[0]?.message || "Validation error";
+      return res.status(400).json({ error: errorMsg });
+    }
+    const { title, model, type } = result.data;
     const payload = {
       type,
       title,

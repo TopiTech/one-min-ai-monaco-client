@@ -228,9 +228,7 @@ export function createChatManager(dom, state) {
         } catch (err) {
           att.uploading = false;
           results[index] = { status: "rejected", reason: err };
-          if (typeof toast !== "undefined") {
-            toast.error(`アップロード失敗 (${att.file.name}): ${err.message || "不明なエラー"}`);
-          }
+          window.toast?.error(`アップロード失敗 (${att.file.name}): ${err.message || "不明なエラー"}`);
         }
         updateAttachmentPreview();
       }
@@ -275,7 +273,14 @@ export function createChatManager(dom, state) {
     aiContentDiv.innerHTML = '<span class="streaming-indicator"></span>';
     aiMsgDiv.appendChild(aiContentDiv);
     dom.chatLog.appendChild(aiMsgDiv);
-    dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
+    // F-6: Only auto-scroll if the user was already near the bottom when they
+    // sent the message. This prevents yanking users who had scrolled up to
+    // read history back down to the bottom.
+    const wasNearBottom =
+      dom.chatLog.scrollTop + dom.chatLog.clientHeight >= dom.chatLog.scrollHeight - 120;
+    if (wasNearBottom) {
+      dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
+    }
 
     setStatus("応答を受信中...", "warn");
     let fullText = "";
@@ -444,10 +449,8 @@ export function createChatManager(dom, state) {
         const message = e?.message || "不明なエラー";
         console.error("Chat Stream Error:", e);
         aiContentDiv.textContent = `エラー: ${message}`;
-        if (typeof toast !== "undefined") {
-          toast.error(`チャットエラー: ${message}`);
-        }
-        setStatus("エラー", "error");
+        window.toast?.error(`チャットエラー: ${message}`);
+        setStatus("エラー", "err");
       }
     } finally {
       dom.chatLog.setAttribute("aria-busy", "false");
