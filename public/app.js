@@ -913,6 +913,65 @@ function trimAgentHistory(history, maxTokens) {
   }
 }
 
+async function processCommandStream(res, stepId) {
+  let finalResult = null;
+  const resultBox = document.getElementById(`result-${stepId}`);
+  if (resultBox) {
+    const toggle = resultBox.previousElementSibling;
+    if (toggle) {
+      toggle.classList.remove("u-hidden");
+      const span = toggle.querySelector("span");
+      if (span) span.textContent = "▼ 実行出力を非表示";
+    }
+    resultBox.classList.remove("u-hidden");
+    resultBox.textContent = "";
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let boundary = buffer.indexOf('\n\n');
+    while (boundary !== -1) {
+      const chunk = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+
+      let eventName = "message";
+      let data = "";
+      for (const line of chunk.split('\n')) {
+        if (line.startsWith('event: ')) {
+          eventName = line.slice(7);
+        } else if (line.startsWith('data: ')) {
+          data += line.slice(6);
+        }
+      }
+
+      if (data) {
+        try {
+          const parsed = JSON.parse(data);
+          if (eventName === 'done') {
+            finalResult = parsed;
+          } else if (eventName === 'stdout' || eventName === 'stderr') {
+            if (resultBox) {
+              resultBox.textContent += parsed.text;
+              resultBox.scrollTop = resultBox.scrollHeight;
+            }
+          }
+        } catch (e) {
+          console.error("Failed to parse SSE data", e);
+        }
+      }
+      boundary = buffer.indexOf('\n\n');
+    }
+  }
+  return finalResult;
+}
+
 const AGENT_TOOL_HANDLERS = {
   read_file: async ({ sessionId, workspaceRoot, params }) => {
     const { path: filePath } = params;
@@ -995,11 +1054,21 @@ const AGENT_TOOL_HANDLERS = {
     }
 
     setAgentStatus("承認待ち...", "awaiting_approval");
-    const runRes = await api(`/api/agent/sessions/${sessionId}/commands`, {
+    const runResRaw = await api(`/api/agent/sessions/${sessionId}/commands?stream=true`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ command, cwd: workspaceRoot }),
+      raw: true,
     });
+
+    let runRes;
+    const contentType = runResRaw.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      runRes = await runResRaw.json();
+    } else {
+      const stepId = addAgentTimelineStep("action", `コマンド実行: ${command.split(" ")[0]}`, "自動承認により実行を開始します...", "");
+      runRes = await processCommandStream(runResRaw, stepId);
+    }
 
     if (!runRes.requiresApproval) {
       return {
@@ -1017,11 +1086,20 @@ const AGENT_TOOL_HANDLERS = {
         async () => {
           setAgentStatus("実行中...", "executing");
           try {
-            const res = await api(`/api/agent/sessions/${sessionId}/approve`, {
+            const resRaw = await api(`/api/agent/sessions/${sessionId}/approve?stream=true`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ approvalToken: runRes.approvalToken }),
+              raw: true,
             });
+            let res;
+            const resContentType = resRaw.headers.get("content-type") || "";
+            if (resContentType.includes("application/json")) {
+              res = await resRaw.json();
+            } else {
+              const stepId = addAgentTimelineStep("action", `コマンド実行: ${command.split(" ")[0]}`, "実行を開始します...", "");
+              res = await processCommandStream(resRaw, stepId);
+            }
             resolve({ approved: true, result: res });
           } catch (e) {
             resolve({ approved: true, error: e });

@@ -253,4 +253,47 @@ describe("AI Routes Integration Tests", () => {
       expect(response.body.error).toContain("prompt");
     });
   });
+
+  describe("GET /api/assets/proxy", () => {
+    let originalFetch;
+    beforeAll(() => {
+      originalFetch = global.fetch;
+    });
+    afterAll(() => {
+      global.fetch = originalFetch;
+    });
+
+    test("should proxy asset from 1min.ai and return it", async () => {
+      const mockResponseBody = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("fake image data"));
+          controller.close();
+        }
+      });
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        headers: new Headers({ "content-type": "image/png" }),
+        body: mockResponseBody,
+      });
+
+      const response = await request(app)
+        .get("/api/assets/proxy")
+        .query({ key: "images/test.png" });
+
+      expect(response.status).toBe(200);
+      expect(response.headers["content-type"]).toBe("image/png");
+      const receivedText = response.text || (response.body && response.body.toString()) || "";
+      expect(receivedText).toBe("fake image data");
+      expect(global.fetch).toHaveBeenCalledWith("https://asset.1min.ai/images/test.png");
+    });
+
+    test("should reject untrusted hosts", async () => {
+      const response = await request(app)
+        .get("/api/assets/proxy")
+        .query({ url: "https://evil.com/malicious.png" });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toContain("Untrusted asset host");
+    });
+  });
 });

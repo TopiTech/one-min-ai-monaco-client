@@ -104,8 +104,12 @@ async function parseJsonOrTextResponse(res) {
 
 function assetUrl(path) {
   if (!path) return "";
-  if (/^https?:\/\//.test(path)) return path;
-  return `https://asset.1min.ai/${path.replace(/^\//, "")}`;
+  const token = getBffToken();
+  const tokenQuery = token ? `&__bff_token=${encodeURIComponent(token)}` : "";
+  if (/^https?:\/\//.test(path)) {
+    return `/api/assets/proxy?url=${encodeURIComponent(path)}${tokenQuery}`;
+  }
+  return `/api/assets/proxy?key=${encodeURIComponent(path)}${tokenQuery}`;
 }
 
 export { api, assetUrl, extractImages };

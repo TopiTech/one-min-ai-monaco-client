@@ -271,6 +271,7 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
     if (!command) {
       return res.status(400).json({ error: "command is required" });
     }
+    const isStream = req.query.stream === "true";
 
     // Validate working directory
     const workingDir = path.resolve(resolveAgentPath(cwd || session.cwd, session.cwd));
@@ -327,16 +328,30 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
       });
     }
 
-    // Execute command
     session.status = "running";
     logger.info(`Executing command (auto-approved or bypass-auth)`, {
       sessionId: req.params.id,
       command: command.split(/\s+/)[0],
       cwd: workingDir,
     });
+
+    let onOutput = null;
+    if (isStream) {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+      
+      onOutput = (type, text) => {
+        res.write(`event: ${type}\n`);
+        res.write(`data: ${JSON.stringify({ text })}\n\n`);
+      };
+    }
+
     const result = await executeCommand(command, {
       cwd: workingDir,
       timeoutMs: timeoutMs || serverConfig.commandTimeoutMs,
+      onOutput,
     });
 
     session.status = "idle";
@@ -354,12 +369,18 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
       timestamp: new Date().toISOString(),
     });
 
-    res.json({
-      executed: true,
-      command,
-      cwd: workingDir,
-      ...result,
-    });
+    if (isStream) {
+      res.write(`event: done\n`);
+      res.write(`data: ${JSON.stringify({ executed: true, command, cwd: workingDir, ...result })}\n\n`);
+      res.end();
+    } else {
+      res.json({
+        executed: true,
+        command,
+        cwd: workingDir,
+        ...result,
+      });
+    }
   } catch (err) {
     next(err);
   }
@@ -374,6 +395,7 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
     if (!session) return;
 
     const { approvalToken, timeoutMs } = req.body;
+    const isStream = req.query.stream === "true";
     if (!approvalToken || !pendingCommands.has(approvalToken)) {
       return res.status(400).json({ error: "Invalid or expired approval token" });
     }
@@ -405,9 +427,24 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
       command: pending.command.split(/\s+/)[0],
       cwd: workingDir,
     });
+
+    let onOutput = null;
+    if (isStream) {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+      
+      onOutput = (type, text) => {
+        res.write(`event: ${type}\n`);
+        res.write(`data: ${JSON.stringify({ text })}\n\n`);
+      };
+    }
+
     const result = await executeCommand(pending.command, {
       cwd: workingDir,
       timeoutMs: timeoutMs || serverConfig.commandTimeoutMs,
+      onOutput,
     });
 
     session.status = "idle";
@@ -426,12 +463,18 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
       timestamp: new Date().toISOString(),
     });
 
-    res.json({
-      executed: true,
-      command: pending.command,
-      cwd: workingDir,
-      ...result,
-    });
+    if (isStream) {
+      res.write(`event: done\n`);
+      res.write(`data: ${JSON.stringify({ executed: true, command: pending.command, cwd: workingDir, ...result })}\n\n`);
+      res.end();
+    } else {
+      res.json({
+        executed: true,
+        command: pending.command,
+        cwd: workingDir,
+        ...result,
+      });
+    }
   } catch (err) {
     next(err);
   }

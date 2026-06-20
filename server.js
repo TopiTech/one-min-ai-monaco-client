@@ -19,6 +19,7 @@ initLogger(serverConfig);
 import { validateBufferMimeType } from "./utils/mime-guard.js";
 import fs from "fs";
 import fsp from "fs/promises";
+import { Readable } from "stream";
 
 import aiRoutes from "./routes/ai.js";
 import fsRoutes from "./routes/fs.js";
@@ -46,6 +47,17 @@ const ALLOWED_MIME_TYPES = [
 // request finishes (success or failure).
 const UPLOAD_TMP_DIR = path.join(os.tmpdir(), "one-min-ai-uploads");
 fs.mkdirSync(UPLOAD_TMP_DIR, { recursive: true });
+
+// E-1: Startup cleanup to remove any orphaned temporary files from previous runs
+// that may have been left behind due to sudden server crashes.
+try {
+  const files = fs.readdirSync(UPLOAD_TMP_DIR);
+  for (const file of files) {
+    fs.unlinkSync(path.join(UPLOAD_TMP_DIR, file));
+  }
+} catch (err) {
+  // Best-effort cleanup, ignore errors
+}
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -118,7 +130,7 @@ function localBffAuth({ requireToken = true, authToken } = {}) {
 
   return (req, res, next) => {
     const cookies = parseCookies(req.headers.cookie);
-    const headerToken = req.get("x-local-bff-token");
+    const headerToken = req.get("x-local-bff-token") || req.query.__bff_token;
     const cookieToken = cookies["__bff_session"];
     const tokenOk =
       headerToken &&
@@ -288,13 +300,20 @@ async function handleAssetUpload(req, res, next) {
       .basename(req.file.originalname || "upload.bin")
       .replace(/[^a-zA-Z0-9._-]/g, "_")
       .substring(0, 255);
-    const fileBuffer = await fsp.readFile(tmpFilePath);
+
+    // A-1: Stream the file directly from disk into FormData using openAsBlob
+    // if available (Node 19.8+). This prevents OOM spikes when uploading
+    // large files compared to reading the entire buffer into memory.
+    let assetBlob;
+    if (typeof fs.openAsBlob === "function") {
+      assetBlob = await fs.openAsBlob(tmpFilePath);
+    } else {
+      const fileBuffer = await fsp.readFile(tmpFilePath);
+      assetBlob = new Blob([fileBuffer], { type: req.file.mimetype || "application/octet-stream" });
+    }
+
     const formData = new FormData();
-    formData.append(
-      "asset",
-      new Blob([fileBuffer], { type: req.file.mimetype || "application/octet-stream" }),
-      safeName,
-    );
+    formData.append("asset", assetBlob, safeName);
 
     const data = await callOneMin("/api/assets", {
       method: "POST",
@@ -590,6 +609,53 @@ export function createApp(options = {}) {
   // B-5: Single auth layer at /api level. Sub-routes are mounted inside one protected router
   // to avoid double invocation of protectedApiAuth.
   const protectedRouter = express.Router();
+  protectedRouter.get("/assets/proxy", async (req, res, next) => {
+    try {
+      const { url, key } = req.query;
+      if (!url && !key) {
+        return res.status(400).json({ error: "url or key is required" });
+      }
+
+      let targetUrl = url;
+      if (!targetUrl && key) {
+        targetUrl = `https://asset.1min.ai/${key.replace(/^\//, "")}`;
+      }
+
+      const parsed = new URL(targetUrl);
+      const allowedHosts = [
+        "asset.1min.ai",
+        "api.1min.ai",
+        "asset.1min.ai.s3.us-east-1.amazonaws.com",
+        "asset.1min.ai.s3.amazonaws.com",
+      ];
+      const isAllowedHost = allowedHosts.some(
+        (h) => parsed.hostname === h || parsed.hostname.endsWith(".amazonaws.com"),
+      );
+      if (!isAllowedHost) {
+        return res.status(403).json({ error: "Access denied: Untrusted asset host" });
+      }
+
+      const response = await fetch(targetUrl);
+      if (!response.ok) {
+        return res.status(response.status).json({ error: `Failed to fetch asset: ${response.statusText}` });
+      }
+
+      const contentType = response.headers.get("content-type");
+      if (contentType) {
+        res.setHeader("Content-Type", contentType);
+      }
+      res.setHeader("Cache-Control", "public, max-age=31536000");
+
+      if (response.body) {
+        Readable.fromWeb(response.body).pipe(res);
+      } else {
+        res.end();
+      }
+    } catch (err) {
+      next(err);
+    }
+  });
+
   protectedRouter.use("/", aiRoutes);
   protectedRouter.use("/fs", fsRoutes);
   protectedRouter.use("/agent", agentRoutes);

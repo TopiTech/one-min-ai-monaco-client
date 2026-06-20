@@ -72,11 +72,41 @@ class Logger {
     let metaStr = "";
     if (Object.keys(meta).length) {
       try {
+        // D-1: Globally sanitize log metadata to prevent accidental leakage
+        // of sensitive credentials or payloads to log files.
+        const sensitiveKeys = [
+          "api_key", "apikey", "key", "token", "auth", "authorization", "secret",
+          "prompt", "messages", "query", "input", "content",
+        ];
+        const sensitiveValueKeys = ["result", "resultObject", "result_object", "raw"];
+        const seen = new WeakSet();
+        const walk = (obj) => {
+          if (!obj || typeof obj !== "object") return obj;
+          if (seen.has(obj)) return "[Circular]";
+          seen.add(obj);
+          if (Array.isArray(obj)) return obj.map(walk);
+          const result = {};
+          for (const key in obj) {
+            const lowerKey = key.toLowerCase();
+            if (sensitiveKeys.some((sk) => lowerKey.includes(sk))) {
+              result[key] = "[MASKED]";
+            } else if (sensitiveValueKeys.some((sk) => lowerKey.includes(sk))) {
+              result[key] = "[REDACTED]";
+            } else if (typeof obj[key] === "object" && obj[key] !== null) {
+              result[key] = walk(obj[key]);
+            } else {
+              result[key] = obj[key];
+            }
+          }
+          return result;
+        };
+        const sanitizedMeta = walk(meta);
+
         // L-3: Cap meta serialization at 8KB to avoid runaway logs from
         // accidentally logged payloads (e.g. full upstream error
         // responses). Truncated entries are tagged so the truncation
         // is visible downstream.
-        let serialized = JSON.stringify(meta, (_k, v) => {
+        let serialized = JSON.stringify(sanitizedMeta, (_k, v) => {
           if (typeof v === "string" && v.length > 1024) {
             // Q-5: Avoid splitting surrogate pairs when truncating
             let truncated = v.slice(0, 1024);
