@@ -114,9 +114,6 @@ function savePendingCommands() {
   _pendingSaveTimer.unref();
 }
 
-// Load pending commands on startup alongside sessions
-loadPendingCommands();
-
 // Cache the mkdir promise so it only runs once across concurrent calls.
 let _dirReady = null;
 async function ensureDataDir() {
@@ -129,6 +126,9 @@ async function ensureDataDir() {
   });
   return _dirReady;
 }
+
+// Load pending commands on startup alongside sessions
+loadPendingCommands();
 
 async function loadSessions() {
   if (isTestMode) return;
