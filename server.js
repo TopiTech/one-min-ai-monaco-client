@@ -242,13 +242,17 @@ function normalizePayloadError(err) {
   if (!err?.payload) return null;
   if (typeof err.payload === "string") return err.payload;
   if (typeof err.payload === "object") {
-    const isProd = process.env.NODE_ENV === "production";
-    const msg = err.payload.error || err.payload.message;
+    // Extract a safe, short error description from known upstream error shapes.
+    // This avoids leaking raw payload data while still giving the client a
+    // human-readable failure reason.
+    const msg =
+      err.payload.error ||
+      err.payload.message ||
+      err.payload.aiRecord?.aiRecordDetail?.errorMessage ||
+      err.payload.aiRecord?.errorMessage ||
+      err.payload.errorMessage;
     if (msg && typeof msg === "string") return msg;
-    if (isProd) {
-      return "Upstream request failed with structured payload";
-    }
-    return JSON.stringify(err.payload);
+    return "Upstream request failed (see details for sanitized payload)";
   }
   return null;
 }
@@ -334,7 +338,13 @@ function sanitizePayload(payload) {
   if (!payload) return null;
   if (typeof payload !== "object") return payload;
   try {
-    const sensitiveKeys = ["api_key", "apikey", "key", "token", "auth", "authorization", "secret"];
+    // L-4: Expand sensitive keys to cover auth credentials, user prompts,
+    // and upstream response bodies that may contain model details or billing info.
+    const sensitiveKeys = [
+      "api_key", "apikey", "key", "token", "auth", "authorization", "secret",
+      "prompt", "messages", "query", "input", "content",
+    ];
+    const sensitiveValueKeys = ["result", "resultObject", "result_object", "raw"];
     const seen = new WeakSet();
     const walk = (obj) => {
       if (!obj || typeof obj !== "object") return obj;
@@ -345,8 +355,12 @@ function sanitizePayload(payload) {
       }
       const result = {};
       for (const key in obj) {
-        if (sensitiveKeys.some((sk) => key.toLowerCase().includes(sk))) {
+        const lowerKey = key.toLowerCase();
+        if (sensitiveKeys.some((sk) => lowerKey.includes(sk))) {
           result[key] = "[MASKED]";
+        } else if (sensitiveValueKeys.some((sk) => lowerKey.includes(sk))) {
+          // Upstream result bodies — mask to prevent leaking model details
+          result[key] = "[REDACTED]";
         } else if (typeof obj[key] === "object" && obj[key] !== null) {
           result[key] = walk(obj[key]);
         } else {
@@ -411,6 +425,7 @@ export function createApp(options = {}) {
           // Monaco assigns to element.style.* and setAttribute('style', ...)
           // internally; mirror the relaxation on style-src-attr.
           "style-src-attr": ["'unsafe-inline'"],
+          "upgrade-insecure-requests": [],
           "img-src": ["'self'", "data:", "https:", "blob:"],
           "connect-src": ["'self'", "https://api.1min.ai"],
           "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],

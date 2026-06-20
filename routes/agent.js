@@ -132,6 +132,7 @@ loadSessions();
 
 const MAX_HISTORY_ENTRIES = 100;
 const MAX_HISTORY_RESULT_SIZE = 10000; // chars
+const MAX_PENDING_COMMANDS = 100;
 
 function addHistoryEntry(session, entry) {
   if (entry.result) {
@@ -295,6 +296,13 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
 
     // If approval required, store command and return token for review
     if (effectiveRequireApproval) {
+      // Enforce size cap to prevent unbounded memory growth from
+      // a runaway LLM loop generating thousands of pending commands.
+      if (pendingCommands.size >= MAX_PENDING_COMMANDS) {
+        const oldestToken = pendingCommands.keys().next().value;
+        pendingCommands.delete(oldestToken);
+      }
+
       const approvalToken = crypto.randomUUID();
       pendingCommands.set(approvalToken, {
         command,

@@ -17,3 +17,4 @@ coverage/
 *.log
 public/vs/
 public/vendor/
+$null

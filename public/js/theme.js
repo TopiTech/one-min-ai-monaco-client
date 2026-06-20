@@ -11,6 +11,10 @@ export function initTheme() {
   const saved = localStorage.getItem(STORAGE_KEY_THEME);
   if (saved) {
     document.documentElement.setAttribute("data-theme", saved);
+  } else {
+    // Always set data-theme based on system preference for CSS to work correctly
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.setAttribute("data-theme", prefersDark ? "dark" : "light");
   }
   updateThemeUI();
 

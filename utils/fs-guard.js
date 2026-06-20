@@ -114,6 +114,26 @@ export function getAllowedRoots() {
  * @returns {string} The resolved absolute path if valid.
  * @throws {Error} If the path is outside all allowed roots.
  */
+// Windows reserved device names that must not be used as file/directory
+// components.  Accessing e.g. "CON", "NUL", "AUX" on Windows can redirect
+// to system devices (stdin/stdout/etc.) or cause unpredictable behaviour.
+const WINDOWS_RESERVED_NAMES = new Set([
+  "CON", "PRN", "AUX", "NUL",
+  "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+  "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+]);
+
+function hasWindowsReservedName(targetPath) {
+  if (process.platform !== "win32") return false;
+  const parts = targetPath.split(/[\\/]/);
+  for (const part of parts) {
+    // Strip extension (e.g. "CON.txt" → "CON")
+    const base = part.replace(/\.[^.]+$/, "").toUpperCase();
+    if (WINDOWS_RESERVED_NAMES.has(base)) return true;
+  }
+  return false;
+}
+
 export function validatePath(targetPath) {
   if (!targetPath) {
     throw new Error("Path is required");
@@ -122,6 +142,14 @@ export function validatePath(targetPath) {
   // Prevent null byte injection and other common attack patterns
   if (targetPath.includes("\0")) {
     const err = new Error("Access denied: Invalid path (null byte detected)");
+    err.status = 403;
+    throw err;
+  }
+
+  // Block Windows reserved device names (CON, NUL, AUX, etc.) to prevent
+  // redirection to system devices or OS-level errors.
+  if (hasWindowsReservedName(targetPath)) {
+    const err = new Error("Access denied: Path contains a Windows reserved device name");
     err.status = 403;
     throw err;
   }

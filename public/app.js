@@ -120,6 +120,11 @@ const state = {
 function toggleTheme() {
   const next = toggleThemeFn();
   editorManager.updateTheme();
+  // Update diff editor theme if it exists
+  if (diffEditor) {
+    const theme = document.documentElement.getAttribute("data-theme") === "light" ? "vs" : "vs-dark";
+    diffEditor.updateOptions({ theme });
+  }
 }
 
 // Initialize theme and settings on DOM ready

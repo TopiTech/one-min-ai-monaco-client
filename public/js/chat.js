@@ -96,7 +96,16 @@ export function createChatManager(dom, state) {
     div.appendChild(contentDiv);
 
     dom.chatLog.appendChild(div);
-    dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
+
+    // F-6: Only auto-scroll if the user was already at (or near) the bottom.
+    // This prevents yanking users back down when they've scrolled up to
+    // read history and a new message arrives.
+    const isNearBottom =
+      dom.chatLog.scrollTop + dom.chatLog.clientHeight >= dom.chatLog.scrollHeight - 120;
+    if (isNearBottom) {
+      dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
+    }
+
     pruneChatLog();
   }
 

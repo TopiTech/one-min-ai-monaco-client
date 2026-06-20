@@ -203,11 +203,14 @@ router.post("/chat/stream", async (req, res, next) => {
       }
     });
 
+    // L-3: Explicitly mark as non-idempotent so retries never duplicate
+    // upstream aiRecords or cause duplicate billing on transient failures.
     const response = await callOneMin("/api/chat-with-ai?isStreaming=true", {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
       raw: true,
       signal: controller.signal,
+      idempotent: false,
     });
 
     if (response.headers.get("content-type")?.includes("application/json")) {
