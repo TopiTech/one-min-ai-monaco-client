@@ -441,8 +441,3 @@ export function initModelPickers() {
     }
   });
 }
-.target.click();
-      }
-    }
-  });
-}
