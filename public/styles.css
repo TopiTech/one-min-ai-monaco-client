@@ -3268,6 +3268,23 @@ select:focus-visible {
   display: none !important;
 }
 
+.is-error-hidden {
+  display: none !important;
+}
+
+.img-error-placeholder {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--danger);
+  background: var(--danger-glow);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  padding: 6px 12px;
+  border-radius: 8px;
+  margin-top: 4px;
+}
+
 .u-flex-1 {
   flex: 1 !important;
 }

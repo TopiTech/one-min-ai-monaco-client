@@ -80,6 +80,10 @@ export function createChatManager(dom, state) {
         imgEl.src = img.url || img.assetUrl || img;
         imgEl.onerror = function () {
           this.classList.add("is-error-hidden");
+          const errorSpan = document.createElement("span");
+          errorSpan.className = "img-error-placeholder";
+          errorSpan.textContent = "⚠️ 画像の読み込みに失敗しました";
+          this.after(errorSpan);
         };
         imagesDiv.appendChild(imgEl);
       }
@@ -141,6 +145,10 @@ export function createChatManager(dom, state) {
         img.alt = "preview";
         img.onerror = function () {
           this.classList.add("is-error-hidden");
+          const errorSpan = document.createElement("span");
+          errorSpan.className = "img-error-placeholder";
+          errorSpan.textContent = "⚠️ 画像ロードエラー";
+          this.after(errorSpan);
         };
         thumb.appendChild(img);
       } else {

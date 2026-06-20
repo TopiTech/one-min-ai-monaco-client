@@ -58,19 +58,32 @@ http://localhost:3000
 | `ONE_MIN_AI_API_KEY` | はい | なし | 1min.ai APIキー。`.env` にのみ保存してください。 |
 | `PORT` | いいえ | `3000` | ローカルExpressサーバーの待ち受けポート。 |
 | `NODE_ENV` | いいえ | `development` | `production` にするとスタックトレースを隠し、セキュアCookieを有効化。 |
+| `MAX_FILE_SIZE` | いいえ | `26214400` | アセットのアップロード制限サイズ（バイト、デフォルト25MB）。 |
+| `MAX_JSON_BODY_SIZE` | いいえ | `2mb` | JSONリクエストボディのサイズ上限。 |
 | `DEFAULT_CHAT_MODEL` | いいえ | `gpt-4o-mini` | チャットとコード生成のデフォルトモデル。 |
 | `DEFAULT_CODE_MODEL` | いいえ | `qwen3-coder-plus` | コード生成のデフォルトモデル。 |
 | `DEFAULT_IMAGE_MODEL` | いいえ | `gpt-image-2` | 画像生成のデフォルトモデル。 |
 | `DEFAULT_IMAGE_EDITOR_MODEL` | いいえ | `gpt-image-2` | 画像テキストエディタのデフォルトモデル。 |
 | `ONE_MIN_AI_API_BASE_URL` | いいえ | `https://api.1min.ai` | 1min.ai APIのベースURL。モックサーバーやステージング向け。 |
+| `API_TIMEOUT` | いいえ | `60000` | 1min.ai API リクエストのタイムアウト（ミリ秒）。 |
+| `API_RETRY_ATTEMPTS` | いいえ | `3` | 1min.ai API エラー発生時の最大リトライ回数。 |
+| `API_RETRY_DELAY` | いいえ | `2000` | リトライ時のベース遅延時間（ミリ秒）。 |
+| `RATE_LIMIT_WINDOW_MS` | いいえ | `60000` | レート制限の対象時間（ミリ秒）。 |
+| `RATE_LIMIT_MAX` | いいえ | `180` | 時間枠あたりの標準エンドポイントの最大リクエスト数。 |
+| `RATE_LIMIT_AUTOCOMPLETE_MAX` | いいえ | `600` | 補完APIの最大リクエスト数。 |
+| `RATE_LIMIT_CHAT_MAX` | いいえ | `300` | チャットAPIの最大リクエスト数。 |
+| `SESSION_TTL_MS` | いいえ | `1800000` | エージェントセッションの有効期間（ミリ秒、デフォルト30分）。 |
 | `ALLOWED_ROOTS` | いいえ | 現在のプロジェクトルート | 参照・編集可能なルート一覧。カンマ区切り。 |
 | `ENABLE_COMMAND_EXECUTION` | いいえ | `false` | エージェントのコマンド実行を有効化します。 |
 | `COMMAND_TIMEOUT_MS` | いいえ | `30000` | コマンド実行のタイムアウト時間。 |
 | `AGENT_AUTO_APPROVE` | いいえ | `false` | 承認なし実行の可否。原則 false。 |
 | `AGENT_MAX_LOOPS` | いいえ | `20` | エージェントの最大ループ反復回数 (1-100)。 |
+| `AGENT_MAX_SESSIONS` | いいえ | `50` | メモリ上に保持する最大エージェントセッション数。 |
+| `ENABLE_DRIVES_SHELL_LOOKUP` | いいえ | `true` | Windows環境でドライブ一覧取得にPowerShell等を使用するかどうか。 |
 | `LOCAL_BFF_AUTH_TOKEN` | いいえ | 自動生成 | ローカルBFF認証トークン。未設定なら毎回自動生成。 |
 | `LOG_LEVEL` | いいえ | `info` | ログレベル（`error`, `warn`, `info`, `debug`）。 |
 | `LOG_TO_FILE` | いいえ | `false` | `true` でログファイル出力を有効化。 |
+| `LOG_FILE` | いいえ | `logs/app.log` | ログ出力先のファイルパス。 |
 
 ## 構成
 

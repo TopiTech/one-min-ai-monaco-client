@@ -105,6 +105,10 @@ export function createImageManager(dom) {
         imgEl.alt = "AI生成画像";
         imgEl.onerror = function () {
           this.classList.add("is-error-hidden");
+          const errorSpan = document.createElement("span");
+          errorSpan.className = "img-error-placeholder";
+          errorSpan.textContent = "⚠️ 画像の読み込みに失敗しました";
+          this.after(errorSpan);
         };
         card.appendChild(imgEl);
       }
