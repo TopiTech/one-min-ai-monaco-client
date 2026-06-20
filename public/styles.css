@@ -63,6 +63,14 @@ body {
   pointer-events: none;
 }
 
+:root.perf-mode .liquid-bg-container {
+  display: none !important;
+}
+
+.perf-mode-box {
+  margin-top: 8px;
+}
+
 .liquid-blob {
   position: absolute;
   border-radius: 50%;
@@ -1739,6 +1747,35 @@ select:focus-visible {
   margin-bottom: 14px;
 }
 
+.chat-input-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chat-input-wrap textarea {
+  margin-bottom: 0;
+}
+
+.char-counter {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-align: right;
+  padding-right: 4px;
+  height: 16px;
+  line-height: 16px;
+  transition: color 0.2s ease;
+}
+
+.char-counter.warn {
+  color: var(--warn);
+}
+
+.char-counter.danger {
+  color: var(--danger);
+}
+
 .chat-input-row textarea {
   flex: 1;
   margin-bottom: 0;
@@ -2326,6 +2363,19 @@ select:focus-visible {
 
 .agent-step-result-toggle:hover {
   color: #fff;
+}
+
+.result-truncated-badge {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .agent-step-result-box {
@@ -3620,6 +3670,16 @@ select:focus-visible {
   .editorWrap.card,
   .assistant.card {
     grid-column: 1;
+  }
+
+  .files.card {
+    max-height: 30vh;
+    overflow-y: auto;
+  }
+  
+  .assistant.card {
+    max-height: 40vh;
+    overflow-y: auto;
   }
 
   #editor {

@@ -33,11 +33,24 @@ function normalizeLogLevel(level) {
     : LOG_LEVELS.info;
 }
 
+const DEFAULT_LOG_DIR = path.join(__dirname, "..", "logs");
+
 class Logger {
   constructor(options = {}) {
     this.level = normalizeLogLevel(options.level);
     this.logToFile = options.logToFile ?? false;
-    this.logDir = options.logDir || path.join(__dirname, "..", "logs");
+    this.logDir = options.logDir || DEFAULT_LOG_DIR;
+    this.logFilePrefix = "app-";
+
+    // If logFilePath is provided (e.g. "logs/app.log"), extract the directory
+    // and derive a file prefix so the date-rotation naming is preserved.
+    // "logs/my-custom.log" → logDir = resolved("logs"), prefix = "my-custom-".
+    if (options.logFilePath) {
+      const p = path.resolve(options.logFilePath);
+      this.logDir = path.dirname(p);
+      const basename = path.basename(p, path.extname(p)); // "my-custom"
+      this.logFilePrefix = basename + "-";
+    }
 
     if (this.logToFile) {
       this._ensureLogDir();
@@ -95,7 +108,7 @@ class Logger {
     if (!this.logToFile) return;
 
     const date = new Date().toISOString().split("T")[0];
-    const logFile = path.join(this.logDir, `app-${date}.log`);
+    const logFile = path.join(this.logDir, `${this.logFilePrefix}${date}.log`);
 
     appendFile(logFile, formattedMessage + "\n").catch((err) => {
       console.error(`Failed to write to log file: ${err.message}`);
@@ -151,11 +164,34 @@ class Logger {
   }
 }
 
-// Default logger instance
+// Default logger instance — reads env vars for safe fallback before server.js
+// has a chance to call initLogger(). Once initLogger(config) is called the
+// singleton is reconfigured with the validated serverConfig values.
 const logger = new Logger({
   level: process.env.LOG_LEVEL || "info",
   logToFile: process.env.LOG_TO_FILE === "true",
+  logFilePath: process.env.LOG_FILE || undefined,
 });
+
+/**
+ * Reconfigure the default logger singleton with validated config values.
+ * Called once from server.js after serverConfig is fully resolved.
+ * This avoids circular imports and lets config/server.js own validation.
+ */
+export function initLogger(config = {}) {
+  logger.level = normalizeLogLevel(config.logLevel);
+  logger.logToFile = config.logToFile ?? false;
+  if (config.logFilePath) {
+    const p = path.resolve(config.logFilePath);
+    logger.logDir = path.dirname(p);
+    const basename = path.basename(p, path.extname(p));
+    logger.logFilePrefix = basename + "-";
+  }
+  if (logger.logToFile) {
+    logger._ensureLogDir();
+  }
+  return logger;
+}
 
 export { Logger, logger };
 export default logger;

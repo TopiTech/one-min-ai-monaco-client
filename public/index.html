@@ -142,6 +142,13 @@
             <span class="credit-save-label">クレジット節約モード</span>
           </label>
         </div>
+
+        <div class="perf-mode-box">
+          <label class="check check--boxed">
+            <input type="checkbox" id="perfModeToggle" />
+            <span class="perf-mode-label">パフォーマンスモード (アニメーションOFF)</span>
+          </label>
+        </div>
       </aside>
 
       <main class="main">
@@ -170,13 +177,17 @@
                 <div id="attachmentPreviews" class="attachment-previews"></div>
               </div>
 
-              <div class="chat-input-row">
+              <div class="chat-input-wrap">
                 <textarea
                   id="chatPrompt"
                   placeholder="メッセージを入力... (Ctrl+Enter で送信、動画/音声の解析、YouTube URLも対応)"
                   rows="5"
                   aria-label="チャットメッセージ入力"
+                  maxlength="50000"
                 ></textarea>
+                <div class="char-counter" id="chatCharCounter" aria-live="polite"></div>
+              </div>
+              <div class="chat-input-row">
                 <button type="button" id="attachImageBtn" class="ghost small" title="ファイルを添付">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -755,6 +766,7 @@
               <h3 class="h3-white">環境変数デフォルト値</h3>
               <p class="env-defaults-text">
                 DEFAULT_CHAT_MODEL: <code>gpt-4o-mini</code><br />
+                DEFAULT_CODE_MODEL: <code>qwen3-coder-plus</code><br />
                 DEFAULT_IMAGE_MODEL: <code>gpt-image-2</code><br />
                 DEFAULT_IMAGE_EDITOR_MODEL: <code>gpt-image-2</code>
               </p>
@@ -817,8 +829,8 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.5/dist/purify.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
+    <script src="./vendor/purify.min.js"></script>
+    <script src="./vendor/marked.min.js"></script>
     <script src="/vs/loader.js"></script>
     <script type="module" src="./js/api.js"></script>
     <script type="module" src="./js/dom-style.js"></script>

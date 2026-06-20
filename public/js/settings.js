@@ -89,6 +89,33 @@ function initChatSettings() {
   });
 }
 
+function initPerformanceModeSettings() {
+  const perfToggle = document.getElementById("perfModeToggle");
+  if (!perfToggle) return;
+
+  const updatePerfMode = (isEnabled) => {
+    document.documentElement.classList.toggle("perf-mode", isEnabled);
+  };
+
+  const savedPerfMode = localStorage.getItem("monaco_client_perf_mode");
+  let isEnabled = false;
+  if (savedPerfMode !== null) {
+    isEnabled = savedPerfMode === "true";
+  } else {
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      isEnabled = true;
+    }
+  }
+
+  perfToggle.checked = isEnabled;
+  updatePerfMode(isEnabled);
+
+  perfToggle.addEventListener("change", () => {
+    localStorage.setItem("monaco_client_perf_mode", perfToggle.checked);
+    updatePerfMode(perfToggle.checked);
+  });
+}
+
 let _settingsInitDone = false;
 
 export function bootstrapSettings() {
@@ -96,4 +123,5 @@ export function bootstrapSettings() {
   _settingsInitDone = true;
   initCodeGeneratorSettings();
   initChatSettings();
+  initPerformanceModeSettings();
 }

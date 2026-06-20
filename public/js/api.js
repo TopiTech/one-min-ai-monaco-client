@@ -1,7 +1,26 @@
 const statusEl = document.getElementById("status");
 
+let memoryBffToken = "";
+let tokenPromise = null;
+
+async function ensureBffToken() {
+  if (tokenPromise) return tokenPromise;
+  tokenPromise = (async () => {
+    try {
+      const res = await fetch("/api/token");
+      if (res.ok) {
+        const data = await res.json();
+        memoryBffToken = data.token || "";
+      }
+    } catch (err) {
+      console.warn("Failed to fetch BFF token:", err);
+    }
+  })();
+  return tokenPromise;
+}
+
 function getBffToken() {
-  return document.body?.dataset?.bffToken || "";
+  return memoryBffToken;
 }
 
 function setStatus(text, cls = "") {
@@ -14,6 +33,7 @@ function setStatus(text, cls = "") {
 let _activeRequests = 0;
 
 async function api(path, options = {}) {
+  await ensureBffToken();
   _activeRequests++;
   setStatus("通信中...", "warn");
 

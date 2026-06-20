@@ -17,37 +17,28 @@ function requireApiKey() {
 }
 
 /**
- * Fetch with timeout support using AbortSignal.timeout (Node 18+)
+ * Fetch with timeout support.
+ *
+ * Uses AbortSignal.any (Node 20.3+ / 18.17+) when available, falling back
+ * to a manual AbortController that forwards whichever source aborts
+ * (caller cancellation vs timeout). After either path we inspect which
+ * signal fired to surface the correct error (499 client abort vs 408
+ * timeout).
  */
 async function fetchWithTimeout(url, options = {}, timeoutMs = serverConfig.apiTimeout) {
+  const { signal: callerSignal, ...fetchOpts } = options;
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  const controller = new AbortController();
-
-  let onAbort;
-  if (options.signal) {
-    if (options.signal.aborted) {
-      controller.abort();
-    } else {
-      onAbort = () => controller.abort();
-      options.signal.addEventListener("abort", onAbort, { once: true });
-    }
-  }
-
-  // Forward timeout abort to controller
-  const onTimeout = () => controller.abort();
-  timeoutSignal.addEventListener("abort", onTimeout, { once: true });
+  const combinedSignal =
+    typeof AbortSignal.any === "function"
+      ? AbortSignal.any(callerSignal ? [callerSignal, timeoutSignal] : [timeoutSignal])
+      : createCombinedSignal(callerSignal, timeoutSignal);
 
   try {
-    const { signal, ...fetchOpts } = options;
-    const response = await fetch(url, {
-      ...fetchOpts,
-      signal: controller.signal,
-    });
-
+    const response = await fetch(url, { ...fetchOpts, signal: combinedSignal });
     return response;
   } catch (error) {
-    if (error.name === "AbortError") {
-      if (options.signal && options.signal.aborted) {
+    if (error.name === "AbortError" || error.code === "ABORT_ERR") {
+      if (callerSignal && callerSignal.aborted) {
         const err = new Error("Request aborted by client");
         err.name = "AbortError";
         err.status = 499;
@@ -58,12 +49,31 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = serverConfig.apiT
       throw err;
     }
     throw error;
-  } finally {
-    if (options.signal && onAbort) {
-      options.signal.removeEventListener("abort", onAbort);
-    }
-    // AbortSignal.timeout cleans itself up; no manual clear needed.
   }
+}
+
+/**
+ * Polyfill for environments without AbortSignal.any (Node 18.0–18.16).
+ * Forwards whichever of the two source signals aborts first.
+ */
+function createCombinedSignal(a, b) {
+  const controller = new AbortController();
+  const onAbort = () => {
+    if (!controller.signal.aborted) {
+      // Use the original signal's reason when available (Node 18.17+).
+      const reason = (a && a.aborted && a.reason) || (b && b.aborted && b.reason) || undefined;
+      controller.abort(reason);
+    }
+  };
+  if (a) {
+    if (a.aborted) onAbort();
+    else a.addEventListener("abort", onAbort, { once: true });
+  }
+  if (b) {
+    if (b.aborted) onAbort();
+    else b.addEventListener("abort", onAbort, { once: true });
+  }
+  return controller.signal;
 }
 
 /**

@@ -93,7 +93,16 @@ async function flushSave() {
     } catch {
       return;
     }
-    const data = JSON.stringify(Object.fromEntries(sessions), null, 2);
+    const rawSessions = Object.fromEntries(sessions);
+    const apiKey = process.env.ONE_MIN_AI_API_KEY;
+    
+    // SEC-4: Mask sensitive keys if present in the data
+    const data = JSON.stringify(rawSessions, (key, value) => {
+      if (typeof value === "string" && apiKey && apiKey !== "your_1min_ai_api_key_here" && value.includes(apiKey)) {
+        return value.split(apiKey).join("***MASKED***");
+      }
+      return value;
+    }, 2);
     const tmpFile = SESSIONS_FILE + ".tmp";
     await fs.writeFile(tmpFile, data, "utf-8");
     await fs.rename(tmpFile, SESSIONS_FILE);
@@ -204,7 +213,8 @@ router.post("/sessions", async (req, res, next) => {
       lastAccessedAt: Date.now(),
     };
 
-    if (sessions.size >= 1000) {
+    const MAX_SESSIONS = parseInt(process.env.AGENT_MAX_SESSIONS, 10) || 50;
+    if (sessions.size >= MAX_SESSIONS) {
       const oldestId = Array.from(sessions.entries()).reduce((a, b) =>
         a[1].lastAccessedAt < b[1].lastAccessedAt ? a : b,
       )[0];

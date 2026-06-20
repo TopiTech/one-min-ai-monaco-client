@@ -165,6 +165,7 @@ const imageState = createImageState();
 const editorState = createEditorState();
 
 const chatManager = createChatManager(dom, { chat: chatState });
+chatManager.initCharCounter();
 const imageManager = createImageManager(dom);
 const editorManager = createEditorManager(editorState);
 
@@ -172,11 +173,13 @@ const editorManager = createEditorManager(editorState);
 const tabManager = createEditorTabManager(editorState, editorManager, dom);
 const inlineChatManager = createInlineChatManager(editorState, editorManager, dom);
 
-// Expose for editor.js keyboard shortcuts (saveFile, toggleInlineChat).
-// These are needed because editor.js is initialized asynchronously via AMD loader
-// and cannot import from app.js directly.
-window.saveFile = tabManager.saveFile;
-window.toggleInlineChat = inlineChatManager.toggleInlineChat;
+// Listen to editor.js keyboard shortcut CustomEvents to avoid global scope pollution.
+document.addEventListener("editor-save", () => {
+  tabManager.saveFile();
+});
+document.addEventListener("editor-toggle-inline-chat", () => {
+  inlineChatManager.toggleInlineChat();
+});
 
 // Merge state for compatibility
 state.chat = chatState;
@@ -187,11 +190,14 @@ state.editor = editorState;
 $("abortChat").onclick = () => chatManager.abortChat();
 dom.sendChatBtn.onclick = () => chatManager.sendChat(setStatus);
 
-// Ctrl+Enter to send chat
+// Ctrl+Enter to send chat, Escape to abort
 dom.chatPrompt.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
     chatManager.sendChat(setStatus);
+  } else if (e.key === "Escape" && state.chat.abortController) {
+    e.preventDefault();
+    chatManager.abortChat();
   }
 });
 
@@ -583,18 +589,31 @@ function addAgentTimelineStep(type, title, body, resultText = null) {
   }
 
   if (resultText !== null) {
+    const MAX_RESULT_VISIBLE = 10000;
+    const isTruncated = resultText.length > MAX_RESULT_VISIBLE;
+    const displayText = isTruncated
+      ? resultText.slice(0, MAX_RESULT_VISIBLE) +
+        `\n\n... [出力が ${(resultText.length - MAX_RESULT_VISIBLE).toLocaleString()} 文字を超過したため切り詰められました]`
+      : resultText;
+
     const toggleDiv = document.createElement("div");
     toggleDiv.className = "agent-step-result-toggle";
     const toggleSpan = document.createElement("span");
     toggleSpan.textContent = "▶ 実行出力を表示";
     toggleDiv.appendChild(toggleSpan);
+    if (isTruncated) {
+      const warnSpan = document.createElement("span");
+      warnSpan.className = "result-truncated-badge";
+      warnSpan.textContent = "切詰";
+      toggleDiv.appendChild(warnSpan);
+    }
     toggleDiv.onclick = () => toggleTimelineResult(stepId);
     card.appendChild(toggleDiv);
 
     const resultPre = document.createElement("pre");
     resultPre.id = "result-" + stepId;
     resultPre.className = "agent-step-result-box u-hidden";
-    resultPre.textContent = resultText;
+    resultPre.textContent = displayText;
     card.appendChild(resultPre);
   }
 
@@ -608,7 +627,7 @@ function addAgentTimelineStep(type, title, body, resultText = null) {
   return stepId;
 }
 
-window.toggleTimelineResult = function (stepId) {
+function toggleTimelineResult(stepId) {
   const box = document.getElementById(`result-${stepId}`);
   if (!box) return;
   const toggle = box.previousElementSibling;
@@ -1409,6 +1428,9 @@ dom.agentInstruction.addEventListener("keydown", (e) => {
     } else {
       dom.startAgentBtn.click();
     }
+  } else if (e.key === "Escape" && state.agent.active) {
+    e.preventDefault();
+    dom.stopAgentBtn.click();
   }
 });
 
@@ -1472,6 +1494,9 @@ async function initWorkspace() {
     loadWorkspace();
   }
 }
+
+let openFolderPicker = () => {};
+let closeFolderPicker = () => {};
 
 function initFolderPicker() {
   const modal = $("folderPickerModal");
@@ -1598,7 +1623,7 @@ function initFolderPicker() {
     }
   };
 
-  window.openFolderPicker = (initialPath = "") => {
+  openFolderPicker = (initialPath = "") => {
     const initial = initialPath || $("explorerPath").value || "";
     folderPickerCurrentPath = initial;
     hideError();
@@ -1612,7 +1637,7 @@ function initFolderPicker() {
     modal.addEventListener("keydown", trapFocus);
   };
 
-  window.closeFolderPicker = () => {
+  closeFolderPicker = () => {
     modal.classList.add("u-hidden");
     modal.classList.add("is-hidden");
     hideError();
@@ -1697,20 +1722,20 @@ function initFolderPicker() {
 
       $("explorerPath").value = res.dir;
       await loadWorkspace(res.dir);
-      window.closeFolderPicker();
+      closeFolderPicker();
     } catch (err) {
       errorBox.textContent = `フォルダ選択失敗: ${err.message}`;
       errorBox.classList.add("is-shown");
     }
   };
 
-  cancelButton.onclick = window.closeFolderPicker;
+  cancelButton.onclick = closeFolderPicker;
 
   pathInput.onkeydown = (event) => {
     if (event.key === "Enter") {
       renderFolderPickerList(pathInput.value.trim());
     } else if (event.key === "Escape") {
-      window.closeFolderPicker();
+      closeFolderPicker();
     }
   };
 
@@ -1721,13 +1746,13 @@ function initFolderPicker() {
         renderFolderPickerList(selected.dataset.path);
       }
     } else if (event.key === "Escape") {
-      window.closeFolderPicker();
+      closeFolderPicker();
     }
   };
 
   modal.onclick = (event) => {
     if (event.target === modal) {
-      window.closeFolderPicker();
+      closeFolderPicker();
     }
   };
 }
@@ -1855,6 +1880,72 @@ function applyCreditSavingMode() {
 initWorkspace();
 initFolderPicker();
 initCreditSavingMode();
+
+// Persist conversation state to localStorage across page reloads.
+// Chat form fields (conversationId, webSearch toggle, etc.) are saved
+// on every change and restored on startup.
+(function initConversationPersistence() {
+  const CONV_STORAGE_KEY = "monaco_client_conversation";
+
+  const convFields = [
+    { id: "conversationId", type: "value" },
+    { id: "conversationTitle", type: "value" },
+    { id: "webSearch", type: "checkbox" },
+    { id: "chatNumOfSite", type: "value" },
+    { id: "chatMaxWord", type: "value" },
+    { id: "withMemories", type: "checkbox" },
+    { id: "isMixed", type: "checkbox" },
+    { id: "brandVoiceId", type: "value" },
+  ];
+
+  // Restore saved state
+  try {
+    const saved = localStorage.getItem(CONV_STORAGE_KEY);
+    if (saved) {
+      const data = JSON.parse(saved);
+      for (const { id, type } of convFields) {
+        const el = document.getElementById(id);
+        if (!el || data[id] === undefined) continue;
+        if (type === "checkbox") el.checked = data[id];
+        else el.value = data[id];
+      }
+    }
+  } catch {
+    // Corrupted or missing data — ignore
+  }
+
+  // Save on every change (debounced)
+  let saveTimer = null;
+  const save = () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      const data = {};
+      for (const { id, type } of convFields) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        data[id] = type === "checkbox" ? el.checked : el.value;
+      }
+      try {
+        localStorage.setItem(CONV_STORAGE_KEY, JSON.stringify(data));
+      } catch {
+        // Storage full — silently ignore
+      }
+    }, 300);
+  };
+
+  for (const { id, type } of convFields) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.addEventListener(type === "checkbox" ? "change" : "input", save);
+  }
+
+  // Also save conversationId when the "create conversation" button sets it.
+  const convInput = document.getElementById("conversationId");
+  if (convInput) {
+    const observer = new MutationObserver(() => save());
+    observer.observe(convInput, { attributes: true, attributeFilter: ["value"] });
+  }
+})();
 
 // UI-3: Sidebar resize via drag handle
 (function initSidebarResize() {

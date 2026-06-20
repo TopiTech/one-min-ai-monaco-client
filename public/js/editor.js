@@ -51,11 +51,11 @@ export function createEditorManager(state) {
     }
 
     _instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      if (typeof saveFile === "function") saveFile();
+      document.dispatchEvent(new CustomEvent("editor-save"));
     });
 
     _instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI, () => {
-      if (typeof toggleInlineChat === "function") toggleInlineChat();
+      document.dispatchEvent(new CustomEvent("editor-toggle-inline-chat"));
     });
 
     registerProviders();
@@ -76,8 +76,15 @@ export function createEditorManager(state) {
     const languages = ["javascript", "typescript", "python", "html", "css", "json", "markdown", "plaintext"];
     for (const lang of languages) {
       monaco.languages.registerInlineCompletionsProvider(lang, {
+        // Defer to Monaco's built-in debouncing. Only our Copilot-like
+        // provider needs explicit yielding behaviour so the editor still
+        // shows other registered providers (e.g. word-based completions)
+        // immediately when this provider is slow to respond.
+        yieldsToGroupIds: ["monaco-word-based"],
         provideInlineCompletions: async (model, position, context, token) => {
-          await new Promise((resolve) => setTimeout(resolve, 400));
+          // Check cancellation before kicking off the network call so we
+          // don't waste an API request for keystrokes that have already
+          // been superseded.
           if (token.isCancellationRequested) return;
 
           try {

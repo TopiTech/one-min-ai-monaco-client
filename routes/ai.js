@@ -1,4 +1,5 @@
 import express from "express";
+import { z } from "zod";
 import { callOneMin, extractText, isFailedResponse, extractFailureMessage } from "../utils/api-client.js";
 import { getChatModels, getCodeModels, getImageModels } from "../config/models.js";
 import { parseWebSearchParams, buildCodePayload } from "../utils/web-search.js";
@@ -25,57 +26,78 @@ function getDefaultModel(type) {
   return serverConfig.defaultChatModel;
 }
 
-function validateAttachments(attachments) {
-  if (attachments == null) return undefined;
-  if (typeof attachments !== "object" || Array.isArray(attachments)) {
-    const err = new Error("attachments must be an object");
-    err.status = 400;
-    throw err;
+const rawAttachmentsSchema = z.preprocess((val) => {
+  if (val == null) return undefined;
+  return val;
+}, z.any().superRefine((val, ctx) => {
+  if (val === undefined) return;
+  if (typeof val !== "object" || Array.isArray(val)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "attachments must be an object"
+    });
+    return;
   }
-  // M-3: Reject anything that doesn't look like either a 1min.ai asset
-  // key (UUID-ish, ~32-64 chars) or an http(s) URL. This prevents the
-  // upstream payload from being polluted with arbitrary strings that
-  // downstream providers may interpret differently.
   const looksLikeAssetRef = (s) =>
     typeof s === "string" && s.length <= 1024 && (/^https?:\/\//i.test(s) || /^[A-Za-z0-9._/-]+$/.test(s));
 
+  if (val.images !== undefined) {
+    if (!Array.isArray(val.images) || val.images.some((x) => typeof x !== "string" || !looksLikeAssetRef(x))) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "attachments.images must be an array of URLs or 1min.ai asset keys"
+      });
+    } else if (val.images.length > 16) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "attachments.images exceeds 16 entries"
+      });
+    }
+  }
+  if (val.files !== undefined) {
+    if (!Array.isArray(val.files) || val.files.some((x) => typeof x !== "string" || !looksLikeAssetRef(x))) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "attachments.files must be an array of URLs or 1min.ai asset keys"
+      });
+    } else if (val.files.length > 16) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "attachments.files exceeds 16 entries"
+      });
+    }
+  }
+}).transform((val) => {
+  if (val === undefined || typeof val !== "object" || Array.isArray(val)) return undefined;
   const out = {};
-  if (attachments.images !== undefined) {
-    if (
-      !Array.isArray(attachments.images) ||
-      attachments.images.some((x) => typeof x !== "string" || !looksLikeAssetRef(x))
-    ) {
-      const err = new Error("attachments.images must be an array of URLs or 1min.ai asset keys");
-      err.status = 400;
-      throw err;
-    }
-    if (attachments.images.length > 16) {
-      const err = new Error("attachments.images exceeds 16 entries");
-      err.status = 400;
-      throw err;
-    }
-    const cleaned = attachments.images.map((x) => x.slice(0, 1024)).filter(Boolean);
+  if (val.images !== undefined && Array.isArray(val.images)) {
+    const cleaned = val.images.map((x) => (typeof x === "string" ? x.slice(0, 1024) : "")).filter(Boolean);
     if (cleaned.length) out.images = cleaned;
   }
-  if (attachments.files !== undefined) {
-    if (
-      !Array.isArray(attachments.files) ||
-      attachments.files.some((x) => typeof x !== "string" || !looksLikeAssetRef(x))
-    ) {
-      const err = new Error("attachments.files must be an array of URLs or 1min.ai asset keys");
-      err.status = 400;
-      throw err;
-    }
-    if (attachments.files.length > 16) {
-      const err = new Error("attachments.files exceeds 16 entries");
-      err.status = 400;
-      throw err;
-    }
-    const cleaned = attachments.files.map((x) => x.slice(0, 1024)).filter(Boolean);
+  if (val.files !== undefined && Array.isArray(val.files)) {
+    const cleaned = val.files.map((x) => (typeof x === "string" ? x.slice(0, 1024) : "")).filter(Boolean);
     if (cleaned.length) out.files = cleaned;
   }
   return Object.keys(out).length ? out : undefined;
-}
+})).optional();
+
+const chatRequestSchema = z.object({
+  prompt: z.preprocess(
+    (val) => (val === undefined || val === null ? "" : String(val)),
+    z.string().refine((val) => val.trim().length > 0, { message: "prompt is required" })
+      .refine((val) => val.length <= 50000, { message: "prompt exceeds maximum length of 50000 characters" })
+  ),
+  model: z.string().optional(),
+  conversationId: z.string().optional(),
+  attachments: rawAttachmentsSchema,
+  webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
+  numOfSite: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
+  maxWord: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
+  history: z.preprocess((val) => val === undefined ? true : (val === "true" || val === true), z.boolean().default(true)),
+  withMemories: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
+  brandVoiceId: z.string().optional(),
+  isMixed: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
+});
 
 function buildChatPayload({
   prompt,
@@ -120,54 +142,25 @@ function buildChatPayload({
  * Used by both /chat and /chat/stream to avoid duplication.
  */
 function parseChatRequest(body) {
-  const {
-    prompt,
-    model,
-    conversationId,
-    attachments,
-    webSearch = false,
-    numOfSite,
-    maxWord,
-    history = true,
-    withMemories = false,
-    brandVoiceId,
-    isMixed = false,
-  } = body;
-
-  if (!prompt || !String(prompt).trim()) {
-    return { error: { status: 400, message: "prompt is required" } };
+  const result = chatRequestSchema.safeParse(body);
+  if (!result.success) {
+    const errorMsg = result.error.issues[0]?.message || "Validation error";
+    return { error: { status: 400, message: errorMsg } };
   }
-
-  // #4: Enforce max prompt length consistent with /code endpoints
-  const MAX_PROMPT_LENGTH = 50000;
-  const promptStr = String(prompt);
-  if (promptStr.length > MAX_PROMPT_LENGTH) {
-    return {
-      error: { status: 400, message: `prompt exceeds maximum length of ${MAX_PROMPT_LENGTH} characters` },
-    };
-  }
-
-  let safeAttachments;
-  try {
-    safeAttachments = validateAttachments(attachments);
-  } catch (err) {
-    return { error: { status: err.status || 400, message: err.message } };
-  }
-
+  const data = result.data;
   const payload = buildChatPayload({
-    prompt,
-    model,
-    conversationId,
-    attachments: safeAttachments,
-    webSearch,
-    numOfSite,
-    maxWord,
-    history,
-    withMemories,
-    brandVoiceId,
-    isMixed,
+    prompt: data.prompt,
+    model: data.model,
+    conversationId: data.conversationId,
+    attachments: data.attachments,
+    webSearch: data.webSearch,
+    numOfSite: data.numOfSite,
+    maxWord: data.maxWord,
+    history: data.history,
+    withMemories: data.withMemories,
+    brandVoiceId: data.brandVoiceId,
+    isMixed: data.isMixed,
   });
-
   return { payload };
 }
 
@@ -330,19 +323,124 @@ router.post("/conversations", async (req, res, next) => {
  * return a 400 error. Centralizes NaN handling and range validation so
  * generate/text-editor cannot send invalid values upstream.
  */
-function parseOutputCompression(value) {
-  if (value === undefined || value === "" || (typeof value === "string" && value.trim() === "")) {
-    return { ok: true, value: undefined };
+const outputCompressionSchema = z.preprocess((val) => {
+  if (val === undefined || val === "" || (typeof val === "string" && val.trim() === "")) {
+    return undefined;
   }
-  const n = Number(value);
-  if (!Number.isFinite(n)) {
-    return { ok: false, error: "output_compression must be a finite number" };
+  return val;
+}, z.any().superRefine((val, ctx) => {
+  if (val === undefined) return;
+  const n = Number(val);
+  if (isNaN(n) || !Number.isFinite(n)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "output_compression must be a finite number"
+    });
+    return;
   }
   if (!Number.isInteger(n) || n < 0 || n > 100) {
-    return { ok: false, error: "output_compression must be an integer between 0 and 100" };
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "output_compression must be an integer between 0 and 100"
+    });
   }
-  return { ok: true, value: n };
-}
+}).transform((val) => {
+  if (val === undefined) return undefined;
+  return Number(val);
+})).optional();
+
+const imageGenerateSchema = z.object({
+  prompt: z.preprocess(
+    (val) => (val === undefined || val === null ? "" : String(val)),
+    z.string().refine((val) => val.trim().length > 0, { message: "prompt is required" })
+  ),
+  model: z.string().optional(),
+  num_outputs: z.preprocess((val) => (val === undefined ? 1 : Number(val)), z.number().min(1, "num_outputs must be between 1 and 10").max(10, "num_outputs must be between 1 and 10")),
+  aspect_ratio: z.string().default("1:1"),
+  quality: z.string().default("medium"),
+  background: z.string().default("auto"),
+  output_format: z.string().default("png").refine(val => ["png", "webp", "jpeg", "jpg"].includes(val), {
+    message: "output_format must be one of: png, webp, jpeg, jpg"
+  }),
+  output_compression: outputCompressionSchema,
+  size: z.string().optional(),
+}).superRefine((data, ctx) => {
+  const selectedModel = data.model || getDefaultModel("IMAGE_GENERATOR");
+  const isGptImage = selectedModel.startsWith("gpt-image");
+  if (!isGptImage) {
+    if (data.quality !== "medium" || data.background !== "auto" || data.output_compression !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "quality, background, and output_compression are only supported by gpt-image-* models"
+      });
+    }
+  }
+});
+
+const imageEditorSchema = z.object({
+  imageUrl: z.preprocess(
+    (val) => (val === undefined || val === null ? "" : String(val)),
+    z.string().refine((val) => val.trim().length > 0, { message: "imageUrl or asset key is required" })
+  ),
+  prompt: z.preprocess(
+    (val) => (val === undefined || val === null ? "" : String(val)),
+    z.string().refine((val) => val.trim().length > 0, { message: "prompt is required" })
+  ),
+  model: z.string().optional(),
+  size: z.string().default("1024x1024"),
+  quality: z.string().default("medium"),
+  n: z.preprocess((val) => (val === undefined ? 1 : Number(val)), z.number().default(1)),
+  background: z.string().default("auto"),
+  output_format: z.string().default("webp"),
+  output_compression: outputCompressionSchema,
+}).superRefine((data, ctx) => {
+  const selectedModel = data.model || getDefaultModel("IMAGE_EDITOR");
+  const isGptImage = selectedModel.startsWith("gpt-image");
+
+  if (isGptImage) {
+    const sizeMatch = String(data.size).match(/^(\d+)x(\d+)$/);
+    if (!sizeMatch) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "size must be in WxH format (e.g. 1024x1024)"
+      });
+      return;
+    }
+    const w = Number(sizeMatch[1]);
+    const h = Number(sizeMatch[2]);
+    if (w % 16 !== 0 || h % 16 !== 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "width and height must be divisible by 16"
+      });
+    }
+    if (w * h < 655360 || w * h > 8294400) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "total pixels must be between 655,360 and 8,294,400"
+      });
+    }
+    if (Math.max(w, h) > 3840) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "max edge must be <= 3840px"
+      });
+    }
+    if (Math.max(w, h) / Math.min(w, h) > 3) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "aspect ratio must be <= 3:1"
+      });
+    }
+  } else {
+    if (data.size && !/^\d+x\d+$/.test(String(data.size))) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "size must be in WxH format (e.g. 1024x1024)"
+      });
+    }
+  }
+});
 
 function aspectRatioToSize(aspectRatio) {
   const map = {
@@ -357,64 +455,32 @@ function aspectRatioToSize(aspectRatio) {
 
 router.post("/images/generate", async (req, res, next) => {
   try {
-    const {
-      prompt,
-      model,
-      num_outputs = 1,
-      aspect_ratio = "1:1",
-      quality = "medium",
-      background = "auto",
-      output_format = "png",
-      output_compression,
-      size,
-    } = req.body;
-    if (!prompt || !String(prompt).trim()) return res.status(400).json({ error: "prompt is required" });
-
-    // #14: Validate num_outputs range
-    const numOutputsNum = Number(num_outputs);
-    if (numOutputsNum < 1 || numOutputsNum > 10 || isNaN(numOutputsNum)) {
-      return res.status(400).json({ error: "num_outputs must be between 1 and 10" });
+    const result = imageGenerateSchema.safeParse(req.body);
+    if (!result.success) {
+      const errorMsg = result.error.issues[0]?.message || "Validation error";
+      return res.status(400).json({ error: errorMsg });
     }
-
-    // #15: Validate output_format against allowed values
-    const ALLOWED_OUTPUT_FORMATS = ["png", "webp", "jpeg", "jpg"];
-    if (output_format && !ALLOWED_OUTPUT_FORMATS.includes(output_format)) {
-      return res
-        .status(400)
-        .json({ error: `output_format must be one of: ${ALLOWED_OUTPUT_FORMATS.join(", ")}` });
-    }
-
-    const selectedModel = model || getDefaultModel("IMAGE_GENERATOR");
+    const data = result.data;
+    const selectedModel = data.model || getDefaultModel("IMAGE_GENERATOR");
     const isGptImage = selectedModel.startsWith("gpt-image");
 
     const promptObject = {
-      prompt: String(prompt),
+      prompt: data.prompt,
     };
 
     if (isGptImage) {
-      promptObject.size = size || aspectRatioToSize(aspect_ratio);
-      promptObject.n = Number(num_outputs) || 1;
-      promptObject.quality = quality;
-      promptObject.background = background;
-      promptObject.output_format = output_format;
-      const oc = parseOutputCompression(output_compression);
-      if (!oc.ok) {
-        return res.status(400).json({ error: oc.error });
-      }
-      if (oc.value !== undefined) {
-        promptObject.output_compression = oc.value;
+      promptObject.size = data.size || aspectRatioToSize(data.aspect_ratio);
+      promptObject.n = data.num_outputs;
+      promptObject.quality = data.quality;
+      promptObject.background = data.background;
+      promptObject.output_format = data.output_format;
+      if (data.output_compression !== undefined) {
+        promptObject.output_compression = data.output_compression;
       }
     } else {
-      // Reject gpt-image-only parameters for non-gpt-image models to avoid
-      // silent 422 from the upstream API.
-      if (quality !== "medium" || background !== "auto" || output_compression !== undefined) {
-        return res.status(400).json({
-          error: "quality, background, and output_compression are only supported by gpt-image-* models",
-        });
-      }
-      promptObject.num_outputs = Number(num_outputs) || 1;
-      promptObject.aspect_ratio = aspect_ratio;
-      promptObject.output_format = output_format;
+      promptObject.num_outputs = data.num_outputs;
+      promptObject.aspect_ratio = data.aspect_ratio;
+      promptObject.output_format = data.output_format;
     }
 
     const payload = {
@@ -422,17 +488,17 @@ router.post("/images/generate", async (req, res, next) => {
       model: selectedModel,
       promptObject,
     };
-    const data = await callOneMin("/api/features", {
+    const dataRes = await callOneMin("/api/features", {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (isFailedResponse(data)) {
-      const err = new Error(`1min.ai image generation failed: ${extractFailureMessage(data)}`);
+    if (isFailedResponse(dataRes)) {
+      const err = new Error(`1min.ai image generation failed: ${extractFailureMessage(dataRes)}`);
       err.status = 502;
-      err.payload = data;
+      err.payload = dataRes;
       throw err;
     }
-    res.json(data);
+    res.json(dataRes);
   } catch (err) {
     next(err);
   }
@@ -440,73 +506,28 @@ router.post("/images/generate", async (req, res, next) => {
 
 router.post("/images/text-editor", async (req, res, next) => {
   try {
-    const {
-      imageUrl,
-      prompt,
-      model,
-      size = "1024x1024",
-      quality = "medium",
-      n = 1,
-      background = "auto",
-      output_format = "webp",
-      output_compression,
-    } = req.body;
-
-    if (!imageUrl || !String(imageUrl).trim()) {
-      return res.status(400).json({ error: "imageUrl or asset key is required" });
+    const result = imageEditorSchema.safeParse(req.body);
+    if (!result.success) {
+      const errorMsg = result.error.issues[0]?.message || "Validation error";
+      return res.status(400).json({ error: errorMsg });
     }
-    if (!prompt || !String(prompt).trim()) {
-      return res.status(400).json({ error: "prompt is required" });
-    }
-
-    const selectedModel = model || getDefaultModel("IMAGE_EDITOR");
+    const data = result.data;
+    const selectedModel = data.model || getDefaultModel("IMAGE_EDITOR");
     const isGptImage = selectedModel.startsWith("gpt-image");
 
-    if (isGptImage) {
-      const sizeMatch = String(size).match(/^(\d+)x(\d+)$/);
-      if (!sizeMatch) {
-        return res.status(400).json({ error: "size must be in WxH format (e.g. 1024x1024)" });
-      }
-      const w = Number(sizeMatch[1]);
-      const h = Number(sizeMatch[2]);
-      if (w % 16 !== 0 || h % 16 !== 0) {
-        return res.status(400).json({ error: "width and height must be divisible by 16" });
-      }
-      if (w * h < 655360 || w * h > 8294400) {
-        return res.status(400).json({ error: "total pixels must be between 655,360 and 8,294,400" });
-      }
-      if (Math.max(w, h) > 3840) {
-        return res.status(400).json({ error: "max edge must be <= 3840px" });
-      }
-      if (Math.max(w, h) / Math.min(w, h) > 3) {
-        return res.status(400).json({ error: "aspect ratio must be <= 3:1" });
-      }
-    } else {
-      // Non-gpt-image models (Flux Kontext etc.) also expect WxH size.
-      if (size && !/^\d+x\d+$/.test(String(size))) {
-        return res.status(400).json({ error: "size must be in WxH format (e.g. 1024x1024)" });
-      }
-    }
-
-    const oc = parseOutputCompression(output_compression);
-    if (!oc.ok) {
-      return res.status(400).json({ error: oc.error });
-    }
-
     const promptObject = {
-      imageUrl: String(imageUrl).trim(),
-      prompt: String(prompt).trim(),
-      size,
-      n: Number(n) || 1,
-      output_format,
+      imageUrl: data.imageUrl,
+      prompt: data.prompt,
+      size: data.size,
+      n: data.n,
+      output_format: data.output_format,
     };
 
-    // gpt-image-only parameters
     if (isGptImage) {
-      promptObject.quality = quality;
-      promptObject.background = background;
-      if (oc.value !== undefined) {
-        promptObject.output_compression = oc.value;
+      promptObject.quality = data.quality;
+      promptObject.background = data.background;
+      if (data.output_compression !== undefined) {
+        promptObject.output_compression = data.output_compression;
       }
     }
     const payload = {
@@ -515,17 +536,17 @@ router.post("/images/text-editor", async (req, res, next) => {
       promptObject,
     };
 
-    const data = await callOneMin("/api/features", {
+    const dataRes = await callOneMin("/api/features", {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (isFailedResponse(data)) {
-      const err = new Error(`1min.ai image edit failed: ${extractFailureMessage(data)}`);
+    if (isFailedResponse(dataRes)) {
+      const err = new Error(`1min.ai image edit failed: ${extractFailureMessage(dataRes)}`);
       err.status = 502;
-      err.payload = data;
+      err.payload = dataRes;
       throw err;
     }
-    res.json(data);
+    res.json(dataRes);
   } catch (err) {
     next(err);
   }
@@ -534,17 +555,75 @@ router.post("/images/text-editor", async (req, res, next) => {
 const MAX_CODE_LENGTH = 100_000;
 const MAX_PROMPT_LENGTH = 50_000;
 
-function validateLineColumn(line, column) {
-  const lineNum = Number(line);
-  const colNum = Number(column);
-  if (!Number.isInteger(lineNum) || lineNum < 1 || lineNum > 1_000_000) {
-    return { error: "line must be a positive integer" };
+const codeGenerateSchema = z.object({
+  instruction: z.preprocess(
+    (val) => (val === undefined || val === null ? "" : String(val)),
+    z.string().refine((val) => val.trim().length > 0, { message: "instruction is required" })
+      .refine((val) => val.length <= 50000, { message: "instruction exceeds 50000 characters" })
+  ),
+  fileName: z.string().default("untitled"),
+  language: z.string().default("plaintext"),
+  code: z.preprocess((val) => (val === undefined || val === null ? "" : String(val)), z.string().refine((val) => val.length <= 100000, { message: "code exceeds 100000 characters" })),
+  model: z.string().optional(),
+  webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
+  numOfSite: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
+  maxWord: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
+});
+
+const codeAutocompleteSchema = z.object({
+  code: z.string({ required_error: "code, line, and column are required" }).refine((val) => val.length <= 100000, { message: "code exceeds 100000 characters" }),
+  line: z.any({ required_error: "code, line, and column are required" }),
+  column: z.any({ required_error: "code, line, and column are required" }),
+  fileName: z.string().optional(),
+  language: z.string().optional(),
+  model: z.string().optional(),
+  webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
+  numOfSite: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
+  maxWord: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
+}).superRefine((data, ctx) => {
+  const lineNum = Number(data.line);
+  if (!Number.isInteger(lineNum) || lineNum < 1 || lineNum > 1000000) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "line must be a positive integer"
+    });
   }
-  if (!Number.isInteger(colNum) || colNum < 1 || colNum > 1_000_000) {
-    return { error: "column must be a positive integer" };
+  const colNum = Number(data.column);
+  if (!Number.isInteger(colNum) || colNum < 1 || colNum > 1000000) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "column must be a positive integer"
+    });
   }
-  return { lineNum, colNum };
-}
+});
+
+const codeInlineChatSchema = z.object({
+  prompt: z.string({ required_error: "prompt, code, line, and column are required" }).refine((val) => val.trim().length > 0, { message: "prompt, code, line, and column are required" }).refine((val) => val.length <= 50000, { message: "prompt exceeds 50000 characters" }),
+  code: z.string({ required_error: "prompt, code, line, and column are required" }).refine((val) => val.length <= 100000, { message: "code exceeds 100000 characters" }),
+  line: z.any({ required_error: "prompt, code, line, and column are required" }),
+  column: z.any({ required_error: "prompt, code, line, and column are required" }),
+  fileName: z.string().optional(),
+  language: z.string().optional(),
+  model: z.string().optional(),
+  webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
+  numOfSite: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
+  maxWord: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
+}).superRefine((data, ctx) => {
+  const lineNum = Number(data.line);
+  if (!Number.isInteger(lineNum) || lineNum < 1 || lineNum > 1000000) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "line must be a positive integer"
+    });
+  }
+  const colNum = Number(data.column);
+  if (!Number.isInteger(colNum) || colNum < 1 || colNum > 1000000) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "column must be a positive integer"
+    });
+  }
+});
 
 function buildCodeContext(code, line, column, contextLines = 100) {
   const lines = code.split(/\r?\n/);
@@ -585,49 +664,38 @@ function stripCodeFences(text) {
 
 router.post("/code/generate", async (req, res, next) => {
   try {
-    const {
-      instruction,
-      fileName = "untitled",
-      language = "plaintext",
-      code = "",
-      model,
-      webSearch = false,
-      numOfSite,
-      maxWord,
-    } = req.body;
-    if (!instruction || !String(instruction).trim())
-      return res.status(400).json({ error: "instruction is required" });
-    if (String(instruction).length > MAX_PROMPT_LENGTH)
-      return res.status(400).json({ error: `instruction exceeds ${MAX_PROMPT_LENGTH} characters` });
-    if (String(code).length > MAX_CODE_LENGTH)
-      return res.status(400).json({ error: `code exceeds ${MAX_CODE_LENGTH} characters` });
-
+    const result = codeGenerateSchema.safeParse(req.body);
+    if (!result.success) {
+      const errorMsg = result.error.issues[0]?.message || "Validation error";
+      return res.status(400).json({ error: errorMsg });
+    }
+    const data = result.data;
     const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({
-      webSearch,
-      numOfSite,
-      maxWord,
+      webSearch: data.webSearch,
+      numOfSite: data.numOfSite,
+      maxWord: data.maxWord,
     });
 
-    const prompt = `あなたは熟練のソフトウェアエンジニアです。以下のコードに対してユーザー指示を実行してください。\n\n出力ルール:\n- 変更コードが必要な場合は完全なコードブロックで返す\n- 変更理由を短く説明する\n- 可能なら注意点も述べる\n\nファイル名: ${sanitizeForPrompt(fileName)}\n言語: ${sanitizeForPrompt(language)}\n\nユーザー指示:\n${instruction}\n\n現在のコード:\n\`\`\`${sanitizeForPrompt(language)}\n${code}\n\`\`\``;
+    const prompt = `あなたは熟練のソフトウェアエンジニアです。以下のコードに対してユーザー指示を実行してください。\n\n出力ルール:\n- 変更コードが必要な場合は完全なコードブロックで返す\n- 変更理由を短く説明する\n- 可能なら注意点も述べる\n\nファイル名: ${sanitizeForPrompt(data.fileName)}\n言語: ${sanitizeForPrompt(data.language)}\n\nユーザー指示:\n${data.instruction}\n\n現在のコード:\n\`\`\`${sanitizeForPrompt(data.language)}\n${data.code}\n\`\`\``;
 
     const payload = buildCodePayload({
       prompt,
-      model,
+      model: data.model,
       webSearch: parsedWebSearch,
       parsedNumOfSite,
       parsedMaxWord,
     });
-    const data = await callOneMin("/api/features", {
+    const dataRes = await callOneMin("/api/features", {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (isFailedResponse(data)) {
-      const err = new Error(`1min.ai code generate failed: ${extractFailureMessage(data)}`);
+    if (isFailedResponse(dataRes)) {
+      const err = new Error(`1min.ai code generate failed: ${extractFailureMessage(dataRes)}`);
       err.status = 502;
-      err.payload = data;
+      err.payload = dataRes;
       throw err;
     }
-    res.json(data);
+    res.json(dataRes);
   } catch (err) {
     next(err);
   }
@@ -635,30 +703,30 @@ router.post("/code/generate", async (req, res, next) => {
 
 router.post("/code/autocomplete", async (req, res, next) => {
   try {
-    const { code, line, column, fileName, language, model, webSearch = false, numOfSite, maxWord } = req.body;
-    if (code === undefined || line === undefined || column === undefined) {
-      return res.status(400).json({ error: "code, line, and column are required" });
+    const result = codeAutocompleteSchema.safeParse(req.body);
+    if (!result.success) {
+      const errorMsg = result.error.issues[0]?.message || "Validation error";
+      return res.status(400).json({ error: errorMsg });
     }
-    const { error: lcErr, lineNum, colNum } = validateLineColumn(line, column);
-    if (lcErr) return res.status(400).json({ error: lcErr });
-    if (String(code).length > MAX_CODE_LENGTH)
-      return res.status(400).json({ error: `code exceeds ${MAX_CODE_LENGTH} characters` });
+    const data = result.data;
+    const lineNum = Number(data.line);
+    const colNum = Number(data.column);
 
     const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({
-      webSearch,
-      numOfSite,
-      maxWord,
+      webSearch: data.webSearch,
+      numOfSite: data.numOfSite,
+      maxWord: data.maxWord,
     });
 
-    const { beforeCode, afterCode } = buildCodeContext(code, lineNum, colNum, 100);
+    const { beforeCode, afterCode } = buildCodeContext(data.code, lineNum, colNum, 100);
 
     const prompt = `あなたはAIコーディングアシスタントです。ユーザーがエディタでコードを入力中であり、カーソルの直後に続くべきコード（数行〜最大20行程度）を提案してください。
 必ず提案するコード「のみ」を出力してください。説明、マークダウンのコードブロック記号(\`\`\`)、解説、挨拶などは絶対に含めないでください。
 また、提案コードは「カーソルより前のコード」の直後からシームレスに繋がるようにしてください（すでに書かれているコードを重複して出力しないでください）。
 
 コンテキスト:
-ファイル名: ${sanitizeForPrompt(fileName || "untitled")}
-言語: ${sanitizeForPrompt(language || "plaintext")}
+ファイル名: ${sanitizeForPrompt(data.fileName || "untitled")}
+言語: ${sanitizeForPrompt(data.language || "plaintext")}
 
 カーソルより前のコード:
 ${beforeCode}
@@ -670,24 +738,24 @@ ${afterCode}
 
     const payload = buildCodePayload({
       prompt,
-      model,
+      model: data.model,
       webSearch: parsedWebSearch,
       parsedNumOfSite,
       parsedMaxWord,
     });
 
-    const data = await callOneMin("/api/features", {
+    const dataRes = await callOneMin("/api/features", {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (isFailedResponse(data)) {
-      const err = new Error(`1min.ai code autocomplete failed: ${extractFailureMessage(data)}`);
+    if (isFailedResponse(dataRes)) {
+      const err = new Error(`1min.ai code autocomplete failed: ${extractFailureMessage(dataRes)}`);
       err.status = 502;
-      err.payload = data;
+      err.payload = dataRes;
       throw err;
     }
 
-    let suggestion = extractText(data);
+    let suggestion = extractText(dataRes);
     suggestion = stripCodeFences(suggestion);
 
     res.json({ suggestion });
@@ -698,43 +766,30 @@ ${afterCode}
 
 router.post("/code/inline-chat", async (req, res, next) => {
   try {
-    const {
-      prompt: userPrompt,
-      code,
-      line,
-      column,
-      fileName,
-      language,
-      model,
-      webSearch = false,
-      numOfSite,
-      maxWord,
-    } = req.body;
-    if (!userPrompt || code === undefined || line === undefined || column === undefined) {
-      return res.status(400).json({ error: "prompt, code, line, and column are required" });
+    const result = codeInlineChatSchema.safeParse(req.body);
+    if (!result.success) {
+      const errorMsg = result.error.issues[0]?.message || "Validation error";
+      return res.status(400).json({ error: errorMsg });
     }
-    const { error: lcErr, lineNum, colNum } = validateLineColumn(line, column);
-    if (lcErr) return res.status(400).json({ error: lcErr });
-    if (String(userPrompt).length > MAX_PROMPT_LENGTH)
-      return res.status(400).json({ error: `prompt exceeds ${MAX_PROMPT_LENGTH} characters` });
-    if (String(code).length > MAX_CODE_LENGTH)
-      return res.status(400).json({ error: `code exceeds ${MAX_CODE_LENGTH} characters` });
+    const data = result.data;
+    const lineNum = Number(data.line);
+    const colNum = Number(data.column);
 
     const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({
-      webSearch,
-      numOfSite,
-      maxWord,
+      webSearch: data.webSearch,
+      numOfSite: data.numOfSite,
+      maxWord: data.maxWord,
     });
 
-    const { beforeCode, afterCode } = buildCodeContext(code, lineNum, colNum, 150);
+    const { beforeCode, afterCode } = buildCodeContext(data.code, lineNum, colNum, 150);
 
     const prompt = `あなたは熟練のソフトウェアエンジニアです。エディタのカーソル位置でユーザー指示を実行し、挿入または変更すべきコードを出力してください。
 必ず提案するコード「のみ」を出力し、説明やマークダウンのコードブロック記号(\`\`\`)は一切含めないでください。
 
 コンテキスト:
-ファイル名: ${sanitizeForPrompt(fileName || "untitled")}
-言語: ${sanitizeForPrompt(language || "plaintext")}
-ユーザー指示: ${userPrompt}
+ファイル名: ${sanitizeForPrompt(data.fileName || "untitled")}
+言語: ${sanitizeForPrompt(data.language || "plaintext")}
+ユーザー指示: ${data.prompt}
 
 カーソルより前のコード:
 ${beforeCode}
@@ -746,24 +801,24 @@ ${afterCode}
 
     const payload = buildCodePayload({
       prompt,
-      model,
+      model: data.model,
       webSearch: parsedWebSearch,
       parsedNumOfSite,
       parsedMaxWord,
     });
 
-    const data = await callOneMin("/api/features", {
+    const dataRes = await callOneMin("/api/features", {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (isFailedResponse(data)) {
-      const err = new Error(`1min.ai inline chat failed: ${extractFailureMessage(data)}`);
+    if (isFailedResponse(dataRes)) {
+      const err = new Error(`1min.ai inline chat failed: ${extractFailureMessage(dataRes)}`);
       err.status = 502;
-      err.payload = data;
+      err.payload = dataRes;
       throw err;
     }
 
-    let codeResult = extractText(data);
+    let codeResult = extractText(dataRes);
     codeResult = stripCodeFences(codeResult);
 
     res.json({ code: codeResult });
@@ -787,42 +842,62 @@ function flattenMessages(messages) {
     .join("\n\n");
 }
 
+const agentChatSchema = z.object({
+  prompt: z.string().optional(),
+  messages: z.array(z.object({
+    role: z.string().default("user"),
+    content: z.string().default("")
+  })).optional(),
+  model: z.string().optional(),
+  webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
+  numOfSite: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
+  maxWord: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
+}).superRefine((data, ctx) => {
+  const promptText = Array.isArray(data.messages) && data.messages.length > 0 ? flattenMessages(data.messages) : data.prompt;
+  if (!promptText || !String(promptText).trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "prompt or messages is required"
+    });
+  }
+});
+
 router.post("/agent/chat", async (req, res, next) => {
   try {
-    const { prompt, messages, model, webSearch = false, numOfSite, maxWord } = req.body;
-
-    // Accept either prompt (string) or messages (array) — messages is preferred.
-    const promptText = Array.isArray(messages) && messages.length > 0 ? flattenMessages(messages) : prompt;
-
-    if (!promptText || !String(promptText).trim())
-      return res.status(400).json({ error: "prompt or messages is required" });
+    const result = agentChatSchema.safeParse(req.body);
+    if (!result.success) {
+      const errorMsg = result.error.issues[0]?.message || "Validation error";
+      return res.status(400).json({ error: errorMsg });
+    }
+    const data = result.data;
+    const promptText = Array.isArray(data.messages) && data.messages.length > 0 ? flattenMessages(data.messages) : data.prompt;
 
     const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({
-      webSearch,
-      numOfSite,
-      maxWord,
+      webSearch: data.webSearch,
+      numOfSite: data.numOfSite,
+      maxWord: data.maxWord,
     });
 
     const payload = buildCodePayload({
       prompt: String(promptText),
-      model,
+      model: data.model,
       webSearch: parsedWebSearch,
       parsedNumOfSite,
       parsedMaxWord,
     });
 
-    const data = await callOneMin("/api/features", {
+    const dataRes = await callOneMin("/api/features", {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (isFailedResponse(data)) {
-      const err = new Error(`1min.ai agent chat failed: ${extractFailureMessage(data)}`);
+    if (isFailedResponse(dataRes)) {
+      const err = new Error(`1min.ai agent chat failed: ${extractFailureMessage(dataRes)}`);
       err.status = 502;
-      err.payload = data;
+      err.payload = dataRes;
       throw err;
     }
-    const text = extractText(data);
-    res.json({ text, raw: data });
+    const text = extractText(dataRes);
+    res.json({ text, raw: dataRes });
   } catch (err) {
     next(err);
   }

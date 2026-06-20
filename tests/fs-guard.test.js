@@ -115,6 +115,46 @@ describe("fs-guard", () => {
       }
     });
 
+    // B-3: glob-based protection should catch the new patterns and
+    // also avoid false positives on lookalikes.
+    test("matches new glob-based protections (secrets.json, .npmrc, *.pem)", () => {
+      const originalEnv = process.env.ALLOWED_ROOTS;
+      process.env.ALLOWED_ROOTS = "/tmp-custom-root";
+      const customRoot = path.resolve("/tmp-custom-root");
+
+      expect(isProtectedPath(path.join(customRoot, "secrets.json"))).toBe(true);
+      expect(isProtectedPath(path.join(customRoot, ".npmrc"))).toBe(true);
+      expect(isProtectedPath(path.join(customRoot, "private.pem"))).toBe(true);
+      expect(isProtectedPath(path.join(customRoot, "id_rsa"))).toBe(true);
+      // Should not be protected
+      expect(isProtectedPath(path.join(customRoot, "src", "app.js"))).toBe(false);
+      expect(isProtectedPath(path.join(customRoot, "src", "secrets-archive.txt"))).toBe(false);
+
+      if (originalEnv === undefined) {
+        delete process.env.ALLOWED_ROOTS;
+      } else {
+        process.env.ALLOWED_ROOTS = originalEnv;
+      }
+    });
+
+    test("write protection also covers new glob patterns", () => {
+      const originalEnv = process.env.ALLOWED_ROOTS;
+      process.env.ALLOWED_ROOTS = "/tmp-custom-root";
+      const customRoot = path.resolve("/tmp-custom-root");
+
+      expect(isWriteProtectedPath(path.join(customRoot, "private.pem"))).toBe(true);
+      expect(isWriteProtectedPath(path.join(customRoot, "id_rsa"))).toBe(true);
+      // deep paths under utils/ stay protected via `**`
+      expect(isWriteProtectedPath(path.join(customRoot, "utils", "deep", "nested", "file.js"))).toBe(true);
+      expect(isWriteProtectedPath(path.join(customRoot, "src", "app.js"))).toBe(false);
+
+      if (originalEnv === undefined) {
+        delete process.env.ALLOWED_ROOTS;
+      } else {
+        process.env.ALLOWED_ROOTS = originalEnv;
+      }
+    });
+
     test("should throw 403 for protected paths", () => {
       try {
         assertNotProtectedPath(path.join(PROJECT_ROOT, "package.json"));

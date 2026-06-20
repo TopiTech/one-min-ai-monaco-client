@@ -18,16 +18,35 @@ export function createChatState() {
 }
 
 export function createChatManager(dom, state) {
+  const MAX_CHAT_LENGTH = 50000;
+
+  function initCharCounter() {
+    const textarea = dom.chatPrompt;
+    const counter = document.getElementById("chatCharCounter");
+    if (!textarea || !counter) return;
+
+    const update = () => {
+      const len = textarea.value.length;
+      counter.textContent = `${len.toLocaleString()} / ${MAX_CHAT_LENGTH.toLocaleString()}`;
+      counter.classList.toggle("warn", len > MAX_CHAT_LENGTH * 0.9);
+      counter.classList.toggle("danger", len > MAX_CHAT_LENGTH * 0.95);
+    };
+
+    textarea.addEventListener("input", update);
+    update(); // initial state
+  }
+
   function pruneChatLog() {
     const log = dom.chatLog;
     if (!log) return;
 
-    // UI-10: Preserve scroll position when pruning from the top
+    // F-6: Preserve scroll position when pruning from the top so users
+    // who scrolled up to read history don't get yanked back to the
+    // top on every prune.
     const isAtBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 80;
-    let scrollOffset = 0;
+    let previousScrollHeight = 0;
     if (!isAtBottom) {
-      // User has scrolled up; track the visual anchor
-      scrollOffset = log.scrollTop;
+      previousScrollHeight = log.scrollHeight;
     }
 
     while (log.children.length > MAX_MESSAGES) {
@@ -35,8 +54,10 @@ export function createChatManager(dom, state) {
     }
 
     if (!isAtBottom) {
-      // Restore approximate scroll position
-      log.scrollTop = Math.max(0, log.scrollTop);
+      // Compensate for the height lost by removing children at the top:
+      // scrollTop stays anchored to the same visible content.
+      const heightDelta = previousScrollHeight - log.scrollHeight;
+      log.scrollTop = Math.max(0, log.scrollTop - heightDelta);
     }
   }
 
@@ -436,6 +457,7 @@ export function createChatManager(dom, state) {
     sendChat,
     abortChat,
     pruneChatLog,
+    initCharCounter,
   };
 }
 

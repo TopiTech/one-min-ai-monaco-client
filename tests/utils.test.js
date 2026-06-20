@@ -193,6 +193,29 @@ describe("parseXMLTags", () => {
     const out = parseXMLTags(input);
     expect(out.toolCall).toEqual({ name: "git_status", params: { repo: "/tmp/my-repo" } });
   });
+
+  // F-14: parseXMLTags must reject oversized input to prevent DoS.
+  test("drops inputs larger than the maximum size cap", () => {
+    const big = "<thought>" + "a".repeat(300 * 1024) + "</thought>";
+    const out = parseXMLTags(big);
+    expect(out).toEqual({ thought: null, finish: null, toolCall: null });
+  });
+
+  // F-14: parseXMLTags caps the number of JSON-fallback candidates.
+  test("caps the JSON-fallback candidate count", () => {
+    // Build a long string of 64 separate JSON object fragments so the
+    // balanced-object extractor returns many candidates. parseXMLTags
+    // should still complete quickly and not exceed the candidate cap.
+    let payload = "";
+    for (let i = 0; i < 64; i++) {
+      payload += `{"tool":"t${i}","params":{"i":${i}}}`;
+    }
+    const out = parseXMLTags(payload);
+    // Some tool call should be returned (within the cap), but never all 64.
+    expect(out.toolCall).not.toBeNull();
+    expect(out.toolCall.name).toMatch(/^t\d+$/);
+    expect(Number(out.toolCall.params.i)).toBeLessThan(64);
+  });
 });
 
 describe("createSvgIcon / appendStepIcon", () => {

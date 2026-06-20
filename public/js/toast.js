@@ -232,7 +232,7 @@ function toastSuccess(message, options = {}) {
  * Show error toast
  */
 function toastError(message, options = {}) {
-  return showToast(message, { ...options, type: "error", duration: 8000 });
+  return showToast(message, { ...options, type: "error", duration: options.duration !== undefined ? options.duration : 0 });
 }
 
 /**

@@ -67,6 +67,41 @@ describe("Review Fixes", () => {
       expect(response.body).toHaveProperty("key");
       expect(response.body).toHaveProperty("url");
     });
+
+    // S-1: multer now writes uploads to a temp directory and unlinks
+    // them after the upstream call. Verify the temp file is cleaned up
+    // even when the upstream call succeeds.
+    test("cleans up the disk-staged upload file on success", async () => {
+      const os = await import("os");
+      const pathMod = await import("path");
+      const fsPromises = await import("fs/promises");
+      const tmpDir = pathMod.join(os.tmpdir(), "one-min-ai-uploads");
+      const before = new Set();
+      try {
+        for (const f of await fsPromises.readdir(tmpDir)) before.add(f);
+      } catch {
+        /* dir may not exist on a fresh test runner */
+      }
+
+      callOneMin.mockResolvedValue({ asset: { key: "uploads/cleanup.txt" } });
+
+      const res = await request(app)
+        .post("/api/assets/upload")
+        .attach("asset", Buffer.from("hello"), { filename: "test.txt", contentType: "text/plain" });
+
+      expect(res.status).toBe(200);
+
+      // After completion, no new leftover files should exist in the
+      // upload temp directory.
+      let after = new Set();
+      try {
+        for (const f of await fsPromises.readdir(tmpDir)) after.add(f);
+      } catch {
+        after = new Set();
+      }
+      const newOnes = [...after].filter((f) => !before.has(f));
+      expect(newOnes).toEqual([]);
+    });
   });
 
   describe("CSP includes api.1min.ai", () => {

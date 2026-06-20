@@ -4,13 +4,21 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import multer from "multer";
 import path from "path";
+import os from "os";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
 import { callOneMin, normalizeAssetResponse } from "./utils/api-client.js";
 import { serverConfig } from "./config/server.js";
-import logger from "./utils/logger.js";
+import logger, { initLogger } from "./utils/logger.js";
+
+// Replace the env-var-based default singleton with the validated serverConfig.
+// This ensures LOG_LEVEL, LOG_TO_FILE, and LOG_FILE are all parsed and clamped
+// consistently (e.g. LOG_LEVEL "info" → parseLogLevel, LOG_TO_FILE "true" →
+// parseBoolean).
+initLogger(serverConfig);
 import { validateBufferMimeType } from "./utils/mime-guard.js";
 import fs from "fs";
+import fsp from "fs/promises";
 
 import aiRoutes from "./routes/ai.js";
 import fsRoutes from "./routes/fs.js";
@@ -32,8 +40,21 @@ const ALLOWED_MIME_TYPES = [
   "application/vnd.openxmlformats-officedocument",
 ];
 
+// S-1: Switched from multer.memoryStorage() to diskStorage to avoid OOM
+// when several large uploads arrive concurrently. Each file lands in
+// os.tmpdir() with a random suffix and is unlinked after the upstream
+// request finishes (success or failure).
+const UPLOAD_TMP_DIR = path.join(os.tmpdir(), "one-min-ai-uploads");
+fs.mkdirSync(UPLOAD_TMP_DIR, { recursive: true });
+
 const upload = multer({
-  storage: multer.memoryStorage(),
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, UPLOAD_TMP_DIR),
+    filename: (_req, file, cb) => {
+      const suffix = crypto.randomBytes(8).toString("hex");
+      cb(null, `${Date.now()}-${suffix}-${file.fieldname}`);
+    },
+  }),
   limits: { fileSize: serverConfig.maxFileSize },
   fileFilter: (_req, file, cb) => {
     const allowed = ALLOWED_MIME_TYPES.some((t) => file.mimetype.startsWith(t));
@@ -233,17 +254,33 @@ function normalizePayloadError(err) {
 }
 
 async function handleAssetUpload(req, res, next) {
+  const tmpFilePath = req.file?.path;
   try {
     if (!req.file) return res.status(400).json({ error: "asset file is required" });
 
-    if (req.file.size > 0 && !validateBufferMimeType(req.file.buffer, req.file.mimetype)) {
-      logger.warn("Asset upload rejected: MIME type signature mismatch", {
-        filename: req.file.originalname,
-        mimetype: req.file.mimetype,
-      });
-      return res.status(415).json({
-        error: `Unsupported file type or signature mismatch: ${req.file.mimetype}`,
-      });
+    if (req.file.size > 0) {
+      // S-1: with disk storage, validate the on-disk buffer to avoid
+      // loading the whole file into memory again. Read just the first
+      // 8KB which is enough to cover the magic byte checks.
+      const headBuf = Buffer.alloc(8192);
+      const fd = await fsp.open(tmpFilePath, "r");
+      let bytesRead = 0;
+      try {
+        const result = await fd.read(headBuf, 0, 8192, 0);
+        bytesRead = result.bytesRead;
+      } finally {
+        await fd.close();
+      }
+      const head = headBuf.subarray(0, bytesRead);
+      if (!validateBufferMimeType(head, req.file.mimetype)) {
+        logger.warn("Asset upload rejected: MIME type signature mismatch", {
+          filename: req.file.originalname,
+          mimetype: req.file.mimetype,
+        });
+        return res.status(415).json({
+          error: `Unsupported file type or signature mismatch: ${req.file.mimetype}`,
+        });
+      }
     }
 
     logger.info("Processing asset upload", {
@@ -256,10 +293,11 @@ async function handleAssetUpload(req, res, next) {
       .basename(req.file.originalname || "upload.bin")
       .replace(/[^a-zA-Z0-9._-]/g, "_")
       .substring(0, 255);
+    const fileBuffer = await fsp.readFile(tmpFilePath);
     const formData = new FormData();
     formData.append(
       "asset",
-      new Blob([req.file.buffer], { type: req.file.mimetype || "application/octet-stream" }),
+      new Blob([fileBuffer], { type: req.file.mimetype || "application/octet-stream" }),
       safeName,
     );
 
@@ -281,6 +319,14 @@ async function handleAssetUpload(req, res, next) {
   } catch (err) {
     logger.error("Asset upload failed", { error: err.message });
     next(err);
+  } finally {
+    // Always clean up the temporary file regardless of outcome to avoid
+    // filling the temp directory over time.
+    if (tmpFilePath) {
+      fsp.unlink(tmpFilePath).catch(() => {
+        // Best-effort: ignore unlink errors (e.g. already removed).
+      });
+    }
   }
 }
 
@@ -354,28 +400,19 @@ export function createApp(options = {}) {
       contentSecurityPolicy: {
         directives: {
           "default-src": ["'self'"],
-          "script-src": [
-            "'self'",
-            (_req, res) => `'nonce-${res.locals.nonce}'`,
-            "blob:",
-            "https://cdn.jsdelivr.net",
-          ],
+          "script-src": ["'self'", (_req, res) => `'nonce-${res.locals.nonce}'`, "blob:"],
           // style-src intentionally omits the per-request nonce. CSP
           // forbids mixing 'nonce-...' with 'unsafe-inline' in the same
           // directive: when both are present the nonce wins and
           // 'unsafe-inline' is ignored, which broke Monaco's runtime
           // style assignments. The script-src directive above still
           // requires a nonce, so genuine XSS surface is unchanged.
-          "style-src": [
-            "'self'",
-            "'unsafe-inline'",
-            "https://fonts.googleapis.com",
-          ],
+          "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
           // Monaco assigns to element.style.* and setAttribute('style', ...)
           // internally; mirror the relaxation on style-src-attr.
           "style-src-attr": ["'unsafe-inline'"],
           "img-src": ["'self'", "data:", "https:", "blob:"],
-          "connect-src": ["'self'", "https://api.1min.ai", "https://cdn.jsdelivr.net"],
+          "connect-src": ["'self'", "https://api.1min.ai"],
           "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
           "object-src": ["'none'"],
           "media-src": ["'self'"],
@@ -449,11 +486,29 @@ export function createApp(options = {}) {
 
   app.use(logger.requestLogger());
 
+  let cachedHtml = null;
+  const loadCachedHtml = () => {
+    if (cachedHtml && process.env.NODE_ENV === "production") return cachedHtml;
+    const htmlPath = path.join(__dirname, "public", "index.html");
+    cachedHtml = fs.readFileSync(htmlPath, "utf8");
+    return cachedHtml;
+  };
+
+  // Provide local BFF token to authenticated clients
+  app.get("/api/token", (req, res) => {
+    if (!requireLocalAuth) return res.json({ token: "" });
+    // Check if the request has the correct HttpOnly cookie to issue the token
+    const cookies = parseCookies(req.headers.cookie);
+    if (!cookies["__bff_session"] || !compareAuthToken(cookies["__bff_session"], localAuthToken)) {
+      return res.status(403).json({ error: "Invalid session cookie" });
+    }
+    res.json({ token: localAuthToken });
+  });
+
   // Serve index.html (before express.json() since this is a GET)
   app.get(["/", "/index.html"], (req, res) => {
     try {
-      const htmlPath = path.join(__dirname, "public", "index.html");
-      let html = fs.readFileSync(htmlPath, "utf8");
+      let html = loadCachedHtml();
 
       const nonce = res.locals.nonce;
 
@@ -466,10 +521,8 @@ export function createApp(options = {}) {
         (match, attrs) => `<head${attrs}><meta name="csp-nonce" content="${nonce}">`,
       );
 
-      // Set the token as HttpOnly cookie (CSRF mitigation) AND inject a
-      // data attribute on <body> so client-side JS can read it for the
-      // x-local-bff-token header. The body attribute is only ever
-      // readable from same-origin JS.
+      // Set the token as HttpOnly cookie (CSRF mitigation).
+      // We no longer inject data-bff-token into the DOM to prevent exposure.
       if (requireLocalAuth) {
         const ONE_DAY_MS = 24 * 60 * 60 * 1000;
         res.cookie("__bff_session", localAuthToken, {
@@ -478,11 +531,6 @@ export function createApp(options = {}) {
           sameSite: "Strict",
           maxAge: ONE_DAY_MS,
         });
-
-        html = html.replace(
-          /<body(\s*[^>]*)>/i,
-          (match, attrs) => `<body${attrs} data-bff-token="${escapeHtmlAttr(localAuthToken)}">`,
-        );
       }
 
       res.send(html);

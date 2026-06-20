@@ -149,21 +149,37 @@ export function unescapeXmlText(value) {
     .replace(/&amp;/g, "&");
 }
 
+// F-14: Hard caps on input size to prevent DoS via extremely large or
+// deeply nested AI responses. These limits are intentionally generous —
+// real model output rarely exceeds a few tens of KB — and only kick in
+// when an attacker (or runaway loop) tries to allocate gigabytes.
+const PARSE_INPUT_MAX_CHARS = 256 * 1024; // 256 KB
+const PARSE_MAX_CANDIDATES = 32;
+
+export const PARSE_LIMITS = Object.freeze({
+  MAX_CHARS: PARSE_INPUT_MAX_CHARS,
+  MAX_CANDIDATES: PARSE_MAX_CANDIDATES,
+});
+
 /**
  * Parse the agent's XML-style output (<thought>, <call_tool>, <finish>)
  * into a structured object. Falls back to a JSON-shaped fragment when
  * the model returns JSON instead of XML, so the agent loop can keep
  * working across providers.
  *
- * @warning Uses JSON.parse() on AI-generated content. The catch clause
- * prevents crashes from malformed output, but a malicious provider
- * response could trigger prototype poisoning or denial-of-service via
- * deeply nested structures. Consider a size/recursion limit if the BFF
- * is ever used to relay third-party model output.
+ * Hard caps on input length and JSON-fallback candidate count prevent
+ * trivial denial-of-service via oversized or pathological payloads.
  */
 export function parseXMLTags(text) {
   const empty = { thought: null, finish: null, toolCall: null };
   if (!text || typeof text !== "string") return empty;
+
+  // F-14: Reject absurdly large inputs up-front so we never spend CPU
+  // on regex backtracking or JSON.parse over multi-megabyte strings.
+  if (text.length > PARSE_INPUT_MAX_CHARS) {
+    console.warn("parseXMLTags: input exceeds maximum size, dropping");
+    return empty;
+  }
 
   const normalizedText = stripMarkdownCodeBlock(text);
 
@@ -199,7 +215,10 @@ export function parseXMLTags(text) {
   if (!toolCall && !finish) {
     // Walk through every top-level {...} candidate so nested JSON inside
     // `params` (e.g. {"params": {"path": "."}}) still parses correctly.
+    let candidates = 0;
     for (const candidate of extractBalancedObjects(normalizedText)) {
+      // F-14: Cap the number of fallback candidates we attempt to parse.
+      if (++candidates > PARSE_MAX_CANDIDATES) break;
       try {
         const data = JSON.parse(candidate);
         const jsonTool = data.tool || data.toolName || data.call_tool || data.toolCall?.name || data.action;

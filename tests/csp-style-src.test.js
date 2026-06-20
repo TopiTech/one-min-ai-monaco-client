@@ -92,4 +92,16 @@ describe("CSP style-src directive", () => {
     expect(res.text).not.toMatch(/\sstyle="[^"]*"/);
     expect(res.text).not.toMatch(/\sstyle='[^']*'/);
   });
+
+  // F-3: With DOMPurify and marked now vendored locally, the CSP must
+  // no longer reference the jsdelivr CDN.
+  test("CSP no longer permits cdn.jsdelivr.net", async () => {
+    process.env.NODE_ENV = "test";
+    const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
+
+    const res = await request(app).get("/");
+    const csp = res.headers["content-security-policy"];
+    expect(csp).toBeDefined();
+    expect(csp).not.toMatch(/cdn\.jsdelivr\.net/);
+  });
 });

@@ -99,6 +99,57 @@ describe("api-client callOneMin", () => {
   });
 
   // ----------------------------------------------------------------
+  // Timeout (no caller signal) — fetch must surface 408 when the
+  // timeout aborts the request. We mock fetch to throw an
+  // AbortError after the timeout fires, mirroring what undici does
+  // in production when the combined AbortSignal aborts the request.
+  // ----------------------------------------------------------------
+  test("throws 408 when timeout fires before caller signal", async () => {
+    globalThis.fetch = jest.fn(async () => {
+      // Yield once so the microtask queue runs; if the combined signal
+      // has already aborted, the underlying fetch rejects with an
+      // AbortError on its next tick.
+      await Promise.resolve();
+      const err = new Error("The operation was aborted");
+      err.name = "AbortError";
+      throw err;
+    });
+
+    const { callOneMin } = await import("../utils/api-client.js");
+    await expect(
+      callOneMin("/api/chat-with-ai", {
+        method: "POST",
+        body: "{}",
+        idempotent: false,
+      }),
+    ).rejects.toMatchObject({ status: 408 });
+  }, 10_000);
+
+  // ----------------------------------------------------------------
+  // Cancellation by the caller's signal must surface 499, not 408.
+  // ----------------------------------------------------------------
+  test("throws 499 when caller signal is already aborted", async () => {
+    globalThis.fetch = jest.fn(async () => {
+      await Promise.resolve();
+      const err = new Error("The operation was aborted");
+      err.name = "AbortError";
+      throw err;
+    });
+
+    const { callOneMin } = await import("../utils/api-client.js");
+    const caller = new AbortController();
+    caller.abort();
+    await expect(
+      callOneMin("/api/chat-with-ai", {
+        method: "POST",
+        body: "{}",
+        idempotent: false,
+        signal: caller.signal,
+      }),
+    ).rejects.toMatchObject({ status: 499 });
+  }, 10_000);
+
+  // ----------------------------------------------------------------
   // Non-OK response throws with status
   // ----------------------------------------------------------------
   test("throws on non-OK response", async () => {

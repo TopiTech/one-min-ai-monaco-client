@@ -16,3 +16,4 @@ defs.txt
 coverage/
 *.log
 public/vs/
+public/vendor/

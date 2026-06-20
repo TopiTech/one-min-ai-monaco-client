@@ -6,32 +6,78 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 
-const PROTECTED_PATH_PREFIXES = [
+// B-3: Replace the brittle prefix list with explicit glob patterns. The
+// previous implementation matched `.env` as a prefix and so protected any
+// file starting with that string (e.g. `.envproduction`), but missed other
+// secrets files like `.npmrc` and `secrets.json`. Glob patterns let us
+// express both "exact match" and "any file/folder below this directory"
+// uniformly.
+const PROTECTED_PATH_GLOBS = [
   ".env",
-  ".env.",
+  ".env.*",
   ".git",
-  ".git/",
+  ".git/**",
   ".venv",
-  ".venv/",
+  ".venv/**",
   "node_modules",
-  "node_modules/",
+  "node_modules/**",
   "package.json",
   "package-lock.json",
   ".gitignore",
   ".env.example",
+  "*.pem",
+  "*.key",
+  "id_rsa",
+  "id_rsa.pub",
+  ".npmrc",
+  "secrets.json",
+  "credentials.json",
 ];
 
-const WRITE_PROTECTED_PATH_PREFIXES = [
-  ...PROTECTED_PATH_PREFIXES,
+const WRITE_PROTECTED_PATH_GLOBS = [
+  ...PROTECTED_PATH_GLOBS,
   "server.js",
-  "utils/",
-  "routes/",
-  "config/",
-  "public/",
-  "tests/",
-  "docs/",
+  "utils/**",
+  "routes/**",
+  "config/**",
+  "public/**",
+  "tests/**",
+  "docs/**",
   "README.md",
 ];
+
+/**
+ * Convert a simple glob (`*`, `**`, `?`) to a RegExp anchored at the start
+ * and end. The `**` segment matches any number of path segments including
+ * `/`, while `*` matches any path segment WITHOUT `/`.
+ *
+ * @param {string} glob  glob pattern using `*`, `**`, and `?`
+ * @returns {RegExp}
+ */
+function globToRegExp(glob) {
+  let regex = "";
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === "*") {
+      if (glob[i + 1] === "*") {
+        regex += ".*";
+        i++; // skip the second *
+        // Consume an optional trailing `/` so `**/` matches zero or more
+        // directory levels.
+        if (glob[i + 1] === "/") i++;
+      } else {
+        regex += "[^/]*";
+      }
+    } else if (c === "?") {
+      regex += "[^/]";
+    } else if (/[.+^$(){}|[\]\\]/.test(c)) {
+      regex += "\\" + c;
+    } else {
+      regex += c;
+    }
+  }
+  return new RegExp("^" + regex + "$", "i");
+}
 
 function uniquePaths(paths) {
   return [...new Set(paths.map((p) => path.resolve(p)).filter(Boolean))];
@@ -134,24 +180,17 @@ function normalizePathForMatching(targetPath) {
   return targetPath.replace(/\\/g, "/").toLowerCase();
 }
 
-function isProtectedByPrefixes(relativePath, prefixes) {
-  const normalizedRelativePath = normalizePathForMatching(relativePath);
-  return prefixes.some((prefix) => {
-    const normalizedPrefix = normalizePathForMatching(prefix);
-    if (normalizedPrefix.endsWith("/")) {
-      const dirPrefix = normalizedPrefix.slice(0, -1);
-      return normalizedRelativePath === dirPrefix || normalizedRelativePath.startsWith(`${dirPrefix}/`);
-    }
-    // For file-like prefixes (e.g. ".env."), match exactly or as a prefix
-    return (
-      normalizedRelativePath === normalizedPrefix ||
-      normalizedRelativePath.startsWith(normalizedPrefix) ||
-      normalizedRelativePath.startsWith(`${normalizedPrefix}/`)
-    );
-  });
+// B-3: Compile glob patterns to RegExp once at module load so the matcher
+// is O(patterns * segments) instead of recompiling on every file check.
+const PROTECTED_PATTERNS = PROTECTED_PATH_GLOBS.map(globToRegExp);
+const WRITE_PROTECTED_PATTERNS = WRITE_PROTECTED_PATH_GLOBS.map(globToRegExp);
+
+function isProtectedByPatterns(relativePath, patterns) {
+  const normalized = normalizePathForMatching(relativePath);
+  return patterns.some((re) => re.test(normalized));
 }
 
-function isPathProtectedByRoot(resolvedPath, root, prefixes) {
+function isPathProtectedByRoot(resolvedPath, root, patterns) {
   let realRoot;
   try {
     realRoot = fs.realpathSync(root);
@@ -169,7 +208,7 @@ function isPathProtectedByRoot(resolvedPath, root, prefixes) {
     return false;
   }
 
-  return isProtectedByPrefixes(relativePath, prefixes);
+  return isProtectedByPatterns(relativePath, patterns);
 }
 
 /**
@@ -178,7 +217,7 @@ function isPathProtectedByRoot(resolvedPath, root, prefixes) {
  * @returns {boolean} True if the path is protected.
  */
 export function isProtectedPath(resolvedPath) {
-  return getAllowedRoots().some((root) => isPathProtectedByRoot(resolvedPath, root, PROTECTED_PATH_PREFIXES));
+  return getAllowedRoots().some((root) => isPathProtectedByRoot(resolvedPath, root, PROTECTED_PATTERNS));
 }
 
 /**
@@ -201,7 +240,7 @@ export function isWriteProtectedPath(resolvedPath) {
     return true;
   }
   return getAllowedRoots().some((root) =>
-    isPathProtectedByRoot(resolvedPath, root, WRITE_PROTECTED_PATH_PREFIXES),
+    isPathProtectedByRoot(resolvedPath, root, WRITE_PROTECTED_PATTERNS),
   );
 }
 
