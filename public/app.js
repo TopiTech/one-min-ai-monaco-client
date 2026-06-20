@@ -145,9 +145,12 @@ if (document.readyState === "loading") {
 }
 
 // navigation
-for (const btn of document.querySelectorAll(".nav")) {
+const navBtns = document.querySelectorAll(".nav");
+const views = document.querySelectorAll(".view");
+for (const btn of navBtns) {
   btn.addEventListener("click", () => {
-    document.querySelectorAll(".nav,.view").forEach((x) => x.classList.remove("active"));
+    navBtns.forEach((x) => x.classList.remove("active"));
+    views.forEach((x) => x.classList.remove("active"));
     btn.classList.add("active");
     $(btn.dataset.view).classList.add("active");
     $("viewTitle").textContent = btn.textContent.trim();

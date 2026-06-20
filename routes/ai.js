@@ -573,17 +573,7 @@ const codeGenerateSchema = z.object({
   maxWord: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
 });
 
-const codeAutocompleteSchema = z.object({
-  code: z.string({ required_error: "code, line, and column are required" }).refine((val) => val.length <= 100000, { message: "code exceeds 100000 characters" }),
-  line: z.any({ required_error: "code, line, and column are required" }),
-  column: z.any({ required_error: "code, line, and column are required" }),
-  fileName: z.string().optional(),
-  language: z.string().optional(),
-  model: z.string().optional(),
-  webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
-  numOfSite: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
-  maxWord: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
-}).superRefine((data, ctx) => {
+function validateLineColumn(data, ctx) {
   const lineNum = Number(data.line);
   if (!Number.isInteger(lineNum) || lineNum < 1 || lineNum > 1000000) {
     ctx.addIssue({
@@ -598,7 +588,19 @@ const codeAutocompleteSchema = z.object({
       message: "column must be a positive integer"
     });
   }
-});
+}
+
+const codeAutocompleteSchema = z.object({
+  code: z.string({ required_error: "code, line, and column are required" }).refine((val) => val.length <= 100000, { message: "code exceeds 100000 characters" }),
+  line: z.any({ required_error: "code, line, and column are required" }),
+  column: z.any({ required_error: "code, line, and column are required" }),
+  fileName: z.string().optional(),
+  language: z.string().optional(),
+  model: z.string().optional(),
+  webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
+  numOfSite: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
+  maxWord: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
+}).superRefine(validateLineColumn);
 
 const codeInlineChatSchema = z.object({
   prompt: z.string({ required_error: "prompt, code, line, and column are required" }).refine((val) => val.trim().length > 0, { message: "prompt, code, line, and column are required" }).refine((val) => val.length <= 50000, { message: "prompt exceeds 50000 characters" }),
@@ -611,22 +613,7 @@ const codeInlineChatSchema = z.object({
   webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
   numOfSite: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
   maxWord: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
-}).superRefine((data, ctx) => {
-  const lineNum = Number(data.line);
-  if (!Number.isInteger(lineNum) || lineNum < 1 || lineNum > 1000000) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "line must be a positive integer"
-    });
-  }
-  const colNum = Number(data.column);
-  if (!Number.isInteger(colNum) || colNum < 1 || colNum > 1000000) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "column must be a positive integer"
-    });
-  }
-});
+}).superRefine(validateLineColumn);
 
 function buildCodeContext(code, line, column, contextLines = 100) {
   const lines = code.split(/\r?\n/);

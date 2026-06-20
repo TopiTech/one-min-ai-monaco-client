@@ -42,6 +42,24 @@ const router = express.Router();
 const execAsync = promisify(exec);
 
 /**
+ * Internal helper to safely resolve the real path of an existing target 
+ * to mitigate TOCTOU (Time-of-Check to Time-of-Use) attacks.
+ */
+async function getSafeRealPath(resolvedPath) {
+  let realPath = resolvedPath;
+  try {
+    const stat = await fs.stat(resolvedPath);
+    if (stat.isFile() || stat.isDirectory()) {
+      realPath = revalidateRealPath(resolvedPath);
+      assertNotWriteProtectedPath(realPath);
+    }
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+  }
+  return realPath;
+}
+
+/**
  * Get allowed roots from environment and resolve them.
  */
 router.get("/config", (_req, res) => {
@@ -287,17 +305,8 @@ router.post("/write", async (req, res, next) => {
     const resolvedPath = validatePath(String(filePath));
     assertNotWriteProtectedPath(resolvedPath);
 
-    // TOCTOU mitigation: if file already exists, re-verify real path before overwrite
-    let realPath = resolvedPath;
-    try {
-      const stat = await fs.stat(resolvedPath);
-      if (stat.isFile()) {
-        realPath = revalidateRealPath(resolvedPath);
-        assertNotWriteProtectedPath(realPath);
-      }
-    } catch (err) {
-      if (err.code !== "ENOENT") throw err;
-    }
+    // TOCTOU mitigation
+    const realPath = await getSafeRealPath(resolvedPath);
 
     const dir = path.dirname(realPath);
     await fs.mkdir(dir, { recursive: true });
@@ -320,17 +329,8 @@ router.post("/create", async (req, res, next) => {
     const resolvedPath = validatePath(String(targetPath));
     assertNotWriteProtectedPath(resolvedPath);
 
-    // TOCTOU mitigation: if target already exists, re-verify real path before write
-    let realPath = resolvedPath;
-    try {
-      const stat = await fs.stat(resolvedPath);
-      if (stat.isFile() || stat.isDirectory()) {
-        realPath = revalidateRealPath(resolvedPath);
-        assertNotWriteProtectedPath(realPath);
-      }
-    } catch (err) {
-      if (err.code !== "ENOENT") throw err;
-    }
+    // TOCTOU mitigation
+    const realPath = await getSafeRealPath(resolvedPath);
 
     if (type === "directory") {
       await fs.mkdir(realPath, { recursive: true });
@@ -393,17 +393,8 @@ router.post("/rename", async (req, res, next) => {
     const realOld = revalidateRealPath(resolvedOld);
     assertNotWriteProtectedPath(realOld);
 
-    // New path may or may not exist
-    let realNew = resolvedNew;
-    try {
-      const stat = await fs.stat(resolvedNew);
-      if (stat.isFile() || stat.isDirectory()) {
-        realNew = revalidateRealPath(resolvedNew);
-        assertNotWriteProtectedPath(realNew);
-      }
-    } catch (err) {
-      if (err.code !== "ENOENT") throw err;
-    }
+    // New path may or may not exist (TOCTOU mitigation)
+    const realNew = await getSafeRealPath(resolvedNew);
 
     await fs.rename(realOld, realNew);
     res.json({ ok: true, oldPath: realOld, newPath: realNew });

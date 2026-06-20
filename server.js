@@ -150,23 +150,12 @@ function localBffAuth({ requireToken = true, authToken } = {}) {
     }
 
     const isSameOrigin = (() => {
-      if (origin) {
-        try {
-          const parsed = new URL(origin);
-          if (host && parsed.host === host) return true;
-        } catch {
-          // fall through
-        }
-      }
       if (secFetchSite === "same-origin") return true;
-      if (referer) {
-        try {
-          const parsedReferer = new URL(referer);
-          if (host && parsedReferer.host === host) return true;
-        } catch {
-          // fall through
-        }
-      }
+      const checkUrl = (urlStr) => {
+        try { return host && new URL(urlStr).host === host; } catch { return false; }
+      };
+      if (origin && checkUrl(origin)) return true;
+      if (referer && checkUrl(referer)) return true;
       return false;
     })();
 
@@ -207,14 +196,16 @@ function mapMulterError(err) {
     e.field = err.field;
     return e;
   }
-  if (
-    code === "LIMIT_UNEXPECTED_FILE" ||
-    code === "LIMIT_FIELD_COUNT" ||
-    code === "LIMIT_FIELD_KEY" ||
-    code === "LIMIT_FIELD_VALUE" ||
-    code === "LIMIT_PART_COUNT" ||
-    code === "LIMIT_FILE_COUNT"
-  ) {
+  const badRequestCodes = [
+    "LIMIT_UNEXPECTED_FILE",
+    "LIMIT_FIELD_COUNT",
+    "LIMIT_FIELD_KEY",
+    "LIMIT_FIELD_VALUE",
+    "LIMIT_PART_COUNT",
+    "LIMIT_FILE_COUNT",
+  ];
+
+  if (badRequestCodes.includes(code)) {
     const e = new Error(err.message || "Invalid multipart payload");
     e.status = 400;
     e.code = code;
