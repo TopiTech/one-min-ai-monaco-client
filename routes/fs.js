@@ -44,7 +44,25 @@ const execAsync = promisify(exec);
 
 const workspaceSelectSchema = z.object({ dir: z.string().min(1, "dir is required") });
 const listSchema = z.object({ dir: z.string().optional() });
-const readSchema = z.object({ path: z.string().min(1, "path is required") });
+const readSchema = z.object({
+  path: z.string().min(1, "path is required"),
+  startLine: z.preprocess(
+    (val) => (val === undefined || val === null || val === "" ? undefined : Number(val)),
+    z.number().int().min(1).optional()
+  ),
+  endLine: z.preprocess(
+    (val) => (val === undefined || val === null || val === "" ? undefined : Number(val)),
+    z.number().int().min(1).optional()
+  ),
+}).refine((data) => {
+  if (data.startLine !== undefined && data.endLine !== undefined) {
+    return data.startLine <= data.endLine;
+  }
+  return true;
+}, {
+  message: "startLine must be less than or equal to endLine",
+  path: ["startLine"],
+});
 const writeSchema = z.object({ path: z.string().min(1, "path is required"), content: z.string({ required_error: "content is required" }) });
 const createSchema = z.object({ path: z.string().min(1, "path is required"), type: z.enum(["file", "directory"]).default("file"), content: z.string().default("") });
 const deleteSchema = z.object({ path: z.string().min(1, "path is required") });
@@ -270,7 +288,7 @@ router.get("/read", async (req, res, next) => {
   try {
     const result = readSchema.safeParse(req.query);
     if (!result.success) return res.status(400).json({ error: result.error.issues[0]?.message || "Validation error" });
-    const filePath = result.data.path;
+    const { path: filePath, startLine, endLine } = result.data;
     const resolvedPath = validatePath(String(filePath));
     assertNotProtectedPath(resolvedPath);
 
@@ -301,7 +319,13 @@ router.get("/read", async (req, res, next) => {
       return res.status(400).json({ error: "Cannot read binary files as text in the editor." });
     }
 
-    const content = buffer.toString("utf-8");
+    let content = buffer.toString("utf-8");
+    if (startLine !== undefined || endLine !== undefined) {
+      const lines = content.split(/\r?\n/);
+      const start = startLine !== undefined ? startLine - 1 : 0;
+      const end = endLine !== undefined ? endLine : lines.length;
+      content = lines.slice(start, end).join("\n");
+    }
     res.json({ path: realPath, content });
   } catch (err) {
     next(err);

@@ -14,6 +14,7 @@ import { validateBufferMimeType } from "./utils/mime-guard.js";
 import fs from "fs";
 import fsp from "fs/promises";
 import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 import { sanitizePayload } from "./utils/sanitize.js";
 
 // Replace the env-var-based default singleton with the validated serverConfig.
@@ -95,6 +96,44 @@ function compareAuthToken(a, b) {
   return crypto.timingSafeEqual(hashA, hashB);
 }
 
+class ProxySizeLimitError extends Error {
+  constructor(limitBytes) {
+    super(`Asset proxy response exceeds maximum size of ${limitBytes} bytes`);
+    this.name = "ProxySizeLimitError";
+    this.status = 413;
+    this.code = "ASSET_PROXY_RESPONSE_TOO_LARGE";
+  }
+}
+
+function buildAssetProxyAbortSignal(timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timeoutId),
+  };
+}
+
+function parseContentLength(value) {
+  if (!value) return null;
+  const n = Number(value);
+  if (!Number.isSafeInteger(n) || n < 0) return null;
+  return n;
+}
+
+function createByteLimitTransform(limitBytes) {
+  let total = 0;
+  return new TransformStream({
+    transform(chunk, controller) {
+      total += chunk?.byteLength ?? chunk?.length ?? 0;
+      if (total > limitBytes) {
+        throw new ProxySizeLimitError(limitBytes);
+      }
+      controller.enqueue(chunk);
+    },
+  });
+}
+
 // QUAL-4: We intentionally parse cookies manually rather than adding the
 // `cookie-parser` package. This server only needs to read one HttpOnly cookie
 // (the BFF auth token) from the raw `Cookie` header. Adding cookie-parser
@@ -132,7 +171,7 @@ function localBffAuth({ requireToken = true, authToken } = {}) {
   if (!authToken) {
     throw new Error(
       "localBffAuth: authToken must be provided explicitly when requireToken=true. " +
-      "Set LOCAL_BFF_AUTH_TOKEN in .env or pass localAuthToken option to createApp().",
+        "Set LOCAL_BFF_AUTH_TOKEN in .env or pass localAuthToken option to createApp().",
     );
   }
 
@@ -140,7 +179,7 @@ function localBffAuth({ requireToken = true, authToken } = {}) {
     const cookies = parseCookies(req.headers.cookie);
     const headerToken = req.get("x-local-bff-token");
     const cookieToken = cookies["__bff_session"];
-    
+
     // Cookie またはカスタムヘッダーのいずれかが正しいトークンを含んでいれば認証成功とする。
     // クエリパラメータからの漏洩を防ぐため、req.query.__bff_token は廃止。
     let tokenOk = false;
@@ -181,7 +220,11 @@ function localBffAuth({ requireToken = true, authToken } = {}) {
     const isSameOrigin = (() => {
       if (secFetchSite === "same-origin") return true;
       const checkUrl = (urlStr) => {
-        try { return host && new URL(urlStr).host === host; } catch { return false; }
+        try {
+          return host && new URL(urlStr).host === host;
+        } catch {
+          return false;
+        }
       };
       if (origin && checkUrl(origin)) return true;
       if (referer && checkUrl(referer)) return true;
@@ -323,7 +366,9 @@ async function handleAssetUpload(req, res, next) {
       assetBlob = {
         size: req.file.size,
         type: req.file.mimetype || "application/octet-stream",
-        slice: () => { throw new Error("Not implemented"); },
+        slice: () => {
+          throw new Error("Not implemented");
+        },
         arrayBuffer: async () => {
           const buf = await fsp.readFile(tmpFilePath);
           return buf.buffer;
@@ -391,9 +436,7 @@ export function createApp(options = {}) {
     if (!host) {
       return res.status(400).json({ error: "Host header is required" });
     }
-    const isAllowedHost =
-      /^127\.0\.0\.1(?::\d+)?$/i.test(host) ||
-      /^localhost(?::\d+)?$/i.test(host);
+    const isAllowedHost = /^127\.0\.0\.1(?::\d+)?$/i.test(host) || /^localhost(?::\d+)?$/i.test(host);
     if (!isAllowedHost) {
       logger.warn("Blocked request with suspicious Host header", { host });
       return res.status(403).json({ error: "Access denied: Invalid Host header" });
@@ -445,7 +488,10 @@ export function createApp(options = {}) {
       if (isLocalhost) {
         res.setHeader("Access-Control-Allow-Origin", origin);
         res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-        res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-local-bff-token, Authorization, Cookie");
+        res.setHeader(
+          "Access-Control-Allow-Headers",
+          "Content-Type, x-local-bff-token, Authorization, Cookie",
+        );
         res.setHeader("Access-Control-Allow-Credentials", "true");
         res.setHeader("Access-Control-Max-Age", "86400");
       } else {
@@ -486,6 +532,8 @@ export function createApp(options = {}) {
         // fields ever got out of sync.
         ok: status.ok,
         lastSync: status.lastSync,
+        error: status.error,
+        source: status.source || "fallback",
       },
     });
   });
@@ -577,16 +625,12 @@ export function createApp(options = {}) {
     authToken: localAuthToken,
   });
 
-  app.post(
-    "/api/assets/upload",
-    protectedApiAuth,
-    (req, res, next) => {
-      upload.single("asset")(req, res, (err) => {
-        if (err) return next(mapMulterError(err));
-        handleAssetUpload(req, res, next);
-      });
-    },
-  );
+  app.post("/api/assets/upload", protectedApiAuth, (req, res, next) => {
+    upload.single("asset")(req, res, (err) => {
+      if (err) return next(mapMulterError(err));
+      handleAssetUpload(req, res, next);
+    });
+  });
 
   // Apply express.json() after the asset upload route (which uses multer)
   // so it never consumes multipart body streams (Q-9).
@@ -608,10 +652,7 @@ export function createApp(options = {}) {
       }
 
       const parsed = new URL(targetUrl);
-      const allowedHosts = [
-        "asset.1min.ai",
-        "api.1min.ai",
-      ];
+      const allowedHosts = ["asset.1min.ai", "api.1min.ai"];
       const isVirtualHostS3 =
         /^asset\.1min\.ai\.s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname) ||
         /^asset\.1min\.ai\.s3-accelerate\.amazonaws\.com$/i.test(parsed.hostname) ||
@@ -622,21 +663,38 @@ export function createApp(options = {}) {
         parsed.pathname.startsWith("/asset.1min.ai/");
 
       const isAllowedHost =
-        allowedHosts.some((h) => parsed.hostname === h) ||
-        isVirtualHostS3 ||
-        isPathStyleS3;
+        allowedHosts.some((h) => parsed.hostname === h) || isVirtualHostS3 || isPathStyleS3;
       if (!isAllowedHost) {
         return res.status(403).json({ error: "Access denied: Untrusted asset host" });
       }
 
-      const response = await fetch(targetUrl);
+      const abort = buildAssetProxyAbortSignal(serverConfig.assetProxyTimeoutMs);
+      let response;
+      try {
+        response = await fetch(targetUrl, { signal: abort.signal });
+      } catch (err) {
+        abort.clear();
+        if (err?.name === "AbortError") {
+          return res.status(504).json({ error: "Asset proxy request timed out" });
+        }
+        throw err;
+      }
+
       if (!response.ok) {
+        abort.clear();
         return res.status(response.status).json({ error: `Failed to fetch asset: ${response.statusText}` });
+      }
+
+      const contentLength = parseContentLength(response.headers.get("content-length"));
+      if (contentLength !== null && contentLength > serverConfig.assetProxyMaxSize) {
+        abort.clear();
+        return res.status(413).json({ error: "Asset proxy response too large" });
       }
 
       const contentType = response.headers.get("content-type") || "application/octet-stream";
       // HTMLおよびスクリプトタイプのレスポンスをブロックしてXSSを防止
       if (/text\/html|application\/javascript|text\/javascript/i.test(contentType)) {
+        abort.clear();
         return res.status(403).json({ error: "Unsupported content type from upstream" });
       }
       res.setHeader("Content-Type", contentType);
@@ -645,12 +703,26 @@ export function createApp(options = {}) {
       // Cache-Control は ETag 等との共存を想定し、マイルドなキャッシュに変更
       res.setHeader("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
 
-      if (response.body) {
-        Readable.fromWeb(response.body).pipe(res);
-      } else {
-        res.end();
+      try {
+        if (response.body) {
+          const limitedBody = response.body.pipeThrough(
+            createByteLimitTransform(serverConfig.assetProxyMaxSize),
+          );
+          await pipeline(Readable.fromWeb(limitedBody), res);
+        } else {
+          res.end();
+        }
+      } finally {
+        abort.clear();
       }
     } catch (err) {
+      if (err?.name === "ProxySizeLimitError") {
+        if (!res.headersSent) {
+          return res.status(err.status).json({ error: "Asset proxy response too large" });
+        }
+        res.destroy(err);
+        return;
+      }
       next(err);
     }
   });
@@ -698,9 +770,11 @@ function validateEnvironment() {
     logger.warn("ALLOWED_ROOTS is not set. Defaulting to project root only.");
   }
   if (!process.env.LOCAL_BFF_AUTH_TOKEN) {
-    logger.warn("LOCAL_BFF_AUTH_TOKEN not set. A random token will be generated on each restart. " +
-      "Browser sessions will be invalidated when the server restarts. " +
-      "Set LOCAL_BFF_AUTH_TOKEN in .env for persistent sessions.");
+    logger.warn(
+      "LOCAL_BFF_AUTH_TOKEN not set. A random token will be generated on each restart. " +
+        "Browser sessions will be invalidated when the server restarts. " +
+        "Set LOCAL_BFF_AUTH_TOKEN in .env for persistent sessions.",
+    );
   }
 }
 
@@ -717,6 +791,10 @@ if (process.env.NODE_ENV !== "test") {
           apiRetryAttempts: serverConfig.apiRetryAttempts,
         });
       });
+
+      // Allow up to 10 minutes for slow coding/agent operations
+      server.timeout = 600000;
+      server.requestTimeout = 600000;
 
       // Graceful shutdown handling
       const shutdown = () => {

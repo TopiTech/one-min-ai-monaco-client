@@ -73,6 +73,7 @@ describe("web-search payload helpers", () => {
       expect(payload).toEqual({
         type: "CODE_GENERATOR",
         model: "qwen3-coder-plus",
+        conversationId: "CODE_GENERATOR",
         promptObject: {
           prompt: "Fix this bug",
           webSearch: true,
@@ -87,6 +88,7 @@ describe("web-search payload helpers", () => {
         prompt: "hello",
         webSearch: false,
       });
+      expect(payload.conversationId).toBe("CODE_GENERATOR");
       expect(payload.promptObject).toEqual({
         prompt: "hello",
         webSearch: false,

@@ -17,6 +17,8 @@ const ENV_KEYS = [
   "PORT",
   "MAX_FILE_SIZE",
   "MAX_JSON_BODY_SIZE",
+  "ASSET_PROXY_TIMEOUT_MS",
+  "ASSET_PROXY_MAX_SIZE",
   "API_TIMEOUT",
   "API_RETRY_ATTEMPTS",
   "API_RETRY_DELAY",
@@ -168,5 +170,21 @@ describe("config/server.js env validation", () => {
     process.env.ENABLE_COMMAND_EXECUTION = "1";
     const c3 = await loadConfig();
     expect(c3.serverConfig.enableCommandExecution).toBe(false);
+  });
+
+  test("asset proxy guardrails parse and clamp env values", async () => {
+    jest.resetModules();
+    process.env.ASSET_PROXY_TIMEOUT_MS = "2000";
+    process.env.ASSET_PROXY_MAX_SIZE = "2mb";
+    const c = await loadConfig();
+    expect(c.serverConfig.assetProxyTimeoutMs).toBe(2000);
+    expect(c.serverConfig.assetProxyMaxSize).toBe(2 * 1024 * 1024);
+
+    jest.resetModules();
+    process.env.ASSET_PROXY_TIMEOUT_MS = "0";
+    process.env.ASSET_PROXY_MAX_SIZE = "5gb";
+    const c2 = await loadConfig();
+    expect(c2.serverConfig.assetProxyTimeoutMs).toBe(30000);
+    expect(c2.serverConfig.assetProxyMaxSize).toBe(50 * 1024 * 1024);
   });
 });

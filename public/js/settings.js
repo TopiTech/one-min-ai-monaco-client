@@ -12,9 +12,19 @@ const STORAGE_KEYS = {
   CHAT_MAX_WORD: "monaco_client_chat_max_word",
 };
 
+const LOCAL_STORAGE_KEYS = [
+  ...Object.values(STORAGE_KEYS),
+  "monaco_client_conversation",
+  "monaco_client_credit_saving",
+  "monaco_client_perf_mode",
+  "monaco_client_theme",
+  "diffRenderInline",
+];
+
 function getNumberInRange(value, min, max, defaultValue) {
   const num = parseInt(value);
-  if (isNaN(num) || num < min) return min;
+  if (isNaN(num)) return defaultValue;
+  if (num < min) return min;
   if (num > max) return max;
   return num;
 }
@@ -116,6 +126,29 @@ function initPerformanceModeSettings() {
   });
 }
 
+function initClearLocalData() {
+  const clearBtn = document.getElementById("clearLocalDataBtn");
+  if (!clearBtn) return;
+
+  clearBtn.addEventListener("click", async () => {
+    const confirmed = await window.toast?.confirm?.(
+      "ブラウザに保存された会話IDや表示設定を削除します。現在の画面を再読み込みしますか？",
+      {
+        confirmText: "削除して再読み込み",
+        cancelText: "キャンセル",
+        type: "warning",
+      },
+    );
+
+    if (!confirmed) return;
+
+    for (const key of LOCAL_STORAGE_KEYS) {
+      localStorage.removeItem(key);
+    }
+    window.location.reload();
+  });
+}
+
 let _settingsInitDone = false;
 
 export function bootstrapSettings() {
@@ -124,4 +157,5 @@ export function bootstrapSettings() {
   initCodeGeneratorSettings();
   initChatSettings();
   initPerformanceModeSettings();
+  initClearLocalData();
 }

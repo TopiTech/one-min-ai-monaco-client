@@ -108,6 +108,49 @@ describe("FS Routes", () => {
       expect(readRes.body.content).toBe(content);
     });
 
+    test("reads a specific slice of lines when startLine and/or endLine are provided", async () => {
+      const filePath = path.join(tmpDir, "slicetrip.txt");
+      const content = "line1\nline2\nline3\nline4\nline5";
+
+      await request(app).post("/api/fs/write").send({ path: filePath, content });
+
+      // startLine and endLine both set
+      let readRes = await request(app).get("/api/fs/read").query({ path: filePath, startLine: 2, endLine: 4 });
+      expect(readRes.status).toBe(200);
+      expect(readRes.body.content).toBe("line2\nline3\nline4");
+
+      // only startLine set
+      readRes = await request(app).get("/api/fs/read").query({ path: filePath, startLine: 3 });
+      expect(readRes.status).toBe(200);
+      expect(readRes.body.content).toBe("line3\nline4\nline5");
+
+      // only endLine set
+      readRes = await request(app).get("/api/fs/read").query({ path: filePath, endLine: 2 });
+      expect(readRes.status).toBe(200);
+      expect(readRes.body.content).toBe("line1\nline2");
+    });
+
+    test("rejects invalid startLine and endLine values", async () => {
+      const filePath = path.join(tmpDir, "slicetrip.txt");
+      await request(app).post("/api/fs/write").send({ path: filePath, content: "a\nb" });
+
+      // startLine > endLine
+      let res = await request(app).get("/api/fs/read").query({ path: filePath, startLine: 3, endLine: 2 });
+      expect(res.status).toBe(400);
+
+      // startLine 0
+      res = await request(app).get("/api/fs/read").query({ path: filePath, startLine: 0 });
+      expect(res.status).toBe(400);
+
+      // endLine negative
+      res = await request(app).get("/api/fs/read").query({ path: filePath, endLine: -1 });
+      expect(res.status).toBe(400);
+
+      // float
+      res = await request(app).get("/api/fs/read").query({ path: filePath, startLine: 1.5 });
+      expect(res.status).toBe(400);
+    });
+
     test("read rejects missing path", async () => {
       const res = await request(app).get("/api/fs/read");
       expect(res.status).toBe(400);

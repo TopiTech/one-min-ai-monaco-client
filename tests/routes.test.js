@@ -19,7 +19,11 @@ jest.unstable_mockModule("../utils/api-client.js", () => ({
   parseResponsePayload: jest.fn(async (response) => {
     const text = await response.text();
     if (!text) return {};
-    try { return JSON.parse(text); } catch { return { message: text }; }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { message: text };
+    }
   }),
 }));
 
@@ -174,6 +178,46 @@ describe("AI Routes Integration Tests", () => {
       expect(callOneMin).toHaveBeenCalledWith("/api/features", expect.any(Object));
     });
 
+    test("should normalize various imageUrl formats to relative asset key before calling 1min.ai features", async () => {
+      const mockResult = {
+        aiRecord: {
+          uuid: "edit-uuid-123",
+          aiRecordDetail: { resultObject: ["images/edited-result.png"] },
+        },
+      };
+
+      const imageUrlsToTest = [
+        // S3 path-style URL
+        "https://s3.us-east-1.amazonaws.com/asset.1min.ai/images/docusaurus.png?X-Amz-Signature=123",
+        // Direct domain / Virtual-host style URL
+        "https://asset.1min.ai/images/docusaurus.png",
+        // Local proxy URL
+        "/api/assets/proxy?key=images%2Fdocusaurus.png",
+        // Local proxy with nested S3 URL
+        "/api/assets/proxy?url=https%3A%2F%2Fs3.us-east-1.amazonaws.com%2Fasset.1min.ai%2Fimages%2Fdocusaurus.png",
+        // Relative key
+        "images/docusaurus.png",
+        // Relative key with leading slash
+        "/images/docusaurus.png",
+      ];
+
+      for (const imgUrl of imageUrlsToTest) {
+        callOneMin.mockReset();
+        callOneMin.mockResolvedValue(mockResult);
+
+        const response = await request(app).post("/api/images/text-editor").send({
+          imageUrl: imgUrl,
+          prompt: "change background to sunset",
+          model: "gpt-image-2",
+        });
+
+        expect(response.status).toBe(200);
+        expect(callOneMin).toHaveBeenCalledTimes(1);
+        const sentPayload = JSON.parse(callOneMin.mock.calls[0][1].body);
+        expect(sentPayload.promptObject.imageUrl).toBe("images/docusaurus.png");
+      }
+    });
+
     test("should return 400 if imageUrl is missing", async () => {
       const response = await request(app)
         .post("/api/images/text-editor")
@@ -274,7 +318,7 @@ describe("AI Routes Integration Tests", () => {
         start(controller) {
           controller.enqueue(new TextEncoder().encode("fake image data"));
           controller.close();
-        }
+        },
       });
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,
@@ -282,15 +326,47 @@ describe("AI Routes Integration Tests", () => {
         body: mockResponseBody,
       });
 
-      const response = await request(app)
-        .get("/api/assets/proxy")
-        .query({ key: "images/test.png" });
+      const response = await request(app).get("/api/assets/proxy").query({ key: "images/test.png" });
 
       expect(response.status).toBe(200);
       expect(response.headers["content-type"]).toBe("image/png");
       const receivedText = response.text || (response.body && response.body.toString()) || "";
       expect(receivedText).toBe("fake image data");
-      expect(global.fetch).toHaveBeenCalledWith("https://asset.1min.ai/images/test.png");
+      expect(global.fetch).toHaveBeenCalledWith(
+        "https://asset.1min.ai/images/test.png",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    });
+
+    test("should reject oversized upstream assets by Content-Length", async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        headers: new Headers({
+          "content-type": "image/png",
+          "content-length": String(50 * 1024 * 1024 + 1),
+        }),
+        body: new ReadableStream({
+          start(controller) {
+            controller.close();
+          },
+        }),
+      });
+
+      const response = await request(app).get("/api/assets/proxy").query({ key: "images/too-large.png" });
+
+      expect(response.status).toBe(413);
+      expect(response.body.error).toContain("too large");
+    });
+
+    test("should return 504 when upstream asset fetch is aborted", async () => {
+      const abortError = new Error("aborted");
+      abortError.name = "AbortError";
+      global.fetch = jest.fn().mockRejectedValue(abortError);
+
+      const response = await request(app).get("/api/assets/proxy").query({ key: "images/slow.png" });
+
+      expect(response.status).toBe(504);
+      expect(response.body.error).toContain("timed out");
     });
 
     test("should reject untrusted hosts", async () => {
@@ -316,7 +392,7 @@ describe("AI Routes Integration Tests", () => {
         start(controller) {
           controller.enqueue(new TextEncoder().encode("fake s3 image data"));
           controller.close();
-        }
+        },
       });
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,
@@ -332,7 +408,10 @@ describe("AI Routes Integration Tests", () => {
       expect(response.headers["content-type"]).toBe("image/png");
       const receivedText = response.text || (response.body && response.body.toString()) || "";
       expect(receivedText).toBe("fake s3 image data");
-      expect(global.fetch).toHaveBeenCalledWith("https://s3.us-east-1.amazonaws.com/asset.1min.ai/images/test.png");
+      expect(global.fetch).toHaveBeenCalledWith(
+        "https://s3.us-east-1.amazonaws.com/asset.1min.ai/images/test.png",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
     });
 
     test("should reject path-style Amazon S3 URLs for untrusted bucket", async () => {

@@ -24,17 +24,40 @@
     </div>
 
     <!-- Model Picker Dropdown (shared, absolutely positioned) -->
-    <div id="modelPickerDropdown" class="model-picker-dropdown u-hidden">
+    <div
+      id="modelPickerDropdown"
+      class="model-picker-dropdown u-hidden"
+      role="dialog"
+      aria-modal="false"
+      aria-label="モデル選択"
+    >
       <div class="model-picker-search-row">
-        <input id="modelPickerSearch" type="text" placeholder="モデルを検索..." autocomplete="off" />
+        <input
+          id="modelPickerSearch"
+          type="text"
+          placeholder="モデルを検索..."
+          autocomplete="off"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded="false"
+          aria-controls="modelPickerList"
+        />
       </div>
-      <div id="modelPickerTabs" class="model-picker-tabs">
-        <button type="button" class="picker-tab active" data-tag="all">すべて</button>
-        <button type="button" class="picker-tab" data-tag="flagship">フラグシップ</button>
-        <button type="button" class="picker-tab" data-tag="reasoning">思考・論理</button>
-        <button type="button" class="picker-tab" data-tag="fast">高速・軽量</button>
+      <div id="modelPickerTabs" class="model-picker-tabs" role="tablist" aria-label="モデルカテゴリ">
+        <button type="button" class="picker-tab active" data-tag="all" role="tab" aria-selected="true">
+          すべて
+        </button>
+        <button type="button" class="picker-tab" data-tag="flagship" role="tab" aria-selected="false">
+          フラグシップ
+        </button>
+        <button type="button" class="picker-tab" data-tag="reasoning" role="tab" aria-selected="false">
+          思考・論理
+        </button>
+        <button type="button" class="picker-tab" data-tag="fast" role="tab" aria-selected="false">
+          高速・軽量
+        </button>
       </div>
-      <div id="modelPickerList" class="model-picker-list"></div>
+      <div id="modelPickerList" class="model-picker-list" role="listbox" aria-label="利用可能なモデル"></div>
     </div>
 
     <div id="app">
@@ -148,6 +171,17 @@
             <span class="perf-mode-label">パフォーマンスモード (アニメーションOFF)</span>
           </label>
         </div>
+
+        <div
+          class="sidebar-resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="サイドバー幅を調整"
+          aria-valuemin="200"
+          aria-valuemax="320"
+          aria-valuenow="280"
+          tabindex="0"
+        ></div>
       </aside>
 
       <main class="main">
@@ -767,8 +801,20 @@
                 DEFAULT_CHAT_MODEL: <code>gpt-4o-mini</code><br />
                 DEFAULT_CODE_MODEL: <code>qwen3-coder-plus</code><br />
                 DEFAULT_IMAGE_MODEL: <code>gpt-image-2</code><br />
-                DEFAULT_IMAGE_EDITOR_MODEL: <code>gpt-image-2</code>
+                DEFAULT_IMAGE_EDITOR_MODEL: <code>gpt-image-2</code><br />
+                ASSET_PROXY_TIMEOUT_MS: <code>30000</code><br />
+                ASSET_PROXY_MAX_SIZE: <code>50mb</code>
               </p>
+            </div>
+            <div class="settings-danger-zone" aria-labelledby="localDataHeading">
+              <h3 id="localDataHeading" class="h3-white">ローカル保存データ</h3>
+              <p class="env-defaults-text">
+                会話ID、Web Search 設定、テーマ、パフォーマンスモード、差分表示設定などはブラウザの
+                localStorage に保存されます。 共有端末では必要に応じて削除してください。
+              </p>
+              <button id="clearLocalDataBtn" type="button" class="ghost small danger-action">
+                ローカル保存データを削除
+              </button>
             </div>
           </div>
         </section>

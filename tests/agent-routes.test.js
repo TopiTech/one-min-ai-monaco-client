@@ -67,6 +67,77 @@ describe("Agent Directory and Patch Routes", () => {
     });
   });
 
+  describe("GET/POST /api/agent/sessions/:id/files", () => {
+    const testFile = path.join(process.cwd(), "temp-agent-file-test.txt");
+
+    afterEach(async () => {
+      try {
+        await fs.unlink(testFile);
+      } catch {}
+    });
+
+    test("should write and read back a file in session context", async () => {
+      const writeResponse = await request(app)
+        .post(`/api/agent/sessions/${sessionId}/files`)
+        .send({ path: testFile, content: "hello agent\n" });
+
+      expect(writeResponse.status).toBe(200);
+      expect(writeResponse.body.ok).toBe(true);
+
+      const readResponse = await request(app)
+        .get(`/api/agent/sessions/${sessionId}/files`)
+        .query({ path: testFile });
+
+      expect(readResponse.status).toBe(200);
+      expect(readResponse.body.content).toBe("hello agent\n");
+    });
+
+    test("should read a specific slice of lines when startLine and/or endLine are provided", async () => {
+      const content = "line1\nline2\nline3\nline4\nline5";
+      await fs.writeFile(testFile, content, "utf-8");
+
+      // both startLine and endLine
+      let readResponse = await request(app)
+        .get(`/api/agent/sessions/${sessionId}/files`)
+        .query({ path: testFile, startLine: 2, endLine: 4 });
+
+      expect(readResponse.status).toBe(200);
+      expect(readResponse.body.content).toBe("line2\nline3\nline4");
+
+      // startLine only
+      readResponse = await request(app)
+        .get(`/api/agent/sessions/${sessionId}/files`)
+        .query({ path: testFile, startLine: 3 });
+
+      expect(readResponse.status).toBe(200);
+      expect(readResponse.body.content).toBe("line3\nline4\nline5");
+
+      // endLine only
+      readResponse = await request(app)
+        .get(`/api/agent/sessions/${sessionId}/files`)
+        .query({ path: testFile, endLine: 2 });
+
+      expect(readResponse.status).toBe(200);
+      expect(readResponse.body.content).toBe("line1\nline2");
+    });
+
+    test("should reject invalid startLine and endLine values", async () => {
+      await fs.writeFile(testFile, "a\nb", "utf-8");
+
+      // startLine > endLine
+      let response = await request(app)
+        .get(`/api/agent/sessions/${sessionId}/files`)
+        .query({ path: testFile, startLine: 2, endLine: 1 });
+      expect(response.status).toBe(400);
+
+      // startLine 0
+      response = await request(app)
+        .get(`/api/agent/sessions/${sessionId}/files`)
+        .query({ path: testFile, startLine: 0 });
+      expect(response.status).toBe(400);
+    });
+  });
+
   describe("POST /api/agent/sessions/:id/diff", () => {
     const testFile = path.join(process.cwd(), "temp-diff-test.txt");
 

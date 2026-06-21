@@ -226,7 +226,10 @@ function isPathProtectedByRoot(resolvedPath, root, patterns) {
     realRoot = root;
   }
 
-  const isSubPath = resolvedPath === realRoot || resolvedPath.startsWith(realRoot + path.sep);
+  const normalizedResolvedPath = process.platform === "win32" ? resolvedPath.toLowerCase() : resolvedPath;
+  const normalizedRealRoot = process.platform === "win32" ? realRoot.toLowerCase() : realRoot;
+  const isSubPath =
+    normalizedResolvedPath === normalizedRealRoot || normalizedResolvedPath.startsWith(normalizedRealRoot + path.sep);
   if (!isSubPath) {
     return false;
   }
@@ -256,12 +259,17 @@ export function isProtectedPath(resolvedPath) {
  * @returns {boolean} True if the path is protected from destructive operations.
  */
 export function isWriteProtectedPath(resolvedPath) {
+  const normalizedResolvedPath = process.platform === "win32" ? resolvedPath.toLowerCase() : resolvedPath;
   if (
     getAllowedRoots().some((root) => {
       try {
-        return fs.realpathSync(root) === resolvedPath;
+        const realRoot = fs.realpathSync(root);
+        const normalizedRealRoot = process.platform === "win32" ? realRoot.toLowerCase() : realRoot;
+        return normalizedRealRoot === normalizedResolvedPath;
       } catch {
-        return path.resolve(root) === resolvedPath;
+        const resolvedRoot = path.resolve(root);
+        const normalizedResolvedRoot = process.platform === "win32" ? resolvedRoot.toLowerCase() : resolvedRoot;
+        return normalizedResolvedRoot === normalizedResolvedPath;
       }
     })
   ) {

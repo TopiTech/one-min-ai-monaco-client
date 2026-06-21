@@ -455,6 +455,7 @@ let lastFetchStatus = {
   ok: true,
   lastSync: null,
   error: null,
+  source: "fallback",
 };
 
 export function getModelSyncStatus() {
@@ -488,11 +489,17 @@ async function fetchModels() {
       if (newCodeModels.length > 0) _codeModels = newCodeModels;
       if (newImageModels.length > 0) _imageModels = newImageModels;
 
-      lastFetchStatus = { ok: true, lastSync: new Date().toISOString(), error: null };
+      lastFetchStatus = { ok: true, lastSync: new Date().toISOString(), error: null, source: "remote" };
       logger.info("Models dynamically fetched and updated from 1min.ai API.");
     } else {
-      // If response is OK but structure is unexpected, treat as silent fallback
-      lastFetchStatus = { ok: true, lastSync: new Date().toISOString(), error: null };
+      // If response is OK but structure is unexpected, treat as fallback so
+      // the UI can communicate why the built-in list is being used.
+      lastFetchStatus = {
+        ok: true,
+        lastSync: new Date().toISOString(),
+        error: "Unexpected model API response shape; using built-in fallbacks.",
+        source: "fallback",
+      };
       logger.debug("Models sync returned unexpected format. Using fallbacks.");
     }
   } catch (err) {
@@ -500,10 +507,20 @@ async function fetchModels() {
       // H-5: 1min.ai has removed the /api/models endpoint from the public API.
       // We now treat 404 as "feature unavailable" rather than a system error,
       // avoiding annoying UI toasts while keeping functionality via fallbacks.
-      lastFetchStatus = { ok: true, lastSync: new Date().toISOString(), error: null };
+      lastFetchStatus = {
+        ok: true,
+        lastSync: new Date().toISOString(),
+        error: "1min.ai /api/models is unavailable; using built-in fallbacks.",
+        source: "fallback",
+      };
       logger.info("1min.ai /api/models is unavailable (404). Using hardcoded fallback models.");
     } else {
-      lastFetchStatus = { ok: false, lastSync: lastFetchStatus.lastSync, error: err.message };
+      lastFetchStatus = {
+        ok: false,
+        lastSync: lastFetchStatus.lastSync,
+        error: err.message,
+        source: "fallback",
+      };
       logger.error("Failed to fetch models dynamically from 1min.ai API.", {
         error: err.message,
         status: err.status,

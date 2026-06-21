@@ -70,11 +70,12 @@ describe("config/models.js", () => {
   // getModelSyncStatus
   // ----------------------------------------------------------------
   describe("getModelSyncStatus", () => {
-    test("returns an object with ok, lastSync, error", async () => {
+    test("returns an object with ok, lastSync, error, and source", async () => {
       const { getModelSyncStatus } = await import("../config/models.js");
       const status = getModelSyncStatus();
       expect(status).toHaveProperty("ok");
       expect(status).toHaveProperty("lastSync");
+      expect(status).toHaveProperty("source");
     });
   });
 
@@ -97,6 +98,7 @@ describe("config/models.js", () => {
       const status = await import("../config/models.js").then((m) => m.getModelSyncStatus());
       expect(status.ok).toBe(true);
       expect(status.lastSync).not.toBeNull();
+      expect(status.source).toBe("remote");
     });
   });
 
@@ -112,6 +114,8 @@ describe("config/models.js", () => {
 
       const status = getModelSyncStatus();
       expect(status.ok).toBe(true); // 404 = feature unavailable, not system error
+      expect(status.source).toBe("fallback");
+      expect(status.error).toContain("unavailable");
     });
   });
 
@@ -128,6 +132,7 @@ describe("config/models.js", () => {
       const status = getModelSyncStatus();
       expect(status.ok).toBe(false);
       expect(status.error).toBeDefined();
+      expect(status.source).toBe("fallback");
     });
   });
 

@@ -7,6 +7,8 @@ const FALLBACK = {
   port: 3000,
   maxFileSize: 25 * 1024 * 1024,
   maxJsonBodySize: "2mb",
+  assetProxyTimeoutMs: 30_000,
+  assetProxyMaxSize: 50 * 1024 * 1024,
   apiTimeout: 60_000,
   apiRetryAttempts: 3,
   apiRetryDelay: 2_000,
@@ -33,6 +35,8 @@ const MIN_SESSION_TTL = 60_000;
 const MAX_SESSION_TTL = 24 * 60 * 60 * 1000; // 24h
 const MIN_API_TIMEOUT = 1_000;
 const MAX_API_TIMEOUT = 10 * 60 * 1000;
+const MIN_ASSET_PROXY_TIMEOUT = 1_000;
+const MAX_ASSET_PROXY_TIMEOUT = 5 * 60 * 1000;
 const MIN_FILE_SIZE = 1;
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
@@ -115,9 +119,23 @@ export const serverConfig = {
   maxFileSize: parseSize(process.env.MAX_FILE_SIZE, FALLBACK.maxFileSize),
   maxJsonBodySize: parseBodySize(process.env.MAX_JSON_BODY_SIZE, FALLBACK.maxJsonBodySize),
 
+  // Asset proxy guardrails
+  assetProxyTimeoutMs: intInRange(
+    process.env.ASSET_PROXY_TIMEOUT_MS,
+    MIN_ASSET_PROXY_TIMEOUT,
+    MAX_ASSET_PROXY_TIMEOUT,
+    FALLBACK.assetProxyTimeoutMs,
+  ),
+  assetProxyMaxSize: parseSize(process.env.ASSET_PROXY_MAX_SIZE, FALLBACK.assetProxyMaxSize),
+
   // API settings
   apiTimeout: intInRange(process.env.API_TIMEOUT, MIN_API_TIMEOUT, MAX_API_TIMEOUT, FALLBACK.apiTimeout),
-  apiRetryAttempts: intInRange(process.env.API_RETRY_ATTEMPTS, MIN_RETRY, MAX_RETRY, FALLBACK.apiRetryAttempts),
+  apiRetryAttempts: intInRange(
+    process.env.API_RETRY_ATTEMPTS,
+    MIN_RETRY,
+    MAX_RETRY,
+    FALLBACK.apiRetryAttempts,
+  ),
   apiRetryDelay: intInRange(process.env.API_RETRY_DELAY, 0, MAX_API_TIMEOUT, FALLBACK.apiRetryDelay),
 
   // Default models
@@ -170,7 +188,12 @@ export const serverConfig = {
   agentMaxLoops: intInRange(process.env.AGENT_MAX_LOOPS, MIN_LOOPS, MAX_LOOPS, FALLBACK.agentMaxLoops),
 
   // Session
-  sessionTtlMs: intInRange(process.env.SESSION_TTL_MS, MIN_SESSION_TTL, MAX_SESSION_TTL, FALLBACK.sessionTtlMs),
+  sessionTtlMs: intInRange(
+    process.env.SESSION_TTL_MS,
+    MIN_SESSION_TTL,
+    MAX_SESSION_TTL,
+    FALLBACK.sessionTtlMs,
+  ),
 
   // Logging
   logLevel: parseLogLevel(process.env.LOG_LEVEL),

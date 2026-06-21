@@ -524,6 +524,56 @@ router.post("/images/generate", async (req, res, next) => {
   }
 });
 
+function extractAssetKey(imageUrl) {
+  if (!imageUrl || typeof imageUrl !== "string") return imageUrl;
+
+  let decoded = imageUrl;
+
+  // Handle local proxy URLs
+  if (decoded.startsWith("/api/assets/proxy")) {
+    try {
+      const parsedProxy = new URL(decoded, "http://localhost");
+      const keyParam = parsedProxy.searchParams.get("key");
+      const urlParam = parsedProxy.searchParams.get("url");
+      if (keyParam) {
+        return extractAssetKey(keyParam);
+      }
+      if (urlParam) {
+        return extractAssetKey(urlParam);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // Handle full HTTP/HTTPS URLs
+  if (/^https?:\/\//i.test(decoded)) {
+    try {
+      const parsed = new URL(decoded);
+      // Path-style S3 URL: https://s3.us-east-1.amazonaws.com/asset.1min.ai/images/...
+      if (/^s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname)) {
+        if (parsed.pathname.startsWith("/asset.1min.ai/")) {
+          return parsed.pathname.substring("/asset.1min.ai/".length);
+        }
+      }
+      // Virtual-host S3 URL or direct domain: https://asset.1min.ai/images/...
+      const isAllowedS3OrDomain =
+        parsed.hostname === "asset.1min.ai" ||
+        /^asset\.1min\.ai\.s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname) ||
+        /^asset\.1min\.ai\.s3-accelerate\.amazonaws\.com$/i.test(parsed.hostname) ||
+        /^asset\.1min\.ai\.s3\.dualstack\.[\w-]+\.amazonaws\.com$/i.test(parsed.hostname);
+
+      if (isAllowedS3OrDomain) {
+        return parsed.pathname.replace(/^\//, "");
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  return decoded.replace(/^\//, "");
+}
+
 router.post("/images/text-editor", async (req, res, next) => {
   try {
     const result = imageEditorSchema.safeParse(req.body);
@@ -536,7 +586,7 @@ router.post("/images/text-editor", async (req, res, next) => {
     const isGptImage = selectedModel.startsWith("gpt-image");
 
     const promptObject = {
-      imageUrl: data.imageUrl,
+      imageUrl: extractAssetKey(data.imageUrl),
       prompt: data.prompt,
       size: data.size,
       n: data.n,
@@ -695,6 +745,7 @@ router.post("/code/generate", async (req, res, next) => {
     const dataRes = await callOneMin("/api/features", {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      timeout: 600000,
     });
     if (isFailedResponse(dataRes)) {
       const err = new Error(`1min.ai code generate failed: ${extractFailureMessage(dataRes)}`);
@@ -897,6 +948,7 @@ router.post("/agent/chat", async (req, res, next) => {
     const dataRes = await callOneMin("/api/chat-with-ai", {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      timeout: 600000,
     });
     if (isFailedResponse(dataRes)) {
       const err = new Error(`1min.ai agent chat failed: ${extractFailureMessage(dataRes)}`);

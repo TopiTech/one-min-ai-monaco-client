@@ -125,6 +125,7 @@ export async function callOneMin(
     // effect would be duplicated (e.g. POST /api/conversations, POST /api/assets).
     // Callers that mutate state on the upstream should pass `idempotent: false`.
     idempotent = method.toUpperCase() === "GET",
+    timeout,
   } = {},
 ) {
   const apiKey = requireApiKey();
@@ -148,13 +149,17 @@ export async function callOneMin(
   }
 
   const makeRequest = () =>
-    fetchWithTimeout(`${API_BASE}${pathname}`, {
-      method,
-      headers: baseHeaders,
-      body,
-      signal,
-      isStreaming: raw,
-    });
+    fetchWithTimeout(
+      `${API_BASE}${pathname}`,
+      {
+        method,
+        headers: baseHeaders,
+        body,
+        signal,
+        isStreaming: raw,
+      },
+      timeout,
+    );
 
   let lastError = new Error(`All ${effectiveRetries + 1} retry attempts failed for ${pathname}`);
 

@@ -116,6 +116,28 @@ function providerToSlug(provider) {
   );
 }
 
+function syncPickerActiveDescendant() {
+  const search = document.getElementById("modelPickerSearch");
+  const selected = document.querySelector("#modelPickerList .model-picker-item.selected");
+  if (!search) return;
+  if (selected?.id) {
+    search.setAttribute("aria-activedescendant", selected.id);
+  } else {
+    search.removeAttribute("aria-activedescendant");
+  }
+}
+
+function setPickerSelectedItem(item) {
+  const list = item?.closest("#modelPickerList") || document.getElementById("modelPickerList");
+  if (!list) return;
+  for (const other of list.querySelectorAll(".model-picker-item")) {
+    const isSelected = other === item;
+    other.classList.toggle("selected", isSelected);
+    other.setAttribute("aria-selected", String(isSelected));
+  }
+  syncPickerActiveDescendant();
+}
+
 function renderPickerList(models, search = "", tag = "all") {
   const list = document.getElementById("modelPickerList");
   if (!list) return;
@@ -218,6 +240,9 @@ function renderPickerList(models, search = "", tag = "all") {
       if (!item.id) {
         item.id = `picker-opt-${m.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
       }
+      item.addEventListener("focus", () => {
+        setPickerSelectedItem(item);
+      });
       item.onclick = () => selectModel(m);
       list.appendChild(item);
     }
@@ -275,18 +300,19 @@ function openModelPicker(btn, type) {
 
   // Reset tabs
   document.querySelectorAll(".picker-tab").forEach((tab) => {
-    tab.classList.toggle("active", tab.dataset.tag === "all");
+    const isActive = tab.dataset.tag === "all";
+    tab.classList.toggle("active", isActive);
+    tab.setAttribute("aria-selected", String(isActive));
   });
 
   search.value = "";
+  search.setAttribute("aria-expanded", "true");
   refreshPickerList();
 
   // A11Y-5: Set aria-selected on initial render
   const firstItem = document.querySelector("#modelPickerList .model-picker-item");
-  if (firstItem) firstItem.setAttribute("aria-selected", "true");
-
-  // Cache current inline styles to restore later
-  const prevDisplay = dropdown.style.display;
+  const currentItem = document.querySelector("#modelPickerList .model-picker-item.selected");
+  setPickerSelectedItem(currentItem || firstItem);
 
   // Hide before making visible to prevent layout shift
   dropdown.style.visibility = "hidden";
@@ -335,10 +361,17 @@ function openModelPicker(btn, type) {
   _tabHandlers = [];
   document.querySelectorAll(".picker-tab").forEach((tab) => {
     const handler = () => {
-      document.querySelectorAll(".picker-tab").forEach((t) => t.classList.remove("active"));
+      document.querySelectorAll(".picker-tab").forEach((t) => {
+        t.classList.remove("active");
+        t.setAttribute("aria-selected", "false");
+      });
       tab.classList.add("active");
+      tab.setAttribute("aria-selected", "true");
       _activeTag = tab.dataset.tag;
       refreshPickerList();
+      const firstItem = document.querySelector("#modelPickerList .model-picker-item");
+      if (firstItem) firstItem.focus();
+      syncPickerActiveDescendant();
     };
     tab.addEventListener("click", handler);
     _tabHandlers.push({ remove: () => tab.removeEventListener("click", handler) });
@@ -379,6 +412,10 @@ function closeModelPicker() {
     dropdown.style.visibility = "";
   }
   // Clean up event handlers to prevent listener leaks
+  if (search) {
+    search.setAttribute("aria-expanded", "false");
+    search.removeAttribute("aria-activedescendant");
+  }
   if (search && _searchHandler) {
     search.removeEventListener("input", _searchHandler);
     _searchHandler = null;
@@ -405,6 +442,7 @@ function navigatePickerItems(direction) {
     nextIdx = direction === "down" ? Math.min(currentIdx + 1, items.length - 1) : Math.max(currentIdx - 1, 0);
   }
   items[nextIdx].focus();
+  syncPickerActiveDescendant();
   items[nextIdx].scrollIntoView({ block: "nearest" });
 }
 
@@ -427,14 +465,15 @@ export function initModelPickers() {
     }
     if (_activePickerType) {
       const tag = e.target?.tagName;
-      if (tag === "TEXTAREA" || tag === "BUTTON") return;
+      const isPickerItem = e.target?.classList?.contains("model-picker-item");
+      if (tag === "TEXTAREA" || (tag === "BUTTON" && !isPickerItem)) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
         navigatePickerItems("down");
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         navigatePickerItems("up");
-      } else if (e.key === "Enter" && e.target?.classList?.contains("model-picker-item")) {
+      } else if (e.key === "Enter" && isPickerItem) {
         e.preventDefault();
         e.target.click();
       }

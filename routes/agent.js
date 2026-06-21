@@ -2,6 +2,7 @@ import express from "express";
 import crypto from "crypto";
 import { spawn } from "child_process";
 import { executeCommand, checkCommandSafety } from "../services/command-runner.js";
+import { detectBinaryContent } from "../utils/mime-guard.js";
 import {
   validatePath,
   revalidateRealPath,
@@ -33,7 +34,23 @@ const approveSchema = z.object({
 });
 
 const fileReadSchema = z.object({
-  path: z.string({ required_error: "path is required" }).min(1, "path is required")
+  path: z.string({ required_error: "path is required" }).min(1, "path is required"),
+  startLine: z.preprocess(
+    (val) => (val === undefined || val === null || val === "" ? undefined : Number(val)),
+    z.number().int().min(1).optional()
+  ),
+  endLine: z.preprocess(
+    (val) => (val === undefined || val === null || val === "" ? undefined : Number(val)),
+    z.number().int().min(1).optional()
+  ),
+}).refine((data) => {
+  if (data.startLine !== undefined && data.endLine !== undefined) {
+    return data.startLine <= data.endLine;
+  }
+  return true;
+}, {
+  message: "startLine must be less than or equal to endLine",
+  path: ["startLine"],
 });
 
 const fileWriteSchema = z.object({
@@ -297,14 +314,14 @@ function cleanupExpiredSessions() {
           const filePath = path.join(DATA_DIR, file);
           const stat = await fs.stat(filePath);
           if (now - stat.mtimeMs > 30 * 60 * 1000) {
-            await fs.unlink(filePath).catch(() => {});
+            await fs.unlink(filePath).catch(() => { });
           }
         }
       }
     } catch (err) {
       // Best-effort cleanup, ignore errors
     }
-  })().catch(() => {});
+  })().catch(() => { });
 }
 
 const cleanupTimer = setInterval(cleanupExpiredSessions, CLEANUP_INTERVAL_MS);
@@ -483,7 +500,7 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
         res.setHeader("Cache-Control", "no-cache");
         res.setHeader("Connection", "keep-alive");
         res.flushHeaders();
-        
+
         onOutput = (type, text) => {
           res.write(`event: ${type}\n`);
           res.write(`data: ${JSON.stringify({ text })}\n\n`);
@@ -583,7 +600,7 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
         res.setHeader("Cache-Control", "no-cache");
         res.setHeader("Connection", "keep-alive");
         res.flushHeaders();
-        
+
         onOutput = (type, text) => {
           res.write(`event: ${type}\n`);
           res.write(`data: ${JSON.stringify({ text })}\n\n`);
@@ -640,7 +657,7 @@ router.get("/sessions/:id/files", async (req, res, next) => {
 
     const resultQuery = fileReadSchema.safeParse(req.query);
     if (!resultQuery.success) return res.status(400).json({ error: resultQuery.error.issues[0]?.message || "Validation error" });
-    const filePath = resultQuery.data.path;
+    const { path: filePath, startLine, endLine } = resultQuery.data;
 
     const resolvedPath = validatePath(resolveAgentPath(filePath, session.cwd));
     assertNotProtectedPath(resolvedPath);
@@ -657,11 +674,23 @@ router.get("/sessions/:id/files", async (req, res, next) => {
       });
     }
 
-    const content = await fs.readFile(realPath, "utf-8");
+    const buffer = await fs.readFile(realPath);
+    if (detectBinaryContent(buffer)) {
+      return res.status(400).json({ error: "Cannot read binary files as text in the agent." });
+    }
+
+    const content = buffer.toString("utf-8");
+    let finalContent = content;
+    if (startLine !== undefined || endLine !== undefined) {
+      const lines = content.split(/\r?\n/);
+      const start = startLine !== undefined ? startLine - 1 : 0;
+      const end = endLine !== undefined ? endLine : lines.length;
+      finalContent = lines.slice(start, end).join("\n");
+    }
 
     res.json({
       path: realPath,
-      content,
+      content: finalContent,
     });
   } catch (err) {
     next(err);

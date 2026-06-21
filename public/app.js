@@ -118,7 +118,7 @@ const state = {
 
 // Theme toggle handler
 function toggleTheme() {
-  const next = toggleThemeFn();
+  toggleThemeFn();
   editorManager.updateTheme();
   // Update diff editor theme if it exists
   if (diffEditor) {
@@ -248,11 +248,17 @@ async function checkHealth() {
         duration: 10000,
       });
       setStatus("ヘルスチェック失敗", "err");
-    } else if (data.models && !data.models.ok) {
-      console.warn("Model sync failure:", data.models.error);
-      toast.warning(`モデル情報の同期に失敗しています。以前のデータを使用します: ${data.models.error}`, {
-        duration: 8000,
-      });
+    } else if (data.models) {
+      if (!data.models.ok) {
+        console.warn("Model sync failure:", data.models.error);
+        toast.warning(`モデル情報の同期に失敗しています。以前のデータを使用します: ${data.models.error}`, {
+          duration: 8000,
+        });
+      } else if (data.models.source === "fallback") {
+        toast.info("1min.ai のモデル一覧APIが利用できないため、内蔵モデル一覧を使用しています。", {
+          duration: 6000,
+        });
+      }
     }
   } catch (e) {
     console.error("Health check failed:", e);
@@ -645,7 +651,7 @@ function toggleTimelineResult(stepId) {
   if (toggleSpan) {
     toggleSpan.textContent = willBeHidden ? "▶ 実行出力を表示" : "▼ 実行出力を非表示";
   }
-};
+}
 
 function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) {
   const log = dom.agentActivityLog;
@@ -943,17 +949,17 @@ async function processCommandStream(res, stepId) {
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
 
-    let boundary = buffer.indexOf('\n\n');
+    let boundary = buffer.indexOf("\n\n");
     while (boundary !== -1) {
       const chunk = buffer.slice(0, boundary);
       buffer = buffer.slice(boundary + 2);
 
       let eventName = "message";
       let data = "";
-      for (const line of chunk.split('\n')) {
-        if (line.startsWith('event: ')) {
+      for (const line of chunk.split("\n")) {
+        if (line.startsWith("event: ")) {
           eventName = line.slice(7);
-        } else if (line.startsWith('data: ')) {
+        } else if (line.startsWith("data: ")) {
           data += line.slice(6);
         }
       }
@@ -961,9 +967,9 @@ async function processCommandStream(res, stepId) {
       if (data) {
         try {
           const parsed = JSON.parse(data);
-          if (eventName === 'done') {
+          if (eventName === "done") {
             finalResult = parsed;
-          } else if (eventName === 'stdout' || eventName === 'stderr') {
+          } else if (eventName === "stdout" || eventName === "stderr") {
             if (resultBox) {
               resultBox.textContent += parsed.text;
               resultBox.scrollTop = resultBox.scrollHeight;
@@ -973,7 +979,7 @@ async function processCommandStream(res, stepId) {
           console.error("Failed to parse SSE data", e);
         }
       }
-      boundary = buffer.indexOf('\n\n');
+      boundary = buffer.indexOf("\n\n");
     }
   }
   return finalResult;
@@ -981,10 +987,13 @@ async function processCommandStream(res, stepId) {
 
 const AGENT_TOOL_HANDLERS = {
   read_file: async ({ sessionId, workspaceRoot, params }) => {
-    const { path: filePath } = params;
+    const { path: filePath, startLine, endLine } = params;
     if (!filePath) throw new Error("path パラメータが必要です");
     const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
-    const data = await api(`/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`);
+    let url = `/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`;
+    if (startLine !== undefined) url += `&startLine=${startLine}`;
+    if (endLine !== undefined) url += `&endLine=${endLine}`;
+    const data = await api(url);
     await openFile(fullPath);
     return { text: data.content, success: true };
   },
@@ -1073,7 +1082,12 @@ const AGENT_TOOL_HANDLERS = {
     if (contentType.includes("application/json")) {
       runRes = await runResRaw.json();
     } else {
-      const stepId = addAgentTimelineStep("action", `コマンド実行: ${command.split(" ")[0]}`, "自動承認により実行を開始します...", "");
+      const stepId = addAgentTimelineStep(
+        "action",
+        `コマンド実行: ${command.split(" ")[0]}`,
+        "自動承認により実行を開始します...",
+        "",
+      );
       runRes = await processCommandStream(runResRaw, stepId);
     }
 
@@ -1104,7 +1118,12 @@ const AGENT_TOOL_HANDLERS = {
             if (resContentType.includes("application/json")) {
               res = await resRaw.json();
             } else {
-              const stepId = addAgentTimelineStep("action", `コマンド実行: ${command.split(" ")[0]}`, "実行を開始します...", "");
+              const stepId = addAgentTimelineStep(
+                "action",
+                `コマンド実行: ${command.split(" ")[0]}`,
+                "実行を開始します...",
+                "",
+              );
               res = await processCommandStream(resRaw, stepId);
             }
             resolve({ approved: true, result: res });
@@ -1185,9 +1204,9 @@ async function runAgentLoop(initialInstruction) {
 <thought>...</thought><call_tool name="tool名"><parameter name="パラメータ名">値</parameter></call_tool>
 
 1. read_file
-   - パラメータ: { "path": "ファイルパス" }
-   - 目的: 指定したファイルの内容を読み取る。ファイルを変更する前にすべて現在の内容を確認するために使用すること。
-   <call_tool name="read_file"><parameter name="path">utils/helper.js</parameter></call_tool>
+   - パラメータ: { "path": "ファイルパス", "startLine": 行番号(任意/1開始), "endLine": 行番号(任意/1開始) }
+   - 目的: 指定したファイルの内容を読み取る。大きなファイルや特定箇所のみを見たい場合、startLineとendLineで範囲を指定して分割して読み込むことが可能。
+   <call_tool name="read_file"><parameter name="path">utils/helper.js</parameter><parameter name="startLine">10</parameter><parameter name="endLine">30</parameter></call_tool>
 
 2. write_file
     - 【必須】このツールの <parameter> 値は XML テキストなので、& < > はそれぞれ &amp; &lt; &gt; に、完全なコードは省略せずにエスケープして出力してください。
@@ -1285,6 +1304,7 @@ ${workspaceFilesText}
           model: modelSelected,
           webSearch: false,
         }),
+        timeout: 600000,
       });
     } catch (e) {
       addAgentTimelineStep("error", "AI通信失敗", `AIとの通信に失敗しました: ${e.message}`);
@@ -2050,18 +2070,37 @@ initCreditSavingMode();
 
   let isDragging = false;
 
-  function applyWidth(clientX) {
+  function getResizeMetrics() {
     const minW = parseInt(getComputedStyle(root).getPropertyValue("--sidebar-min-width")) || 200;
     const maxW = parseInt(getComputedStyle(root).getPropertyValue("--sidebar-max-width")) || 320;
+    const current = parseInt(getComputedStyle(root).getPropertyValue("--sidebar-width")) || 280;
+    return { minW, maxW, current };
+  }
+
+  function syncResizeAria(width = getResizeMetrics().current) {
+    const { minW, maxW } = getResizeMetrics();
+    handle.setAttribute("aria-valuemin", String(minW));
+    handle.setAttribute("aria-valuemax", String(maxW));
+    handle.setAttribute("aria-valuenow", String(width));
+  }
+
+  function applyWidth(clientX) {
+    const { minW, maxW } = getResizeMetrics();
     let w = clientX;
     if (w < minW) w = minW;
     if (w > maxW) w = maxW;
     root.style.setProperty("--sidebar-width", w + "px");
+    syncResizeAria(w);
   }
+
+  const setDragging = (dragging) => {
+    isDragging = dragging;
+    syncResizeAria();
+  };
 
   // Mouse events
   handle.addEventListener("mousedown", (e) => {
-    isDragging = true;
+    setDragging(true);
     e.preventDefault();
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
@@ -2074,39 +2113,62 @@ initCreditSavingMode();
 
   document.addEventListener("mouseup", () => {
     if (isDragging) {
-      isDragging = false;
+      setDragging(false);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     }
   });
 
   // Touch events
-  handle.addEventListener("touchstart", (e) => {
-    isDragging = true;
-    document.body.style.userSelect = "none";
-  }, { passive: true });
+  handle.addEventListener(
+    "touchstart",
+    () => {
+      setDragging(true);
+      document.body.style.userSelect = "none";
+    },
+    { passive: true },
+  );
 
-  document.addEventListener("touchmove", (e) => {
-    if (!isDragging) return;
-    const touch = e.touches[0];
-    if (touch) applyWidth(touch.clientX);
-  }, { passive: true });
+  document.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!isDragging) return;
+      const touch = e.touches[0];
+      if (touch) applyWidth(touch.clientX);
+    },
+    { passive: true },
+  );
 
   document.addEventListener("touchend", () => {
     if (isDragging) {
-      isDragging = false;
+      setDragging(false);
       document.body.style.userSelect = "";
     }
   });
 
   // Keyboard support
   handle.addEventListener("keydown", (e) => {
-    const current = parseInt(getComputedStyle(root).getPropertyValue("--sidebar-width")) || 280;
+    const { minW, maxW, current } = getResizeMetrics();
     const step = e.shiftKey ? 20 : 5;
+    let nextWidth = current;
     if (e.key === "ArrowLeft") {
-      root.style.setProperty("--sidebar-width", Math.max(200, current - step) + "px");
+      e.preventDefault();
+      nextWidth = Math.max(minW, current - step);
     } else if (e.key === "ArrowRight") {
-      root.style.setProperty("--sidebar-width", Math.min(320, current + step) + "px");
+      e.preventDefault();
+      nextWidth = Math.min(maxW, current + step);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      nextWidth = minW;
+    } else if (e.key === "End") {
+      e.preventDefault();
+      nextWidth = maxW;
+    } else {
+      return;
     }
+    root.style.setProperty("--sidebar-width", nextWidth + "px");
+    syncResizeAria(nextWidth);
   });
+
+  syncResizeAria();
 })();
