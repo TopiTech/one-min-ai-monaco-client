@@ -1297,6 +1297,8 @@ ${workspaceFilesText}
 
   let loopCount = 0;
   let maxLoops = 20;
+  let consecutiveParseErrors = 0;
+  const MAX_CONSECUTIVE_ERRORS = 3;
   try {
     const agentConfig = await api("/api/agent/config");
     if (agentConfig.maxLoops) maxLoops = agentConfig.maxLoops;
@@ -1353,6 +1355,7 @@ ${workspaceFilesText}
     }
 
     if (parsed.toolCall) {
+      consecutiveParseErrors = 0;
       const toolName = parsed.toolCall.name;
       const params = parsed.toolCall.params;
 
@@ -1414,6 +1417,17 @@ ${workspaceFilesText}
       state.agent.history.push({ role: "user", content: feedbackMsg });
       trimAgentHistory(state.agent.history);
     } else {
+      consecutiveParseErrors++;
+      if (consecutiveParseErrors >= MAX_CONSECUTIVE_ERRORS) {
+        addAgentTimelineStep(
+          "error",
+          "パースエラー",
+          `AIがフォーマットに従わない状態が ${MAX_CONSECUTIVE_ERRORS} 回連続したため、安全のためにエージェントを強制停止します。`
+        );
+        setAgentStatus("エラー", "error");
+        break;
+      }
+      
       const errMsg = `エラー: ツール呼び出しまたはタスク完了タグ (<call_tool> または <finish>) が見つかりませんでした。\n指示に従って、思考を <thought>タグで囲み、直後に呼び出すツールを <call_tool> タグで指定してください。`;
       addAgentTimelineStep(
         "error",

@@ -142,6 +142,12 @@ function initClearLocalData() {
 
     if (!confirmed) return;
 
+    try {
+      await fetch("/api/agent/sessions/all", { method: "DELETE" });
+    } catch (err) {
+      console.error("Failed to delete server sessions", err);
+    }
+
     for (const key of LOCAL_STORAGE_KEYS) {
       localStorage.removeItem(key);
     }

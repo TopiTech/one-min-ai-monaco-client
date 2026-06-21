@@ -1180,6 +1180,21 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
 });
 
 /**
+ * Delete all sessions and pending commands.
+ */
+router.delete("/sessions/all", (req, res, next) => {
+  try {
+    sessions.clear();
+    pendingCommands.clear();
+    saveSessions();
+    savePendingCommands();
+    res.json({ ok: true, message: "All sessions and pending commands cleared" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * Get allowed roots.
  */
 router.get("/config", (_req, res) => {

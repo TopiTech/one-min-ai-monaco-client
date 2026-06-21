@@ -450,14 +450,35 @@ export function createApp(options = {}) {
 
   const app = express();
 
+  const customOrigins = (process.env.ALLOWED_CORS_ORIGINS || "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+  function isAllowedHostHeader(hostStr) {
+    if (/^127\.0\.0\.1(?::\d+)?$/i.test(hostStr) || /^localhost(?::\d+)?$/i.test(hostStr)) return true;
+    for (const o of customOrigins) {
+      try {
+        if (new URL(o).host === hostStr) return true;
+      } catch {
+        // ignore
+      }
+    }
+    return false;
+  }
+
+  function isAllowedOriginStr(originStr) {
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(originStr)) return true;
+    return customOrigins.includes(originStr);
+  }
+
   // Host header validation to prevent DNS Rebinding
   app.use((req, res, next) => {
     const host = req.get("host");
     if (!host) {
       return res.status(400).json({ error: "Host header is required" });
     }
-    const isAllowedHost = /^127\.0\.0\.1(?::\d+)?$/i.test(host) || /^localhost(?::\d+)?$/i.test(host);
-    if (!isAllowedHost) {
+    if (!isAllowedHostHeader(host)) {
       logger.warn("Blocked request with suspicious Host header", { host });
       return res.status(403).json({ error: "Access denied: Invalid Host header" });
     }
@@ -500,12 +521,11 @@ export function createApp(options = {}) {
     }),
   );
 
-  // CORS middleware: Restrict access exclusively to localhost/127.0.0.1 origins
+  // CORS middleware: Restrict access exclusively to allowed origins
   app.use((req, res, next) => {
     const origin = req.get("origin");
     if (origin) {
-      const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(origin);
-      if (isLocalhost) {
+      if (isAllowedOriginStr(origin)) {
         res.setHeader("Access-Control-Allow-Origin", origin);
         res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
         res.setHeader(
@@ -516,14 +536,14 @@ export function createApp(options = {}) {
         res.setHeader("Access-Control-Max-Age", "86400");
       } else {
         logger.warn("CORS request blocked from origin", { origin });
-        return res.status(403).json({ error: "CORS request blocked: Only localhost origins are allowed" });
+        return res.status(403).json({ error: "CORS request blocked: Origin not allowed" });
       }
     }
     if (req.method === "OPTIONS") {
-      // B-3: Even for preflight, verify the requested origin is localhost.
-      if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(origin)) {
+      // B-3: Even for preflight, verify the requested origin is allowed.
+      if (origin && !isAllowedOriginStr(origin)) {
         logger.warn("CORS preflight blocked from origin", { origin });
-        return res.status(403).json({ error: "CORS preflight blocked: Only localhost origins are allowed" });
+        return res.status(403).json({ error: "CORS preflight blocked: Origin not allowed" });
       }
       return res.sendStatus(204);
     }
