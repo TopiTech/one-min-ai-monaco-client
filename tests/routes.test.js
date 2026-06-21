@@ -310,5 +310,38 @@ describe("AI Routes Integration Tests", () => {
       expect(response.status).toBe(403);
       expect(response.body.error).toContain("Untrusted asset host");
     });
+
+    test("should allow path-style Amazon S3 URLs for trusted bucket", async () => {
+      const mockResponseBody = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("fake s3 image data"));
+          controller.close();
+        }
+      });
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        headers: new Headers({ "content-type": "image/png" }),
+        body: mockResponseBody,
+      });
+
+      const response = await request(app)
+        .get("/api/assets/proxy")
+        .query({ url: "https://s3.us-east-1.amazonaws.com/asset.1min.ai/images/test.png" });
+
+      expect(response.status).toBe(200);
+      expect(response.headers["content-type"]).toBe("image/png");
+      const receivedText = response.text || (response.body && response.body.toString()) || "";
+      expect(receivedText).toBe("fake s3 image data");
+      expect(global.fetch).toHaveBeenCalledWith("https://s3.us-east-1.amazonaws.com/asset.1min.ai/images/test.png");
+    });
+
+    test("should reject path-style Amazon S3 URLs for untrusted bucket", async () => {
+      const response = await request(app)
+        .get("/api/assets/proxy")
+        .query({ url: "https://s3.us-east-1.amazonaws.com/evil-bucket/malicious.png" });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toContain("Untrusted asset host");
+    });
   });
 });

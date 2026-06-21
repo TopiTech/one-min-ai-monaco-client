@@ -612,11 +612,19 @@ export function createApp(options = {}) {
         "asset.1min.ai",
         "api.1min.ai",
       ];
-      const isAllowedHost =
-        allowedHosts.some((h) => parsed.hostname === h) ||
+      const isVirtualHostS3 =
         /^asset\.1min\.ai\.s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname) ||
         /^asset\.1min\.ai\.s3-accelerate\.amazonaws\.com$/i.test(parsed.hostname) ||
         /^asset\.1min\.ai\.s3\.dualstack\.[\w-]+\.amazonaws\.com$/i.test(parsed.hostname);
+
+      const isPathStyleS3 =
+        /^s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname) &&
+        parsed.pathname.startsWith("/asset.1min.ai/");
+
+      const isAllowedHost =
+        allowedHosts.some((h) => parsed.hostname === h) ||
+        isVirtualHostS3 ||
+        isPathStyleS3;
       if (!isAllowedHost) {
         return res.status(403).json({ error: "Access denied: Untrusted asset host" });
       }
