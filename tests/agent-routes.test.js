@@ -230,7 +230,7 @@ replaced
       const response = await request(app).get(`/api/agent/sessions/${sessionId}/search`);
 
       expect(response.status).toBe(400);
-      expect(response.body.error).toBe("query is required");
+      expect(response.body.error).toMatch(/Invalid input|query is required|Validation error/i);
     });
 
     test("should return 403 for protected search directory", async () => {

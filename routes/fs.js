@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import { exec } from "child_process";
 import { promisify } from "util";
 import path from "path";
+import { z } from "zod";
 import {
   validatePath,
   revalidateRealPath,
@@ -40,6 +41,14 @@ const BINARY_EXTENSIONS = new Set([
 
 const router = express.Router();
 const execAsync = promisify(exec);
+
+const workspaceSelectSchema = z.object({ dir: z.string().min(1, "dir is required") });
+const listSchema = z.object({ dir: z.string().optional() });
+const readSchema = z.object({ path: z.string().min(1, "path is required") });
+const writeSchema = z.object({ path: z.string().min(1, "path is required"), content: z.string({ required_error: "content is required" }) });
+const createSchema = z.object({ path: z.string().min(1, "path is required"), type: z.enum(["file", "directory"]).default("file"), content: z.string().default("") });
+const deleteSchema = z.object({ path: z.string().min(1, "path is required") });
+const renameSchema = z.object({ oldPath: z.string().min(1, "oldPath is required"), newPath: z.string().min(1, "newPath is required") });
 
 /**
  * Internal helper to safely resolve the real path of an existing target 
@@ -172,10 +181,9 @@ router.get("/drives", async (_req, res) => {
  */
 router.post("/workspace/select", async (req, res, next) => {
   try {
-    const { dir } = req.body;
-    if (!dir) {
-      return res.status(400).json({ error: "dir is required" });
-    }
+    const result = workspaceSelectSchema.safeParse(req.body);
+    if (!result.success) return res.status(400).json({ error: result.error.issues[0]?.message || "Validation error" });
+    const { dir } = result.data;
 
     const resolvedDir = validatePath(dir);
     if (isProtectedPathForListing(resolvedDir)) {
@@ -204,7 +212,9 @@ router.post("/workspace/select", async (req, res, next) => {
  */
 router.get("/list", async (req, res, next) => {
   try {
-    const dirPath = req.query.dir ? validatePath(String(req.query.dir)) : getDefaultRoot();
+    const result = listSchema.safeParse(req.query);
+    if (!result.success) return res.status(400).json({ error: result.error.issues[0]?.message || "Validation error" });
+    const dirPath = result.data.dir ? validatePath(String(result.data.dir)) : getDefaultRoot();
     if (isProtectedPathForListing(dirPath)) {
       return res.status(403).json({ error: "Access denied: Path is protected" });
     }
@@ -258,8 +268,9 @@ router.get("/list", async (req, res, next) => {
  */
 router.get("/read", async (req, res, next) => {
   try {
-    const filePath = req.query.path;
-    if (!filePath) return res.status(400).json({ error: "path is required" });
+    const result = readSchema.safeParse(req.query);
+    if (!result.success) return res.status(400).json({ error: result.error.issues[0]?.message || "Validation error" });
+    const filePath = result.data.path;
     const resolvedPath = validatePath(String(filePath));
     assertNotProtectedPath(resolvedPath);
 
@@ -302,9 +313,9 @@ router.get("/read", async (req, res, next) => {
  */
 router.post("/write", async (req, res, next) => {
   try {
-    const { path: filePath, content } = req.body;
-    if (!filePath) return res.status(400).json({ error: "path is required" });
-    if (content === undefined) return res.status(400).json({ error: "content is required" });
+    const result = writeSchema.safeParse(req.body);
+    if (!result.success) return res.status(400).json({ error: result.error.issues[0]?.message || "Validation error" });
+    const { path: filePath, content } = result.data;
 
     const resolvedPath = validatePath(String(filePath));
     assertNotWriteProtectedPath(resolvedPath);
@@ -327,8 +338,9 @@ router.post("/write", async (req, res, next) => {
  */
 router.post("/create", async (req, res, next) => {
   try {
-    const { path: targetPath, type = "file", content = "" } = req.body;
-    if (!targetPath) return res.status(400).json({ error: "path is required" });
+    const result = createSchema.safeParse(req.body);
+    if (!result.success) return res.status(400).json({ error: result.error.issues[0]?.message || "Validation error" });
+    const { path: targetPath, type, content } = result.data;
 
     const resolvedPath = validatePath(String(targetPath));
     assertNotWriteProtectedPath(resolvedPath);
@@ -355,8 +367,9 @@ router.post("/create", async (req, res, next) => {
  */
 router.post("/delete", async (req, res, next) => {
   try {
-    const { path: targetPath } = req.body;
-    if (!targetPath) return res.status(400).json({ error: "path is required" });
+    const result = deleteSchema.safeParse(req.body);
+    if (!result.success) return res.status(400).json({ error: result.error.issues[0]?.message || "Validation error" });
+    const { path: targetPath } = result.data;
 
     const resolvedPath = validatePath(String(targetPath));
     assertNotWriteProtectedPath(resolvedPath);
@@ -383,10 +396,9 @@ router.post("/delete", async (req, res, next) => {
  */
 router.post("/rename", async (req, res, next) => {
   try {
-    const { oldPath, newPath } = req.body;
-    if (!oldPath || !newPath) {
-      return res.status(400).json({ error: "oldPath and newPath are required" });
-    }
+    const result = renameSchema.safeParse(req.body);
+    if (!result.success) return res.status(400).json({ error: result.error.issues[0]?.message || "Validation error" });
+    const { oldPath, newPath } = result.data;
 
     const resolvedOld = validatePath(String(oldPath));
     const resolvedNew = validatePath(String(newPath));

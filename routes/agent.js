@@ -12,7 +12,40 @@ import {
 import { serverConfig } from "../config/server.js";
 import fs from "fs/promises";
 import path from "path";
+import { z } from "zod";
 import logger from "../utils/logger.js";
+
+const sessionCreateSchema = z.object({
+  id: z.string().optional(),
+  cwd: z.string().optional(),
+  task: z.string().optional()
+});
+
+const commandExecuteSchema = z.object({
+  command: z.string({ required_error: "command is required" }).min(1, "command is required"),
+  cwd: z.string().optional(),
+  timeoutMs: z.number().int().positive().optional()
+});
+
+const approveSchema = z.object({
+  approvalToken: z.string({ required_error: "approvalToken is required" }).min(1, "approvalToken is required"),
+  timeoutMs: z.number().int().positive().optional()
+});
+
+const fileReadSchema = z.object({
+  path: z.string({ required_error: "path is required" }).min(1, "path is required")
+});
+
+const fileWriteSchema = z.object({
+  path: z.string({ required_error: "path is required" }).min(1, "path is required"),
+  content: z.string().optional()
+});
+
+const searchSchema = z.object({
+  query: z.string({ required_error: "query is required", invalid_type_error: "query is required" }).min(1, "query is required"),
+  dir: z.string().optional(),
+  maxResults: z.preprocess((val) => val === undefined ? undefined : Number(val), z.number().int().positive().max(100).optional().default(20))
+});
 
 const MAX_AGENT_READ_SIZE = 10 * 1024 * 1024;
 const SKIPPED_DIRS = new Set(["node_modules", ".git", ".venv"]);
@@ -268,7 +301,9 @@ cleanupTimer.unref();
  */
 router.post("/sessions", async (req, res, next) => {
   try {
-    const { id, cwd, task } = req.body;
+    const result = sessionCreateSchema.safeParse(req.body);
+    if (!result.success) return res.status(400).json({ error: result.error.issues[0]?.message || "Validation error" });
+    const { id, cwd, task } = result.data;
     const sessionId = id || crypto.randomUUID();
 
     let validatedCwd;
@@ -357,10 +392,10 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
       });
     }
 
-    const { command, cwd, timeoutMs } = req.body;
-    if (!command) {
-      return res.status(400).json({ error: "command is required" });
-    }
+    const resultBody = commandExecuteSchema.safeParse(req.body);
+    if (!resultBody.success) return res.status(400).json({ error: resultBody.error.issues[0]?.message || "Validation error" });
+    const { command, cwd, timeoutMs } = resultBody.data;
+
     const isStream = req.query.stream === "true";
 
     // Validate working directory
@@ -488,9 +523,12 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
     const session = getSession(req, res);
     if (!session) return;
 
-    const { approvalToken, timeoutMs } = req.body;
+    const resultBody = approveSchema.safeParse(req.body);
+    if (!resultBody.success) return res.status(400).json({ error: resultBody.error.issues[0]?.message || "Validation error" });
+    const { approvalToken, timeoutMs } = resultBody.data;
+
     const isStream = req.query.stream === "true";
-    if (!approvalToken || !pendingCommands.has(approvalToken)) {
+    if (!pendingCommands.has(approvalToken)) {
       return res.status(400).json({ error: "Invalid or expired approval token" });
     }
 
@@ -586,10 +624,9 @@ router.get("/sessions/:id/files", async (req, res, next) => {
     const session = getSession(req, res);
     if (!session) return;
 
-    const filePath = req.query.path;
-    if (!filePath) {
-      return res.status(400).json({ error: "path is required" });
-    }
+    const resultQuery = fileReadSchema.safeParse(req.query);
+    if (!resultQuery.success) return res.status(400).json({ error: resultQuery.error.issues[0]?.message || "Validation error" });
+    const filePath = resultQuery.data.path;
 
     const resolvedPath = validatePath(resolveAgentPath(filePath, session.cwd));
     assertNotProtectedPath(resolvedPath);
@@ -625,13 +662,9 @@ router.post("/sessions/:id/files", async (req, res, next) => {
     const session = getSession(req, res);
     if (!session) return;
 
-    const { path: filePath, content } = req.body;
-    if (!filePath) {
-      return res.status(400).json({ error: "path is required" });
-    }
-    if (content !== undefined && typeof content !== "string") {
-      return res.status(400).json({ error: "content must be a string" });
-    }
+    const resultBody = fileWriteSchema.safeParse(req.body);
+    if (!resultBody.success) return res.status(400).json({ error: resultBody.error.issues[0]?.message || "Validation error" });
+    const { path: filePath, content } = resultBody.data;
 
     const resolvedPath = validatePath(resolveAgentPath(filePath, session.cwd));
     assertNotWriteProtectedPath(resolvedPath);
@@ -775,16 +808,15 @@ router.get("/sessions/:id/search", async (req, res, next) => {
     const session = getSession(req, res);
     if (!session) return;
 
-    const { query, dir, maxResults = 20 } = req.query;
-    if (!query) {
-      return res.status(400).json({ error: "query is required" });
-    }
+    const resultQuery = searchSchema.safeParse(req.query);
+    if (!resultQuery.success) return res.status(400).json({ error: resultQuery.error.issues[0]?.message || "Validation error" });
+    const { query, dir, maxResults } = resultQuery.data;
 
     const searchDir = dir || session.cwd;
     const resolvedSearchDir = validatePath(resolveAgentPath(searchDir, session.cwd));
     assertNotProtectedPath(resolvedSearchDir);
 
-    const limit = Math.max(1, Math.min(parseInt(maxResults) || 20, 100));
+    const limit = maxResults;
 
     let results = null;
     const rgAvailable = await checkRgAvailable();

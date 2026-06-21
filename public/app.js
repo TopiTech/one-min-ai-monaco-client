@@ -840,6 +840,11 @@ async function showDiffDialog(filePath, oldContent, newContent) {
     modifiedModel = monaco.editor.createModel(newContent, undefined, modifiedUri);
     diffEditor.setModel({ original: originalModel, modified: modifiedModel });
 
+    // Ensure layout is recalculated after display is un-hidden
+    requestAnimationFrame(() => {
+      if (diffEditor) diffEditor.layout();
+    });
+
     // Precise layout calculation when modal becomes visible
     const observer = new ResizeObserver(() => {
       if (diffEditor && modal.offsetParent !== null) {

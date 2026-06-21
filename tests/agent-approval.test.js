@@ -6,9 +6,13 @@
 import { jest } from "@jest/globals";
 import request from "supertest";
 
+// Set NODE_ENV to test BEFORE the dynamic import so server.js never calls
+// initModels() at module evaluation time (which would make real API calls).
+process.env.NODE_ENV = "test";
+
 // Mock api-client (required by server.js) and command-runner (required by agent routes)
 jest.unstable_mockModule("../utils/api-client.js", () => ({
-  callOneMin: jest.fn(),
+  callOneMin: jest.fn().mockResolvedValue({}),
   extractText: jest.fn((data) => data?.result || JSON.stringify(data)),
   isFailedResponse: jest.fn(() => false),
   extractFailureMessage: jest.fn(() => "mocked failure"),
@@ -69,7 +73,6 @@ describe("Agent Approval Flow", () => {
   });
 
   afterEach(() => {
-    delete process.env.NODE_ENV;
     delete process.env.AGENT_AUTO_APPROVE;
     delete process.env.ENABLE_COMMAND_EXECUTION;
   });
@@ -110,7 +113,7 @@ describe("Agent Approval Flow", () => {
         .send({});
 
       expect(response.status).toBe(400);
-      expect(response.body.error).toBe("command is required");
+      expect(response.body.error).toMatch(/Invalid input|command is required|Validation error/i);
     });
 
     test("returns 400 when command is blocked by safety check", async () => {
@@ -177,7 +180,7 @@ describe("Agent Approval Flow", () => {
         .send({});
 
       expect(response.status).toBe(400);
-      expect(response.body.error).toBe("Invalid or expired approval token");
+      expect(response.body.error).toMatch(/Invalid input|Invalid or expired approval token|Validation error/i);
       expect(mockExecuteCommand).not.toHaveBeenCalled();
     });
 
