@@ -287,6 +287,24 @@ function cleanupExpiredSessions() {
   if (changed) {
     saveSessions();
   }
+
+  // Clean up isolated temporary files (.tmp) in DATA_DIR that are older than 30 minutes
+  (async () => {
+    try {
+      const files = await fs.readdir(DATA_DIR);
+      for (const file of files) {
+        if (file.endsWith(".tmp")) {
+          const filePath = path.join(DATA_DIR, file);
+          const stat = await fs.stat(filePath);
+          if (now - stat.mtimeMs > 30 * 60 * 1000) {
+            await fs.unlink(filePath).catch(() => {});
+          }
+        }
+      }
+    } catch (err) {
+      // Best-effort cleanup, ignore errors
+    }
+  })().catch(() => {});
 }
 
 const cleanupTimer = setInterval(cleanupExpiredSessions, CLEANUP_INTERVAL_MS);

@@ -143,6 +143,20 @@ export function createEditorTabManager(editorState, editorManager, dom) {
     try {
       const data = await api(`/api/fs/read?path=${encodeURIComponent(filePath)}`);
       if (editorManager.instance) {
+        const contentSize = data.content ? data.content.length : 0;
+        const LARGE_FILE_THRESHOLD = 2 * 1024 * 1024; // 2MB
+        if (contentSize > LARGE_FILE_THRESHOLD) {
+          const accepted = await toast.confirm(
+            `ファイルサイズが大きいため（約 ${(contentSize / 1024 / 1024).toFixed(1)} MB）、エディタの動作が遅くなる可能性があります。開きますか？`,
+            {
+              confirmText: "開く",
+              cancelText: "キャンセル",
+              type: "warning",
+            }
+          );
+          if (!accepted) return;
+        }
+
         const model = editorManager.getOrCreateModel(filePath, data.content);
         editorManager.instance.setModel(model);
 

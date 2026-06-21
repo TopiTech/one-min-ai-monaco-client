@@ -319,8 +319,24 @@ async function handleAssetUpload(req, res, next) {
     if (typeof fs.openAsBlob === "function") {
       assetBlob = await fs.openAsBlob(tmpFilePath);
     } else {
-      const fileBuffer = await fsp.readFile(tmpFilePath);
-      assetBlob = new Blob([fileBuffer], { type: req.file.mimetype || "application/octet-stream" });
+      // Streamable custom Blob-like wrapper for Node.js versions without fs.openAsBlob
+      assetBlob = {
+        size: req.file.size,
+        type: req.file.mimetype || "application/octet-stream",
+        slice: () => { throw new Error("Not implemented"); },
+        arrayBuffer: async () => {
+          const buf = await fsp.readFile(tmpFilePath);
+          return buf.buffer;
+        },
+        text: async () => {
+          return fsp.readFile(tmpFilePath, "utf-8");
+        },
+        stream: () => {
+          const stream = fs.createReadStream(tmpFilePath);
+          return Readable.toWeb ? Readable.toWeb(stream) : stream;
+        },
+        [Symbol.toStringTag]: "Blob",
+      };
     }
 
     const formData = new FormData();
