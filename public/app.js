@@ -658,6 +658,8 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
   const step = document.createElement("div");
   step.className = `agent-step approval`;
   step.id = stepId;
+  step.setAttribute("role", "alertdialog");
+  step.setAttribute("aria-label", "コマンド実行承認");
 
   const time = new Date().toLocaleTimeString([], {
     hour: "2-digit",
@@ -2033,7 +2035,7 @@ initCreditSavingMode();
   }
 })();
 
-// UI-3: Sidebar resize via drag handle
+// UI-3: Sidebar resize via drag handle (mouse + touch)
 (function initSidebarResize() {
   const handle = document.querySelector(".sidebar-resize-handle");
   if (!handle) return;
@@ -2043,6 +2045,16 @@ initCreditSavingMode();
 
   let isDragging = false;
 
+  function applyWidth(clientX) {
+    const minW = parseInt(getComputedStyle(root).getPropertyValue("--sidebar-min-width")) || 200;
+    const maxW = parseInt(getComputedStyle(root).getPropertyValue("--sidebar-max-width")) || 320;
+    let w = clientX;
+    if (w < minW) w = minW;
+    if (w > maxW) w = maxW;
+    root.style.setProperty("--sidebar-width", w + "px");
+  }
+
+  // Mouse events
   handle.addEventListener("mousedown", (e) => {
     isDragging = true;
     e.preventDefault();
@@ -2052,18 +2064,32 @@ initCreditSavingMode();
 
   document.addEventListener("mousemove", (e) => {
     if (!isDragging) return;
-    const minW = parseInt(getComputedStyle(root).getPropertyValue("--sidebar-min-width")) || 200;
-    const maxW = parseInt(getComputedStyle(root).getPropertyValue("--sidebar-max-width")) || 320;
-    let w = e.clientX;
-    if (w < minW) w = minW;
-    if (w > maxW) w = maxW;
-    root.style.setProperty("--sidebar-width", w + "px");
+    applyWidth(e.clientX);
   });
 
   document.addEventListener("mouseup", () => {
     if (isDragging) {
       isDragging = false;
       document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+  });
+
+  // Touch events
+  handle.addEventListener("touchstart", (e) => {
+    isDragging = true;
+    document.body.style.userSelect = "none";
+  }, { passive: true });
+
+  document.addEventListener("touchmove", (e) => {
+    if (!isDragging) return;
+    const touch = e.touches[0];
+    if (touch) applyWidth(touch.clientX);
+  }, { passive: true });
+
+  document.addEventListener("touchend", () => {
+    if (isDragging) {
+      isDragging = false;
       document.body.style.userSelect = "";
     }
   });

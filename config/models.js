@@ -3,7 +3,7 @@
 import { callOneMin } from "../utils/api-client.js";
 import logger from "../utils/logger.js";
 
-const _chatModels = [
+let _chatModels = [
   // OpenAI
   { id: "gpt-4o-mini", label: "GPT-4o mini", provider: "OpenAI", tags: ["fast"] },
   { id: "gpt-4o", label: "GPT-4o", provider: "OpenAI", tags: ["flagship"] },
@@ -126,7 +126,7 @@ const _chatModels = [
   { id: "meta/meta-llama-3-70b-instruct", label: "Llama 3 70B", provider: "Meta" },
 ];
 
-const _codeModels = [
+let _codeModels = [
   // Alibaba Cloud (Qwen Coder)
   {
     id: "qwen3-coder-plus",
@@ -247,7 +247,7 @@ const _codeModels = [
   { id: "grok-code-fast-1", label: "Grok Code Fast 1", provider: "xAI", tags: ["code", "fast"] },
 ];
 
-const _imageModels = [
+let _imageModels = [
   // OpenAI image generation
   {
     id: "gpt-image-2",
@@ -484,9 +484,9 @@ async function fetchModels() {
         (m) => modelType(m) === "IMAGE_GENERATOR" || modelType(m) === "IMAGE_EDITOR",
       );
 
-      if (newChatModels.length > 0) ((_chatModels.length = 0), _chatModels.push(...newChatModels));
-      if (newCodeModels.length > 0) ((_codeModels.length = 0), _codeModels.push(...newCodeModels));
-      if (newImageModels.length > 0) ((_imageModels.length = 0), _imageModels.push(...newImageModels));
+      if (newChatModels.length > 0) _chatModels = newChatModels;
+      if (newCodeModels.length > 0) _codeModels = newCodeModels;
+      if (newImageModels.length > 0) _imageModels = newImageModels;
 
       lastFetchStatus = { ok: true, lastSync: new Date().toISOString(), error: null };
       logger.info("Models dynamically fetched and updated from 1min.ai API.");

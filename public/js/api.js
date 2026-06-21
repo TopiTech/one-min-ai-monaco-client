@@ -1,26 +1,12 @@
 const statusEl = document.getElementById("status");
 
-let memoryBffToken = "";
-let tokenPromise = null;
-
+// Cookieベースのセッションに移行したため、メモリ上でのトークン管理は廃止
 async function ensureBffToken() {
-  if (tokenPromise) return tokenPromise;
-  tokenPromise = (async () => {
-    try {
-      const res = await fetch("/api/token");
-      if (res.ok) {
-        const data = await res.json();
-        memoryBffToken = data.token || "";
-      }
-    } catch (err) {
-      console.warn("Failed to fetch BFF token:", err);
-    }
-  })();
-  return tokenPromise;
+  return Promise.resolve();
 }
 
 function getBffToken() {
-  return memoryBffToken;
+  return "";
 }
 
 function setStatus(text, cls = "") {
@@ -49,8 +35,6 @@ async function api(path, options = {}) {
   let outcome = "ok";
   try {
     const headers = options.headers || {};
-    const token = getBffToken();
-    if (token) headers["x-local-bff-token"] = token;
 
     const res = await fetch(path, { ...fetchOptions, headers, signal: controller.signal });
     clearTimeout(timeoutId);
@@ -104,12 +88,11 @@ async function parseJsonOrTextResponse(res) {
 
 function assetUrl(path) {
   if (!path) return "";
-  const token = getBffToken();
-  const tokenQuery = token ? `&__bff_token=${encodeURIComponent(token)}` : "";
+  // クエリパラメータに BFF トークンを載せないようにし、Cookie 認証のみにする
   if (/^https?:\/\//.test(path)) {
-    return `/api/assets/proxy?url=${encodeURIComponent(path)}${tokenQuery}`;
+    return `/api/assets/proxy?url=${encodeURIComponent(path)}`;
   }
-  return `/api/assets/proxy?key=${encodeURIComponent(path)}${tokenQuery}`;
+  return `/api/assets/proxy?key=${encodeURIComponent(path)}`;
 }
 
 export { api, assetUrl, extractImages };

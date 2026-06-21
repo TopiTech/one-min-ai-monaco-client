@@ -79,7 +79,7 @@ describe("Security fixes regression", () => {
       expect(res.status).toBe(403);
     });
 
-    test("rejects request with cookie only (no header)", async () => {
+    test("accepts request with cookie only (no header)", async () => {
       const app = createApp({
         requireLocalAuth: true,
         authToken: "secret-token",
@@ -92,7 +92,7 @@ describe("Security fixes regression", () => {
         .set("host", "127.0.0.1")
         .set("origin", "http://127.0.0.1");
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(200);
     });
   });
 

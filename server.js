@@ -10,16 +10,17 @@ import crypto from "crypto";
 import { callOneMin, normalizeAssetResponse } from "./utils/api-client.js";
 import { serverConfig } from "./config/server.js";
 import logger, { initLogger } from "./utils/logger.js";
+import { validateBufferMimeType } from "./utils/mime-guard.js";
+import fs from "fs";
+import fsp from "fs/promises";
+import { Readable } from "stream";
+import { sanitizePayload } from "./utils/sanitize.js";
 
 // Replace the env-var-based default singleton with the validated serverConfig.
 // This ensures LOG_LEVEL, LOG_TO_FILE, and LOG_FILE are all parsed and clamped
 // consistently (e.g. LOG_LEVEL "info" → parseLogLevel, LOG_TO_FILE "true" →
 // parseBoolean).
 initLogger(serverConfig);
-import { validateBufferMimeType } from "./utils/mime-guard.js";
-import fs from "fs";
-import fsp from "fs/promises";
-import { Readable } from "stream";
 
 import aiRoutes from "./routes/ai.js";
 import fsRoutes from "./routes/fs.js";
@@ -137,13 +138,22 @@ function localBffAuth({ requireToken = true, authToken } = {}) {
 
   return (req, res, next) => {
     const cookies = parseCookies(req.headers.cookie);
-    const headerToken = req.get("x-local-bff-token") || req.query.__bff_token;
+    const headerToken = req.get("x-local-bff-token");
     const cookieToken = cookies["__bff_session"];
-    const tokenOk =
-      headerToken &&
-      compareAuthToken(headerToken, authToken) &&
-      cookieToken &&
-      compareAuthToken(cookieToken, authToken);
+    
+    // Cookie またはカスタムヘッダーのいずれかが正しいトークンを含んでいれば認証成功とする。
+    // クエリパラメータからの漏洩を防ぐため、req.query.__bff_token は廃止。
+    let tokenOk = false;
+    if (cookieToken) {
+      tokenOk = compareAuthToken(cookieToken, authToken);
+      // 両方存在する場合、ヘッダー側のトークンも一致していることを厳格に検証
+      if (headerToken && !compareAuthToken(headerToken, authToken)) {
+        tokenOk = false;
+      }
+    } else if (headerToken) {
+      // テスト環境など Cookie が送信されない場合のフォールバック
+      tokenOk = compareAuthToken(headerToken, authToken);
+    }
 
     if (!tokenOk) {
       const err = new Error("Local BFF authentication required or invalid token");
@@ -354,46 +364,7 @@ async function handleAssetUpload(req, res, next) {
   }
 }
 
-function sanitizePayload(payload) {
-  if (!payload) return null;
-  if (typeof payload !== "object") return payload;
-  try {
-    // L-4: Expand sensitive keys to cover auth credentials, user prompts,
-    // and upstream response bodies that may contain model details or billing info.
-    const sensitiveKeys = [
-      "api_key", "apikey", "key", "token", "auth", "authorization", "secret",
-      "prompt", "messages", "query", "input", "content",
-    ];
-    const sensitiveValueKeys = ["result", "resultObject", "result_object", "raw"];
-    const seen = new WeakSet();
-    const walk = (obj) => {
-      if (!obj || typeof obj !== "object") return obj;
-      if (seen.has(obj)) return "[Circular]";
-      seen.add(obj);
-      if (Array.isArray(obj)) {
-        return obj.map((item) => walk(item));
-      }
-      const result = {};
-      for (const key in obj) {
-        const lowerKey = key.toLowerCase();
-        if (sensitiveKeys.some((sk) => lowerKey.includes(sk))) {
-          result[key] = "[MASKED]";
-        } else if (sensitiveValueKeys.some((sk) => lowerKey.includes(sk))) {
-          // Upstream result bodies — mask to prevent leaking model details
-          result[key] = "[REDACTED]";
-        } else if (typeof obj[key] === "object" && obj[key] !== null) {
-          result[key] = walk(obj[key]);
-        } else {
-          result[key] = obj[key];
-        }
-      }
-      return result;
-    };
-    return walk(payload);
-  } catch (e) {
-    return "[Unable to sanitize details]";
-  }
-}
+// sanitizePayload has been extracted to utils/sanitize.js
 
 export function createApp(options = {}) {
   const {
@@ -533,13 +504,9 @@ export function createApp(options = {}) {
 
   // Provide local BFF token to authenticated clients
   app.get("/api/token", (req, res) => {
-    if (!requireLocalAuth) return res.json({ token: "" });
-    // Check if the request has the correct HttpOnly cookie to issue the token
-    const cookies = parseCookies(req.headers.cookie);
-    if (!cookies["__bff_session"] || !compareAuthToken(cookies["__bff_session"], localAuthToken)) {
-      return res.status(403).json({ error: "Invalid session cookie" });
-    }
-    res.json({ token: localAuthToken });
+    // BFFトークンをレスポンス平文で返却することを廃止し、XSS攻撃による窃取を防ぎます。
+    // セッション認証は完全に Cookie で完結します。
+    res.json({ token: "" });
   });
 
   // Serve index.html (before express.json() since this is a GET)
@@ -637,12 +604,12 @@ export function createApp(options = {}) {
       const allowedHosts = [
         "asset.1min.ai",
         "api.1min.ai",
-        "asset.1min.ai.s3.us-east-1.amazonaws.com",
-        "asset.1min.ai.s3.amazonaws.com",
       ];
       const isAllowedHost =
         allowedHosts.some((h) => parsed.hostname === h) ||
-        /^asset\.1min\.ai\.s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname);
+        /^asset\.1min\.ai\.s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname) ||
+        /^asset\.1min\.ai\.s3-accelerate\.amazonaws\.com$/i.test(parsed.hostname) ||
+        /^asset\.1min\.ai\.s3\.dualstack\.[\w-]+\.amazonaws\.com$/i.test(parsed.hostname);
       if (!isAllowedHost) {
         return res.status(403).json({ error: "Access denied: Untrusted asset host" });
       }
@@ -652,11 +619,16 @@ export function createApp(options = {}) {
         return res.status(response.status).json({ error: `Failed to fetch asset: ${response.statusText}` });
       }
 
-      const contentType = response.headers.get("content-type");
-      if (contentType) {
-        res.setHeader("Content-Type", contentType);
+      const contentType = response.headers.get("content-type") || "application/octet-stream";
+      // HTMLおよびスクリプトタイプのレスポンスをブロックしてXSSを防止
+      if (/text\/html|application\/javascript|text\/javascript/i.test(contentType)) {
+        return res.status(403).json({ error: "Unsupported content type from upstream" });
       }
-      res.setHeader("Cache-Control", "public, max-age=31536000");
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Content-Disposition", "inline");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      // Cache-Control は ETag 等との共存を想定し、マイルドなキャッシュに変更
+      res.setHeader("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
 
       if (response.body) {
         Readable.fromWeb(response.body).pipe(res);
@@ -721,7 +693,7 @@ if (process.env.NODE_ENV !== "test") {
   validateEnvironment();
   initModels()
     .then(() => {
-      createApp().listen(serverConfig.port, "127.0.0.1", () => {
+      const server = createApp().listen(serverConfig.port, "127.0.0.1", () => {
         logger.info(`1min.ai Monaco client running: http://127.0.0.1:${serverConfig.port}`);
         logger.info("Server configuration", {
           port: serverConfig.port,
@@ -730,6 +702,22 @@ if (process.env.NODE_ENV !== "test") {
           apiRetryAttempts: serverConfig.apiRetryAttempts,
         });
       });
+
+      // Graceful shutdown handling
+      const shutdown = () => {
+        logger.info("Shutdown signal received. Closing HTTP server...");
+        server.close(() => {
+          logger.info("HTTP server closed. Exiting process.");
+          process.exit(0);
+        });
+        // 強制終了タイムアウトを設定 (10秒)
+        setTimeout(() => {
+          logger.warn("Forcing shutdown after timeout.");
+          process.exit(1);
+        }, 10000).unref();
+      };
+      process.on("SIGTERM", shutdown);
+      process.on("SIGINT", shutdown);
     })
     .catch((err) => {
       logger.error("Failed to initialize models or start server", { error: err.message });

@@ -186,6 +186,9 @@ function showToast(message, options = {}) {
   const toast = document.createElement("div");
   toast.className = `toast toast-${type}`;
   toast.setAttribute("role", "alert");
+  if (type === "error") {
+    toast.setAttribute("aria-live", "assertive");
+  }
 
   const icon = document.createElement("div");
   icon.className = "toast-icon";

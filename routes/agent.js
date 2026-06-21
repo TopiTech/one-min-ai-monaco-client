@@ -426,26 +426,29 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
       cwd: workingDir,
     });
 
-    let onOutput = null;
-    if (isStream) {
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.flushHeaders();
-      
-      onOutput = (type, text) => {
-        res.write(`event: ${type}\n`);
-        res.write(`data: ${JSON.stringify({ text })}\n\n`);
-      };
+    let result;
+    try {
+      let onOutput = null;
+      if (isStream) {
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.flushHeaders();
+        
+        onOutput = (type, text) => {
+          res.write(`event: ${type}\n`);
+          res.write(`data: ${JSON.stringify({ text })}\n\n`);
+        };
+      }
+
+      result = await executeCommand(command, {
+        cwd: workingDir,
+        timeoutMs: timeoutMs || serverConfig.commandTimeoutMs,
+        onOutput,
+      });
+    } finally {
+      session.status = "idle";
     }
-
-    const result = await executeCommand(command, {
-      cwd: workingDir,
-      timeoutMs: timeoutMs || serverConfig.commandTimeoutMs,
-      onOutput,
-    });
-
-    session.status = "idle";
     logger.info(`Command execution finished`, {
       sessionId: req.params.id,
       command: command.split(/\s+/)[0],
@@ -520,26 +523,29 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
       cwd: workingDir,
     });
 
-    let onOutput = null;
-    if (isStream) {
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.flushHeaders();
-      
-      onOutput = (type, text) => {
-        res.write(`event: ${type}\n`);
-        res.write(`data: ${JSON.stringify({ text })}\n\n`);
-      };
+    let result;
+    try {
+      let onOutput = null;
+      if (isStream) {
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.flushHeaders();
+        
+        onOutput = (type, text) => {
+          res.write(`event: ${type}\n`);
+          res.write(`data: ${JSON.stringify({ text })}\n\n`);
+        };
+      }
+
+      result = await executeCommand(pending.command, {
+        cwd: workingDir,
+        timeoutMs: timeoutMs || serverConfig.commandTimeoutMs,
+        onOutput,
+      });
+    } finally {
+      session.status = "idle";
     }
-
-    const result = await executeCommand(pending.command, {
-      cwd: workingDir,
-      timeoutMs: timeoutMs || serverConfig.commandTimeoutMs,
-      onOutput,
-    });
-
-    session.status = "idle";
     logger.info(`Approved command finished`, {
       sessionId: req.params.id,
       command: pending.command.split(/\s+/)[0],

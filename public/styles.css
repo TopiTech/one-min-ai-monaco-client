@@ -2585,6 +2585,52 @@ select:focus-visible {
   }
 }
 
+/* Reduced Transparency: disable backdrop-filter (glass effects) */
+@media (prefers-reduced-transparency: reduce) {
+  .sidebar,
+  .topbar,
+  .card,
+  .model-picker-dropdown,
+  .inline-chat-widget,
+  .toast,
+  .folder-picker-dialog {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .liquid-bg-container {
+    display: none !important;
+  }
+}
+
+/* High Contrast: more prominent focus indicators */
+@media (prefers-contrast: more) {
+  *:focus-visible {
+    outline: 3px solid #fff;
+    outline-offset: 3px;
+  }
+
+  button:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 3px solid #fff;
+    outline-offset: 3px;
+  }
+
+  .nav.active {
+    border: 2px solid var(--accent);
+  }
+
+  .msg.user {
+    border: 2px solid rgba(79, 70, 229, 0.5);
+  }
+
+  .msg.ai {
+    border: 2px solid rgba(255, 255, 255, 0.2);
+  }
+}
+
 /* ============================================================
    AI Coding Agent styling
    ============================================================ */

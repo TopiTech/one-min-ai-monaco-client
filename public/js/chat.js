@@ -451,6 +451,10 @@ export function createChatManager(dom, state) {
         aiContentDiv.textContent = `エラー: ${message}`;
         window.toast?.error(`チャットエラー: ${message}`);
         setStatus("エラー", "err");
+        if (dom.chatLog) {
+          dom.chatLog.setAttribute("aria-live", "assertive");
+          setTimeout(() => dom.chatLog.setAttribute("aria-live", "polite"), 3000);
+        }
       }
     } finally {
       dom.chatLog.setAttribute("aria-busy", "false");

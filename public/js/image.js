@@ -77,6 +77,23 @@ export function createImageManager(dom) {
         range.value = "50";
         range.className = "slider-range";
         range.setAttribute("aria-label", "画像比較スライダー");
+        range.setAttribute("role", "slider");
+        range.setAttribute("tabindex", "0");
+        range.addEventListener("keydown", (e) => {
+          const step = e.shiftKey ? 10 : 5;
+          let val = parseInt(range.value, 10);
+          if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+            e.preventDefault();
+            val = Math.max(0, val - step);
+          } else if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+            e.preventDefault();
+            val = Math.min(100, val + step);
+          } else {
+            return;
+          }
+          range.value = val;
+          range.dispatchEvent(new Event("input", { bubbles: true }));
+        });
         slider.appendChild(range);
 
         const divider = document.createElement("div");
