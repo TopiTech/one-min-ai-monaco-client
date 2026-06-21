@@ -77,6 +77,64 @@ const isTestMode = process.env.NODE_ENV === "test";
 let sessions = new Map();
 const pendingCommands = new Map();
 
+// --- Debounced File Writer ---
+
+/**
+ * Creates a debounced, atomic file writer that coalesces rapid calls
+ * into a single write after a short delay. Uses .tmp + rename for
+ * atomic writes and restricts file permissions to owner-only.
+ *
+ * @param {string} filePath - Target file path.
+ * @param {() => string|Promise<string>} serialize - Returns the content to write.
+ * @param {object} [opts]
+ * @param {number} [opts.delayMs=50] - Debounce delay in milliseconds.
+ * @param {string} [opts.label="data"] - Label for error logging.
+ * @returns {{ save: () => void, flush: () => Promise<void> }}
+ */
+function createDebouncedFileWriter(filePath, serialize, { delayMs = 50, label = "data" } = {}) {
+  let timer = null;
+  let isWriting = false;
+  let needsSave = false;
+
+  async function flush() {
+    if (isWriting) {
+      needsSave = true;
+      return;
+    }
+    isWriting = true;
+    needsSave = false;
+    try {
+      await ensureDataDir();
+      if (isTestMode) return;
+      try {
+        await fs.access(DATA_DIR);
+      } catch {
+        return;
+      }
+      const data = await serialize();
+      const tmpFile = filePath + ".tmp";
+      await fs.writeFile(tmpFile, data, { encoding: "utf-8", mode: 0o600 });
+      await fs.rename(tmpFile, filePath);
+    } catch (err) {
+      logger.error(`Failed to save ${label} to file`, { error: err.message });
+    } finally {
+      isWriting = false;
+      if (needsSave) {
+        save();
+      }
+    }
+  }
+
+  function save() {
+    if (isTestMode) return;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(flush, delayMs);
+    timer.unref();
+  }
+
+  return { save, flush };
+}
+
 // --- Pending Commands Persistence ---
 
 // Cache the pending-commands-load promise so it runs exactly once.
@@ -107,44 +165,14 @@ async function loadPendingCommands() {
   return _pendingLoadReady;
 }
 
-let _pendingSaveTimer = null;
-let _pendingIsWriting = false;
-let _pendingNeedsSave = false;
-
-async function flushPendingSave() {
-  if (_pendingIsWriting) {
-    _pendingNeedsSave = true;
-    return;
-  }
-  _pendingIsWriting = true;
-  _pendingNeedsSave = false;
-  try {
-    await ensureDataDir();
-    if (isTestMode) return;
-    try {
-      await fs.access(DATA_DIR);
-    } catch {
-      return;
-    }
-    const data = JSON.stringify(Object.fromEntries(pendingCommands), null, 2);
-    const tmpFile = PENDING_COMMANDS_FILE + ".tmp";
-    await fs.writeFile(tmpFile, data, { encoding: "utf-8", mode: 0o600 });
-    await fs.rename(tmpFile, PENDING_COMMANDS_FILE);
-  } catch (err) {
-    logger.error("Failed to save pending commands to file", { error: err.message });
-  } finally {
-    _pendingIsWriting = false;
-    if (_pendingNeedsSave) {
-      savePendingCommands();
-    }
-  }
-}
+const pendingWriter = createDebouncedFileWriter(
+  PENDING_COMMANDS_FILE,
+  () => JSON.stringify(Object.fromEntries(pendingCommands), null, 2),
+  { label: "pending commands" },
+);
 
 function savePendingCommands() {
-  if (isTestMode) return;
-  if (_pendingSaveTimer) clearTimeout(_pendingSaveTimer);
-  _pendingSaveTimer = setTimeout(flushPendingSave, 50);
-  _pendingSaveTimer.unref();
+  pendingWriter.save();
 }
 
 // Cache the mkdir promise so it only runs once across concurrent calls.
@@ -183,60 +211,28 @@ async function loadSessions() {
   }
 }
 
-let _saveTimer = null;
-let _isWriting = false;
-let _needsSave = false;
-
-async function flushSave() {
-  if (_isWriting) {
-    _needsSave = true;
-    return;
-  }
-  _isWriting = true;
-  _needsSave = false;
-  try {
-    await ensureDataDir();
-    if (isTestMode) return;
-    try {
-      await fs.access(DATA_DIR);
-    } catch {
-      return;
-    }
+const sessionWriter = createDebouncedFileWriter(
+  SESSIONS_FILE,
+  () => {
     const rawSessions = Object.fromEntries(sessions);
     const apiKey = process.env.ONE_MIN_AI_API_KEY;
-    
     // SEC-4: Mask sensitive keys if present in the data
-    const data = JSON.stringify(rawSessions, (key, value) => {
+    return JSON.stringify(rawSessions, (key, value) => {
       if (typeof value === "string" && apiKey && apiKey !== "your_1min_ai_api_key_here" && value.includes(apiKey)) {
         return value.split(apiKey).join("***MASKED***");
       }
       return value;
     }, 2);
-    const tmpFile = SESSIONS_FILE + ".tmp";
-    // SEC-4: Restrict file permissions to owner-only (rw-------) so other
-    // users on the same host cannot read session history. On Windows this
-    // has no effect but is harmless.
-    await fs.writeFile(tmpFile, data, { encoding: "utf-8", mode: 0o600 });
-    await fs.rename(tmpFile, SESSIONS_FILE);
-  } catch (err) {
-    logger.error("Failed to save sessions to file", { error: err.message });
-  } finally {
-    _isWriting = false;
-    if (_needsSave) {
-      saveSessions();
-    }
-  }
-}
+  },
+  { label: "sessions" },
+);
 
 /**
  * Debounced session persistence. Coalesces rapid calls (e.g. from
  * concurrent addHistoryEntry) into a single write after a short delay.
  */
 function saveSessions() {
-  if (isTestMode) return;
-  if (_saveTimer) clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(flushSave, 50);
-  _saveTimer.unref();
+  sessionWriter.save();
 }
 
 // Load sessions on startup

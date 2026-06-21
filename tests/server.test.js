@@ -13,6 +13,11 @@ jest.unstable_mockModule("../utils/api-client.js", () => ({
   isFailedResponse: jest.fn(() => false),
   extractFailureMessage: jest.fn(() => "mocked failure"),
   normalizeAssetResponse: jest.fn((data) => ({ key: data?.asset?.key || "", url: "", raw: data })),
+  parseResponsePayload: jest.fn(async (response) => {
+    const text = await response.text();
+    if (!text) return {};
+    try { return JSON.parse(text); } catch { return { message: text }; }
+  }),
 }));
 
 // Import after mocking

@@ -1,6 +1,6 @@
 import express from "express";
 import { z } from "zod";
-import { callOneMin, extractText, isFailedResponse, extractFailureMessage } from "../utils/api-client.js";
+import { callOneMin, extractText, isFailedResponse, extractFailureMessage, parseResponsePayload } from "../utils/api-client.js";
 import { getChatModels, getCodeModels, getImageModels } from "../config/models.js";
 import { parseWebSearchParams, buildCodePayload } from "../utils/web-search.js";
 import logger from "../utils/logger.js";
@@ -8,16 +8,6 @@ import logger from "../utils/logger.js";
 const router = express.Router();
 
 import { serverConfig } from "../config/server.js";
-
-async function parseResponsePayload(response) {
-  const text = await response.text();
-  if (!text) return {};
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { message: text };
-  }
-}
 
 function getDefaultModel(type) {
   if (type === "CODE_GENERATOR") return serverConfig.defaultCodeModel;
@@ -895,15 +885,16 @@ router.post("/agent/chat", async (req, res, next) => {
       maxWord: data.maxWord,
     });
 
-    const payload = buildCodePayload({
+    const payload = buildChatPayload({
       prompt: String(promptText),
       model: data.model,
       webSearch: parsedWebSearch,
-      parsedNumOfSite,
-      parsedMaxWord,
+      numOfSite: parsedNumOfSite,
+      maxWord: parsedMaxWord,
+      history: false,
     });
 
-    const dataRes = await callOneMin("/api/features", {
+    const dataRes = await callOneMin("/api/chat-with-ai", {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });

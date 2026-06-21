@@ -100,7 +100,7 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function parseResponsePayload(response) {
+export async function parseResponsePayload(response) {
   const text = await response.text();
   if (!text) return {};
   try {

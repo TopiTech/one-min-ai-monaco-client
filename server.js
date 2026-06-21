@@ -198,15 +198,6 @@ function localBffAuth({ requireToken = true, authToken } = {}) {
   };
 }
 
-function escapeHtmlAttr(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
 /**
  * Map multer/multer-like errors to proper HTTP status codes.
  * - LIMIT_FILE_SIZE       -> 413 Payload Too Large

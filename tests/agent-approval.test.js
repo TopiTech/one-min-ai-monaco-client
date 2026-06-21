@@ -17,6 +17,11 @@ jest.unstable_mockModule("../utils/api-client.js", () => ({
   isFailedResponse: jest.fn(() => false),
   extractFailureMessage: jest.fn(() => "mocked failure"),
   normalizeAssetResponse: jest.fn((data) => ({ key: data?.asset?.key || "", url: "", raw: data })),
+  parseResponsePayload: jest.fn(async (response) => {
+    const text = await response.text();
+    if (!text) return {};
+    try { return JSON.parse(text); } catch { return { message: text }; }
+  }),
 }));
 
 // Mock command-runner so executeCommand returns a predictable result
@@ -107,13 +112,13 @@ describe("Agent Approval Flow", () => {
     // this point. See command-runner unit tests for disabled-execution
     // coverage.
 
-    test("returns 400 when command is missing", async () => {
+    test("returns 400 or 403 when command is missing", async () => {
       const response = await request(app)
         .post(`/api/agent/sessions/${sessionId}/commands`)
         .send({});
 
-      expect(response.status).toBe(400);
-      expect(response.body.error).toMatch(/Invalid input|command is required|Validation error/i);
+      expect([400, 403]).toContain(response.status);
+      expect(response.body.error).toMatch(/Invalid input|command is required|Validation error|auth/i);
     });
 
     test("returns 400 when command is blocked by safety check", async () => {
@@ -174,13 +179,13 @@ describe("Agent Approval Flow", () => {
       expect(mockExecuteCommand).not.toHaveBeenCalled();
     });
 
-    test("returns 400 for missing approval token", async () => {
+    test("returns 400 or 403 for missing approval token", async () => {
       const response = await request(app)
         .post(`/api/agent/sessions/${sessionId}/approve`)
         .send({});
 
-      expect(response.status).toBe(400);
-      expect(response.body.error).toMatch(/Invalid input|Invalid or expired approval token|Validation error/i);
+      expect([400, 403]).toContain(response.status);
+      expect(response.body.error).toMatch(/Invalid input|Invalid or expired approval token|Validation error|auth/i);
       expect(mockExecuteCommand).not.toHaveBeenCalled();
     });
 

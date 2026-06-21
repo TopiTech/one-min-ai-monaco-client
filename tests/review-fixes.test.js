@@ -25,6 +25,11 @@ jest.unstable_mockModule("../utils/api-client.js", () => ({
     const key = data?.asset?.key || data?.fileContent?.path || "";
     return { key, url: key ? `https://asset.1min.ai/${key}` : "", raw: data };
   }),
+  parseResponsePayload: jest.fn(async (response) => {
+    const text = await response.text();
+    if (!text) return {};
+    try { return JSON.parse(text); } catch { return { message: text }; }
+  }),
 }));
 
 const { callOneMin } = await import("../utils/api-client.js");

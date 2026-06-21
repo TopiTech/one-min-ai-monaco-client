@@ -16,6 +16,11 @@ jest.unstable_mockModule("../utils/api-client.js", () => ({
     const key = data?.asset?.key || "";
     return { key, url: key ? `https://asset.1min.ai/${key}` : "" };
   }),
+  parseResponsePayload: jest.fn(async (response) => {
+    const text = await response.text();
+    if (!text) return {};
+    try { return JSON.parse(text); } catch { return { message: text }; }
+  }),
 }));
 
 // Re-import mocked client and other helpers after mocking
@@ -207,7 +212,7 @@ describe("AI Routes Integration Tests", () => {
       expect(response.body).toHaveProperty("text");
       expect(response.body.text).toBe("I will fix this bug.");
       expect(response.body).toHaveProperty("raw");
-      expect(callOneMin).toHaveBeenCalledWith("/api/features", expect.any(Object));
+      expect(callOneMin).toHaveBeenCalledWith("/api/chat-with-ai", expect.any(Object));
     });
 
     test("should accept messages array and flatten into prompt", async () => {
@@ -229,8 +234,9 @@ describe("AI Routes Integration Tests", () => {
       expect(response.status).toBe(200);
       expect(response.body.text).toBe("Based on the conversation, here is the fix.");
 
-      // Verify that the flattened prompt contains role markers
+      // Verify that the flattened prompt contains role markers and uses Chat with AI API
       const sentBody = JSON.parse(callOneMin.mock.calls.at(-1)[1].body);
+      expect(sentBody.type).toBe("UNIFY_CHAT_WITH_AI");
       expect(sentBody.promptObject.prompt).toContain("[USER]");
       expect(sentBody.promptObject.prompt).toContain("[ASSISTANT]");
       expect(sentBody.promptObject.prompt).toContain("Read the file");
