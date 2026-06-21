@@ -9,6 +9,10 @@ import request from "supertest";
 // Set NODE_ENV to test BEFORE the dynamic import so server.js never calls
 // initModels() at module evaluation time (which would make real API calls).
 process.env.NODE_ENV = "test";
+// Set command execution env vars BEFORE importing server.js so the
+// serverConfig singleton reads the correct values at initialization time.
+process.env.AGENT_AUTO_APPROVE = "false";
+process.env.ENABLE_COMMAND_EXECUTION = "true";
 
 // Mock api-client (required by server.js) and command-runner (required by agent routes)
 jest.unstable_mockModule("../utils/api-client.js", () => ({
