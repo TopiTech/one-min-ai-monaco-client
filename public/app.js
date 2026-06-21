@@ -292,7 +292,16 @@ dom.uploadAsset.onclick = async () => {
     toast.warning("画像ファイルを選択してください");
     return;
   }
-  await imageManager.performAssetUpload(file, setStatus);
+  const btn = dom.uploadAsset;
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "アップロード中...";
+  try {
+    await imageManager.performAssetUpload(file, setStatus);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
 };
 
 $("assetInput").onchange = async (e) => {
@@ -1198,7 +1207,7 @@ async function runAgentLoop(initialInstruction) {
     workspaceFilesText += "(ファイル一覧の取得に失敗しました)";
   }
 
-  const modelSelected = $("chatModel")?.value || "gpt-4o-mini";
+  const modelSelected = $("codeModel")?.value || "qwen3-coder-plus";
 
   const sysPrompt = `あなたは極めて優秀なソフトウェアエンジニアAIエージェントです。
 あなたの目的は、ユーザーの指示を「正確に」かつ「安全に」達成することです。
@@ -1308,6 +1317,7 @@ ${workspaceFilesText}
           messages: state.agent.history,
           model: modelSelected,
           webSearch: false,
+          conversationId: sessionId,
         }),
         timeout: 600000,
       });

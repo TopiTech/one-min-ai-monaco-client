@@ -189,9 +189,11 @@ cp -r node_modules/monaco-editor/min/vs public/vs
 - [1min.AI API Reference](https://docs.1min.ai/docs/api/intro)
 - [Chat with AI API](https://docs.1min.ai/docs/api/chat-with-ai-api)
 - [AI Feature API](https://docs.1min.ai/docs/api/ai-feature-api)
+- [CODE_GENERATOR](https://docs.1min.ai/docs/api/ai-for-code/code-generator/code-generator-tag)　
 - [Asset API](https://docs.1min.ai/docs/api/asset-api)
 - [Image Text Editor API](https://docs.1min.ai/docs/api/ai-for-image/image-text-editor/image-text-editor-tag)
 - [Rate Limits](https://docs.1min.ai/docs/api/specifications/rate-limits)
+（但し一部公式ドキュメントに誤りがあるので注意。CODE_GENERATORのエンドポイントでドキュメントにはcoversationIDが存在する記載がありますが、実際のAPI仕様では存在しません。）
 
 ## 注意
 

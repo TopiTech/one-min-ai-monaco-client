@@ -61,7 +61,7 @@ describe("web-search payload helpers", () => {
   });
 
   describe("buildCodePayload", () => {
-    test("should build CODE_GENERATOR payload matching 1min.ai API schema (flat webSearch on promptObject)", () => {
+    test("should build CODE_GENERATOR payload matching 1min.ai API schema (flat webSearch on promptObject, no conversationId)", () => {
       const payload = buildCodePayload({
         prompt: "Fix this bug",
         model: "qwen3-coder-plus",
@@ -73,7 +73,6 @@ describe("web-search payload helpers", () => {
       expect(payload).toEqual({
         type: "CODE_GENERATOR",
         model: "qwen3-coder-plus",
-        conversationId: "CODE_GENERATOR",
         promptObject: {
           prompt: "Fix this bug",
           webSearch: true,
@@ -81,6 +80,8 @@ describe("web-search payload helpers", () => {
           maxWord: 500,
         },
       });
+      // CODE_GENERATOR does not use conversation concept
+      expect(payload).not.toHaveProperty("conversationId");
     });
 
     test("should omit optional fields when not provided", () => {
@@ -88,7 +89,7 @@ describe("web-search payload helpers", () => {
         prompt: "hello",
         webSearch: false,
       });
-      expect(payload.conversationId).toBe("CODE_GENERATOR");
+      expect(payload).not.toHaveProperty("conversationId");
       expect(payload.promptObject).toEqual({
         prompt: "hello",
         webSearch: false,

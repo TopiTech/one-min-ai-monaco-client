@@ -26,6 +26,7 @@ initLogger(serverConfig);
 import aiRoutes from "./routes/ai.js";
 import fsRoutes from "./routes/fs.js";
 import agentRoutes from "./routes/agent.js";
+import agentChatRoutes from "./routes/agent-chat.js";
 import { initModels, getModelSyncStatus } from "./config/models.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -60,6 +61,25 @@ try {
 } catch (err) {
   // Best-effort cleanup, ignore errors
 }
+
+// B-6: Periodic cleanup for orphaned temporary files during runtime.
+// Deletes files older than 1 hour, running every 1 hour.
+setInterval(() => {
+  try {
+    const files = fs.readdirSync(UPLOAD_TMP_DIR);
+    const now = Date.now();
+    const ONE_HOUR = 60 * 60 * 1000;
+    for (const file of files) {
+      const filePath = path.join(UPLOAD_TMP_DIR, file);
+      const stat = fs.statSync(filePath);
+      if (now - stat.mtimeMs > ONE_HOUR) {
+        fs.unlinkSync(filePath);
+      }
+    }
+  } catch (err) {
+    // Best-effort cleanup, ignore errors
+  }
+}, 60 * 60 * 1000).unref();
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -730,6 +750,8 @@ export function createApp(options = {}) {
   protectedRouter.use("/", aiRoutes);
   protectedRouter.use("/fs", fsRoutes);
   protectedRouter.use("/agent", agentRoutes);
+  // Mount the agent-chat route at /agent so the /chat sub-route is at /api/agent/chat
+  protectedRouter.use("/agent", agentChatRoutes);
   app.use("/api", protectedApiAuth, protectedRouter);
 
   app.use((err, req, res, _next) => {
@@ -741,6 +763,7 @@ export function createApp(options = {}) {
       status,
       method: req.method,
       url: req.originalUrl,
+      payload: isDev ? err.payload : undefined,
       stack: isDev ? err.stack : undefined,
     });
 

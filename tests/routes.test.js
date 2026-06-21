@@ -241,7 +241,7 @@ describe("AI Routes Integration Tests", () => {
   });
 
   describe("POST /api/agent/chat", () => {
-    test("should accept prompt string and return agent response", async () => {
+    test("should accept prompt string and return agent response using CODE_GENERATOR", async () => {
       callOneMin.mockResolvedValue({
         result: "I will fix this bug.",
       });
@@ -256,7 +256,18 @@ describe("AI Routes Integration Tests", () => {
       expect(response.body).toHaveProperty("text");
       expect(response.body.text).toBe("I will fix this bug.");
       expect(response.body).toHaveProperty("raw");
-      expect(callOneMin).toHaveBeenCalledWith("/api/chat-with-ai", expect.any(Object));
+      expect(callOneMin).toHaveBeenCalledWith("/api/features", expect.any(Object));
+
+      // Verify payload uses CODE_GENERATOR type
+      const sentBody = JSON.parse(callOneMin.mock.calls.at(-1)[1].body);
+      expect(sentBody.type).toBe("CODE_GENERATOR");
+      expect(sentBody.model).toBe("claude-sonnet-4-6");
+      expect(sentBody).not.toHaveProperty("conversationId");
+      expect(sentBody.promptObject).toBeDefined();
+      expect(sentBody.promptObject.prompt).toBe("Fix the bug in the code");
+      // CODE_GENERATOR uses flat webSearch on promptObject (no settings wrapper)
+      expect(sentBody.promptObject.webSearch).toBe(false);
+      expect(sentBody.promptObject).not.toHaveProperty("settings");
     });
 
     test("should accept messages array and flatten into prompt", async () => {
@@ -278,9 +289,10 @@ describe("AI Routes Integration Tests", () => {
       expect(response.status).toBe(200);
       expect(response.body.text).toBe("Based on the conversation, here is the fix.");
 
-      // Verify that the flattened prompt contains role markers and uses Chat with AI API
+      // Verify that the flattened prompt contains role markers and uses CODE_GENERATOR
       const sentBody = JSON.parse(callOneMin.mock.calls.at(-1)[1].body);
-      expect(sentBody.type).toBe("UNIFY_CHAT_WITH_AI");
+      expect(sentBody.type).toBe("CODE_GENERATOR");
+      expect(sentBody).not.toHaveProperty("conversationId");
       expect(sentBody.promptObject.prompt).toContain("[USER]");
       expect(sentBody.promptObject.prompt).toContain("[ASSISTANT]");
       expect(sentBody.promptObject.prompt).toContain("Read the file");
@@ -301,6 +313,22 @@ describe("AI Routes Integration Tests", () => {
 
       expect(response.status).toBe(400);
       expect(response.body.error).toContain("prompt");
+    });
+
+    test("should not include conversationId in payload (CODE_GENERATOR has no conversation concept)", async () => {
+      callOneMin.mockResolvedValue({
+        result: "ok",
+      });
+
+      const response = await request(app).post("/api/agent/chat").send({
+        prompt: "Hello",
+        conversationId: "session-123",
+      });
+
+      expect(response.status).toBe(200);
+      const sentBody = JSON.parse(callOneMin.mock.calls.at(-1)[1].body);
+      // CODE_GENERATOR does not use conversation ID
+      expect(sentBody).not.toHaveProperty("conversationId");
     });
   });
 
