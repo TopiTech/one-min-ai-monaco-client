@@ -851,6 +851,11 @@ async function showDiffDialog(filePath, oldContent, newContent) {
       if (diffEditor) diffEditor.layout();
     });
 
+    // Handle animation layout changes (modalIn animation takes 180ms)
+    setTimeout(() => {
+      if (diffEditor) diffEditor.layout();
+    }, 200);
+
     // Precise layout calculation when modal becomes visible
     const observer = new ResizeObserver(() => {
       if (diffEditor && modal.offsetParent !== null) {
@@ -1193,7 +1198,7 @@ async function runAgentLoop(initialInstruction) {
     workspaceFilesText += "(ファイル一覧の取得に失敗しました)";
   }
 
-  const modelSelected = $("codeModel").value;
+  const modelSelected = $("chatModel")?.value || "gpt-4o-mini";
 
   const sysPrompt = `あなたは極めて優秀なソフトウェアエンジニアAIエージェントです。
 あなたの目的は、ユーザーの指示を「正確に」かつ「安全に」達成することです。
