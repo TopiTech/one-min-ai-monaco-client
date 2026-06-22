@@ -21,7 +21,9 @@ const files = [
     dest: join(vendorDir, "purify.min.js"),
   },
   {
-    src: join(projectRoot, "node_modules", "marked", "marked.min.js"),
+    // marked 18+ no longer ships a marked.min.js bundle; the UMD build at
+    // lib/marked.umd.js is what the package.json "browser" field points to.
+    src: join(projectRoot, "node_modules", "marked", "lib", "marked.umd.js"),
     dest: join(vendorDir, "marked.min.js"),
   },
 ];
