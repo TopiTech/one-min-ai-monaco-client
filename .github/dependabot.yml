@@ -16,9 +16,7 @@ updates:
         patterns:
           - "express"
           - "helmet"
-          - "cookie-parser"
           - "multer"
-          - "morgan"
         update-types:
           - "minor"
           - "patch"
@@ -26,16 +24,13 @@ updates:
         patterns:
           - "express"
           - "helmet"
-          - "cookie-parser"
           - "multer"
-          - "morgan"
         update-types:
           - "major"
       dev-minor:
         patterns:
           - "jest"
           - "supertest"
-          - "nodemon"
         update-types:
           - "minor"
           - "patch"

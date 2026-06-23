@@ -1,14 +1,5 @@
 const statusEl = document.getElementById("status");
 
-// Cookieベースのセッションに移行したため、メモリ上でのトークン管理は廃止
-async function ensureBffToken() {
-  return Promise.resolve();
-}
-
-function getBffToken() {
-  return "";
-}
-
 function setStatus(text, cls = "") {
   if (statusEl) {
     statusEl.textContent = text;
@@ -19,7 +10,6 @@ function setStatus(text, cls = "") {
 let _activeRequests = 0;
 
 async function api(path, options = {}) {
-  await ensureBffToken();
   _activeRequests++;
   setStatus("通信中...", "warn");
 

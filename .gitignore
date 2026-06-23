@@ -18,3 +18,5 @@ coverage/
 public/vs/
 public/vendor/
 $null
+jest-results.json
+test_output.txt

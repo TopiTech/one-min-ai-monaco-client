@@ -15,7 +15,7 @@ const FALLBACK = {
   rateLimitWindowMs: 60 * 1000,
   rateLimitMax: 180,
   rateLimitAutocompleteMax: 600,
-  rateLimitChatMax: 180,
+  rateLimitChatMax: 300,
   commandTimeoutMs: 30_000,
   agentMaxLoops: 20,
   sessionTtlMs: 30 * 60 * 1000,
