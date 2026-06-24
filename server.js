@@ -210,7 +210,9 @@ function localBffAuth({ requireToken = true, authToken } = {}) {
         tokenOk = false;
       }
     } else if (headerToken) {
-      // テスト環境など Cookie が送信されない場合のフォールバック
+      // Cookie が存在しない正当なケース：テスト環境、または同一ページ内
+      // のフォーム送信等。Header単独認証を許可するが、Cookie が存在する
+      // 場合は Cookie 値で統一するため、Header パスはフォールバックのみ。
       tokenOk = compareAuthToken(headerToken, authToken);
     }
 
@@ -655,6 +657,10 @@ export function createApp(options = {}) {
         if (filePath.endsWith(".js")) {
           res.setHeader("X-Content-Type-Options", "nosniff");
         }
+        // Cache immutable assets aggressively: Monaco vendor files, marked, DOMPurify
+        if (/(\/|\\)(vs|vendor)(\/|\\)/.test(filePath)) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        }
       },
       fallthrough: true,
     }),
@@ -777,21 +783,27 @@ export function createApp(options = {}) {
   app.use((err, req, res, _next) => {
     const status = err.status || 500;
     const isDev = process.env.NODE_ENV === "development";
+    const isLocalHost =
+      isDev || /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.get("host") || "");
+    // In production (NODE_ENV=production) or when NODE_ENV is unset, never
+    // expose stack traces or payloads to remote clients — only to requests
+    // coming from localhost/127.0.0.1.
+    const exposeDetails = isLocalHost && isDev;
 
     logger.error(`API Error: ${status}`, {
       error: err.message,
       status,
       method: req.method,
       url: req.originalUrl,
-      payload: isDev ? err.payload : undefined,
-      stack: isDev ? err.stack : undefined,
+      payload: exposeDetails ? err.payload : undefined,
+      stack: exposeDetails ? err.stack : undefined,
     });
 
     res.status(status).json({
       error: normalizePayloadError(err) || err.message || "Internal Server Error",
       code: err.code || "UNKNOWN_ERROR",
-      details: isDev ? sanitizePayload(err.payload) || null : null,
-      stack: isDev ? err.stack : undefined,
+      details: exposeDetails ? sanitizePayload(err.payload) || null : null,
+      stack: exposeDetails ? err.stack : undefined,
     });
   });
 

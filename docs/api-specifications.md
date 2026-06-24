@@ -16,7 +16,7 @@
 - **パターンB**: `Authorization: Bearer <YOUR_API_KEY>`
 
 > [!NOTE]
-> 本アプリケーションのバックエンド（[api-client.js](file:///c:/Users/mibu0/Documents/develop/one-min-ai-monaco-client/utils/api-client.js)）では、環境変数 `ONE_MIN_AI_API_KEY` を用いて、自動的にリクエストヘッダーを設定するよう実装されています。
+> 本アプリケーションのバックエンド（[api-client.js](../utils/api-client.js)）では、環境変数 `ONE_MIN_AI_API_KEY` を用いて、自動的にリクエストヘッダーを設定するよう実装されています。
 
 ### 制限事項 (Limits)
 - **レートリミット (Rate Limits)**: デフォルトで **1分間あたり 180 リクエスト** に制限されています。上限緩和が必要な場合は `support@1min.ai` へ連絡します。

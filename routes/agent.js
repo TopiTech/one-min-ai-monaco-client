@@ -94,6 +94,54 @@ const isTestMode = process.env.NODE_ENV === "test";
 let sessions = new Map();
 const pendingCommands = new Map();
 
+// --- Session Per-Key Lock ---
+
+/**
+ * Lightweight per-key async lock. Ensures that concurrent operations
+ * targeting the same session key are serialized (non-reentrant).
+ * Replaces direct read-modify-write on sessions Map entries.
+ */
+class SessionLock {
+  #locks = new Map();
+
+  /**
+   * Run `fn` while holding the lock for `key`. The lock is automatically
+   * released when `fn` settles (resolves or rejects).
+   * @template T
+   * @param {string} key
+   * @param {() => Promise<T>} fn
+   * @returns {Promise<T>}
+   */
+  async acquire(key, fn) {
+    let queue = this.#locks.get(key);
+    if (!queue) {
+      queue = [];
+      this.#locks.set(key, queue);
+    }
+    while (queue.length > 0) {
+      await queue[queue.length - 1];
+    }
+    let release;
+    const holder = new Promise((resolve) => {
+      release = resolve;
+    });
+    queue.push(holder);
+    try {
+      return await fn();
+    } finally {
+      queue.shift();
+      if (queue.length === 0) this.#locks.delete(key);
+      release();
+    }
+  }
+
+  get size() {
+    return this.#locks.size;
+  }
+}
+
+const sessionLock = new SessionLock();
+
 // --- Debounced File Writer ---
 
 /**
@@ -259,7 +307,7 @@ const MAX_HISTORY_ENTRIES = 100;
 const MAX_HISTORY_RESULT_SIZE = 10000; // chars
 const MAX_PENDING_COMMANDS = 100;
 
-function addHistoryEntry(session, entry) {
+async function addHistoryEntry(session, entry) {
   if (entry.result) {
     const stdoutRaw = entry.result.stdout || "";
     const stderrRaw = entry.result.stderr || "";
@@ -274,11 +322,13 @@ function addHistoryEntry(session, entry) {
       stderrTruncated,
     };
   }
-  session.history.push(entry);
-  if (session.history.length > MAX_HISTORY_ENTRIES) {
-    session.history.shift();
-  }
-  saveSessions(); // Persist after change
+  await sessionLock.acquire(session.id, async () => {
+    session.history.push(entry);
+    if (session.history.length > MAX_HISTORY_ENTRIES) {
+      session.history.shift();
+    }
+  });
+  saveSessions();
 }
 
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -378,7 +428,9 @@ router.post("/sessions", async (req, res, next) => {
       sessions.delete(oldestId);
     }
 
-    sessions.set(sessionId, session);
+    await sessionLock.acquire(sessionId, async () => {
+      sessions.set(sessionId, session);
+    });
     saveSessions();
     res.json({ session });
   } catch (err) {
@@ -521,7 +573,7 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
       exitCode: result.exitCode,
       timedOut: result.timedOut,
     });
-    addHistoryEntry(session, {
+    await addHistoryEntry(session, {
       type: "command",
       command,
       cwd: workingDir,
@@ -621,7 +673,7 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
       exitCode: result.exitCode,
       timedOut: result.timedOut,
     });
-    addHistoryEntry(session, {
+    await addHistoryEntry(session, {
       type: "command",
       command: pending.command,
       cwd: workingDir,
@@ -728,7 +780,7 @@ router.post("/sessions/:id/files", async (req, res, next) => {
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(realPath, content || "", "utf-8");
 
-    addHistoryEntry(session, {
+    await addHistoryEntry(session, {
       type: "write",
       path: realPath,
       timestamp: new Date().toISOString(),
@@ -786,8 +838,20 @@ async function searchWithRg(dir, query, maxResults) {
 
     const child = spawn("rg", args);
     let stdout = "";
+    let resultCount = 0;
     child.stdout.on("data", (data) => {
       stdout += data.toString();
+      // Early exit: count lines to avoid buffering large outputs in memory.
+      // rg outputs one result per line; stop accumulating once we have
+      // roughly enough lines (with a safety margin of 2x).
+      if (!resultCount) {
+        resultCount = (stdout.match(/\r?\n/g) || []).length;
+      } else {
+        resultCount += (data.toString().match(/\r?\n/g) || []).length;
+      }
+      if (resultCount >= maxResults * 2) {
+        child.kill();
+      }
     });
 
     child.on("close", (code) => {
@@ -1159,7 +1223,7 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
     if (!dryRun) {
       await fs.writeFile(realPath, newContent, "utf-8");
 
-      addHistoryEntry(session, {
+      await addHistoryEntry(session, {
         type: "diff",
         path: realPath,
         timestamp: new Date().toISOString(),

@@ -463,6 +463,9 @@ export function createChatManager(dom, state) {
       sendBtn.classList.remove("u-hidden");
       abortBtn.classList.remove("is-shown");
       setStatus("準備完了");
+      state.chat.attachments.forEach((att) => {
+        if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
+      });
       state.chat.attachments.length = 0;
       updateAttachmentPreview();
     }

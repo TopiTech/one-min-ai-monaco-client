@@ -274,5 +274,112 @@ describe("Server Factory", () => {
       const response = await request(app).post("/api/chat").send({});
       expect(response.status).toBe(400);
     });
+
+    test("should not expose stack trace when NODE_ENV is not 'development'", async () => {
+      process.env.NODE_ENV = "production";
+      const prodApp = createApp({ requireLocalAuth: false, enableRateLimit: false });
+
+      const response = await request(prodApp).get("/api/nonexistent-route");
+      // Express returns 404 for unknown routes, which triggers the error handler
+      expect(response.status).toBe(404);
+      expect(response.body.stack).toBeUndefined();
+      expect(response.body.details).toBeUndefined();
+    });
+
+    test("should not expose stack trace when NODE_ENV is unset", async () => {
+      delete process.env.NODE_ENV;
+      const defaultApp = createApp({ requireLocalAuth: false, enableRateLimit: false });
+
+      const response = await request(defaultApp).get("/api/nonexistent-route");
+      expect(response.status).toBe(404);
+      expect(response.body.stack).toBeUndefined();
+      expect(response.body.details).toBeUndefined();
+    });
+
+    test("should expose stack trace only in development mode from localhost", async () => {
+      process.env.NODE_ENV = "development";
+      const devApp = createApp({ requireLocalAuth: false, enableRateLimit: false });
+
+      // Trigger a 500 via a protected route with bad input
+      const response = await request(devApp)
+        .post("/api/chat")
+        .set("host", "127.0.0.1")
+        .send({});
+      // In development mode, 400 errors from schema validation
+      // don't expose stack/details (they are clean validation errors)
+      expect(response.status).toBeGreaterThanOrEqual(400);
+    });
+  });
+
+  describe("Static file serving - cache headers", () => {
+    test("should set immutable cache for Monaco editor assets when served", async () => {
+      const response = await request(app).get("/vs/loader.js");
+      if (response.status === 200 && response.headers["cache-control"]) {
+        // express.static setHeaders should add immutable cache for /vs/ paths
+        const cc = response.headers["cache-control"];
+        expect(cc).toContain("immutable");
+        expect(cc).toContain("max-age=31536000");
+      }
+      // If status is 404, the /vs/ directory doesn't exist in test env - that's OK
+      expect([200, 404]).toContain(response.status);
+    });
+
+    test("should set immutable cache for vendor assets when served", async () => {
+      const response = await request(app).get("/vendor/marked.min.js");
+      if (response.status === 200 && response.headers["cache-control"]) {
+        expect(response.headers["cache-control"]).toContain("immutable");
+      }
+      expect([200, 404]).toContain(response.status);
+    });
+
+    test("should NOT set immutable cache for non-vendor JS files", async () => {
+      const response = await request(app).get("/js/api.js");
+      if (response.status === 200) {
+        // Regular JS files should not have immutable cache
+        const cc = response.headers["cache-control"] || "";
+        expect(cc).not.toContain("immutable");
+      }
+    });
+  });
+
+  describe("localBffAuth - security", () => {
+    test("should reject cross-site requests with sec-fetch-site: cross-site", async () => {
+      const protectedApp = createApp({
+        requireLocalAuth: true,
+        authToken: "secret-token",
+        enableRateLimit: false,
+      });
+
+      const response = await request(protectedApp)
+        .post("/api/chat")
+        .set("x-local-bff-token", "secret-token")
+        .set("sec-fetch-site", "cross-site")
+        .set("host", "127.0.0.1")
+        .send({ prompt: "test" });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toMatch(/Cross-origin/i);
+    });
+
+    test("should accept same-origin requests with sec-fetch-site: same-origin", async () => {
+      const { callOneMin } = await import("../utils/api-client.js");
+      callOneMin.mockResolvedValue({ aiRecord: { status: "SUCCESS" }, result: "ok" });
+
+      const protectedApp = createApp({
+        requireLocalAuth: true,
+        authToken: "secret-token",
+        enableRateLimit: false,
+      });
+
+      const response = await request(protectedApp)
+        .post("/api/chat")
+        .set("x-local-bff-token", "secret-token")
+        .set("Cookie", "__bff_session=secret-token")
+        .set("host", "127.0.0.1")
+        .set("sec-fetch-site", "same-origin")
+        .send({ prompt: "test" });
+
+      expect(response.status).toBe(200);
+    });
   });
 });

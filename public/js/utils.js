@@ -74,7 +74,10 @@ export function renderMarkdownSafely(element, markdown) {
     element.textContent = markdown;
     return;
   }
-  element.innerHTML = window.DOMPurify.sanitize(window.marked.parse(markdown));
+  element.innerHTML = window.DOMPurify.sanitize(window.marked.parse(markdown, {
+    gfm: true,
+    breaks: false,
+  }));
 }
 
 /**

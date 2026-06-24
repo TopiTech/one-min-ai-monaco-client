@@ -34,6 +34,12 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      # Security-sensitive packages: always open individual PRs for audits
+      security:
+        patterns:
+          - "marked"
+          - "dompurify"
+          - "helmet"
     ignore:
       # GH-5: monaco-editor major versions require manual verification
       # because the bundled vs/ directory must be synced.
