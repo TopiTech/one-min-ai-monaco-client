@@ -197,11 +197,17 @@ export async function callOneMin(
       return contentType.includes("application/json") ? response.json() : { text: await response.text() };
     } catch (error) {
       lastError = error;
-      if (lastError && typeof lastError === "object" && !lastError.status && lastError.name !== "AbortError") {
+      if (
+        lastError &&
+        typeof lastError === "object" &&
+        !lastError.status &&
+        lastError.name !== "AbortError"
+      ) {
         safeDefineProperty(lastError, "status", 502);
         safeDefineProperty(lastError, "code", "UPSTREAM_NETWORK_ERROR");
       }
-      if (error && error.status && error.status >= 400 && error.status < 500 && error.status !== 429) throw error;
+      if (error && error.status && error.status >= 400 && error.status < 500 && error.status !== 429)
+        throw error;
       if (attempt < effectiveRetries)
         logger.warn(`Request failed for ${pathname}, will retry: ${error.message}`);
     }

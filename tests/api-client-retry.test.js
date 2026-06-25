@@ -198,8 +198,10 @@ describe("api-client callOneMin", () => {
   test("handles errors with read-only properties safely (DOMException imitation)", async () => {
     const err = new Error("Mock DOMException");
     Object.defineProperty(err, "code", {
-      get() { return "READONLY_CODE"; },
-      configurable: true
+      get() {
+        return "READONLY_CODE";
+      },
+      configurable: true,
     });
     globalThis.fetch = jest.fn(async () => {
       throw err;

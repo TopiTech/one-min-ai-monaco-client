@@ -3,8 +3,18 @@ export function sanitizePayload(payload) {
   if (typeof payload !== "object") return payload;
   try {
     const sensitiveKeys = [
-      "api_key", "apikey", "key", "token", "auth", "authorization", "secret",
-      "prompt", "messages", "query", "input", "content",
+      "api_key",
+      "apikey",
+      "key",
+      "token",
+      "auth",
+      "authorization",
+      "secret",
+      "prompt",
+      "messages",
+      "query",
+      "input",
+      "content",
     ];
     const sensitiveValueKeys = ["result", "resultObject", "result_object", "raw"];
     const seen = new WeakSet();

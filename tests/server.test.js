@@ -16,7 +16,11 @@ jest.unstable_mockModule("../utils/api-client.js", () => ({
   parseResponsePayload: jest.fn(async (response) => {
     const text = await response.text();
     if (!text) return {};
-    try { return JSON.parse(text); } catch { return { message: text }; }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { message: text };
+    }
   }),
 }));
 
@@ -301,10 +305,7 @@ describe("Server Factory", () => {
       const devApp = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
       // Trigger a 500 via a protected route with bad input
-      const response = await request(devApp)
-        .post("/api/chat")
-        .set("host", "127.0.0.1")
-        .send({});
+      const response = await request(devApp).post("/api/chat").set("host", "127.0.0.1").send({});
       // In development mode, 400 errors from schema validation
       // don't expose stack/details (they are clean validation errors)
       expect(response.status).toBeGreaterThanOrEqual(400);

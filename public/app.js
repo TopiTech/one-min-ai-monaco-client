@@ -1422,12 +1422,12 @@ ${workspaceFilesText}
         addAgentTimelineStep(
           "error",
           "パースエラー",
-          `AIがフォーマットに従わない状態が ${MAX_CONSECUTIVE_ERRORS} 回連続したため、安全のためにエージェントを強制停止します。`
+          `AIがフォーマットに従わない状態が ${MAX_CONSECUTIVE_ERRORS} 回連続したため、安全のためにエージェントを強制停止します。`,
         );
         setAgentStatus("エラー", "error");
         break;
       }
-      
+
       const errMsg = `エラー: ツール呼び出しまたはタスク完了タグ (<call_tool> または <finish>) が見つかりませんでした。\n指示に従って、思考を <thought>タグで囲み、直後に呼び出すツールを <call_tool> タグで指定してください。`;
       addAgentTimelineStep(
         "error",

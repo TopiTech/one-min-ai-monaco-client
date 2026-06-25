@@ -64,22 +64,25 @@ try {
 
 // B-6: Periodic cleanup for orphaned temporary files during runtime.
 // Deletes files older than 1 hour, running every 1 hour.
-setInterval(() => {
-  try {
-    const files = fs.readdirSync(UPLOAD_TMP_DIR);
-    const now = Date.now();
-    const ONE_HOUR = 60 * 60 * 1000;
-    for (const file of files) {
-      const filePath = path.join(UPLOAD_TMP_DIR, file);
-      const stat = fs.statSync(filePath);
-      if (now - stat.mtimeMs > ONE_HOUR) {
-        fs.unlinkSync(filePath);
+setInterval(
+  () => {
+    try {
+      const files = fs.readdirSync(UPLOAD_TMP_DIR);
+      const now = Date.now();
+      const ONE_HOUR = 60 * 60 * 1000;
+      for (const file of files) {
+        const filePath = path.join(UPLOAD_TMP_DIR, file);
+        const stat = fs.statSync(filePath);
+        if (now - stat.mtimeMs > ONE_HOUR) {
+          fs.unlinkSync(filePath);
+        }
       }
+    } catch (err) {
+      // Best-effort cleanup, ignore errors
     }
-  } catch (err) {
-    // Best-effort cleanup, ignore errors
-  }
-}, 60 * 60 * 1000).unref();
+  },
+  60 * 60 * 1000,
+).unref();
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -783,8 +786,7 @@ export function createApp(options = {}) {
   app.use((err, req, res, _next) => {
     const status = err.status || 500;
     const isDev = process.env.NODE_ENV === "development";
-    const isLocalHost =
-      isDev || /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.get("host") || "");
+    const isLocalHost = isDev || /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.get("host") || "");
     // In production (NODE_ENV=production) or when NODE_ENV is unset, never
     // expose stack traces or payloads to remote clients — only to requests
     // coming from localhost/127.0.0.1.

@@ -23,7 +23,11 @@ jest.unstable_mockModule("../utils/api-client.js", () => ({
   parseResponsePayload: jest.fn(async (response) => {
     const text = await response.text();
     if (!text) return {};
-    try { return JSON.parse(text); } catch { return { message: text }; }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { message: text };
+    }
   }),
 }));
 
@@ -115,7 +119,9 @@ describe("FS Routes", () => {
       await request(app).post("/api/fs/write").send({ path: filePath, content });
 
       // startLine and endLine both set
-      let readRes = await request(app).get("/api/fs/read").query({ path: filePath, startLine: 2, endLine: 4 });
+      let readRes = await request(app)
+        .get("/api/fs/read")
+        .query({ path: filePath, startLine: 2, endLine: 4 });
       expect(readRes.status).toBe(200);
       expect(readRes.body.content).toBe("line2\nline3\nline4");
 

@@ -46,10 +46,7 @@ const agentChatSchema = z
       )
       .optional(),
     model: z.string().optional(),
-    webSearch: z.preprocess(
-      (val) => val === "true" || val === true,
-      z.boolean().default(false),
-    ),
+    webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
     numOfSite: z.preprocess(
       (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
       z.number().int().optional(),
@@ -61,9 +58,7 @@ const agentChatSchema = z
   })
   .superRefine((data, ctx) => {
     const promptText =
-      Array.isArray(data.messages) && data.messages.length > 0
-        ? flattenMessages(data.messages)
-        : data.prompt;
+      Array.isArray(data.messages) && data.messages.length > 0 ? flattenMessages(data.messages) : data.prompt;
     if (!promptText || !String(promptText).trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -89,9 +84,7 @@ router.post("/chat", async (req, res, next) => {
 
     // 2. Build prompt text from messages (array) or plain prompt string
     const promptText =
-      Array.isArray(data.messages) && data.messages.length > 0
-        ? flattenMessages(data.messages)
-        : data.prompt;
+      Array.isArray(data.messages) && data.messages.length > 0 ? flattenMessages(data.messages) : data.prompt;
 
     // 3. Parse web search params via shared helper
     const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({
@@ -125,9 +118,7 @@ router.post("/chat", async (req, res, next) => {
 
     // 6. Handle upstream failure
     if (isFailedResponse(dataRes)) {
-      const err = new Error(
-        `1min.ai agent chat failed: ${extractFailureMessage(dataRes)}`,
-      );
+      const err = new Error(`1min.ai agent chat failed: ${extractFailureMessage(dataRes)}`);
       err.status = 502;
       err.payload = dataRes;
       throw err;

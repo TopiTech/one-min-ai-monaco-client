@@ -24,7 +24,11 @@ jest.unstable_mockModule("../utils/api-client.js", () => ({
   parseResponsePayload: jest.fn(async (response) => {
     const text = await response.text();
     if (!text) return {};
-    try { return JSON.parse(text); } catch { return { message: text }; }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { message: text };
+    }
   }),
 }));
 
@@ -36,7 +40,8 @@ jest.unstable_mockModule("../services/command-runner.js", () => ({
   checkCommandSafety: jest.fn((command) => {
     // Re-implement the safety check inline (pure function, no side effects).
     // Must mirror the real checkCommandSafety's dangerous patterns for test accuracy.
-    if (!command || typeof command !== "string") return { safe: false, reason: "Command is empty or invalid" };
+    if (!command || typeof command !== "string")
+      return { safe: false, reason: "Command is empty or invalid" };
     const trimmed = command.trim();
     if (!trimmed) return { safe: false, reason: "Command is empty" };
     const SHELL_INJECTION_PATTERN = /[\n\r;|`<>&]|&&|\|\||\$\(|\$\{|%(?:0[aAdD]|\d{2})/;
@@ -45,7 +50,9 @@ jest.unstable_mockModule("../services/command-runner.js", () => ({
     }
     // Block known dangerous patterns (subset of the real DANGEROUS_PATTERNS)
     const dangerous = [
-      /rm\s+-rf\s+\//, /rm\s+-rf\s+\*/, /rm\s+-rf\s+~/,
+      /rm\s+-rf\s+\//,
+      /rm\s+-rf\s+\*/,
+      /rm\s+-rf\s+~/,
       /sudo\s+/i,
       /(?:^|\s)node\s+-{1,2}(e|p|eval|print)/i,
       /(?:^|\s)bash\s+-(c|l)\b/i,
@@ -117,9 +124,7 @@ describe("Agent Approval Flow", () => {
     // coverage.
 
     test("returns 400 or 403 when command is missing", async () => {
-      const response = await request(app)
-        .post(`/api/agent/sessions/${sessionId}/commands`)
-        .send({});
+      const response = await request(app).post(`/api/agent/sessions/${sessionId}/commands`).send({});
 
       expect([400, 403]).toContain(response.status);
       expect(response.body.error).toMatch(/Invalid input|command is required|Validation error|auth/i);
@@ -184,12 +189,12 @@ describe("Agent Approval Flow", () => {
     });
 
     test("returns 400 or 403 for missing approval token", async () => {
-      const response = await request(app)
-        .post(`/api/agent/sessions/${sessionId}/approve`)
-        .send({});
+      const response = await request(app).post(`/api/agent/sessions/${sessionId}/approve`).send({});
 
       expect([400, 403]).toContain(response.status);
-      expect(response.body.error).toMatch(/Invalid input|Invalid or expired approval token|Validation error|auth/i);
+      expect(response.body.error).toMatch(
+        /Invalid input|Invalid or expired approval token|Validation error|auth/i,
+      );
       expect(mockExecuteCommand).not.toHaveBeenCalled();
     });
 

@@ -152,7 +152,7 @@ export function createEditorTabManager(editorState, editorManager, dom) {
               confirmText: "開く",
               cancelText: "キャンセル",
               type: "warning",
-            }
+            },
           );
           if (!accepted) return;
         }

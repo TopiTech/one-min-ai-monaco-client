@@ -1,6 +1,12 @@
 import express from "express";
 import { z } from "zod";
-import { callOneMin, extractText, isFailedResponse, extractFailureMessage, parseResponsePayload } from "../utils/api-client.js";
+import {
+  callOneMin,
+  extractText,
+  isFailedResponse,
+  extractFailureMessage,
+  parseResponsePayload,
+} from "../utils/api-client.js";
 import { getChatModels, getCodeModels, getImageModels } from "../config/models.js";
 import { parseWebSearchParams, buildCodePayload } from "../utils/web-search.js";
 import logger from "../utils/logger.js";
@@ -16,74 +22,105 @@ function getDefaultModel(type) {
   return serverConfig.defaultChatModel;
 }
 
-const rawAttachmentsSchema = z.preprocess((val) => {
-  if (val == null) return undefined;
-  return val;
-}, z.any().superRefine((val, ctx) => {
-  if (val === undefined) return;
-  if (typeof val !== "object" || Array.isArray(val)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "attachments must be an object"
-    });
-    return;
-  }
-  const looksLikeAssetRef = (s) =>
-    typeof s === "string" && s.length <= 1024 && (/^https?:\/\//i.test(s) || /^[A-Za-z0-9._/-]+$/.test(s));
+const rawAttachmentsSchema = z
+  .preprocess(
+    (val) => {
+      if (val == null) return undefined;
+      return val;
+    },
+    z
+      .any()
+      .superRefine((val, ctx) => {
+        if (val === undefined) return;
+        if (typeof val !== "object" || Array.isArray(val)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "attachments must be an object",
+          });
+          return;
+        }
+        const looksLikeAssetRef = (s) =>
+          typeof s === "string" &&
+          s.length <= 1024 &&
+          (/^https?:\/\//i.test(s) || /^[A-Za-z0-9._/-]+$/.test(s));
 
-  if (val.images !== undefined) {
-    if (!Array.isArray(val.images) || val.images.some((x) => typeof x !== "string" || !looksLikeAssetRef(x))) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "attachments.images must be an array of URLs or 1min.ai asset keys"
-      });
-    } else if (val.images.length > 16) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "attachments.images exceeds 16 entries"
-      });
-    }
-  }
-  if (val.files !== undefined) {
-    if (!Array.isArray(val.files) || val.files.some((x) => typeof x !== "string" || !looksLikeAssetRef(x))) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "attachments.files must be an array of URLs or 1min.ai asset keys"
-      });
-    } else if (val.files.length > 16) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "attachments.files exceeds 16 entries"
-      });
-    }
-  }
-}).transform((val) => {
-  if (val === undefined || typeof val !== "object" || Array.isArray(val)) return undefined;
-  const out = {};
-  if (val.images !== undefined && Array.isArray(val.images)) {
-    const cleaned = val.images.map((x) => (typeof x === "string" ? x.slice(0, 1024) : "")).filter(Boolean);
-    if (cleaned.length) out.images = cleaned;
-  }
-  if (val.files !== undefined && Array.isArray(val.files)) {
-    const cleaned = val.files.map((x) => (typeof x === "string" ? x.slice(0, 1024) : "")).filter(Boolean);
-    if (cleaned.length) out.files = cleaned;
-  }
-  return Object.keys(out).length ? out : undefined;
-})).optional();
+        if (val.images !== undefined) {
+          if (
+            !Array.isArray(val.images) ||
+            val.images.some((x) => typeof x !== "string" || !looksLikeAssetRef(x))
+          ) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "attachments.images must be an array of URLs or 1min.ai asset keys",
+            });
+          } else if (val.images.length > 16) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "attachments.images exceeds 16 entries",
+            });
+          }
+        }
+        if (val.files !== undefined) {
+          if (
+            !Array.isArray(val.files) ||
+            val.files.some((x) => typeof x !== "string" || !looksLikeAssetRef(x))
+          ) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "attachments.files must be an array of URLs or 1min.ai asset keys",
+            });
+          } else if (val.files.length > 16) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "attachments.files exceeds 16 entries",
+            });
+          }
+        }
+      })
+      .transform((val) => {
+        if (val === undefined || typeof val !== "object" || Array.isArray(val)) return undefined;
+        const out = {};
+        if (val.images !== undefined && Array.isArray(val.images)) {
+          const cleaned = val.images
+            .map((x) => (typeof x === "string" ? x.slice(0, 1024) : ""))
+            .filter(Boolean);
+          if (cleaned.length) out.images = cleaned;
+        }
+        if (val.files !== undefined && Array.isArray(val.files)) {
+          const cleaned = val.files
+            .map((x) => (typeof x === "string" ? x.slice(0, 1024) : ""))
+            .filter(Boolean);
+          if (cleaned.length) out.files = cleaned;
+        }
+        return Object.keys(out).length ? out : undefined;
+      }),
+  )
+  .optional();
 
 const chatRequestSchema = z.object({
   prompt: z.preprocess(
     (val) => (val === undefined || val === null ? "" : String(val)),
-    z.string().refine((val) => val.trim().length > 0, { message: "prompt is required" })
-      .refine((val) => val.length <= 50000, { message: "prompt exceeds maximum length of 50000 characters" })
+    z
+      .string()
+      .refine((val) => val.trim().length > 0, { message: "prompt is required" })
+      .refine((val) => val.length <= 50000, { message: "prompt exceeds maximum length of 50000 characters" }),
   ),
   model: z.string().optional(),
   conversationId: z.string().optional(),
   attachments: rawAttachmentsSchema,
   webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
-  numOfSite: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
-  maxWord: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
-  history: z.preprocess((val) => val === undefined ? true : (val === "true" || val === true), z.boolean().default(true)),
+  numOfSite: z.preprocess(
+    (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
+    z.number().int().optional(),
+  ),
+  maxWord: z.preprocess(
+    (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
+    z.number().int().optional(),
+  ),
+  history: z.preprocess(
+    (val) => (val === undefined ? true : val === "true" || val === true),
+    z.boolean().default(true),
+  ),
   withMemories: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
   brandVoiceId: z.string().optional(),
   isMixed: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
@@ -285,11 +322,7 @@ router.post("/chat/stream", async (req, res, next) => {
 });
 
 // Allowed conversation types that map to valid 1min.ai API feature types.
-const ALLOWED_CONVERSATION_TYPES = [
-  "UNIFY_CHAT_WITH_AI",
-  "CODE_GENERATOR",
-  "IMAGE_GENERATOR",
-];
+const ALLOWED_CONVERSATION_TYPES = ["UNIFY_CHAT_WITH_AI", "CODE_GENERATOR", "IMAGE_GENERATOR"];
 
 const conversationCreateSchema = z.object({
   title: z.preprocess(
@@ -299,10 +332,12 @@ const conversationCreateSchema = z.object({
   model: z.string().max(200).optional(),
   type: z.preprocess(
     (val) => (val === undefined || val === null ? "UNIFY_CHAT_WITH_AI" : String(val)),
-    z.string().refine(
-      (val) => ALLOWED_CONVERSATION_TYPES.includes(val),
-      { message: `type must be one of: ${ALLOWED_CONVERSATION_TYPES.join(", ")}` },
-    ).default("UNIFY_CHAT_WITH_AI"),
+    z
+      .string()
+      .refine((val) => ALLOWED_CONVERSATION_TYPES.includes(val), {
+        message: `type must be one of: ${ALLOWED_CONVERSATION_TYPES.join(", ")}`,
+      })
+      .default("UNIFY_CHAT_WITH_AI"),
   ),
 });
 
@@ -343,124 +378,145 @@ router.post("/conversations", async (req, res, next) => {
  * return a 400 error. Centralizes NaN handling and range validation so
  * generate/text-editor cannot send invalid values upstream.
  */
-const outputCompressionSchema = z.preprocess((val) => {
-  if (val === undefined || val === "" || (typeof val === "string" && val.trim() === "")) {
-    return undefined;
-  }
-  return val;
-}, z.any().superRefine((val, ctx) => {
-  if (val === undefined) return;
-  const n = Number(val);
-  if (isNaN(n) || !Number.isFinite(n)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "output_compression must be a finite number"
-    });
-    return;
-  }
-  if (!Number.isInteger(n) || n < 0 || n > 100) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "output_compression must be an integer between 0 and 100"
-    });
-  }
-}).transform((val) => {
-  if (val === undefined) return undefined;
-  return Number(val);
-})).optional();
+const outputCompressionSchema = z
+  .preprocess(
+    (val) => {
+      if (val === undefined || val === "" || (typeof val === "string" && val.trim() === "")) {
+        return undefined;
+      }
+      return val;
+    },
+    z
+      .any()
+      .superRefine((val, ctx) => {
+        if (val === undefined) return;
+        const n = Number(val);
+        if (isNaN(n) || !Number.isFinite(n)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "output_compression must be a finite number",
+          });
+          return;
+        }
+        if (!Number.isInteger(n) || n < 0 || n > 100) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "output_compression must be an integer between 0 and 100",
+          });
+        }
+      })
+      .transform((val) => {
+        if (val === undefined) return undefined;
+        return Number(val);
+      }),
+  )
+  .optional();
 
-const imageGenerateSchema = z.object({
-  prompt: z.preprocess(
-    (val) => (val === undefined || val === null ? "" : String(val)),
-    z.string().refine((val) => val.trim().length > 0, { message: "prompt is required" })
-  ),
-  model: z.string().optional(),
-  num_outputs: z.preprocess((val) => (val === undefined ? 1 : Number(val)), z.number().min(1, "num_outputs must be between 1 and 10").max(10, "num_outputs must be between 1 and 10")),
-  aspect_ratio: z.string().default("1:1"),
-  quality: z.string().default("medium"),
-  background: z.string().default("auto"),
-  output_format: z.string().default("png").refine(val => ["png", "webp", "jpeg", "jpg"].includes(val), {
-    message: "output_format must be one of: png, webp, jpeg, jpg"
-  }),
-  output_compression: outputCompressionSchema,
-  size: z.string().optional(),
-}).superRefine((data, ctx) => {
-  const selectedModel = data.model || getDefaultModel("IMAGE_GENERATOR");
-  const isGptImage = selectedModel.startsWith("gpt-image");
-  if (!isGptImage) {
-    if (data.quality !== "medium" || data.background !== "auto" || data.output_compression !== undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "quality, background, and output_compression are only supported by gpt-image-* models"
-      });
+const imageGenerateSchema = z
+  .object({
+    prompt: z.preprocess(
+      (val) => (val === undefined || val === null ? "" : String(val)),
+      z.string().refine((val) => val.trim().length > 0, { message: "prompt is required" }),
+    ),
+    model: z.string().optional(),
+    num_outputs: z.preprocess(
+      (val) => (val === undefined ? 1 : Number(val)),
+      z
+        .number()
+        .min(1, "num_outputs must be between 1 and 10")
+        .max(10, "num_outputs must be between 1 and 10"),
+    ),
+    aspect_ratio: z.string().default("1:1"),
+    quality: z.string().default("medium"),
+    background: z.string().default("auto"),
+    output_format: z
+      .string()
+      .default("png")
+      .refine((val) => ["png", "webp", "jpeg", "jpg"].includes(val), {
+        message: "output_format must be one of: png, webp, jpeg, jpg",
+      }),
+    output_compression: outputCompressionSchema,
+    size: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const selectedModel = data.model || getDefaultModel("IMAGE_GENERATOR");
+    const isGptImage = selectedModel.startsWith("gpt-image");
+    if (!isGptImage) {
+      if (data.quality !== "medium" || data.background !== "auto" || data.output_compression !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "quality, background, and output_compression are only supported by gpt-image-* models",
+        });
+      }
     }
-  }
-});
+  });
 
-const imageEditorSchema = z.object({
-  imageUrl: z.preprocess(
-    (val) => (val === undefined || val === null ? "" : String(val)),
-    z.string().refine((val) => val.trim().length > 0, { message: "imageUrl or asset key is required" })
-  ),
-  prompt: z.preprocess(
-    (val) => (val === undefined || val === null ? "" : String(val)),
-    z.string().refine((val) => val.trim().length > 0, { message: "prompt is required" })
-  ),
-  model: z.string().optional(),
-  size: z.string().default("1024x1024"),
-  quality: z.string().default("medium"),
-  n: z.preprocess((val) => (val === undefined ? 1 : Number(val)), z.number().default(1)),
-  background: z.string().default("auto"),
-  output_format: z.string().default("webp"),
-  output_compression: outputCompressionSchema,
-}).superRefine((data, ctx) => {
-  const selectedModel = data.model || getDefaultModel("IMAGE_EDITOR");
-  const isGptImage = selectedModel.startsWith("gpt-image");
+const imageEditorSchema = z
+  .object({
+    imageUrl: z.preprocess(
+      (val) => (val === undefined || val === null ? "" : String(val)),
+      z.string().refine((val) => val.trim().length > 0, { message: "imageUrl or asset key is required" }),
+    ),
+    prompt: z.preprocess(
+      (val) => (val === undefined || val === null ? "" : String(val)),
+      z.string().refine((val) => val.trim().length > 0, { message: "prompt is required" }),
+    ),
+    model: z.string().optional(),
+    size: z.string().default("1024x1024"),
+    quality: z.string().default("medium"),
+    n: z.preprocess((val) => (val === undefined ? 1 : Number(val)), z.number().default(1)),
+    background: z.string().default("auto"),
+    output_format: z.string().default("webp"),
+    output_compression: outputCompressionSchema,
+  })
+  .superRefine((data, ctx) => {
+    const selectedModel = data.model || getDefaultModel("IMAGE_EDITOR");
+    const isGptImage = selectedModel.startsWith("gpt-image");
 
-  if (isGptImage) {
-    const sizeMatch = String(data.size).match(/^(\d+)x(\d+)$/);
-    if (!sizeMatch) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "size must be in WxH format (e.g. 1024x1024)"
-      });
-      return;
+    if (isGptImage) {
+      const sizeMatch = String(data.size).match(/^(\d+)x(\d+)$/);
+      if (!sizeMatch) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "size must be in WxH format (e.g. 1024x1024)",
+        });
+        return;
+      }
+      const w = Number(sizeMatch[1]);
+      const h = Number(sizeMatch[2]);
+      if (w % 16 !== 0 || h % 16 !== 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "width and height must be divisible by 16",
+        });
+      }
+      if (w * h < 655360 || w * h > 8294400) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "total pixels must be between 655,360 and 8,294,400",
+        });
+      }
+      if (Math.max(w, h) > 3840) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "max edge must be <= 3840px",
+        });
+      }
+      if (Math.max(w, h) / Math.min(w, h) > 3) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "aspect ratio must be <= 3:1",
+        });
+      }
+    } else {
+      if (data.size && !/^\d+x\d+$/.test(String(data.size))) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "size must be in WxH format (e.g. 1024x1024)",
+        });
+      }
     }
-    const w = Number(sizeMatch[1]);
-    const h = Number(sizeMatch[2]);
-    if (w % 16 !== 0 || h % 16 !== 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "width and height must be divisible by 16"
-      });
-    }
-    if (w * h < 655360 || w * h > 8294400) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "total pixels must be between 655,360 and 8,294,400"
-      });
-    }
-    if (Math.max(w, h) > 3840) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "max edge must be <= 3840px"
-      });
-    }
-    if (Math.max(w, h) / Math.min(w, h) > 3) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "aspect ratio must be <= 3:1"
-      });
-    }
-  } else {
-    if (data.size && !/^\d+x\d+$/.test(String(data.size))) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "size must be in WxH format (e.g. 1024x1024)"
-      });
-    }
-  }
-});
+  });
 
 function aspectRatioToSize(aspectRatio) {
   const map = {
@@ -628,16 +684,27 @@ const MAX_PROMPT_LENGTH = 50_000;
 const codeGenerateSchema = z.object({
   instruction: z.preprocess(
     (val) => (val === undefined || val === null ? "" : String(val)),
-    z.string().refine((val) => val.trim().length > 0, { message: "instruction is required" })
-      .refine((val) => val.length <= 50000, { message: "instruction exceeds 50000 characters" })
+    z
+      .string()
+      .refine((val) => val.trim().length > 0, { message: "instruction is required" })
+      .refine((val) => val.length <= 50000, { message: "instruction exceeds 50000 characters" }),
   ),
   fileName: z.string().default("untitled"),
   language: z.string().default("plaintext"),
-  code: z.preprocess((val) => (val === undefined || val === null ? "" : String(val)), z.string().refine((val) => val.length <= 100000, { message: "code exceeds 100000 characters" })),
+  code: z.preprocess(
+    (val) => (val === undefined || val === null ? "" : String(val)),
+    z.string().refine((val) => val.length <= 100000, { message: "code exceeds 100000 characters" }),
+  ),
   model: z.string().optional(),
   webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
-  numOfSite: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
-  maxWord: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
+  numOfSite: z.preprocess(
+    (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
+    z.number().int().optional(),
+  ),
+  maxWord: z.preprocess(
+    (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
+    z.number().int().optional(),
+  ),
 });
 
 function validateLineColumn(data, ctx) {
@@ -645,42 +712,65 @@ function validateLineColumn(data, ctx) {
   if (!Number.isInteger(lineNum) || lineNum < 1 || lineNum > 1000000) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "line must be a positive integer"
+      message: "line must be a positive integer",
     });
   }
   const colNum = Number(data.column);
   if (!Number.isInteger(colNum) || colNum < 1 || colNum > 1000000) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "column must be a positive integer"
+      message: "column must be a positive integer",
     });
   }
 }
 
-const codeAutocompleteSchema = z.object({
-  code: z.string({ required_error: "code, line, and column are required" }).refine((val) => val.length <= 100000, { message: "code exceeds 100000 characters" }),
-  line: z.any({ required_error: "code, line, and column are required" }),
-  column: z.any({ required_error: "code, line, and column are required" }),
-  fileName: z.string().optional(),
-  language: z.string().optional(),
-  model: z.string().optional(),
-  webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
-  numOfSite: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
-  maxWord: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
-}).superRefine(validateLineColumn);
+const codeAutocompleteSchema = z
+  .object({
+    code: z
+      .string({ required_error: "code, line, and column are required" })
+      .refine((val) => val.length <= 100000, { message: "code exceeds 100000 characters" }),
+    line: z.any({ required_error: "code, line, and column are required" }),
+    column: z.any({ required_error: "code, line, and column are required" }),
+    fileName: z.string().optional(),
+    language: z.string().optional(),
+    model: z.string().optional(),
+    webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
+    numOfSite: z.preprocess(
+      (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
+      z.number().int().optional(),
+    ),
+    maxWord: z.preprocess(
+      (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
+      z.number().int().optional(),
+    ),
+  })
+  .superRefine(validateLineColumn);
 
-const codeInlineChatSchema = z.object({
-  prompt: z.string({ required_error: "prompt, code, line, and column are required" }).refine((val) => val.trim().length > 0, { message: "prompt, code, line, and column are required" }).refine((val) => val.length <= 50000, { message: "prompt exceeds 50000 characters" }),
-  code: z.string({ required_error: "prompt, code, line, and column are required" }).refine((val) => val.length <= 100000, { message: "code exceeds 100000 characters" }),
-  line: z.any({ required_error: "prompt, code, line, and column are required" }),
-  column: z.any({ required_error: "prompt, code, line, and column are required" }),
-  fileName: z.string().optional(),
-  language: z.string().optional(),
-  model: z.string().optional(),
-  webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
-  numOfSite: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
-  maxWord: z.preprocess((val) => (val !== undefined && val !== "" ? Number(val) : undefined), z.number().int().optional()),
-}).superRefine(validateLineColumn);
+const codeInlineChatSchema = z
+  .object({
+    prompt: z
+      .string({ required_error: "prompt, code, line, and column are required" })
+      .refine((val) => val.trim().length > 0, { message: "prompt, code, line, and column are required" })
+      .refine((val) => val.length <= 50000, { message: "prompt exceeds 50000 characters" }),
+    code: z
+      .string({ required_error: "prompt, code, line, and column are required" })
+      .refine((val) => val.length <= 100000, { message: "code exceeds 100000 characters" }),
+    line: z.any({ required_error: "prompt, code, line, and column are required" }),
+    column: z.any({ required_error: "prompt, code, line, and column are required" }),
+    fileName: z.string().optional(),
+    language: z.string().optional(),
+    model: z.string().optional(),
+    webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
+    numOfSite: z.preprocess(
+      (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
+      z.number().int().optional(),
+    ),
+    maxWord: z.preprocess(
+      (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
+      z.number().int().optional(),
+    ),
+  })
+  .superRefine(validateLineColumn);
 
 function buildCodeContext(code, line, column, contextLines = 100) {
   const lines = code.split(/\r?\n/);
@@ -884,7 +974,5 @@ ${afterCode}
     next(err);
   }
 });
-
-
 
 export default router;

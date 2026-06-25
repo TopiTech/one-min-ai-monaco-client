@@ -23,7 +23,11 @@ jest.unstable_mockModule("../utils/api-client.js", () => ({
   parseResponsePayload: jest.fn(async (response) => {
     const text = await response.text();
     if (!text) return {};
-    try { return JSON.parse(text); } catch { return { message: text }; }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { message: text };
+    }
   }),
 }));
 

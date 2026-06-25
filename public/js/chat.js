@@ -104,8 +104,7 @@ export function createChatManager(dom, state) {
     // F-6: Only auto-scroll if the user was already at (or near) the bottom.
     // This prevents yanking users back down when they've scrolled up to
     // read history and a new message arrives.
-    const isNearBottom =
-      dom.chatLog.scrollTop + dom.chatLog.clientHeight >= dom.chatLog.scrollHeight - 120;
+    const isNearBottom = dom.chatLog.scrollTop + dom.chatLog.clientHeight >= dom.chatLog.scrollHeight - 120;
     if (isNearBottom) {
       dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
     }
@@ -276,8 +275,7 @@ export function createChatManager(dom, state) {
     // F-6: Only auto-scroll if the user was already near the bottom when they
     // sent the message. This prevents yanking users who had scrolled up to
     // read history back down to the bottom.
-    const wasNearBottom =
-      dom.chatLog.scrollTop + dom.chatLog.clientHeight >= dom.chatLog.scrollHeight - 120;
+    const wasNearBottom = dom.chatLog.scrollTop + dom.chatLog.clientHeight >= dom.chatLog.scrollHeight - 120;
     if (wasNearBottom) {
       dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
     }

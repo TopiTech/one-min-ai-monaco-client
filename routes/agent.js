@@ -19,49 +19,61 @@ import logger from "../utils/logger.js";
 const sessionCreateSchema = z.object({
   id: z.string().optional(),
   cwd: z.string().optional(),
-  task: z.string().optional()
+  task: z.string().optional(),
 });
 
 const commandExecuteSchema = z.object({
   command: z.string({ required_error: "command is required" }).min(1, "command is required"),
   cwd: z.string().optional(),
-  timeoutMs: z.number().int().positive().optional()
+  timeoutMs: z.number().int().positive().optional(),
 });
 
 const approveSchema = z.object({
-  approvalToken: z.string({ required_error: "approvalToken is required" }).min(1, "approvalToken is required"),
-  timeoutMs: z.number().int().positive().optional()
+  approvalToken: z
+    .string({ required_error: "approvalToken is required" })
+    .min(1, "approvalToken is required"),
+  timeoutMs: z.number().int().positive().optional(),
 });
 
-const fileReadSchema = z.object({
-  path: z.string({ required_error: "path is required" }).min(1, "path is required"),
-  startLine: z.preprocess(
-    (val) => (val === undefined || val === null || val === "" ? undefined : Number(val)),
-    z.number().int().min(1).optional()
-  ),
-  endLine: z.preprocess(
-    (val) => (val === undefined || val === null || val === "" ? undefined : Number(val)),
-    z.number().int().min(1).optional()
-  ),
-}).refine((data) => {
-  if (data.startLine !== undefined && data.endLine !== undefined) {
-    return data.startLine <= data.endLine;
-  }
-  return true;
-}, {
-  message: "startLine must be less than or equal to endLine",
-  path: ["startLine"],
-});
+const fileReadSchema = z
+  .object({
+    path: z.string({ required_error: "path is required" }).min(1, "path is required"),
+    startLine: z.preprocess(
+      (val) => (val === undefined || val === null || val === "" ? undefined : Number(val)),
+      z.number().int().min(1).optional(),
+    ),
+    endLine: z.preprocess(
+      (val) => (val === undefined || val === null || val === "" ? undefined : Number(val)),
+      z.number().int().min(1).optional(),
+    ),
+  })
+  .refine(
+    (data) => {
+      if (data.startLine !== undefined && data.endLine !== undefined) {
+        return data.startLine <= data.endLine;
+      }
+      return true;
+    },
+    {
+      message: "startLine must be less than or equal to endLine",
+      path: ["startLine"],
+    },
+  );
 
 const fileWriteSchema = z.object({
   path: z.string({ required_error: "path is required" }).min(1, "path is required"),
-  content: z.string().optional()
+  content: z.string().optional(),
 });
 
 const searchSchema = z.object({
-  query: z.string({ required_error: "query is required", invalid_type_error: "query is required" }).min(1, "query is required"),
+  query: z
+    .string({ required_error: "query is required", invalid_type_error: "query is required" })
+    .min(1, "query is required"),
   dir: z.string().optional(),
-  maxResults: z.preprocess((val) => val === undefined ? undefined : Number(val), z.number().int().positive().max(100).optional().default(20))
+  maxResults: z.preprocess(
+    (val) => (val === undefined ? undefined : Number(val)),
+    z.number().int().positive().max(100).optional().default(20),
+  ),
 });
 
 const MAX_AGENT_READ_SIZE = 10 * 1024 * 1024;
@@ -282,12 +294,21 @@ const sessionWriter = createDebouncedFileWriter(
     const rawSessions = Object.fromEntries(sessions);
     const apiKey = process.env.ONE_MIN_AI_API_KEY;
     // SEC-4: Mask sensitive keys if present in the data
-    return JSON.stringify(rawSessions, (key, value) => {
-      if (typeof value === "string" && apiKey && apiKey !== "your_1min_ai_api_key_here" && value.includes(apiKey)) {
-        return value.split(apiKey).join("***MASKED***");
-      }
-      return value;
-    }, 2);
+    return JSON.stringify(
+      rawSessions,
+      (key, value) => {
+        if (
+          typeof value === "string" &&
+          apiKey &&
+          apiKey !== "your_1min_ai_api_key_here" &&
+          value.includes(apiKey)
+        ) {
+          return value.split(apiKey).join("***MASKED***");
+        }
+        return value;
+      },
+      2,
+    );
   },
   { label: "sessions" },
 );
@@ -364,14 +385,14 @@ function cleanupExpiredSessions() {
           const filePath = path.join(DATA_DIR, file);
           const stat = await fs.stat(filePath);
           if (now - stat.mtimeMs > 30 * 60 * 1000) {
-            await fs.unlink(filePath).catch(() => { });
+            await fs.unlink(filePath).catch(() => {});
           }
         }
       }
     } catch (err) {
       // Best-effort cleanup, ignore errors
     }
-  })().catch(() => { });
+  })().catch(() => {});
 }
 
 const cleanupTimer = setInterval(cleanupExpiredSessions, CLEANUP_INTERVAL_MS);
@@ -383,7 +404,8 @@ cleanupTimer.unref();
 router.post("/sessions", async (req, res, next) => {
   try {
     const result = sessionCreateSchema.safeParse(req.body);
-    if (!result.success) return res.status(400).json({ error: result.error.issues[0]?.message || "Validation error" });
+    if (!result.success)
+      return res.status(400).json({ error: result.error.issues[0]?.message || "Validation error" });
     const { id, cwd, task } = result.data;
     const sessionId = id || crypto.randomUUID();
 
@@ -414,12 +436,11 @@ router.post("/sessions", async (req, res, next) => {
       // M-5: Never evict a session that is actively running a command —
       // killing it would orphan the spawned child process. Prefer evicting
       // the oldest idle/non-running session instead.
-      const evictableEntries = Array.from(sessions.entries()).filter(
-        ([, s]) => s.status !== "running",
-      );
+      const evictableEntries = Array.from(sessions.entries()).filter(([, s]) => s.status !== "running");
       if (evictableEntries.length === 0) {
         return res.status(503).json({
-          error: "Maximum concurrent sessions reached and all sessions are currently running. Try again later.",
+          error:
+            "Maximum concurrent sessions reached and all sessions are currently running. Try again later.",
         });
       }
       const oldestId = evictableEntries.reduce((a, b) =>
@@ -476,7 +497,8 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
     }
 
     const resultBody = commandExecuteSchema.safeParse(req.body);
-    if (!resultBody.success) return res.status(400).json({ error: resultBody.error.issues[0]?.message || "Validation error" });
+    if (!resultBody.success)
+      return res.status(400).json({ error: resultBody.error.issues[0]?.message || "Validation error" });
     const { command, cwd, timeoutMs } = resultBody.data;
 
     const isStream = req.query.stream === "true";
@@ -607,7 +629,8 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
     if (!session) return;
 
     const resultBody = approveSchema.safeParse(req.body);
-    if (!resultBody.success) return res.status(400).json({ error: resultBody.error.issues[0]?.message || "Validation error" });
+    if (!resultBody.success)
+      return res.status(400).json({ error: resultBody.error.issues[0]?.message || "Validation error" });
     const { approvalToken, timeoutMs } = resultBody.data;
 
     const isStream = req.query.stream === "true";
@@ -684,7 +707,9 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
 
     if (isStream) {
       res.write(`event: done\n`);
-      res.write(`data: ${JSON.stringify({ executed: true, command: pending.command, cwd: workingDir, ...result })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ executed: true, command: pending.command, cwd: workingDir, ...result })}\n\n`,
+      );
       res.end();
     } else {
       res.json({
@@ -708,7 +733,8 @@ router.get("/sessions/:id/files", async (req, res, next) => {
     if (!session) return;
 
     const resultQuery = fileReadSchema.safeParse(req.query);
-    if (!resultQuery.success) return res.status(400).json({ error: resultQuery.error.issues[0]?.message || "Validation error" });
+    if (!resultQuery.success)
+      return res.status(400).json({ error: resultQuery.error.issues[0]?.message || "Validation error" });
     const { path: filePath, startLine, endLine } = resultQuery.data;
 
     const resolvedPath = validatePath(resolveAgentPath(filePath, session.cwd));
@@ -758,7 +784,8 @@ router.post("/sessions/:id/files", async (req, res, next) => {
     if (!session) return;
 
     const resultBody = fileWriteSchema.safeParse(req.body);
-    if (!resultBody.success) return res.status(400).json({ error: resultBody.error.issues[0]?.message || "Validation error" });
+    if (!resultBody.success)
+      return res.status(400).json({ error: resultBody.error.issues[0]?.message || "Validation error" });
     const { path: filePath, content } = resultBody.data;
 
     const resolvedPath = validatePath(resolveAgentPath(filePath, session.cwd));
@@ -916,7 +943,8 @@ router.get("/sessions/:id/search", async (req, res, next) => {
     if (!session) return;
 
     const resultQuery = searchSchema.safeParse(req.query);
-    if (!resultQuery.success) return res.status(400).json({ error: resultQuery.error.issues[0]?.message || "Validation error" });
+    if (!resultQuery.success)
+      return res.status(400).json({ error: resultQuery.error.issues[0]?.message || "Validation error" });
     const { query, dir, maxResults } = resultQuery.data;
 
     const searchDir = dir || session.cwd;
