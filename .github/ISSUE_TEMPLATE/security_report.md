@@ -1,9 +1,9 @@
 ---
 name: Security report
 about: Report a security vulnerability (private)
-title: "[security] "
+title: '[security] '
 labels: security
-assignees: ""
+assignees: ''
 ---
 
 > **Please do not file public issues for security vulnerabilities.**

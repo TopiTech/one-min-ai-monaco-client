@@ -1,9 +1,9 @@
 ---
 name: Bug report
 about: Report something that is broken or behaves incorrectly
-title: "[bug] "
+title: '[bug] '
 labels: bug
-assignees: ""
+assignees: ''
 ---
 
 ## Summary

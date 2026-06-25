@@ -7,35 +7,35 @@
  * should stay in the originating feature file.
  */
 
-export const SVG_NS = "http://www.w3.org/2000/svg";
+export const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const STEP_ICON_MAP = {
   thought: {
-    label: "思考",
-    viewBox: "0 0 24 24",
-    paths: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01M12 21a9 9 0 1 0-9-9",
+    label: '思考',
+    viewBox: '0 0 24 24',
+    paths: 'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01M12 21a9 9 0 1 0-9-9',
   },
   action: {
-    label: "ツール呼び出し",
-    viewBox: "0 0 24 24",
+    label: 'ツール呼び出し',
+    viewBox: '0 0 24 24',
     paths:
-      "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm8.94-2.83 1.72 2.99a1 1 0 0 1-.41 1.36l-3.06 1.49a1 1 0 0 1-1.26-.27l-1.15-1.4a8 8 0 0 1-1.86.78l-.34 1.65A1 1 0 0 1 14 19h-4a1 1 0 0 1-1-.83l-.34-1.65a8 8 0 0 1-1.86-.78l-1.15 1.4a1 1 0 0 1-1.26.27L1.33 16.5a1 1 0 0 1-.41-1.36l1.72-2.99A8 8 0 0 1 3 10.5c0-.6.07-1.18.21-1.74L1.5 6.5a1 1 0 0 1 .41-1.36l3.06-1.49a1 1 0 0 1 1.26.27l1.15 1.4a8 8 0 0 1 1.86-.78L9.58 3a1 1 0 0 1 1-.83h4a1 1 0 0 1 1 .83l.34 1.65a8 8 0 0 1 1.86.78l1.15-1.4a1 1 0 0 1 1.26-.27l3.06 1.49a1 1 0 0 1 .41 1.36l-1.72 2.99c.14.56.21 1.14.21 1.74z",
+      'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm8.94-2.83 1.72 2.99a1 1 0 0 1-.41 1.36l-3.06 1.49a1 1 0 0 1-1.26-.27l-1.15-1.4a8 8 0 0 1-1.86.78l-.34 1.65A1 1 0 0 1 14 19h-4a1 1 0 0 1-1-.83l-.34-1.65a8 8 0 0 1-1.86-.78l-1.15 1.4a1 1 0 0 1-1.26.27L1.33 16.5a1 1 0 0 1-.41-1.36l1.72-2.99A8 8 0 0 1 3 10.5c0-.6.07-1.18.21-1.74L1.5 6.5a1 1 0 0 1 .41-1.36l3.06-1.49a1 1 0 0 1 1.26.27l1.15 1.4a8 8 0 0 1 1.86-.78L9.58 3a1 1 0 0 1 1-.83h4a1 1 0 0 1 1 .83l.34 1.65a8 8 0 0 1 1.86.78l1.15-1.4a1 1 0 0 1 1.26-.27l3.06 1.49a1 1 0 0 1 .41 1.36l-1.72 2.99c.14.56.21 1.14.21 1.74z',
   },
   result: {
-    label: "実行結果",
-    viewBox: "0 0 24 24",
-    paths: "M20 6 9 17l-5-5",
+    label: '実行結果',
+    viewBox: '0 0 24 24',
+    paths: 'M20 6 9 17l-5-5',
   },
   error: {
-    label: "エラー",
-    viewBox: "0 0 24 24",
-    paths: "M12 9v4m0 4h.01M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z",
+    label: 'エラー',
+    viewBox: '0 0 24 24',
+    paths: 'M12 9v4m0 4h.01M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z',
   },
   approval: {
-    label: "承認要求",
-    viewBox: "0 0 24 24",
+    label: '承認要求',
+    viewBox: '0 0 24 24',
     paths:
-      "M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4m0 4h.01",
+      'M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4m0 4h.01',
   },
 };
 
@@ -45,13 +45,13 @@ const STEP_ICON_MAP = {
  * undefined/null.
  */
 export function escapeHtml(text) {
-  if (typeof text !== "string") return "";
+  if (typeof text !== 'string') return '';
   return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 /**
@@ -66,11 +66,11 @@ export function escapeHtml(text) {
  */
 export function renderMarkdownSafely(element, markdown) {
   if (!element) return;
-  if (typeof markdown !== "string") {
-    element.textContent = "";
+  if (typeof markdown !== 'string') {
+    element.textContent = '';
     return;
   }
-  if (typeof window === "undefined" || !window.marked || !window.DOMPurify) {
+  if (typeof window === 'undefined' || !window.marked || !window.DOMPurify) {
     element.textContent = markdown;
     return;
   }
@@ -88,10 +88,10 @@ export function renderMarkdownSafely(element, markdown) {
  * still be inserted with textContent semantics.
  */
 export function formatMarkdownLike(text) {
-  if (typeof text !== "string") return "";
+  if (typeof text !== 'string') return '';
   let html = escapeHtml(text);
-  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
-  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   return html;
 }
 
@@ -100,20 +100,20 @@ export function formatMarkdownLike(text) {
  * the SVG element so callers can appendChild it into any container.
  */
 export function createSvgIcon(viewBox, paths) {
-  const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("xmlns", SVG_NS);
-  svg.setAttribute("width", "12");
-  svg.setAttribute("height", "12");
-  svg.setAttribute("viewBox", viewBox);
-  svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "2");
-  svg.setAttribute("stroke-linecap", "round");
-  svg.setAttribute("stroke-linejoin", "round");
-  svg.classList.add("agent-step-icon-svg");
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('xmlns', SVG_NS);
+  svg.setAttribute('width', '12');
+  svg.setAttribute('height', '12');
+  svg.setAttribute('viewBox', viewBox);
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.classList.add('agent-step-icon-svg');
 
-  const path = document.createElementNS(SVG_NS, "path");
-  path.setAttribute("d", paths);
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('d', paths);
   svg.appendChild(path);
   return svg;
 }
@@ -126,7 +126,7 @@ export function createSvgIcon(viewBox, paths) {
 export function appendStepIcon(container, type) {
   const cfg = STEP_ICON_MAP[type] || STEP_ICON_MAP.thought;
   container.appendChild(createSvgIcon(cfg.viewBox, cfg.paths));
-  container.appendChild(document.createTextNode(cfg.label + ": "));
+  container.appendChild(document.createTextNode(cfg.label + ': '));
 }
 
 /**
@@ -134,7 +134,7 @@ export function appendStepIcon(container, type) {
  * present. Handles optional language tags and a missing closing fence.
  */
 export function stripMarkdownCodeBlock(text) {
-  if (typeof text !== "string") return text;
+  if (typeof text !== 'string') return text;
   const trimmed = text.trim();
   const match = trimmed.match(/^```(?:xml|js|javascript|json|text)?\s*\n?([\s\S]*?)\n?```$/i);
   return match ? match[1].trim() : text;
@@ -145,13 +145,13 @@ export function stripMarkdownCodeBlock(text) {
  * escaped for transport inside <parameter> blocks).
  */
 export function unescapeXmlText(value) {
-  if (typeof value !== "string") return value;
+  if (typeof value !== 'string') return value;
   return value
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&");
+    .replace(/&amp;/g, '&');
 }
 
 // F-14: Hard caps on input size to prevent DoS via extremely large or
@@ -177,12 +177,12 @@ export const PARSE_LIMITS = Object.freeze({
  */
 export function parseXMLTags(text) {
   const empty = { thought: null, finish: null, toolCall: null };
-  if (!text || typeof text !== "string") return empty;
+  if (!text || typeof text !== 'string') return empty;
 
   // F-14: Reject absurdly large inputs up-front so we never spend CPU
   // on regex backtracking or JSON.parse over multi-megabyte strings.
   if (text.length > PARSE_INPUT_MAX_CHARS) {
-    console.warn("parseXMLTags: input exceeds maximum size, dropping");
+    console.warn('parseXMLTags: input exceeds maximum size, dropping');
     return empty;
   }
 
@@ -214,8 +214,8 @@ export function parseXMLTags(text) {
     toolCall = { name: toolMatch[1], params };
   }
 
-  const thought = extractTag(normalizedText, "thought");
-  const finish = extractTag(normalizedText, "finish");
+  const thought = extractTag(normalizedText, 'thought');
+  const finish = extractTag(normalizedText, 'finish');
 
   if (!toolCall && !finish) {
     // Walk through every top-level {...} candidate so nested JSON inside
@@ -262,16 +262,16 @@ function extractBalancedObjects(text) {
       continue;
     }
     if (inString) {
-      if (ch === "\\") escape = true;
+      if (ch === '\\') escape = true;
       else if (ch === '"') inString = false;
       continue;
     }
     if (ch === '"') {
       inString = true;
-    } else if (ch === "{") {
+    } else if (ch === '{') {
       if (depth === 0) start = i;
       depth++;
-    } else if (ch === "}") {
+    } else if (ch === '}') {
       if (depth > 0) depth--;
       if (depth === 0 && start !== -1) {
         results.push(text.substring(start, i + 1));
@@ -289,8 +289,8 @@ function extractBalancedObjects(text) {
  * event can be parsed with the same logic.
  */
 export function extractText(record) {
-  if (!record) return "";
-  if (typeof record === "string") return record;
+  if (!record) return '';
+  if (typeof record === 'string') return record;
   return (
     record.content ||
     record?.choices?.[0]?.delta?.content ||
@@ -298,6 +298,6 @@ export function extractText(record) {
     record?.message?.content ||
     record?.delta?.content ||
     record?.text ||
-    ""
+    ''
   );
 }

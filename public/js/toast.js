@@ -3,12 +3,12 @@
  * Replaces native alert() with styled notifications
  */
 
-const toastContainer = document.createElement("div");
-toastContainer.id = "toast-container";
-toastContainer.setAttribute("role", "alert");
+const toastContainer = document.createElement('div');
+toastContainer.id = 'toast-container';
+toastContainer.setAttribute('role', 'alert');
 document.body.appendChild(toastContainer);
 
-const toastStyles = document.createElement("style");
+const toastStyles = document.createElement('style');
 const cspNonce = document.querySelector('meta[name="csp-nonce"]')?.content;
 if (cspNonce) toastStyles.nonce = cspNonce;
 toastStyles.textContent = `
@@ -163,10 +163,10 @@ const ICONS = {
  */
 function parseSvgIcon(svgString) {
   const parser = new DOMParser();
-  const doc = parser.parseFromString(svgString, "image/svg+xml");
+  const doc = parser.parseFromString(svgString, 'image/svg+xml');
   const svgEl = doc.documentElement;
   // DOMParser returns an <parsererror> element on failure — check for it.
-  if (svgEl.tagName === "parsererror" || svgEl.querySelector("parsererror")) {
+  if (svgEl.tagName === 'parsererror' || svgEl.querySelector('parsererror')) {
     return null;
   }
   return svgEl;
@@ -181,32 +181,32 @@ function parseSvgIcon(svgString) {
  * @param {boolean} options.dismissible - Whether to show close button
  */
 function showToast(message, options = {}) {
-  const { type = "info", duration = 5000, dismissible = true } = options;
+  const { type = 'info', duration = 5000, dismissible = true } = options;
 
-  const toast = document.createElement("div");
+  const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
-  toast.setAttribute("role", "alert");
-  if (type === "error") {
-    toast.setAttribute("aria-live", "assertive");
+  toast.setAttribute('role', 'alert');
+  if (type === 'error') {
+    toast.setAttribute('aria-live', 'assertive');
   }
 
-  const icon = document.createElement("div");
-  icon.className = "toast-icon";
+  const icon = document.createElement('div');
+  icon.className = 'toast-icon';
   // SEC: Use DOMParser instead of innerHTML to avoid the innerHTML pattern.
   const svgEl = parseSvgIcon(ICONS[type] || ICONS.info);
   if (svgEl) icon.appendChild(svgEl);
 
-  const content = document.createElement("div");
-  content.className = "toast-content";
+  const content = document.createElement('div');
+  content.className = 'toast-content';
   content.textContent = message;
 
   toast.appendChild(icon);
   toast.appendChild(content);
 
   if (dismissible) {
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "toast-close";
-    closeBtn.setAttribute("aria-label", "閉じる");
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'toast-close';
+    closeBtn.setAttribute('aria-label', '閉じる');
     const closeSvg = parseSvgIcon(
       `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
     );
@@ -224,11 +224,11 @@ function showToast(message, options = {}) {
   }
 
   // Pause on hover
-  toast.addEventListener("mouseenter", () => {
+  toast.addEventListener('mouseenter', () => {
     if (dismissTimeout) clearTimeout(dismissTimeout);
   });
 
-  toast.addEventListener("mouseleave", () => {
+  toast.addEventListener('mouseleave', () => {
     if (duration > 0) {
       dismissTimeout = setTimeout(() => removeToast(toast), duration);
     }
@@ -238,10 +238,10 @@ function showToast(message, options = {}) {
 }
 
 function removeToast(toast) {
-  if (!toast || toast.classList.contains("removing")) return;
+  if (!toast || toast.classList.contains('removing')) return;
 
-  toast.classList.add("removing");
-  toast.addEventListener("animationend", () => {
+  toast.classList.add('removing');
+  toast.addEventListener('animationend', () => {
     toast.remove();
   });
 }
@@ -250,7 +250,7 @@ function removeToast(toast) {
  * Show success toast
  */
 function toastSuccess(message, options = {}) {
-  return showToast(message, { ...options, type: "success" });
+  return showToast(message, { ...options, type: 'success' });
 }
 
 /**
@@ -259,7 +259,7 @@ function toastSuccess(message, options = {}) {
 function toastError(message, options = {}) {
   return showToast(message, {
     ...options,
-    type: "error",
+    type: 'error',
     duration: options.duration !== undefined ? options.duration : 0,
   });
 }
@@ -268,14 +268,14 @@ function toastError(message, options = {}) {
  * Show warning toast
  */
 function toastWarning(message, options = {}) {
-  return showToast(message, { ...options, type: "warning" });
+  return showToast(message, { ...options, type: 'warning' });
 }
 
 /**
  * Show info toast
  */
 function toastInfo(message, options = {}) {
-  return showToast(message, { ...options, type: "info" });
+  return showToast(message, { ...options, type: 'info' });
 }
 
 /**
@@ -283,30 +283,30 @@ function toastInfo(message, options = {}) {
  */
 function toastConfirm(message, options = {}) {
   return new Promise((resolve) => {
-    const { confirmText = "確認", cancelText = "キャンセル", type = "warning" } = options;
+    const { confirmText = '確認', cancelText = 'キャンセル', type = 'warning' } = options;
 
-    const toast = document.createElement("div");
+    const toast = document.createElement('div');
     toast.className = `toast toast-${type} toast--confirm`;
 
-    const content = document.createElement("div");
-    content.className = "toast-content";
+    const content = document.createElement('div');
+    content.className = 'toast-content';
     content.textContent = message;
 
-    const actions = document.createElement("div");
-    actions.className = "toast-actions";
+    const actions = document.createElement('div');
+    actions.className = 'toast-actions';
 
-    const cancelBtn = document.createElement("button");
-    cancelBtn.type = "button";
-    cancelBtn.className = "toast-btn toast-btn--cancel";
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'toast-btn toast-btn--cancel';
     cancelBtn.textContent = cancelText;
     cancelBtn.onclick = () => {
       removeToast(toast);
       resolve(false);
     };
 
-    const confirmBtn = document.createElement("button");
-    confirmBtn.type = "button";
-    confirmBtn.className = "toast-btn toast-btn--confirm";
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'toast-btn toast-btn--confirm';
     confirmBtn.textContent = confirmText;
     confirmBtn.onclick = () => {
       removeToast(toast);
@@ -323,13 +323,13 @@ function toastConfirm(message, options = {}) {
 
     // Escape key to cancel
     const onKey = (e) => {
-      if (e.key === "Escape") {
-        document.removeEventListener("keydown", onKey);
+      if (e.key === 'Escape') {
+        document.removeEventListener('keydown', onKey);
         removeToast(toast);
         resolve(false);
       }
     };
-    document.addEventListener("keydown", onKey);
+    document.addEventListener('keydown', onKey);
   });
 }
 

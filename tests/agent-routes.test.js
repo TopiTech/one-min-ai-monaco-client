@@ -1,15 +1,15 @@
-import { jest } from "@jest/globals";
-import request from "supertest";
-import fs from "fs/promises";
-import path from "path";
+import { jest } from '@jest/globals';
+import request from 'supertest';
+import fs from 'fs/promises';
+import path from 'path';
 
 // Mock the api-client module
-jest.unstable_mockModule("../utils/api-client.js", () => ({
+jest.unstable_mockModule('../utils/api-client.js', () => ({
   callOneMin: jest.fn(),
   extractText: jest.fn((data) => data?.result || JSON.stringify(data)),
   isFailedResponse: jest.fn(() => false),
-  extractFailureMessage: jest.fn(() => "mocked failure"),
-  normalizeAssetResponse: jest.fn((data) => ({ key: data?.asset?.key || "", url: "", raw: data })),
+  extractFailureMessage: jest.fn(() => 'mocked failure'),
+  normalizeAssetResponse: jest.fn((data) => ({ key: data?.asset?.key || '', url: '', raw: data })),
   parseResponsePayload: jest.fn(async (response) => {
     const text = await response.text();
     if (!text) return {};
@@ -21,21 +21,21 @@ jest.unstable_mockModule("../utils/api-client.js", () => ({
   }),
 }));
 
-const { createApp } = await import("../server.js");
+const { createApp } = await import('../server.js');
 
-describe("Agent Directory and Patch Routes", () => {
+describe('Agent Directory and Patch Routes', () => {
   let app;
   let sessionId;
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    process.env.NODE_ENV = "test";
+    process.env.NODE_ENV = 'test';
     app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
     // Create a session first to work with
     const response = await request(app)
-      .post("/api/agent/sessions")
-      .send({ cwd: process.cwd(), task: "Test task" });
+      .post('/api/agent/sessions')
+      .send({ cwd: process.cwd(), task: 'Test task' });
 
     sessionId = response.body.session.id;
   });
@@ -44,35 +44,35 @@ describe("Agent Directory and Patch Routes", () => {
     delete process.env.NODE_ENV;
   });
 
-  describe("GET /api/agent/sessions/:id/dir", () => {
-    test("should list contents of the directory", async () => {
+  describe('GET /api/agent/sessions/:id/dir', () => {
+    test('should list contents of the directory', async () => {
       const response = await request(app)
         .get(`/api/agent/sessions/${sessionId}/dir`)
-        .query({ path: "config" });
+        .query({ path: 'config' });
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty("path");
-      expect(response.body).toHaveProperty("items");
+      expect(response.body).toHaveProperty('path');
+      expect(response.body).toHaveProperty('items');
       expect(Array.isArray(response.body.items)).toBe(true);
-      expect(response.body.items.some((item) => item.name === "server.js" || item.isDirectory)).toBe(true);
+      expect(response.body.items.some((item) => item.name === 'server.js' || item.isDirectory)).toBe(true);
     });
 
-    test("should return 404 for invalid session", async () => {
-      const response = await request(app).get("/api/agent/sessions/invalid-id/dir").query({ path: "config" });
+    test('should return 404 for invalid session', async () => {
+      const response = await request(app).get('/api/agent/sessions/invalid-id/dir').query({ path: 'config' });
 
       expect(response.status).toBe(404);
-      expect(response.body.error).toBe("Session not found");
+      expect(response.body.error).toBe('Session not found');
     });
 
-    test("should return 403 for protected path", async () => {
-      const response = await request(app).get(`/api/agent/sessions/${sessionId}/dir`).query({ path: ".env" });
+    test('should return 403 for protected path', async () => {
+      const response = await request(app).get(`/api/agent/sessions/${sessionId}/dir`).query({ path: '.env' });
 
       expect(response.status).toBe(403);
     });
   });
 
-  describe("GET/POST /api/agent/sessions/:id/files", () => {
-    const testFile = path.join(process.cwd(), "temp-agent-file-test.txt");
+  describe('GET/POST /api/agent/sessions/:id/files', () => {
+    const testFile = path.join(process.cwd(), 'temp-agent-file-test.txt');
 
     afterEach(async () => {
       try {
@@ -80,10 +80,10 @@ describe("Agent Directory and Patch Routes", () => {
       } catch {}
     });
 
-    test("should write and read back a file in session context", async () => {
+    test('should write and read back a file in session context', async () => {
       const writeResponse = await request(app)
         .post(`/api/agent/sessions/${sessionId}/files`)
-        .send({ path: testFile, content: "hello agent\n" });
+        .send({ path: testFile, content: 'hello agent\n' });
 
       expect(writeResponse.status).toBe(200);
       expect(writeResponse.body.ok).toBe(true);
@@ -93,12 +93,12 @@ describe("Agent Directory and Patch Routes", () => {
         .query({ path: testFile });
 
       expect(readResponse.status).toBe(200);
-      expect(readResponse.body.content).toBe("hello agent\n");
+      expect(readResponse.body.content).toBe('hello agent\n');
     });
 
-    test("should read a specific slice of lines when startLine and/or endLine are provided", async () => {
-      const content = "line1\nline2\nline3\nline4\nline5";
-      await fs.writeFile(testFile, content, "utf-8");
+    test('should read a specific slice of lines when startLine and/or endLine are provided', async () => {
+      const content = 'line1\nline2\nline3\nline4\nline5';
+      await fs.writeFile(testFile, content, 'utf-8');
 
       // both startLine and endLine
       let readResponse = await request(app)
@@ -106,7 +106,7 @@ describe("Agent Directory and Patch Routes", () => {
         .query({ path: testFile, startLine: 2, endLine: 4 });
 
       expect(readResponse.status).toBe(200);
-      expect(readResponse.body.content).toBe("line2\nline3\nline4");
+      expect(readResponse.body.content).toBe('line2\nline3\nline4');
 
       // startLine only
       readResponse = await request(app)
@@ -114,7 +114,7 @@ describe("Agent Directory and Patch Routes", () => {
         .query({ path: testFile, startLine: 3 });
 
       expect(readResponse.status).toBe(200);
-      expect(readResponse.body.content).toBe("line3\nline4\nline5");
+      expect(readResponse.body.content).toBe('line3\nline4\nline5');
 
       // endLine only
       readResponse = await request(app)
@@ -122,11 +122,11 @@ describe("Agent Directory and Patch Routes", () => {
         .query({ path: testFile, endLine: 2 });
 
       expect(readResponse.status).toBe(200);
-      expect(readResponse.body.content).toBe("line1\nline2");
+      expect(readResponse.body.content).toBe('line1\nline2');
     });
 
-    test("should reject invalid startLine and endLine values", async () => {
-      await fs.writeFile(testFile, "a\nb", "utf-8");
+    test('should reject invalid startLine and endLine values', async () => {
+      await fs.writeFile(testFile, 'a\nb', 'utf-8');
 
       // startLine > endLine
       let response = await request(app)
@@ -142,11 +142,11 @@ describe("Agent Directory and Patch Routes", () => {
     });
   });
 
-  describe("POST /api/agent/sessions/:id/diff", () => {
-    const testFile = path.join(process.cwd(), "temp-diff-test.txt");
+  describe('POST /api/agent/sessions/:id/diff', () => {
+    const testFile = path.join(process.cwd(), 'temp-diff-test.txt');
 
     beforeEach(async () => {
-      await fs.writeFile(testFile, "hello world\nthis is a test\nend of file", "utf-8");
+      await fs.writeFile(testFile, 'hello world\nthis is a test\nend of file', 'utf-8');
     });
 
     afterEach(async () => {
@@ -155,7 +155,7 @@ describe("Agent Directory and Patch Routes", () => {
       } catch {}
     });
 
-    test("should apply diff with search-and-replace block", async () => {
+    test('should apply diff with search-and-replace block', async () => {
       const diffContent = `
 <<<<<<< SEARCH
 this is a test
@@ -170,14 +170,14 @@ this has been patched successfully with diff
 
       expect(response.status).toBe(200);
       expect(response.body.ok).toBe(true);
-      expect(response.body.message).toContain("1個のブロックの置換に成功しました。");
+      expect(response.body.message).toContain('1個のブロックの置換に成功しました。');
 
-      const fileContent = await fs.readFile(testFile, "utf-8");
-      expect(fileContent).toContain("this has been patched successfully with diff");
-      expect(fileContent).not.toContain("this is a test");
+      const fileContent = await fs.readFile(testFile, 'utf-8');
+      expect(fileContent).toContain('this has been patched successfully with diff');
+      expect(fileContent).not.toContain('this is a test');
     });
 
-    test("should apply multi-block diff successfully", async () => {
+    test('should apply multi-block diff successfully', async () => {
       const diffContent = `
 <<<<<<< SEARCH
 hello world
@@ -198,16 +198,16 @@ fin.
 
       expect(response.status).toBe(200);
       expect(response.body.ok).toBe(true);
-      expect(response.body.message).toContain("2個のブロックの置換に成功しました。");
+      expect(response.body.message).toContain('2個のブロックの置換に成功しました。');
 
-      const fileContent = await fs.readFile(testFile, "utf-8");
-      expect(fileContent).toContain("welcome everyone");
-      expect(fileContent).toContain("fin.");
-      expect(fileContent).not.toContain("hello world");
-      expect(fileContent).not.toContain("end of file");
+      const fileContent = await fs.readFile(testFile, 'utf-8');
+      expect(fileContent).toContain('welcome everyone');
+      expect(fileContent).toContain('fin.');
+      expect(fileContent).not.toContain('hello world');
+      expect(fileContent).not.toContain('end of file');
     });
 
-    test("should apply diff even if leading indentation of search block is mismatched", async () => {
+    test('should apply diff even if leading indentation of search block is mismatched', async () => {
       const diffContent = `
 <<<<<<< SEARCH
   this is a test
@@ -223,12 +223,12 @@ fin.
       expect(response.status).toBe(200);
       expect(response.body.ok).toBe(true);
 
-      const fileContent = await fs.readFile(testFile, "utf-8");
-      expect(fileContent).toContain("this has been patched successfully with diff");
-      expect(fileContent).not.toContain("  this has been patched successfully with diff");
-      expect(fileContent).not.toContain("this is a test");
+      const fileContent = await fs.readFile(testFile, 'utf-8');
+      expect(fileContent).toContain('this has been patched successfully with diff');
+      expect(fileContent).not.toContain('  this has been patched successfully with diff');
+      expect(fileContent).not.toContain('this is a test');
     });
-    test("should return 400 if search block not found", async () => {
+    test('should return 400 if search block not found', async () => {
       const diffContent = `
 <<<<<<< SEARCH
 nonexistent-string
@@ -242,12 +242,12 @@ something
       });
 
       expect(response.status).toBe(400);
-      expect(response.body.error).toContain("置換対象の SEARCH ブロックのコードが見つかりません");
+      expect(response.body.error).toContain('置換対象の SEARCH ブロックのコードが見つかりません');
     });
 
-    test("should return 400 if search block has multiple matches", async () => {
+    test('should return 400 if search block has multiple matches', async () => {
       // Write content with duplicate strings
-      await fs.writeFile(testFile, "dup\ndup\nend", "utf-8");
+      await fs.writeFile(testFile, 'dup\ndup\nend', 'utf-8');
 
       const diffContent = `
 <<<<<<< SEARCH
@@ -263,26 +263,26 @@ replaced
 
       expect(response.status).toBe(400);
       expect(response.body.error).toContain(
-        "置換対象の SEARCH ブロックのコードがファイル内に複数存在するため、一意に特定できません",
+        '置換対象の SEARCH ブロックのコードがファイル内に複数存在するため、一意に特定できません',
       );
     });
 
-    test("should return 400 if no valid SEARCH/REPLACE blocks found", async () => {
+    test('should return 400 if no valid SEARCH/REPLACE blocks found', async () => {
       const response = await request(app).post(`/api/agent/sessions/${sessionId}/diff`).send({
         path: testFile,
-        diff: "invalid diff format",
+        diff: 'invalid diff format',
       });
 
       expect(response.status).toBe(400);
-      expect(response.body.error).toContain("有効な SEARCH/REPLACE ブロックが見つかりませんでした");
+      expect(response.body.error).toContain('有効な SEARCH/REPLACE ブロックが見つかりませんでした');
     });
   });
 
-  describe("GET /api/agent/sessions/:id/search", () => {
-    const testSearchFile = path.join(process.cwd(), "temp-search-test.txt");
+  describe('GET /api/agent/sessions/:id/search', () => {
+    const testSearchFile = path.join(process.cwd(), 'temp-search-test.txt');
 
     beforeEach(async () => {
-      await fs.writeFile(testSearchFile, "line one\nneedle line here\nline three", "utf-8");
+      await fs.writeFile(testSearchFile, 'line one\nneedle line here\nline three', 'utf-8');
     });
 
     afterEach(async () => {
@@ -291,32 +291,32 @@ replaced
       } catch {}
     });
 
-    test("should find query in test file", async () => {
+    test('should find query in test file', async () => {
       const response = await request(app)
         .get(`/api/agent/sessions/${sessionId}/search`)
-        .query({ query: "needle" });
+        .query({ query: 'needle' });
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty("query", "needle");
-      expect(response.body).toHaveProperty("results");
+      expect(response.body).toHaveProperty('query', 'needle');
+      expect(response.body).toHaveProperty('results');
       expect(Array.isArray(response.body.results)).toBe(true);
-      const found = response.body.results.find((r) => r.file.includes("temp-search-test.txt"));
+      const found = response.body.results.find((r) => r.file.includes('temp-search-test.txt'));
       expect(found).toBeDefined();
       expect(found.line).toBe(2);
-      expect(found.content).toContain("needle line here");
+      expect(found.content).toContain('needle line here');
     });
 
-    test("should return 400 for missing query", async () => {
+    test('should return 400 for missing query', async () => {
       const response = await request(app).get(`/api/agent/sessions/${sessionId}/search`);
 
       expect(response.status).toBe(400);
       expect(response.body.error).toMatch(/Invalid input|query is required|Validation error/i);
     });
 
-    test("should return 403 for protected search directory", async () => {
+    test('should return 403 for protected search directory', async () => {
       const response = await request(app)
         .get(`/api/agent/sessions/${sessionId}/search`)
-        .query({ query: "dummy", dir: ".env" });
+        .query({ query: 'dummy', dir: '.env' });
 
       expect(response.status).toBe(403);
     });

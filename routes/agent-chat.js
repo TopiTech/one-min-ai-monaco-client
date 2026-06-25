@@ -7,11 +7,11 @@
  * API Reference: https://docs.1min.ai/docs/api/ai-for-code/code-generator/code-generator-tag
  */
 
-import express from "express";
-import { z } from "zod";
-import { callOneMin, extractText, isFailedResponse, extractFailureMessage } from "../utils/api-client.js";
-import { parseWebSearchParams, buildCodePayload } from "../utils/web-search.js";
-import logger from "../utils/logger.js";
+import express from 'express';
+import { z } from 'zod';
+import { callOneMin, extractText, isFailedResponse, extractFailureMessage } from '../utils/api-client.js';
+import { parseWebSearchParams, buildCodePayload } from '../utils/web-search.js';
+import logger from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -27,11 +27,11 @@ function flattenMessages(messages) {
   if (!Array.isArray(messages) || messages.length === 0) return null;
   return messages
     .map((m) => {
-      const role = (m.role || "user").toUpperCase();
-      const content = typeof m.content === "string" ? m.content : "";
+      const role = (m.role || 'user').toUpperCase();
+      const content = typeof m.content === 'string' ? m.content : '';
       return `[${role}]\n${content}`;
     })
-    .join("\n\n");
+    .join('\n\n');
 }
 
 const agentChatSchema = z
@@ -40,19 +40,19 @@ const agentChatSchema = z
     messages: z
       .array(
         z.object({
-          role: z.string().default("user"),
-          content: z.string().default(""),
+          role: z.string().default('user'),
+          content: z.string().default(''),
         }),
       )
       .optional(),
     model: z.string().optional(),
-    webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
+    webSearch: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
     numOfSite: z.preprocess(
-      (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
+      (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
       z.number().int().optional(),
     ),
     maxWord: z.preprocess(
-      (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
+      (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
       z.number().int().optional(),
     ),
   })
@@ -62,7 +62,7 @@ const agentChatSchema = z
     if (!promptText || !String(promptText).trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "prompt or messages is required",
+        message: 'prompt or messages is required',
       });
     }
   });
@@ -71,12 +71,12 @@ const agentChatSchema = z
 // POST /api/agent/chat
 // ---------------------------------------------------------------------------
 
-router.post("/chat", async (req, res, next) => {
+router.post('/chat', async (req, res, next) => {
   try {
     // 1. Validate request body
     const result = agentChatSchema.safeParse(req.body);
     if (!result.success) {
-      const errorMsg = result.error.issues[0]?.message || "Validation error";
+      const errorMsg = result.error.issues[0]?.message || 'Validation error';
       return res.status(400).json({ error: errorMsg });
     }
 
@@ -102,7 +102,7 @@ router.post("/chat", async (req, res, next) => {
       parsedMaxWord,
     });
 
-    logger.debug("Agent chat request", {
+    logger.debug('Agent chat request', {
       model: payload.model,
       webSearch: parsedWebSearch,
       promptLength: String(promptText).length,
@@ -110,8 +110,8 @@ router.post("/chat", async (req, res, next) => {
     });
 
     // 5. Call 1min.ai /api/features (CODE_GENERATOR)
-    const dataRes = await callOneMin("/api/features", {
-      headers: { "Content-Type": "application/json" },
+    const dataRes = await callOneMin('/api/features', {
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       timeout: 600000,
     });

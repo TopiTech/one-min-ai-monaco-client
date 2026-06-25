@@ -1,4 +1,4 @@
-import { serverConfig } from "../config/server.js";
+import { serverConfig } from '../config/server.js';
 
 /**
  * Validates and parses web search parameters.
@@ -12,18 +12,18 @@ export function parseWebSearchParams({ webSearch = false, numOfSite, maxWord } =
   const parsedWebSearch = Boolean(webSearch);
 
   let parsedNumOfSite;
-  if (numOfSite !== undefined && numOfSite !== "") {
+  if (numOfSite !== undefined && numOfSite !== '') {
     parsedNumOfSite = Number(numOfSite);
     if (isNaN(parsedNumOfSite) || parsedNumOfSite < 1 || parsedNumOfSite > 10) {
-      throw Object.assign(new Error("numOfSite must be a number between 1 and 10"), { status: 400 });
+      throw Object.assign(new Error('numOfSite must be a number between 1 and 10'), { status: 400 });
     }
   }
 
   let parsedMaxWord;
-  if (maxWord !== undefined && maxWord !== "") {
+  if (maxWord !== undefined && maxWord !== '') {
     parsedMaxWord = Number(maxWord);
     if (isNaN(parsedMaxWord) || parsedMaxWord < 100 || parsedMaxWord > 10000) {
-      throw Object.assign(new Error("maxWord must be a number between 100 and 10000"), { status: 400 });
+      throw Object.assign(new Error('maxWord must be a number between 100 and 10000'), { status: 400 });
     }
   }
 
@@ -59,7 +59,7 @@ export function buildWebSearchSettings({ webSearch, parsedNumOfSite, parsedMaxWo
  */
 export function buildCodePayload({ prompt, model, webSearch, parsedNumOfSite, parsedMaxWord }) {
   return {
-    type: "CODE_GENERATOR",
+    type: 'CODE_GENERATOR',
     model: model || serverConfig.defaultCodeModel,
     promptObject: {
       prompt,

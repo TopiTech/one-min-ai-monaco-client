@@ -1,14 +1,14 @@
-import "dotenv/config";
-import { serverConfig } from "../config/server.js";
-import logger from "./logger.js";
+import 'dotenv/config';
+import { serverConfig } from '../config/server.js';
+import logger from './logger.js';
 
 const API_BASE = serverConfig.apiBaseUrl;
 
 function requireApiKey() {
   const apiKey = process.env.ONE_MIN_AI_API_KEY;
-  if (!apiKey || apiKey.includes("your_1min_ai_api_key_here")) {
+  if (!apiKey || apiKey.includes('your_1min_ai_api_key_here')) {
     const err = new Error(
-      "ONE_MIN_AI_API_KEY is not configured. Copy .env.example to .env and set your key.",
+      'ONE_MIN_AI_API_KEY is not configured. Copy .env.example to .env and set your key.',
     );
     err.status = 500;
     throw err;
@@ -29,7 +29,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = serverConfig.apiT
   const { signal: callerSignal, ...fetchOpts } = options;
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
   const combinedSignal =
-    typeof AbortSignal.any === "function"
+    typeof AbortSignal.any === 'function'
       ? AbortSignal.any(callerSignal ? [callerSignal, timeoutSignal] : [timeoutSignal])
       : createCombinedSignal(callerSignal, timeoutSignal);
 
@@ -37,10 +37,10 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = serverConfig.apiT
     const response = await fetch(url, { ...fetchOpts, signal: combinedSignal });
     return response;
   } catch (error) {
-    if (error.name === "AbortError" || error.code === "ABORT_ERR") {
+    if (error.name === 'AbortError' || error.code === 'ABORT_ERR') {
       if (callerSignal && callerSignal.aborted) {
-        const err = new Error("Request aborted by client");
-        err.name = "AbortError";
+        const err = new Error('Request aborted by client');
+        err.name = 'AbortError';
         err.status = 499;
         throw err;
       }
@@ -67,11 +67,11 @@ function createCombinedSignal(a, b) {
   };
   if (a) {
     if (a.aborted) onAbort();
-    else a.addEventListener("abort", onAbort, { once: true });
+    else a.addEventListener('abort', onAbort, { once: true });
   }
   if (b) {
     if (b.aborted) onAbort();
-    else b.addEventListener("abort", onAbort, { once: true });
+    else b.addEventListener('abort', onAbort, { once: true });
   }
   return controller.signal;
 }
@@ -116,7 +116,7 @@ export async function parseResponsePayload(response) {
 export async function callOneMin(
   pathname,
   {
-    method = "POST",
+    method = 'POST',
     body,
     headers = {},
     raw = false,
@@ -124,7 +124,7 @@ export async function callOneMin(
     // M-1: When true, retry is disabled entirely because the upstream side
     // effect would be duplicated (e.g. POST /api/conversations, POST /api/assets).
     // Callers that mutate state on the upstream should pass `idempotent: false`.
-    idempotent = method.toUpperCase() === "GET",
+    idempotent = method.toUpperCase() === 'GET',
     timeout,
   } = {},
 ) {
@@ -139,12 +139,12 @@ export async function callOneMin(
   // client works regardless of which header the API chooses to enforce.
   // Callers can still override via the `headers` argument.
   const baseHeaders = {
-    "API-KEY": apiKey,
+    'API-KEY': apiKey,
     Authorization: `Bearer ${apiKey}`,
   };
   // Don't let caller-provided headers clobber our auth headers unless explicit
   for (const k of Object.keys(headers)) {
-    if (k.toLowerCase() === "api-key" || k.toLowerCase() === "authorization") continue;
+    if (k.toLowerCase() === 'api-key' || k.toLowerCase() === 'authorization') continue;
     baseHeaders[k] = headers[k];
   }
 
@@ -175,7 +175,7 @@ export async function callOneMin(
       const response = await makeRequest();
 
       if (response.status === 429 && attempt < effectiveRetries) {
-        const retryAfter = response.headers.get("Retry-After");
+        const retryAfter = response.headers.get('Retry-After');
         const waitTime = retryAfter
           ? Math.min(parseInt(retryAfter, 10) * 1000 + 1000, 60000)
           : Math.round(retryDelay * Math.pow(2, attempt) * (1 + (Math.random() * 0.2 - 0.1)));
@@ -193,18 +193,18 @@ export async function callOneMin(
       }
 
       if (raw) return response;
-      const contentType = response.headers.get("content-type") || "";
-      return contentType.includes("application/json") ? response.json() : { text: await response.text() };
+      const contentType = response.headers.get('content-type') || '';
+      return contentType.includes('application/json') ? response.json() : { text: await response.text() };
     } catch (error) {
       lastError = error;
       if (
         lastError &&
-        typeof lastError === "object" &&
+        typeof lastError === 'object' &&
         !lastError.status &&
-        lastError.name !== "AbortError"
+        lastError.name !== 'AbortError'
       ) {
-        safeDefineProperty(lastError, "status", 502);
-        safeDefineProperty(lastError, "code", "UPSTREAM_NETWORK_ERROR");
+        safeDefineProperty(lastError, 'status', 502);
+        safeDefineProperty(lastError, 'code', 'UPSTREAM_NETWORK_ERROR');
       }
       if (error && error.status && error.status >= 400 && error.status < 500 && error.status !== 429)
         throw error;
@@ -232,12 +232,12 @@ function firstTextCandidate(data) {
   ];
 
   for (const c of candidates) {
-    if (typeof c === "string") return c || undefined;
+    if (typeof c === 'string') return c || undefined;
     if (Array.isArray(c)) {
-      const joined = c.map((x) => (typeof x === "string" ? x : JSON.stringify(x, null, 2))).join("\n");
+      const joined = c.map((x) => (typeof x === 'string' ? x : JSON.stringify(x, null, 2))).join('\n');
       return joined || undefined;
     }
-    if (c && typeof c === "object") return JSON.stringify(c, null, 2);
+    if (c && typeof c === 'object') return JSON.stringify(c, null, 2);
   }
   return undefined;
 }
@@ -255,14 +255,14 @@ export function extractText(data) {
  * a payload describing the failure.
  */
 export function isFailedResponse(data) {
-  if (!data || typeof data !== "object") return false;
+  if (!data || typeof data !== 'object') return false;
   const status = data?.aiRecord?.status ?? data?.status ?? data?.aiRecordDetail?.status;
   if (!status) return false;
-  return String(status).toUpperCase() !== "SUCCESS" && String(status).toUpperCase() !== "COMPLETED";
+  return String(status).toUpperCase() !== 'SUCCESS' && String(status).toUpperCase() !== 'COMPLETED';
 }
 
 export function extractFailureMessage(data) {
-  if (!data || typeof data !== "object") return "Upstream returned a failure status";
+  if (!data || typeof data !== 'object') return 'Upstream returned a failure status';
   // M-14: Do NOT fall back to data.message — 1min.ai uses that field for
   // generic lifecycle messages like "Stream completed" even on success,
   // which would otherwise be surfaced as a misleading failure reason.
@@ -271,7 +271,7 @@ export function extractFailureMessage(data) {
     data?.aiRecord?.errorMessage ||
     data?.error?.message ||
     data?.error ||
-    "Upstream returned a failure status"
+    'Upstream returned a failure status'
   );
 }
 
@@ -306,9 +306,9 @@ export function normalizeOneMinResponse(data) {
  */
 export function normalizeAssetResponse(data) {
   const asset = data?.asset || {};
-  const key = asset.key || data?.fileContent?.path || data?.path || "";
-  const location = asset.location || "";
+  const key = asset.key || data?.fileContent?.path || data?.path || '';
+  const location = asset.location || '';
   const url =
-    location || (key && !/^https?:\/\//.test(key) ? `https://asset.1min.ai/${key.replace(/^\//, "")}` : key);
+    location || (key && !/^https?:\/\//.test(key) ? `https://asset.1min.ai/${key.replace(/^\//, '')}` : key);
   return { key, url, raw: data };
 }

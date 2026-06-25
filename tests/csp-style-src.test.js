@@ -11,15 +11,15 @@
  * coming from our own code still go through the nonced <style> block in
  * `public/js/dom-style.js`.
  */
-import { jest } from "@jest/globals";
-import request from "supertest";
+import { jest } from '@jest/globals';
+import request from 'supertest';
 
-jest.unstable_mockModule("../utils/api-client.js", () => ({
+jest.unstable_mockModule('../utils/api-client.js', () => ({
   callOneMin: jest.fn(),
   extractText: jest.fn((data) => data?.result || JSON.stringify(data)),
   isFailedResponse: jest.fn(() => false),
-  extractFailureMessage: jest.fn(() => "mocked failure"),
-  normalizeAssetResponse: jest.fn((data) => ({ key: data?.asset?.key || "", url: "", raw: data })),
+  extractFailureMessage: jest.fn(() => 'mocked failure'),
+  normalizeAssetResponse: jest.fn((data) => ({ key: data?.asset?.key || '', url: '', raw: data })),
   parseResponsePayload: jest.fn(async (response) => {
     const text = await response.text();
     if (!text) return {};
@@ -31,28 +31,28 @@ jest.unstable_mockModule("../utils/api-client.js", () => ({
   }),
 }));
 
-const { createApp } = await import("../server.js");
+const { createApp } = await import('../server.js');
 
 function getStyleSrc(cspHeader) {
   if (!cspHeader) return null;
-  for (const part of cspHeader.split(";")) {
+  for (const part of cspHeader.split(';')) {
     const trimmed = part.trim();
     // Match only the bare `style-src` directive, not `style-src-attr`.
-    if (trimmed.startsWith("style-src") && !trimmed.startsWith("style-src-")) {
+    if (trimmed.startsWith('style-src') && !trimmed.startsWith('style-src-')) {
       return trimmed;
     }
   }
   return null;
 }
 
-describe("CSP style-src directive", () => {
+describe('CSP style-src directive', () => {
   test("GET / sets a style-src that includes 'unsafe-inline' (required by Monaco)", async () => {
-    process.env.NODE_ENV = "test";
+    process.env.NODE_ENV = 'test';
     const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
-    const res = await request(app).get("/");
+    const res = await request(app).get('/');
     expect(res.status).toBe(200);
-    const csp = res.headers["content-security-policy"];
+    const csp = res.headers['content-security-policy'];
     expect(csp).toBeDefined();
     const styleSrc = getStyleSrc(csp);
     expect(styleSrc).not.toBeNull();
@@ -60,24 +60,24 @@ describe("CSP style-src directive", () => {
   });
 
   test("GET / sets a style-src-attr mirroring 'unsafe-inline'", async () => {
-    process.env.NODE_ENV = "test";
+    process.env.NODE_ENV = 'test';
     const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
-    const res = await request(app).get("/");
-    const csp = res.headers["content-security-policy"];
+    const res = await request(app).get('/');
+    const csp = res.headers['content-security-policy'];
     const styleSrcAttr = csp
-      .split(";")
+      .split(';')
       .map((p) => p.trim())
-      .find((p) => p.startsWith("style-src-attr"));
+      .find((p) => p.startsWith('style-src-attr'));
     expect(styleSrcAttr).toBeDefined();
     expect(styleSrcAttr).toMatch(/'unsafe-inline'/);
   });
 
   test('GET / injects a <meta name="csp-nonce"> tag and a per-request nonce in <script> tags', async () => {
-    process.env.NODE_ENV = "test";
+    process.env.NODE_ENV = 'test';
     const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
-    const res = await request(app).get("/");
+    const res = await request(app).get('/');
     expect(res.status).toBe(200);
     const nonceMatch = res.text.match(/<meta name="csp-nonce" content="([^"]+)">/);
     expect(nonceMatch).not.toBeNull();
@@ -87,15 +87,15 @@ describe("CSP style-src directive", () => {
     // At least one <script> tag should carry the nonce.
     // Build the pattern from an escaped string so the base64 "/" and "+"
     // characters in the nonce don't get interpreted as regex syntax.
-    const escapedNonce = nonce.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+    const escapedNonce = nonce.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
     expect(res.text).toMatch(new RegExp(`<script\\s+nonce="${escapedNonce}"`));
   });
 
-  test("index.html no longer contains any inline style= attribute", async () => {
-    process.env.NODE_ENV = "test";
+  test('index.html no longer contains any inline style= attribute', async () => {
+    process.env.NODE_ENV = 'test';
     const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
-    const res = await request(app).get("/");
+    const res = await request(app).get('/');
     expect(res.status).toBe(200);
     // Sanity: the rendered HTML must not contain ` style="` or ` style='`
     expect(res.text).not.toMatch(/\sstyle="[^"]*"/);
@@ -104,12 +104,12 @@ describe("CSP style-src directive", () => {
 
   // F-3: With DOMPurify and marked now vendored locally, the CSP must
   // no longer reference the jsdelivr CDN.
-  test("CSP no longer permits cdn.jsdelivr.net", async () => {
-    process.env.NODE_ENV = "test";
+  test('CSP no longer permits cdn.jsdelivr.net', async () => {
+    process.env.NODE_ENV = 'test';
     const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
-    const res = await request(app).get("/");
-    const csp = res.headers["content-security-policy"];
+    const res = await request(app).get('/');
+    const csp = res.headers['content-security-policy'];
     expect(csp).toBeDefined();
     expect(csp).not.toMatch(/cdn\.jsdelivr\.net/);
   });

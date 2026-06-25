@@ -1,10 +1,10 @@
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PROJECT_ROOT = path.resolve(__dirname, "..");
+const PROJECT_ROOT = path.resolve(__dirname, '..');
 
 // B-3: Replace the brittle prefix list with explicit glob patterns. The
 // previous implementation matched `.env` as a prefix and so protected any
@@ -13,37 +13,37 @@ const PROJECT_ROOT = path.resolve(__dirname, "..");
 // express both "exact match" and "any file/folder below this directory"
 // uniformly.
 const PROTECTED_PATH_GLOBS = [
-  ".env",
-  ".env.*",
-  ".git",
-  ".git/**",
-  ".venv",
-  ".venv/**",
-  "node_modules",
-  "node_modules/**",
-  "package.json",
-  "package-lock.json",
-  ".gitignore",
-  ".env.example",
-  "*.pem",
-  "*.key",
-  "id_rsa",
-  "id_rsa.pub",
-  ".npmrc",
-  "secrets.json",
-  "credentials.json",
+  '.env',
+  '.env.*',
+  '.git',
+  '.git/**',
+  '.venv',
+  '.venv/**',
+  'node_modules',
+  'node_modules/**',
+  'package.json',
+  'package-lock.json',
+  '.gitignore',
+  '.env.example',
+  '*.pem',
+  '*.key',
+  'id_rsa',
+  'id_rsa.pub',
+  '.npmrc',
+  'secrets.json',
+  'credentials.json',
 ];
 
 const WRITE_PROTECTED_PATH_GLOBS = [
   ...PROTECTED_PATH_GLOBS,
-  "server.js",
-  "utils/**",
-  "routes/**",
-  "config/**",
-  "public/**",
-  "tests/**",
-  "docs/**",
-  "README.md",
+  'server.js',
+  'utils/**',
+  'routes/**',
+  'config/**',
+  'public/**',
+  'tests/**',
+  'docs/**',
+  'README.md',
 ];
 
 /**
@@ -55,28 +55,28 @@ const WRITE_PROTECTED_PATH_GLOBS = [
  * @returns {RegExp}
  */
 function globToRegExp(glob) {
-  let regex = "";
+  let regex = '';
   for (let i = 0; i < glob.length; i++) {
     const c = glob[i];
-    if (c === "*") {
-      if (glob[i + 1] === "*") {
-        regex += ".*";
+    if (c === '*') {
+      if (glob[i + 1] === '*') {
+        regex += '.*';
         i++; // skip the second *
         // Consume an optional trailing `/` so `**/` matches zero or more
         // directory levels.
-        if (glob[i + 1] === "/") i++;
+        if (glob[i + 1] === '/') i++;
       } else {
-        regex += "[^/]*";
+        regex += '[^/]*';
       }
-    } else if (c === "?") {
-      regex += "[^/]";
+    } else if (c === '?') {
+      regex += '[^/]';
     } else if (/[.+^$(){}|[\]\\]/.test(c)) {
-      regex += "\\" + c;
+      regex += '\\' + c;
     } else {
       regex += c;
     }
   }
-  return new RegExp("^" + regex + "$", "i");
+  return new RegExp('^' + regex + '$', 'i');
 }
 
 function uniquePaths(paths) {
@@ -93,13 +93,13 @@ function getDefaultAllowedRoots() {
  * Otherwise, PROJECT_ROOT is allowed.
  */
 export function getAllowedRoots() {
-  const raw = (process.env.ALLOWED_ROOTS || "").trim();
+  const raw = (process.env.ALLOWED_ROOTS || '').trim();
   if (!raw) {
     return getDefaultAllowedRoots();
   }
   const roots = raw
-    .split(",")
-    .map((s) => s.trim().replace(/^["']|["']$/g, ""))
+    .split(',')
+    .map((s) => s.trim().replace(/^["']|["']$/g, ''))
     .filter(Boolean)
     .map((r) => path.resolve(r));
   if (!roots.includes(PROJECT_ROOT)) {
@@ -118,36 +118,36 @@ export function getAllowedRoots() {
 // components.  Accessing e.g. "CON", "NUL", "AUX" on Windows can redirect
 // to system devices (stdin/stdout/etc.) or cause unpredictable behaviour.
 const WINDOWS_RESERVED_NAMES = new Set([
-  "CON",
-  "PRN",
-  "AUX",
-  "NUL",
-  "COM1",
-  "COM2",
-  "COM3",
-  "COM4",
-  "COM5",
-  "COM6",
-  "COM7",
-  "COM8",
-  "COM9",
-  "LPT1",
-  "LPT2",
-  "LPT3",
-  "LPT4",
-  "LPT5",
-  "LPT6",
-  "LPT7",
-  "LPT8",
-  "LPT9",
+  'CON',
+  'PRN',
+  'AUX',
+  'NUL',
+  'COM1',
+  'COM2',
+  'COM3',
+  'COM4',
+  'COM5',
+  'COM6',
+  'COM7',
+  'COM8',
+  'COM9',
+  'LPT1',
+  'LPT2',
+  'LPT3',
+  'LPT4',
+  'LPT5',
+  'LPT6',
+  'LPT7',
+  'LPT8',
+  'LPT9',
 ]);
 
 function hasWindowsReservedName(targetPath) {
-  if (process.platform !== "win32") return false;
+  if (process.platform !== 'win32') return false;
   const parts = targetPath.split(/[\\/]/);
   for (const part of parts) {
     // Strip extension (e.g. "CON.txt" → "CON")
-    const base = part.replace(/\.[^.]+$/, "").toUpperCase();
+    const base = part.replace(/\.[^.]+$/, '').toUpperCase();
     if (WINDOWS_RESERVED_NAMES.has(base)) return true;
   }
   return false;
@@ -155,12 +155,12 @@ function hasWindowsReservedName(targetPath) {
 
 export function validatePath(targetPath) {
   if (!targetPath) {
-    throw new Error("Path is required");
+    throw new Error('Path is required');
   }
 
   // Prevent null byte injection and other common attack patterns
-  if (targetPath.includes("\0")) {
-    const err = new Error("Access denied: Invalid path (null byte detected)");
+  if (targetPath.includes('\0')) {
+    const err = new Error('Access denied: Invalid path (null byte detected)');
     err.status = 403;
     throw err;
   }
@@ -168,7 +168,7 @@ export function validatePath(targetPath) {
   // Block Windows reserved device names (CON, NUL, AUX, etc.) to prevent
   // redirection to system devices or OS-level errors.
   if (hasWindowsReservedName(targetPath)) {
-    const err = new Error("Access denied: Path contains a Windows reserved device name");
+    const err = new Error('Access denied: Path contains a Windows reserved device name');
     err.status = 403;
     throw err;
   }
@@ -208,14 +208,14 @@ export function validatePath(targetPath) {
   });
 
   // Case-insensitive comparison for Windows drive letters (c: vs C:)
-  const normalizedRealPath = process.platform === "win32" ? realPath.toLowerCase() : realPath;
+  const normalizedRealPath = process.platform === 'win32' ? realPath.toLowerCase() : realPath;
   const isAllowed = realRoots.some((root) => {
-    const normalizedRoot = process.platform === "win32" ? root.toLowerCase() : root;
+    const normalizedRoot = process.platform === 'win32' ? root.toLowerCase() : root;
     return normalizedRealPath === normalizedRoot || normalizedRealPath.startsWith(normalizedRoot + path.sep);
   });
 
   if (!isAllowed) {
-    const err = new Error("Access denied: Path is outside the allowed directories");
+    const err = new Error('Access denied: Path is outside the allowed directories');
     err.status = 403;
     throw err;
   }
@@ -224,7 +224,7 @@ export function validatePath(targetPath) {
 }
 
 function normalizePathForMatching(targetPath) {
-  return targetPath.replace(/\\/g, "/").toLowerCase();
+  return targetPath.replace(/\\/g, '/').toLowerCase();
 }
 
 // B-3: Compile glob patterns to RegExp once at module load so the matcher
@@ -245,8 +245,8 @@ function isPathProtectedByRoot(resolvedPath, root, patterns) {
     realRoot = root;
   }
 
-  const normalizedResolvedPath = process.platform === "win32" ? resolvedPath.toLowerCase() : resolvedPath;
-  const normalizedRealRoot = process.platform === "win32" ? realRoot.toLowerCase() : realRoot;
+  const normalizedResolvedPath = process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath;
+  const normalizedRealRoot = process.platform === 'win32' ? realRoot.toLowerCase() : realRoot;
   const isSubPath =
     normalizedResolvedPath === normalizedRealRoot ||
     normalizedResolvedPath.startsWith(normalizedRealRoot + path.sep);
@@ -279,17 +279,17 @@ export function isProtectedPath(resolvedPath) {
  * @returns {boolean} True if the path is protected from destructive operations.
  */
 export function isWriteProtectedPath(resolvedPath) {
-  const normalizedResolvedPath = process.platform === "win32" ? resolvedPath.toLowerCase() : resolvedPath;
+  const normalizedResolvedPath = process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath;
   if (
     getAllowedRoots().some((root) => {
       try {
         const realRoot = fs.realpathSync(root);
-        const normalizedRealRoot = process.platform === "win32" ? realRoot.toLowerCase() : realRoot;
+        const normalizedRealRoot = process.platform === 'win32' ? realRoot.toLowerCase() : realRoot;
         return normalizedRealRoot === normalizedResolvedPath;
       } catch {
         const resolvedRoot = path.resolve(root);
         const normalizedResolvedRoot =
-          process.platform === "win32" ? resolvedRoot.toLowerCase() : resolvedRoot;
+          process.platform === 'win32' ? resolvedRoot.toLowerCase() : resolvedRoot;
         return normalizedResolvedRoot === normalizedResolvedPath;
       }
     })
@@ -318,7 +318,7 @@ export function isProtectedPathForListing(resolvedPath) {
  */
 export function assertNotProtectedPath(resolvedPath) {
   if (isProtectedPath(resolvedPath)) {
-    const relativePath = path.relative(PROJECT_ROOT, resolvedPath).replace(/\\/g, "/");
+    const relativePath = path.relative(PROJECT_ROOT, resolvedPath).replace(/\\/g, '/');
     const err = new Error(`Access denied: Path is protected: ${relativePath}`);
     err.status = 403;
     throw err;
@@ -332,7 +332,7 @@ export function assertNotProtectedPath(resolvedPath) {
  */
 export function assertNotWriteProtectedPath(resolvedPath) {
   if (isWriteProtectedPath(resolvedPath)) {
-    const relativePath = path.relative(PROJECT_ROOT, resolvedPath).replace(/\\/g, "/");
+    const relativePath = path.relative(PROJECT_ROOT, resolvedPath).replace(/\\/g, '/');
     const err = new Error(`Access denied: Path is protected from write operations: ${relativePath}`);
     err.status = 403;
     throw err;
@@ -364,13 +364,13 @@ export function revalidateRealPath(resolvedPath) {
       return root;
     }
   });
-  const normalizedReal = process.platform === "win32" ? real.toLowerCase() : real;
+  const normalizedReal = process.platform === 'win32' ? real.toLowerCase() : real;
   const isAllowed = realRoots.some((root) => {
-    const normalizedRoot = process.platform === "win32" ? root.toLowerCase() : root;
+    const normalizedRoot = process.platform === 'win32' ? root.toLowerCase() : root;
     return normalizedReal === normalizedRoot || normalizedReal.startsWith(normalizedRoot + path.sep);
   });
   if (!isAllowed) {
-    const err = new Error("Access denied: Path is outside the allowed directories");
+    const err = new Error('Access denied: Path is outside the allowed directories');
     err.status = 403;
     throw err;
   }
@@ -381,7 +381,7 @@ export function revalidateRealPath(resolvedPath) {
  * Returns the default workspace root.
  */
 export function getDefaultRoot() {
-  const raw = (process.env.ALLOWED_ROOTS || "").trim();
+  const raw = (process.env.ALLOWED_ROOTS || '').trim();
   if (!raw) {
     return PROJECT_ROOT;
   }

@@ -1,44 +1,44 @@
-import { spawn } from "child_process";
-import { platform } from "os";
-import { serverConfig } from "../config/server.js";
+import { spawn } from 'child_process';
+import { platform } from 'os';
+import { serverConfig } from '../config/server.js';
 
 /**
  * Command execution service with timeout, output collection, and safety checks.
  */
 
 // Default timeout from environment or 30 seconds
-const DEFAULT_TIMEOUT_MS = parseInt(process.env.COMMAND_TIMEOUT_MS || "30000", 10);
+const DEFAULT_TIMEOUT_MS = parseInt(process.env.COMMAND_TIMEOUT_MS || '30000', 10);
 const MAX_COMMAND_LENGTH = 4096;
 const MAX_COMMAND_ARGS = 128;
 
 const ALLOWED_COMMAND_NAMES = new Set([
-  "npm",
-  "npx",
-  "node",
-  "git",
-  "jest",
-  "tsc",
-  "dir",
-  "ls",
-  "echo",
-  "cat",
-  "grep",
-  "pwd",
-  "whoami",
-  "python",
-  "python3",
-  "pip",
-  "pipenv",
+  'npm',
+  'npx',
+  'node',
+  'git',
+  'jest',
+  'tsc',
+  'dir',
+  'ls',
+  'echo',
+  'cat',
+  'grep',
+  'pwd',
+  'whoami',
+  'python',
+  'python3',
+  'pip',
+  'pipenv',
   // NOTE: "ping" and "sleep" are included for basic network/timing diagnostics in
   // agent workflows. Both are bounded by COMMAND_TIMEOUT_MS (default 30s) to
   // mitigate denial-of-service via "ping -t" or "sleep 86400". If you do not
   // need these commands, remove them from this list for a tighter security posture.
-  "ping",
-  "sleep",
-  "exit",
+  'ping',
+  'sleep',
+  'exit',
 ]);
 
-const WINDOWS_BUILT_IN_COMMANDS = new Set(["dir", "echo", "exit"]);
+const WINDOWS_BUILT_IN_COMMANDS = new Set(['dir', 'echo', 'exit']);
 
 // Dangerous patterns that are blocked by default
 const DANGEROUS_PATTERNS = [
@@ -90,20 +90,20 @@ const DANGEROUS_PATTERNS = [
 const SHELL_INJECTION_PATTERN = /[\n\r;|`<>&]|&&|\|\||\$\(|\$\{|%(?:0[aAdD]|\d{2})/;
 
 function normalizeCommandName(commandName) {
-  if (!commandName) return "";
+  if (!commandName) return '';
   return commandName
-    .replace(/\.exe$/i, "")
-    .replace(/\.cmd$/i, "")
+    .replace(/\.exe$/i, '')
+    .replace(/\.cmd$/i, '')
     .toLowerCase();
 }
 
 function parseCommand(command) {
   const trimmed = command.trim();
-  if (!trimmed) throw new Error("Command is empty");
-  if (trimmed.length > MAX_COMMAND_LENGTH) throw new Error("Command is too long");
+  if (!trimmed) throw new Error('Command is empty');
+  if (trimmed.length > MAX_COMMAND_LENGTH) throw new Error('Command is too long');
 
   const tokens = [];
-  let current = "";
+  let current = '';
   let quote = null;
 
   for (let i = 0; i < trimmed.length; i++) {
@@ -126,7 +126,7 @@ function parseCommand(command) {
     if (/\s/.test(char)) {
       if (current) {
         tokens.push(current);
-        current = "";
+        current = '';
       }
       continue;
     }
@@ -134,9 +134,9 @@ function parseCommand(command) {
     current += char;
   }
 
-  if (quote) throw new Error("Command contains unclosed quote");
+  if (quote) throw new Error('Command contains unclosed quote');
   if (current) tokens.push(current);
-  if (tokens.length > MAX_COMMAND_ARGS) throw new Error("Command has too many arguments");
+  if (tokens.length > MAX_COMMAND_ARGS) throw new Error('Command has too many arguments');
 
   return tokens;
 }
@@ -146,27 +146,27 @@ function isAllowedCommandName(commandName) {
 }
 
 function isWindowsBuiltInCommand(commandName) {
-  return platform() === "win32" && WINDOWS_BUILT_IN_COMMANDS.has(normalizeCommandName(commandName));
+  return platform() === 'win32' && WINDOWS_BUILT_IN_COMMANDS.has(normalizeCommandName(commandName));
 }
 
 function isExitCommand(commandName) {
-  return normalizeCommandName(commandName) === "exit";
+  return normalizeCommandName(commandName) === 'exit';
 }
 
 function getSafeEnv() {
   const SAFE_ENV_KEYS = new Set([
-    "PATH",
-    "PATHEXT",
-    "COMSPEC",
-    "SystemRoot",
-    "WINDIR",
-    "OS",
-    "PROCESSOR_ARCHITECTURE",
-    "NUMBER_OF_PROCESSORS",
-    "HOMEDRIVE",
-    "HOMEPATH",
-    "TMP",
-    "TEMP",
+    'PATH',
+    'PATHEXT',
+    'COMSPEC',
+    'SystemRoot',
+    'WINDIR',
+    'OS',
+    'PROCESSOR_ARCHITECTURE',
+    'NUMBER_OF_PROCESSORS',
+    'HOMEDRIVE',
+    'HOMEPATH',
+    'TMP',
+    'TEMP',
   ]);
 
   const safeEnv = {};
@@ -181,21 +181,21 @@ function getSafeEnv() {
 function buildWindowsCommand(commandParts) {
   return commandParts
     .map((part) => {
-      if (/\s/.test(part) || /[&|<>()%!^"']/.test(part) || part.includes("%")) {
+      if (/\s/.test(part) || /[&|<>()%!^"']/.test(part) || part.includes('%')) {
         // Escape inner double quotes and wrap in double quotes
         return `"${part.replace(/"/g, '""')}"`;
       }
       return part;
     })
-    .join(" ");
+    .join(' ');
 }
 
 function executeExitCommand(commandParts) {
-  const exitCode = Number.parseInt(commandParts[1] || "0", 10);
+  const exitCode = Number.parseInt(commandParts[1] || '0', 10);
   return {
     exitCode: Number.isNaN(exitCode) ? 1 : exitCode,
-    stdout: "",
-    stderr: "",
+    stdout: '',
+    stderr: '',
     timedOut: false,
   };
 }
@@ -210,10 +210,10 @@ function runProcess(commandParts, options = {}) {
 
   if (isWindowsBuiltInCommand(commandName)) {
     const shellCommand = buildWindowsCommand(commandParts);
-    const child = spawn("cmd.exe", ["/d", "/s", "/c", shellCommand], {
+    const child = spawn('cmd.exe', ['/d', '/s', '/c', shellCommand], {
       cwd,
       env: getSafeEnv(),
-      stdio: ["pipe", "pipe", "pipe"],
+      stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     });
     return collectProcessOutput(child, timeoutMs, onOutput);
@@ -222,7 +222,7 @@ function runProcess(commandParts, options = {}) {
   const child = spawn(commandName, commandParts.slice(1), {
     cwd,
     env: getSafeEnv(),
-    stdio: ["pipe", "pipe", "pipe"],
+    stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
   });
 
@@ -231,24 +231,24 @@ function runProcess(commandParts, options = {}) {
 
 function collectProcessOutput(child, timeoutMs, onOutput) {
   return new Promise((resolve, reject) => {
-    let stdout = "";
-    let stderr = "";
+    let stdout = '';
+    let stderr = '';
     let timedOut = false;
     let killed = false;
 
-    child.stdout.on("data", (data) => {
+    child.stdout.on('data', (data) => {
       const text = data.toString();
       stdout += text;
       if (onOutput) {
-        onOutput("stdout", text);
+        onOutput('stdout', text);
       }
     });
 
-    child.stderr.on("data", (data) => {
+    child.stderr.on('data', (data) => {
       const text = data.toString();
       stderr += text;
       if (onOutput) {
-        onOutput("stderr", text);
+        onOutput('stderr', text);
       }
     });
 
@@ -257,17 +257,17 @@ function collectProcessOutput(child, timeoutMs, onOutput) {
     const timeoutId = setTimeout(() => {
       timedOut = true;
       killed = true;
-      child.kill(platform() === "win32" ? "SIGKILL" : "SIGTERM");
+      child.kill(platform() === 'win32' ? 'SIGKILL' : 'SIGTERM');
 
       // Force kill after grace period
       forceKillTimeoutId = setTimeout(() => {
         if (!child.killed) {
-          child.kill("SIGKILL");
+          child.kill('SIGKILL');
         }
       }, 5000);
     }, timeoutMs);
 
-    child.on("close", (exitCode) => {
+    child.on('close', (exitCode) => {
       clearTimeout(timeoutId);
       if (forceKillTimeoutId) {
         clearTimeout(forceKillTimeoutId);
@@ -285,7 +285,7 @@ function collectProcessOutput(child, timeoutMs, onOutput) {
       });
     });
 
-    child.on("error", (err) => {
+    child.on('error', (err) => {
       clearTimeout(timeoutId);
       if (forceKillTimeoutId) {
         clearTimeout(forceKillTimeoutId);
@@ -301,16 +301,16 @@ function collectProcessOutput(child, timeoutMs, onOutput) {
  * @returns {object} { safe: boolean, reason?: string }
  */
 export function checkCommandSafety(command) {
-  if (!command || typeof command !== "string") {
-    return { safe: false, reason: "Command is empty or invalid" };
+  if (!command || typeof command !== 'string') {
+    return { safe: false, reason: 'Command is empty or invalid' };
   }
 
   const trimmed = command.trim();
   if (!trimmed) {
-    return { safe: false, reason: "Command is empty" };
+    return { safe: false, reason: 'Command is empty' };
   }
   if (trimmed.length > MAX_COMMAND_LENGTH) {
-    return { safe: false, reason: "Command is too long" };
+    return { safe: false, reason: 'Command is too long' };
   }
 
   let tokens;
@@ -323,16 +323,16 @@ export function checkCommandSafety(command) {
   // B-3: Block shell metacharacters before allowlist check.
   // Developers do not need ; | && || ` $() > < in legitimate build/lint commands.
   if (SHELL_INJECTION_PATTERN.test(trimmed)) {
-    return { safe: false, reason: "Command contains shell metacharacters that could enable injection" };
+    return { safe: false, reason: 'Command contains shell metacharacters that could enable injection' };
   }
 
   const commandName = normalizeCommandName(tokens[0]);
   if (!isAllowedCommandName(commandName)) {
-    return { safe: false, reason: "Command not in allowlist" };
+    return { safe: false, reason: 'Command not in allowlist' };
   }
 
   // B-4: Normalize command to catch obfuscation (quote removal + slash normalization)
-  const normalized = trimmed.replace(/["'`]/g, "").replace(/\\/g, "/");
+  const normalized = trimmed.replace(/["'`]/g, '').replace(/\\/g, '/');
 
   for (const pattern of DANGEROUS_PATTERNS) {
     if (pattern.test(trimmed) || pattern.test(normalized)) {
@@ -393,9 +393,9 @@ export async function executeCommand(command, options = {}) {
 export function killProcess(childProcess, force = false) {
   if (childProcess && !childProcess.killed) {
     try {
-      childProcess.kill(force ? "SIGKILL" : "SIGTERM");
+      childProcess.kill(force ? 'SIGKILL' : 'SIGTERM');
     } catch (err) {
-      if (err.code === "ESRCH") {
+      if (err.code === 'ESRCH') {
         return;
       }
       throw err;

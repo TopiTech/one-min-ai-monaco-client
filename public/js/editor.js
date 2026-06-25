@@ -2,8 +2,8 @@
  * Monaco Editor management module
  */
 
-import { api } from "./api.js";
-import { isDarkTheme } from "./theme.js";
+import { api } from './api.js';
+import { isDarkTheme } from './theme.js';
 
 const MAX_OPEN_MODELS = 20;
 
@@ -22,27 +22,27 @@ export function createEditorManager(state) {
 
   function getTheme() {
     // UI-9: Respect OS high-contrast preference
-    if (window.matchMedia?.("(prefers-contrast: more)").matches) {
-      return isDarkTheme() ? "hc-black" : "hc-light";
+    if (window.matchMedia?.('(prefers-contrast: more)').matches) {
+      return isDarkTheme() ? 'hc-black' : 'hc-light';
     }
-    return isDarkTheme() ? "vs-dark" : "vs";
+    return isDarkTheme() ? 'vs-dark' : 'vs';
   }
 
   function init() {
     const theme = getTheme();
 
-    _instance = monaco.editor.create(document.getElementById("editor"), {
+    _instance = monaco.editor.create(document.getElementById('editor'), {
       value: `/* \u2b05 \u5de6\u306e\u30c4\u30ea\u30fc\u304b\u3089\u30d5\u30a1\u30a4\u30eb\u3092\u9078\u629e\u3059\u308b\u304b\u3001\u30d1\u30b9\u3092\u5165\u529b\u3057\u3066\u8aad\u307f\u8fbc\u3093\u3067\u304f\u3060\u3055\u3044 */\n`,
-      language: "plaintext",
+      language: 'plaintext',
       theme,
       automaticLayout: true,
       minimap: { enabled: true },
       fontSize: 14,
-      wordWrap: "on",
+      wordWrap: 'on',
       inlineSuggest: { enabled: true },
     });
 
-    const container = document.getElementById("editor");
+    const container = document.getElementById('editor');
     if (container) {
       _resizeObserver = new ResizeObserver(() => {
         if (_instance) _instance.layout();
@@ -51,11 +51,11 @@ export function createEditorManager(state) {
     }
 
     _instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      document.dispatchEvent(new CustomEvent("editor-save"));
+      document.dispatchEvent(new CustomEvent('editor-save'));
     });
 
     _instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI, () => {
-      document.dispatchEvent(new CustomEvent("editor-toggle-inline-chat"));
+      document.dispatchEvent(new CustomEvent('editor-toggle-inline-chat'));
     });
 
     registerProviders();
@@ -73,14 +73,14 @@ export function createEditorManager(state) {
   }
 
   function registerProviders() {
-    const languages = ["javascript", "typescript", "python", "html", "css", "json", "markdown", "plaintext"];
+    const languages = ['javascript', 'typescript', 'python', 'html', 'css', 'json', 'markdown', 'plaintext'];
     for (const lang of languages) {
       monaco.languages.registerInlineCompletionsProvider(lang, {
         // Defer to Monaco's built-in debouncing. Only our Copilot-like
         // provider needs explicit yielding behaviour so the editor still
         // shows other registered providers (e.g. word-based completions)
         // immediately when this provider is slow to respond.
-        yieldsToGroupIds: ["monaco-word-based"],
+        yieldsToGroupIds: ['monaco-word-based'],
         provideInlineCompletions: async (model, position, context, token) => {
           // Check cancellation before kicking off the network call so we
           // don't waste an API request for keystrokes that have already
@@ -88,22 +88,22 @@ export function createEditorManager(state) {
           if (token.isCancellationRequested) return;
 
           try {
-            const data = await api("/api/code/autocomplete", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
+            const data = await api('/api/code/autocomplete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 code: model.getValue(),
                 line: position.lineNumber,
                 column: position.column,
-                fileName: state.activeFilePath ? state.activeFilePath.split(/[\\/]/).pop() : "untitled",
+                fileName: state.activeFilePath ? state.activeFilePath.split(/[\\/]/).pop() : 'untitled',
                 language: model.getLanguageId(),
-                model: document.getElementById("codeModel")?.value,
-                webSearch: document.getElementById("codeWebSearch")?.checked || false,
-                numOfSite: document.getElementById("codeNumOfSite")?.value
-                  ? parseInt(document.getElementById("codeNumOfSite").value)
+                model: document.getElementById('codeModel')?.value,
+                webSearch: document.getElementById('codeWebSearch')?.checked || false,
+                numOfSite: document.getElementById('codeNumOfSite')?.value
+                  ? parseInt(document.getElementById('codeNumOfSite').value)
                   : undefined,
-                maxWord: document.getElementById("codeMaxWord")?.value
-                  ? parseInt(document.getElementById("codeMaxWord").value)
+                maxWord: document.getElementById('codeMaxWord')?.value
+                  ? parseInt(document.getElementById('codeMaxWord').value)
                   : undefined,
               }),
               signal: token.signal,
@@ -124,7 +124,7 @@ export function createEditorManager(state) {
               ],
             };
           } catch (e) {
-            if (e.name !== "AbortError") console.error("Autocomplete error:", e);
+            if (e.name !== 'AbortError') console.error('Autocomplete error:', e);
           }
         },
         freeInlineCompletions: () => {},
@@ -138,7 +138,7 @@ export function createEditorManager(state) {
     if (model) {
       if (content !== undefined) model.setValue(content);
     } else {
-      model = monaco.editor.createModel(content || "", language, fileUri);
+      model = monaco.editor.createModel(content || '', language, fileUri);
     }
     return model;
   }
@@ -150,7 +150,7 @@ export function createEditorManager(state) {
       const active = _instance.getModel();
       const openTabs = state.openTabs;
       const unused = allModels.filter(
-        (m) => m !== active && !openTabs.includes(m.uri.fsPath) && m.uri.scheme === "file",
+        (m) => m !== active && !openTabs.includes(m.uri.fsPath) && m.uri.scheme === 'file',
       );
       for (const m of unused.slice(0, allModels.length - MAX_OPEN_MODELS)) {
         m.dispose();
@@ -165,7 +165,7 @@ export function createEditorManager(state) {
   }
 
   function getValue() {
-    return _instance?.getValue() || "";
+    return _instance?.getValue() || '';
   }
 
   function getPosition() {
@@ -173,7 +173,7 @@ export function createEditorManager(state) {
   }
 
   function getLanguageId() {
-    return _instance?.getModel()?.getLanguageId() || "plaintext";
+    return _instance?.getModel()?.getLanguageId() || 'plaintext';
   }
 
   function focus() {

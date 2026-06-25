@@ -5,18 +5,18 @@
  * Skips the copy when public/vs/ already contains the source directory
  * to avoid redundant I/O on repeated `npm start` / `npm run dev` calls.
  */
-import { cpSync, existsSync, readdirSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { cpSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const projectRoot = join(__dirname, "..");
+const projectRoot = join(__dirname, '..');
 
-const src = join(projectRoot, "node_modules", "monaco-editor", "min", "vs");
-const dest = join(projectRoot, "public", "vs");
+const src = join(projectRoot, 'node_modules', 'monaco-editor', 'min', 'vs');
+const dest = join(projectRoot, 'public', 'vs');
 
 if (!existsSync(src)) {
-  console.error("Monaco Editor source not found at:", src);
+  console.error('Monaco Editor source not found at:', src);
   process.exit(1);
 }
 

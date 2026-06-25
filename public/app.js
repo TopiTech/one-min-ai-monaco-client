@@ -9,8 +9,8 @@ import {
   getAllChatModels,
   getAllCodeModels,
   getAllImageModels,
-} from "./js/models.js";
-import { api } from "./js/api.js";
+} from './js/models.js';
+import { api } from './js/api.js';
 import {
   SVG_NS,
   escapeHtml,
@@ -22,14 +22,14 @@ import {
   unescapeXmlText,
   parseXMLTags,
   extractText,
-} from "./js/utils.js";
-import { initTheme, toggleTheme as toggleThemeFn, updateThemeUI, isDarkTheme } from "./js/theme.js";
-import { bootstrapSettings } from "./js/settings.js";
-import { createChatManager, createChatState } from "./js/chat.js";
-import { createImageManager, createImageState } from "./js/image.js";
-import { createEditorManager, createEditorState } from "./js/editor.js";
-import { createInlineChatManager } from "./js/inline-chat.js";
-import { createEditorTabManager } from "./js/editor-tabs.js";
+} from './js/utils.js';
+import { initTheme, toggleTheme as toggleThemeFn, updateThemeUI, isDarkTheme } from './js/theme.js';
+import { bootstrapSettings } from './js/settings.js';
+import { createChatManager, createChatState } from './js/chat.js';
+import { createImageManager, createImageState } from './js/image.js';
+import { createEditorManager, createEditorState } from './js/editor.js';
+import { createInlineChatManager } from './js/inline-chat.js';
+import { createEditorTabManager } from './js/editor-tabs.js';
 
 // Helper to get element by ID
 const $ = (id) => document.getElementById(id);
@@ -45,55 +45,55 @@ loadModels().then(() => {
 // DOM Elements Cache
 // ============================================================
 const dom = {
-  chatLog: $("chatLog"),
-  chatPrompt: $("chatPrompt"),
-  sendChatBtn: $("sendChat"),
-  abortChatBtn: $("abortChat"),
-  chatModel: $("chatModel"),
-  chatModelLabel: $("chatModelLabel"),
-  conversationId: $("conversationId"),
-  conversationTitle: $("conversationTitle"),
-  webSearch: $("webSearch"),
-  chatNumOfSite: $("chatNumOfSite"),
-  chatMaxWord: $("chatMaxWord"),
-  withMemories: $("withMemories"),
-  isMixed: $("isMixed"),
-  brandVoiceId: $("brandVoiceId"),
-  chatAttachments: $("chatAttachments"),
-  attachmentPreviews: $("attachmentPreviews"),
-  chatImageInput: $("chatImageInput"),
-  attachImageBtn: $("attachImageBtn"),
+  chatLog: $('chatLog'),
+  chatPrompt: $('chatPrompt'),
+  sendChatBtn: $('sendChat'),
+  abortChatBtn: $('abortChat'),
+  chatModel: $('chatModel'),
+  chatModelLabel: $('chatModelLabel'),
+  conversationId: $('conversationId'),
+  conversationTitle: $('conversationTitle'),
+  webSearch: $('webSearch'),
+  chatNumOfSite: $('chatNumOfSite'),
+  chatMaxWord: $('chatMaxWord'),
+  withMemories: $('withMemories'),
+  isMixed: $('isMixed'),
+  brandVoiceId: $('brandVoiceId'),
+  chatAttachments: $('chatAttachments'),
+  attachmentPreviews: $('attachmentPreviews'),
+  chatImageInput: $('chatImageInput'),
+  attachImageBtn: $('attachImageBtn'),
 
-  imagePrompt: $("imagePrompt"),
-  imageModel: $("imageModel"),
-  imageModelLabel: $("imageModelLabel"),
-  imageGallery: $("imageGallery"),
-  assetResult: $("assetResult"),
-  editorImageUrl: $("editorImageUrl"),
-  editorImagePreview: $("editorImagePreview"),
-  clearImageBtn: $("clearImageBtn"),
-  generateImage: $("generateImage"),
-  uploadAsset: $("uploadAsset"),
+  imagePrompt: $('imagePrompt'),
+  imageModel: $('imageModel'),
+  imageModelLabel: $('imageModelLabel'),
+  imageGallery: $('imageGallery'),
+  assetResult: $('assetResult'),
+  editorImageUrl: $('editorImageUrl'),
+  editorImagePreview: $('editorImagePreview'),
+  clearImageBtn: $('clearImageBtn'),
+  generateImage: $('generateImage'),
+  uploadAsset: $('uploadAsset'),
 
-  explorerPath: $("explorerPath"),
-  fileTree: $("fileTree"),
-  currentFileName: $("currentFileName"),
-  saveFileBtn: $("saveFileBtn"),
-  editorTabsBar: $("editorTabsBar"),
-  rootSelector: $("rootSelector"),
+  explorerPath: $('explorerPath'),
+  fileTree: $('fileTree'),
+  currentFileName: $('currentFileName'),
+  saveFileBtn: $('saveFileBtn'),
+  editorTabsBar: $('editorTabsBar'),
+  rootSelector: $('rootSelector'),
 
-  agentInstruction: $("agentInstruction"),
-  agentStatus: $("agentStatus"),
-  agentActivityLog: $("agentActivityLog"),
-  startAgentBtn: $("startAgentBtn"),
-  stopAgentBtn: $("stopAgentBtn"),
-  resetAgentBtn: $("resetAgentBtn"),
-  agentFeedbackInput: $("agentFeedbackInput"),
-  sendAgentFeedbackBtn: $("sendAgentFeedbackBtn"),
-  codeModel: $("codeModel"),
-  codeWebSearch: $("codeWebSearch"),
-  codeNumOfSite: $("codeNumOfSite"),
-  codeMaxWord: $("codeMaxWord"),
+  agentInstruction: $('agentInstruction'),
+  agentStatus: $('agentStatus'),
+  agentActivityLog: $('agentActivityLog'),
+  startAgentBtn: $('startAgentBtn'),
+  stopAgentBtn: $('stopAgentBtn'),
+  resetAgentBtn: $('resetAgentBtn'),
+  agentFeedbackInput: $('agentFeedbackInput'),
+  sendAgentFeedbackBtn: $('sendAgentFeedbackBtn'),
+  codeModel: $('codeModel'),
+  codeWebSearch: $('codeWebSearch'),
+  codeNumOfSite: $('codeNumOfSite'),
+  codeMaxWord: $('codeMaxWord'),
 };
 
 // ============================================================
@@ -111,7 +111,7 @@ const state = {
     resolver: null,
   },
   theme: {
-    current: "dark",
+    current: 'dark',
   },
   creditSaving: false,
 };
@@ -122,45 +122,45 @@ function toggleTheme() {
   editorManager.updateTheme();
   // Update diff editor theme if it exists
   if (diffEditor) {
-    const theme = document.documentElement.getAttribute("data-theme") === "light" ? "vs" : "vs-dark";
+    const theme = document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'vs-dark';
     diffEditor.updateOptions({ theme });
   }
 }
 
 // Initialize theme and settings on DOM ready
-if (document.readyState === "loading") {
+if (document.readyState === 'loading') {
   document.addEventListener(
-    "DOMContentLoaded",
+    'DOMContentLoaded',
     () => {
       initTheme();
-      $("themeToggle")?.addEventListener("click", toggleTheme);
+      $('themeToggle')?.addEventListener('click', toggleTheme);
       bootstrapSettings();
     },
     { once: true },
   );
 } else {
   initTheme();
-  $("themeToggle")?.addEventListener("click", toggleTheme);
+  $('themeToggle')?.addEventListener('click', toggleTheme);
   bootstrapSettings();
 }
 
 // navigation
-const navBtns = document.querySelectorAll(".nav");
-const views = document.querySelectorAll(".view");
+const navBtns = document.querySelectorAll('.nav');
+const views = document.querySelectorAll('.view');
 for (const btn of navBtns) {
-  btn.addEventListener("click", () => {
-    navBtns.forEach((x) => x.classList.remove("active"));
-    views.forEach((x) => x.classList.remove("active"));
-    btn.classList.add("active");
-    $(btn.dataset.view).classList.add("active");
-    $("viewTitle").textContent = btn.textContent.trim();
-    if (btn.dataset.view === "coding") setTimeout(() => editorManager.layout(), 100);
+  btn.addEventListener('click', () => {
+    navBtns.forEach((x) => x.classList.remove('active'));
+    views.forEach((x) => x.classList.remove('active'));
+    btn.classList.add('active');
+    $(btn.dataset.view).classList.add('active');
+    $('viewTitle').textContent = btn.textContent.trim();
+    if (btn.dataset.view === 'coding') setTimeout(() => editorManager.layout(), 100);
   });
 }
 
-$("healthBtn").onclick = async () => {
+$('healthBtn').onclick = async () => {
   try {
-    const data = await api("/api/health");
+    const data = await api('/api/health');
     toast.success(JSON.stringify(data, null, 2), { duration: 8000 });
   } catch (e) {
     toast.error(`ヘルスチェック失敗: ${e.message}`);
@@ -182,10 +182,10 @@ const tabManager = createEditorTabManager(editorState, editorManager, dom);
 const inlineChatManager = createInlineChatManager(editorState, editorManager, dom);
 
 // Listen to editor.js keyboard shortcut CustomEvents to avoid global scope pollution.
-document.addEventListener("editor-save", () => {
+document.addEventListener('editor-save', () => {
   tabManager.saveFile();
 });
-document.addEventListener("editor-toggle-inline-chat", () => {
+document.addEventListener('editor-toggle-inline-chat', () => {
   inlineChatManager.toggleInlineChat();
 });
 
@@ -195,15 +195,15 @@ state.image = imageState;
 state.editor = editorState;
 
 // Use chat manager for sending and aborting
-$("abortChat").onclick = () => chatManager.abortChat();
+$('abortChat').onclick = () => chatManager.abortChat();
 dom.sendChatBtn.onclick = () => chatManager.sendChat(setStatus);
 
 // Ctrl+Enter to send chat, Escape to abort
-dom.chatPrompt.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+dom.chatPrompt.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
     chatManager.sendChat(setStatus);
-  } else if (e.key === "Escape" && state.chat.abortController) {
+  } else if (e.key === 'Escape' && state.chat.abortController) {
     e.preventDefault();
     chatManager.abortChat();
   }
@@ -221,7 +221,7 @@ if (dom.chatImageInput) {
     if (files.length === 0) return;
 
     for (const file of files) {
-      const isImage = file.type.startsWith("image/");
+      const isImage = file.type.startsWith('image/');
       const previewUrl = isImage ? URL.createObjectURL(file) : null;
       const att = {
         file,
@@ -229,54 +229,54 @@ if (dom.chatImageInput) {
         assetKey: null,
         assetUrl: null,
         uploading: false,
-        type: isImage ? "image" : "file",
+        type: isImage ? 'image' : 'file',
       };
       state.chat.attachments.push(att);
     }
 
     chatManager.updateAttachmentPreview();
-    e.target.value = "";
+    e.target.value = '';
   };
 }
 
 // Check health on startup
 async function checkHealth() {
   try {
-    const data = await api("/api/health");
+    const data = await api('/api/health');
     if (!data?.ok) {
-      toast.error("サーバーのヘルスチェックに失敗しました。", {
+      toast.error('サーバーのヘルスチェックに失敗しました。', {
         duration: 10000,
       });
-      setStatus("ヘルスチェック失敗", "err");
+      setStatus('ヘルスチェック失敗', 'err');
     } else if (data.models) {
       if (!data.models.ok) {
-        console.warn("Model sync failure:", data.models.error);
+        console.warn('Model sync failure:', data.models.error);
         toast.warning(`モデル情報の同期に失敗しています。以前のデータを使用します: ${data.models.error}`, {
           duration: 8000,
         });
-      } else if (data.models.source === "fallback") {
-        toast.info("1min.ai のモデル一覧APIが利用できないため、内蔵モデル一覧を使用しています。", {
+      } else if (data.models.source === 'fallback') {
+        toast.info('1min.ai のモデル一覧APIが利用できないため、内蔵モデル一覧を使用しています。', {
           duration: 6000,
         });
       }
     }
   } catch (e) {
-    console.error("Health check failed:", e);
+    console.error('Health check failed:', e);
   }
 }
 checkHealth();
 
-$("createConversation").onclick = async () => {
+$('createConversation').onclick = async () => {
   try {
-    const data = await api("/api/conversations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+    const data = await api('/api/conversations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: dom.conversationTitle.value, model: dom.chatModel.value }),
     });
     const id =
-      data?.conversation?.uuid || data?.uuid || data?.aiRecord?.conversationId || data?.conversationId || "";
+      data?.conversation?.uuid || data?.uuid || data?.aiRecord?.conversationId || data?.conversationId || '';
     dom.conversationId.value = id;
-    toast.success("会話を作成しました", { duration: 5000 });
+    toast.success('会話を作成しました', { duration: 5000 });
   } catch (e) {
     toast.error(`会話の作成に失敗しました: ${e.message}`);
   }
@@ -287,15 +287,15 @@ $("createConversation").onclick = async () => {
 dom.generateImage.onclick = () => imageManager.generateImage();
 
 dom.uploadAsset.onclick = async () => {
-  const file = $("assetInput").files[0];
+  const file = $('assetInput').files[0];
   if (!file) {
-    toast.warning("画像ファイルを選択してください");
+    toast.warning('画像ファイルを選択してください');
     return;
   }
   const btn = dom.uploadAsset;
   const originalText = btn.textContent;
   btn.disabled = true;
-  btn.textContent = "アップロード中...";
+  btn.textContent = 'アップロード中...';
   try {
     await imageManager.performAssetUpload(file, setStatus);
   } finally {
@@ -304,7 +304,7 @@ dom.uploadAsset.onclick = async () => {
   }
 };
 
-$("assetInput").onchange = async (e) => {
+$('assetInput').onchange = async (e) => {
   const file = e.target.files[0];
   if (file) {
     await imageManager.performAssetUpload(file, setStatus);
@@ -324,14 +324,14 @@ const openFile = (filePath) => tabManager.openFile(filePath);
 const saveFile = () => tabManager.saveFile();
 
 // Initialize Monaco Editor
-require.config({ paths: { vs: "/vs" } });
-require(["vs/editor/editor.main"], () => {
+require.config({ paths: { vs: '/vs' } });
+require(['vs/editor/editor.main'], () => {
   editorManager.init();
 }, (err) => {
   // #22: Monaco AMD loader failure — show user-visible error
-  const msg = err?.message || err || "Failed to load Monaco Editor from local assets or server";
+  const msg = err?.message || err || 'Failed to load Monaco Editor from local assets or server';
   toast.error(`Monaco Editor の読み込みに失敗しました: ${msg}`);
-  console.error("Monaco AMD load error:", err);
+  console.error('Monaco AMD load error:', err);
 });
 
 // Inline chat (delegated to inlineChatManager)
@@ -342,23 +342,23 @@ const submitInlineChat = inlineChatManager.submitInlineChat;
 async function loadWorkspace(dirPath = null) {
   try {
     const tree = dom.fileTree;
-    tree.textContent = "";
+    tree.textContent = '';
     // skeleton nodes with createElement
     for (let i = 0; i < 6; i++) {
-      const skeleton = document.createElement("div");
-      skeleton.className = "skeleton-node";
-      const icon = document.createElement("div");
-      icon.className = "skeleton skeleton-icon";
-      const line = document.createElement("div");
-      line.className = "skeleton skeleton-line w-75";
+      const skeleton = document.createElement('div');
+      skeleton.className = 'skeleton-node';
+      const icon = document.createElement('div');
+      icon.className = 'skeleton skeleton-icon';
+      const line = document.createElement('div');
+      line.className = 'skeleton skeleton-line w-75';
       skeleton.appendChild(icon);
       skeleton.appendChild(line);
       tree.appendChild(skeleton);
     }
 
-    const data = await api(`/api/fs/list${dirPath ? `?dir=${encodeURIComponent(dirPath)}` : ""}`);
+    const data = await api(`/api/fs/list${dirPath ? `?dir=${encodeURIComponent(dirPath)}` : ''}`);
     dom.explorerPath.value = data.dir;
-    tree.textContent = "";
+    tree.textContent = '';
     await renderTreeNodes(data.items, tree, 0);
   } catch (e) {
     toast.error(`ワークスペースの読み込みに失敗しました: ${e.message}`);
@@ -367,49 +367,49 @@ async function loadWorkspace(dirPath = null) {
 
 async function renderTreeNodes(items, container, depth = 0) {
   for (const item of items) {
-    const node = document.createElement("div");
-    node.className = `tree-node ${item.isDirectory ? "folder" : "file"}`;
+    const node = document.createElement('div');
+    node.className = `tree-node ${item.isDirectory ? 'folder' : 'file'}`;
     node.dataset.path = item.path;
     node.dataset.depth = depth;
-    node.setAttribute("role", "treeitem");
-    node.setAttribute("tabindex", "0");
+    node.setAttribute('role', 'treeitem');
+    node.setAttribute('tabindex', '0');
     if (item.isDirectory) {
-      node.setAttribute("aria-expanded", "false");
+      node.setAttribute('aria-expanded', 'false');
     }
 
-    const toggle = document.createElement("span");
-    toggle.className = "node-toggle";
+    const toggle = document.createElement('span');
+    toggle.className = 'node-toggle';
     if (item.isDirectory) {
       // UI-11: Use SVG arrow for expand/collapse instead of text characters
       toggle.innerHTML = `<svg role="img" aria-label="toggle" xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
     }
     node.appendChild(toggle);
 
-    const icon = document.createElement("span");
-    icon.className = "node-icon";
-    icon.textContent = item.isDirectory ? "📁" : "📄";
+    const icon = document.createElement('span');
+    icon.className = 'node-icon';
+    icon.textContent = item.isDirectory ? '📁' : '📄';
     node.appendChild(icon);
 
-    const name = document.createElement("span");
-    name.className = "node-name";
+    const name = document.createElement('span');
+    name.className = 'node-name';
     name.textContent = item.name;
     node.appendChild(name);
 
     container.appendChild(node);
 
     if (item.isDirectory) {
-      const childrenContainer = document.createElement("div");
-      childrenContainer.className = "tree-children";
-      childrenContainer.setAttribute("role", "group");
+      const childrenContainer = document.createElement('div');
+      childrenContainer.className = 'tree-children';
+      childrenContainer.setAttribute('role', 'group');
       container.appendChild(childrenContainer);
 
       node.onclick = async (e) => {
         e.stopPropagation();
-        const isExpanded = node.classList.toggle("expanded");
-        node.setAttribute("aria-expanded", String(isExpanded));
+        const isExpanded = node.classList.toggle('expanded');
+        node.setAttribute('aria-expanded', String(isExpanded));
         if (isExpanded) {
-          childrenContainer.classList.add("is-expanded");
-          toggle.classList.add("expanded");
+          childrenContainer.classList.add('is-expanded');
+          toggle.classList.add('expanded');
           if (childrenContainer.childElementCount === 0) {
             try {
               const res = await api(`/api/fs/list?dir=${encodeURIComponent(item.path)}`);
@@ -419,8 +419,8 @@ async function renderTreeNodes(items, container, depth = 0) {
             }
           }
         } else {
-          childrenContainer.classList.remove("is-expanded");
-          toggle.classList.remove("expanded");
+          childrenContainer.classList.remove('is-expanded');
+          toggle.classList.remove('expanded');
         }
       };
     } else {
@@ -431,39 +431,39 @@ async function renderTreeNodes(items, container, depth = 0) {
     }
 
     node.onkeydown = async (e) => {
-      if (e.key === "Enter" || e.key === " ") {
+      if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         node.click();
-      } else if (e.key === "ArrowDown") {
+      } else if (e.key === 'ArrowDown') {
         e.preventDefault();
         const next = getNextVisibleNode(node);
         if (next) next.focus();
-      } else if (e.key === "ArrowUp") {
+      } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         const prev = getPrevVisibleNode(node);
         if (prev) prev.focus();
-      } else if (e.key === "ArrowRight") {
+      } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         if (item.isDirectory) {
-          if (!node.classList.contains("expanded")) {
+          if (!node.classList.contains('expanded')) {
             node.click();
           } else {
             const group = node.nextElementSibling;
-            if (group && group.classList.contains("tree-children")) {
-              const firstChild = group.querySelector(".tree-node");
+            if (group && group.classList.contains('tree-children')) {
+              const firstChild = group.querySelector('.tree-node');
               if (firstChild) firstChild.focus();
             }
           }
         }
-      } else if (e.key === "ArrowLeft") {
+      } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        if (item.isDirectory && node.classList.contains("expanded")) {
+        if (item.isDirectory && node.classList.contains('expanded')) {
           node.click();
         } else {
           const group = node.parentElement;
-          if (group && group.classList.contains("tree-children")) {
+          if (group && group.classList.contains('tree-children')) {
             const parentNode = group.previousElementSibling;
-            if (parentNode && parentNode.classList.contains("tree-node")) {
+            if (parentNode && parentNode.classList.contains('tree-node')) {
               parentNode.focus();
             }
           }
@@ -476,10 +476,10 @@ async function renderTreeNodes(items, container, depth = 0) {
 function getVisibleNodes() {
   const tree = dom.fileTree;
   if (!tree) return [];
-  return Array.from(tree.querySelectorAll(".tree-node")).filter((n) => {
+  return Array.from(tree.querySelectorAll('.tree-node')).filter((n) => {
     let parentGroup = n.parentElement;
     while (parentGroup && parentGroup !== tree) {
-      if (parentGroup.classList.contains("tree-children") && !parentGroup.classList.contains("is-expanded")) {
+      if (parentGroup.classList.contains('tree-children') && !parentGroup.classList.contains('is-expanded')) {
         return false;
       }
       parentGroup = parentGroup.parentElement;
@@ -508,13 +508,13 @@ function getPrevVisibleNode(node) {
 
 // openFile and saveFile are delegated to tabManager (see editor tab aliases above)
 
-$("explorerRefresh").onclick = () => {
+$('explorerRefresh').onclick = () => {
   const pathVal = dom.explorerPath.value.trim();
   loadWorkspace(pathVal || null);
 };
 
 dom.explorerPath.onkeydown = (e) => {
-  if (e.key === "Enter") {
+  if (e.key === 'Enter') {
     const pathVal = dom.explorerPath.value.trim();
     loadWorkspace(pathVal || null);
   }
@@ -535,10 +535,10 @@ function setAgentStatus(statusText, statusClass) {
 }
 
 function setStatus(text, cls) {
-  const el = $("status");
+  const el = $('status');
   if (!el) return;
   el.textContent = text;
-  el.className = cls ? `status ${cls}` : "status";
+  el.className = cls ? `status ${cls}` : 'status';
 }
 
 // Pure helper functions (escapeHtml, renderMarkdownSafely, formatMarkdownLike,
@@ -550,59 +550,59 @@ function addAgentTimelineStep(type, title, body, resultText = null) {
   if (!log) return;
 
   // Remove placeholder if present
-  const placeholder = log.querySelector(".timeline-placeholder");
+  const placeholder = log.querySelector('.timeline-placeholder');
   if (placeholder) placeholder.remove();
 
-  const stepId = "step-" + Date.now() + "-" + Math.random().toString(36).substr(2, 5);
+  const stepId = 'step-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
 
-  const step = document.createElement("div");
+  const step = document.createElement('div');
   step.className = `agent-step ${type}`;
   step.id = stepId;
 
   const time = new Date().toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
   });
 
-  const card = document.createElement("div");
-  card.className = "agent-step-card";
+  const card = document.createElement('div');
+  card.className = 'agent-step-card';
 
-  const header = document.createElement("div");
-  header.className = "agent-step-header";
+  const header = document.createElement('div');
+  header.className = 'agent-step-header';
 
-  const iconSpan = document.createElement("span");
-  iconSpan.className = "agent-step-icon";
+  const iconSpan = document.createElement('span');
+  iconSpan.className = 'agent-step-icon';
   appendStepIcon(iconSpan, type);
   iconSpan.appendChild(document.createTextNode(title));
   header.appendChild(iconSpan);
 
-  const timeSpan = document.createElement("span");
-  timeSpan.className = "agent-step-time";
+  const timeSpan = document.createElement('span');
+  timeSpan.className = 'agent-step-time';
   timeSpan.textContent = time;
   header.appendChild(timeSpan);
 
   card.appendChild(header);
 
-  const bodyEl = document.createElement("div");
-  bodyEl.className = "agent-step-body";
+  const bodyEl = document.createElement('div');
+  bodyEl.className = 'agent-step-body';
 
-  const isLongThought = type === "thought" && body && body.length > 100;
+  const isLongThought = type === 'thought' && body && body.length > 100;
   if (isLongThought) {
-    const toggleDiv = document.createElement("div");
-    toggleDiv.className = "agent-step-thought-toggle";
-    const toggleSpan = document.createElement("span");
-    toggleSpan.textContent = "▶ 思考プロセスを展開";
+    const toggleDiv = document.createElement('div');
+    toggleDiv.className = 'agent-step-thought-toggle';
+    const toggleSpan = document.createElement('span');
+    toggleSpan.textContent = '▶ 思考プロセスを展開';
     toggleDiv.appendChild(toggleSpan);
 
-    const thoughtBox = document.createElement("div");
-    thoughtBox.className = "agent-step-thought-box u-hidden";
+    const thoughtBox = document.createElement('div');
+    thoughtBox.className = 'agent-step-thought-box u-hidden';
     thoughtBox.appendChild(bodyEl);
 
     toggleDiv.onclick = () => {
-      const willBeHidden = !thoughtBox.classList.contains("u-hidden");
-      thoughtBox.classList.toggle("u-hidden", willBeHidden);
-      toggleSpan.textContent = willBeHidden ? "▶ 思考プロセスを展開" : "▼ 思考プロセスを折りたたむ";
+      const willBeHidden = !thoughtBox.classList.contains('u-hidden');
+      thoughtBox.classList.toggle('u-hidden', willBeHidden);
+      toggleSpan.textContent = willBeHidden ? '▶ 思考プロセスを展開' : '▼ 思考プロセスを折りたたむ';
     };
 
     card.appendChild(toggleDiv);
@@ -619,23 +619,23 @@ function addAgentTimelineStep(type, title, body, resultText = null) {
         `\n\n... [出力が ${(resultText.length - MAX_RESULT_VISIBLE).toLocaleString()} 文字を超過したため切り詰められました]`
       : resultText;
 
-    const toggleDiv = document.createElement("div");
-    toggleDiv.className = "agent-step-result-toggle";
-    const toggleSpan = document.createElement("span");
-    toggleSpan.textContent = "▶ 実行出力を表示";
+    const toggleDiv = document.createElement('div');
+    toggleDiv.className = 'agent-step-result-toggle';
+    const toggleSpan = document.createElement('span');
+    toggleSpan.textContent = '▶ 実行出力を表示';
     toggleDiv.appendChild(toggleSpan);
     if (isTruncated) {
-      const warnSpan = document.createElement("span");
-      warnSpan.className = "result-truncated-badge";
-      warnSpan.textContent = "切詰";
+      const warnSpan = document.createElement('span');
+      warnSpan.className = 'result-truncated-badge';
+      warnSpan.textContent = '切詰';
       toggleDiv.appendChild(warnSpan);
     }
     toggleDiv.onclick = () => toggleTimelineResult(stepId);
     card.appendChild(toggleDiv);
 
-    const resultPre = document.createElement("pre");
-    resultPre.id = "result-" + stepId;
-    resultPre.className = "agent-step-result-box u-hidden";
+    const resultPre = document.createElement('pre');
+    resultPre.id = 'result-' + stepId;
+    resultPre.className = 'agent-step-result-box u-hidden';
     resultPre.textContent = displayText;
     card.appendChild(resultPre);
   }
@@ -654,95 +654,95 @@ function toggleTimelineResult(stepId) {
   const box = document.getElementById(`result-${stepId}`);
   if (!box) return;
   const toggle = box.previousElementSibling;
-  const toggleSpan = toggle.querySelector("span");
-  const willBeHidden = !box.classList.contains("u-hidden");
-  box.classList.toggle("u-hidden", willBeHidden);
+  const toggleSpan = toggle.querySelector('span');
+  const willBeHidden = !box.classList.contains('u-hidden');
+  box.classList.toggle('u-hidden', willBeHidden);
   if (toggleSpan) {
-    toggleSpan.textContent = willBeHidden ? "▶ 実行出力を表示" : "▼ 実行出力を非表示";
+    toggleSpan.textContent = willBeHidden ? '▶ 実行出力を表示' : '▼ 実行出力を非表示';
   }
 }
 
 function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) {
   const log = dom.agentActivityLog;
   if (!log) return;
-  const placeholder = log.querySelector(".timeline-placeholder");
+  const placeholder = log.querySelector('.timeline-placeholder');
   if (placeholder) placeholder.remove();
 
-  const stepId = "step-approval-" + Date.now();
+  const stepId = 'step-approval-' + Date.now();
 
-  const step = document.createElement("div");
+  const step = document.createElement('div');
   step.className = `agent-step approval`;
   step.id = stepId;
-  step.setAttribute("role", "alertdialog");
-  step.setAttribute("aria-label", "コマンド実行承認");
+  step.setAttribute('role', 'alertdialog');
+  step.setAttribute('aria-label', 'コマンド実行承認');
 
   const time = new Date().toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
   });
 
-  const card = document.createElement("div");
-  card.className = "agent-step-card";
+  const card = document.createElement('div');
+  card.className = 'agent-step-card';
 
-  const header = document.createElement("div");
-  header.className = "agent-step-header";
+  const header = document.createElement('div');
+  header.className = 'agent-step-header';
 
-  const iconSpan = document.createElement("span");
-  iconSpan.className = "agent-step-icon";
-  appendStepIcon(iconSpan, "approval");
-  iconSpan.appendChild(document.createTextNode("コマンド実行"));
+  const iconSpan = document.createElement('span');
+  iconSpan.className = 'agent-step-icon';
+  appendStepIcon(iconSpan, 'approval');
+  iconSpan.appendChild(document.createTextNode('コマンド実行'));
 
-  const timeSpan = document.createElement("span");
-  timeSpan.className = "agent-step-time";
+  const timeSpan = document.createElement('span');
+  timeSpan.className = 'agent-step-time';
   timeSpan.textContent = time;
 
   header.appendChild(iconSpan);
   header.appendChild(timeSpan);
 
-  const body = document.createElement("div");
-  body.className = "agent-step-body";
-  body.textContent = "エージェントが以下のコマンドを実行しようとしています。";
+  const body = document.createElement('div');
+  body.className = 'agent-step-body';
+  body.textContent = 'エージェントが以下のコマンドを実行しようとしています。';
 
-  const details = document.createElement("div");
-  details.className = "approval-details";
+  const details = document.createElement('div');
+  details.className = 'approval-details';
 
-  const cmdLabel = document.createElement("strong");
-  cmdLabel.textContent = "コマンド: ";
-  const cmdCode = document.createElement("code");
+  const cmdLabel = document.createElement('strong');
+  cmdLabel.textContent = 'コマンド: ';
+  const cmdCode = document.createElement('code');
   cmdCode.textContent = command;
 
-  const dirLabel = document.createElement("strong");
-  dirLabel.textContent = "実行ディレクトリ: ";
-  const dirCode = document.createElement("code");
+  const dirLabel = document.createElement('strong');
+  dirLabel.textContent = '実行ディレクトリ: ';
+  const dirCode = document.createElement('code');
   dirCode.textContent = cwd;
 
   details.appendChild(cmdLabel);
   details.appendChild(cmdCode);
-  details.appendChild(document.createElement("br"));
+  details.appendChild(document.createElement('br'));
   details.appendChild(dirLabel);
   details.appendChild(dirCode);
 
-  const feedbackInput = document.createElement("input");
-  feedbackInput.type = "text";
+  const feedbackInput = document.createElement('input');
+  feedbackInput.type = 'text';
   feedbackInput.id = `feedback-${stepId}`;
-  feedbackInput.className = "approval-feedback-input";
-  feedbackInput.placeholder = "却下する場合は理由を入力してください...";
+  feedbackInput.className = 'approval-feedback-input';
+  feedbackInput.placeholder = '却下する場合は理由を入力してください...';
 
-  const actions = document.createElement("div");
-  actions.className = "approval-actions";
+  const actions = document.createElement('div');
+  actions.className = 'approval-actions';
 
-  const approveBtn = document.createElement("button");
-  approveBtn.type = "button";
-  approveBtn.className = "approval-btn approve";
+  const approveBtn = document.createElement('button');
+  approveBtn.type = 'button';
+  approveBtn.className = 'approval-btn approve';
   approveBtn.id = `approve-${stepId}`;
-  approveBtn.textContent = "許可";
+  approveBtn.textContent = '許可';
 
-  const rejectBtn = document.createElement("button");
-  rejectBtn.type = "button";
-  rejectBtn.className = "approval-btn reject";
+  const rejectBtn = document.createElement('button');
+  rejectBtn.type = 'button';
+  rejectBtn.className = 'approval-btn reject';
   rejectBtn.id = `reject-${stepId}`;
-  rejectBtn.textContent = "却下";
+  rejectBtn.textContent = '却下';
 
   actions.appendChild(approveBtn);
   actions.appendChild(rejectBtn);
@@ -754,7 +754,7 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
   card.appendChild(header);
   card.appendChild(body);
 
-  step.textContent = "";
+  step.textContent = '';
   step.appendChild(card);
 
   log.appendChild(step);
@@ -769,7 +769,7 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
     if (finalized) return;
     finalized = true;
     setTimeout(() => {
-      step.classList.add("is-fading");
+      step.classList.add('is-fading');
       setTimeout(() => {
         step.remove();
       }, 450);
@@ -783,8 +783,8 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
     approveBtn.disabled = true;
     rejectBtn.disabled = true;
     feedbackInput.disabled = true;
-    approveBtn.textContent = "許可済み";
-    approveBtn.classList.add("is-disabled");
+    approveBtn.textContent = '許可済み';
+    approveBtn.classList.add('is-disabled');
     onApprove();
     finalizeStep();
   };
@@ -793,9 +793,9 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
     approveBtn.disabled = true;
     rejectBtn.disabled = true;
     feedbackInput.disabled = true;
-    rejectBtn.textContent = "却下済み";
-    rejectBtn.classList.add("is-disabled");
-    const reason = feedbackInput.value.trim() || "ユーザーによって却下されました";
+    rejectBtn.textContent = '却下済み';
+    rejectBtn.classList.add('is-disabled');
+    const reason = feedbackInput.value.trim() || 'ユーザーによって却下されました';
     onReject(reason);
     finalizeStep();
   };
@@ -805,34 +805,34 @@ let diffEditor = null;
 
 async function showDiffDialog(filePath, oldContent, newContent) {
   try {
-    const modal = $("diffModal");
-    const container = $("diffEditorContainer");
-    const pathLabel = $("diffFilePath");
-    const inlineToggle = $("diffInlineToggle");
+    const modal = $('diffModal');
+    const container = $('diffEditorContainer');
+    const pathLabel = $('diffFilePath');
+    const inlineToggle = $('diffInlineToggle');
 
     pathLabel.textContent = `ファイル: ${filePath}`;
-    modal.classList.remove("u-hidden");
+    modal.classList.remove('u-hidden');
 
-    const isInline = localStorage.getItem("diffRenderInline") === "true";
+    const isInline = localStorage.getItem('diffRenderInline') === 'true';
     if (inlineToggle) {
       inlineToggle.checked = isInline;
       inlineToggle.onchange = (e) => {
         const inline = e.target.checked;
-        localStorage.setItem("diffRenderInline", inline);
+        localStorage.setItem('diffRenderInline', inline);
         if (diffEditor) diffEditor.updateOptions({ renderSideBySide: !inline });
       };
     }
 
     if (!diffEditor) {
       diffEditor = monaco.editor.createDiffEditor(container, {
-        theme: document.documentElement.getAttribute("data-theme") === "light" ? "vs" : "vs-dark",
+        theme: document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'vs-dark',
         automaticLayout: true,
         readOnly: true,
         renderSideBySide: !isInline,
       });
     } else {
       diffEditor.updateOptions({
-        theme: document.documentElement.getAttribute("data-theme") === "light" ? "vs" : "vs-dark",
+        theme: document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'vs-dark',
         renderSideBySide: !isInline,
       });
     }
@@ -841,10 +841,10 @@ async function showDiffDialog(filePath, oldContent, newContent) {
       filePath
         .split(/[\\/]/)
         .pop()
-        .replace(/[^a-zA-Z0-9_.-]/g, "_") || "file";
-    const safePath = "/" + baseName;
-    const originalUri = monaco.Uri.from({ scheme: "diff-original", path: safePath });
-    const modifiedUri = monaco.Uri.from({ scheme: "diff-modified", path: safePath });
+        .replace(/[^a-zA-Z0-9_.-]/g, '_') || 'file';
+    const safePath = '/' + baseName;
+    const originalUri = monaco.Uri.from({ scheme: 'diff-original', path: safePath });
+    const modifiedUri = monaco.Uri.from({ scheme: 'diff-modified', path: safePath });
 
     let originalModel = monaco.editor.getModel(originalUri);
     if (originalModel) originalModel.dispose();
@@ -876,39 +876,39 @@ async function showDiffDialog(filePath, oldContent, newContent) {
     return new Promise((resolve) => {
       const cleanup = (val) => {
         observer.disconnect();
-        modal.classList.add("u-hidden");
+        modal.classList.add('u-hidden');
         if (diffEditor) diffEditor.setModel(null);
         originalModel.dispose();
         modifiedModel.dispose();
-        document.removeEventListener("keydown", onKey);
+        document.removeEventListener('keydown', onKey);
         resolve(val);
       };
-      $("diffApply").onclick = () => cleanup(true);
-      $("diffCancel").onclick = () => cleanup(false);
+      $('diffApply').onclick = () => cleanup(true);
+      $('diffCancel').onclick = () => cleanup(false);
 
       // #19: Close diff dialog on Escape, cleaning up ResizeObserver
       const onKey = (e) => {
-        if (e.key === "Escape" && !modal.classList.contains("u-hidden")) {
+        if (e.key === 'Escape' && !modal.classList.contains('u-hidden')) {
           cleanup(false);
         }
       };
-      document.addEventListener("keydown", onKey);
+      document.addEventListener('keydown', onKey);
     });
   } catch (error) {
-    console.error("showDiffDialog error:", error);
-    toast.error("差分表示エラー: " + error.message);
-    $("diffModal").classList.add("u-hidden");
+    console.error('showDiffDialog error:', error);
+    toast.error('差分表示エラー: ' + error.message);
+    $('diffModal').classList.add('u-hidden');
     return false;
   }
 }
 
 function resolvePathRelativeToWorkspace(workspaceRoot, filePath) {
-  if (/^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith("/") || filePath.startsWith("\\")) {
+  if (/^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith('/') || filePath.startsWith('\\')) {
     return filePath;
   }
-  const separator = workspaceRoot.includes("\\") ? "\\" : "/";
-  const rootTrimmed = workspaceRoot.replace(/[\\/]+$/, "");
-  const fileTrimmed = filePath.replace(/^[\\/]+/, "");
+  const separator = workspaceRoot.includes('\\') ? '\\' : '/';
+  const rootTrimmed = workspaceRoot.replace(/[\\/]+$/, '');
+  const fileTrimmed = filePath.replace(/^[\\/]+/, '');
   return `${rootTrimmed}${separator}${fileTrimmed}`;
 }
 
@@ -932,7 +932,7 @@ function trimAgentHistory(history, maxTokens) {
     if (totalTokens > maxTokens && i > 0) {
       const removed = history.splice(0, i);
       history.unshift({
-        role: "user",
+        role: 'user',
         content: `[コンテキスト省略: ${removed.length}件のメッセージを要約]\n前回までの操作を continues してください。`,
       });
       return;
@@ -946,34 +946,34 @@ async function processCommandStream(res, stepId) {
   if (resultBox) {
     const toggle = resultBox.previousElementSibling;
     if (toggle) {
-      toggle.classList.remove("u-hidden");
-      const span = toggle.querySelector("span");
-      if (span) span.textContent = "▼ 実行出力を非表示";
+      toggle.classList.remove('u-hidden');
+      const span = toggle.querySelector('span');
+      if (span) span.textContent = '▼ 実行出力を非表示';
     }
-    resultBox.classList.remove("u-hidden");
-    resultBox.textContent = "";
+    resultBox.classList.remove('u-hidden');
+    resultBox.textContent = '';
   }
 
   const reader = res.body.getReader();
-  const decoder = new TextDecoder("utf-8");
-  let buffer = "";
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
 
-    let boundary = buffer.indexOf("\n\n");
+    let boundary = buffer.indexOf('\n\n');
     while (boundary !== -1) {
       const chunk = buffer.slice(0, boundary);
       buffer = buffer.slice(boundary + 2);
 
-      let eventName = "message";
-      let data = "";
-      for (const line of chunk.split("\n")) {
-        if (line.startsWith("event: ")) {
+      let eventName = 'message';
+      let data = '';
+      for (const line of chunk.split('\n')) {
+        if (line.startsWith('event: ')) {
           eventName = line.slice(7);
-        } else if (line.startsWith("data: ")) {
+        } else if (line.startsWith('data: ')) {
           data += line.slice(6);
         }
       }
@@ -981,19 +981,19 @@ async function processCommandStream(res, stepId) {
       if (data) {
         try {
           const parsed = JSON.parse(data);
-          if (eventName === "done") {
+          if (eventName === 'done') {
             finalResult = parsed;
-          } else if (eventName === "stdout" || eventName === "stderr") {
+          } else if (eventName === 'stdout' || eventName === 'stderr') {
             if (resultBox) {
               resultBox.textContent += parsed.text;
               resultBox.scrollTop = resultBox.scrollHeight;
             }
           }
         } catch (e) {
-          console.error("Failed to parse SSE data", e);
+          console.error('Failed to parse SSE data', e);
         }
       }
-      boundary = buffer.indexOf("\n\n");
+      boundary = buffer.indexOf('\n\n');
     }
   }
   return finalResult;
@@ -1002,7 +1002,7 @@ async function processCommandStream(res, stepId) {
 const AGENT_TOOL_HANDLERS = {
   read_file: async ({ sessionId, workspaceRoot, params }) => {
     const { path: filePath, startLine, endLine } = params;
-    if (!filePath) throw new Error("path パラメータが必要です");
+    if (!filePath) throw new Error('path パラメータが必要です');
     const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
     let url = `/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`;
     if (startLine !== undefined) url += `&startLine=${startLine}`;
@@ -1013,11 +1013,11 @@ const AGENT_TOOL_HANDLERS = {
   },
   write_file: async ({ sessionId, workspaceRoot, params }) => {
     const { path: filePath, content } = params;
-    if (!filePath) throw new Error("path パラメータが必要です");
+    if (!filePath) throw new Error('path パラメータが必要です');
     const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
     await api(`/api/agent/sessions/${sessionId}/files`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: fullPath, content }),
     });
     await openFile(fullPath);
@@ -1025,49 +1025,49 @@ const AGENT_TOOL_HANDLERS = {
   },
   apply_diff: async ({ sessionId, workspaceRoot, params }) => {
     const { path: filePath, diff } = params;
-    if (!filePath) throw new Error("path パラメータが必要です");
-    if (diff === undefined) throw new Error("diff パラメータが必要です");
+    if (!filePath) throw new Error('path パラメータが必要です');
+    if (diff === undefined) throw new Error('diff パラメータが必要です');
     const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
 
     const current = await api(`/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`);
     const preview = await api(`/api/agent/sessions/${sessionId}/diff`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: fullPath, diff, dryRun: true }),
     });
 
     if (await showDiffDialog(filePath, current.content, preview.newContent || current.content)) {
       const res = await api(`/api/agent/sessions/${sessionId}/diff`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: fullPath, diff }),
       });
       await openFile(fullPath);
-      return { text: res.message || "置換成功", success: true };
+      return { text: res.message || '置換成功', success: true };
     }
-    return { text: "ユーザーによって拒否されました", success: false };
+    return { text: 'ユーザーによって拒否されました', success: false };
   },
   list_directory: async ({ sessionId, workspaceRoot, params }) => {
-    const dirPath = params.path || "";
+    const dirPath = params.path || '';
     const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, dirPath);
     const data = await api(`/api/agent/sessions/${sessionId}/dir?path=${encodeURIComponent(fullPath)}`);
     const text = data.items?.length
-      ? data.items.map((i) => `- ${i.isDirectory ? "[Dir] " : "[File] "}${i.name}`).join("\n")
-      : "ディレクトリは空または存在しません。";
+      ? data.items.map((i) => `- ${i.isDirectory ? '[Dir] ' : '[File] '}${i.name}`).join('\n')
+      : 'ディレクトリは空または存在しません。';
     return { text, success: true };
   },
   search_files: async ({ sessionId, workspaceRoot, params }) => {
     const { query } = params;
-    if (!query) throw new Error("query パラメータが必要です");
+    if (!query) throw new Error('query パラメータが必要です');
     const data = await api(`/api/agent/sessions/${sessionId}/search?query=${encodeURIComponent(query)}`);
     const text = data.results?.length
-      ? data.results.map((r) => `${r.file}:${r.line}: ${r.content}`).join("\n")
-      : "検索結果なし";
+      ? data.results.map((r) => `${r.file}:${r.line}: ${r.content}`).join('\n')
+      : '検索結果なし';
     return { text, success: true };
   },
   run_command: async ({ sessionId, workspaceRoot, params }) => {
     const { command } = params;
-    if (!command) throw new Error("command パラメータが必要です");
+    if (!command) throw new Error('command パラメータが必要です');
 
     // M-10: Reject nested approval requests. If a previous command is still
     // awaiting user approval, the resolver would be overwritten and the prior
@@ -1077,30 +1077,30 @@ const AGENT_TOOL_HANDLERS = {
     // burning an iteration (and an LLM call) on a recoverable condition.
     if (state.agent.resolver) {
       return {
-        text: "別のコマンドが承認待ちです。先に承認/却下してください。",
+        text: '別のコマンドが承認待ちです。先に承認/却下してください。',
         success: false,
         retryable: true,
       };
     }
 
-    setAgentStatus("承認待ち...", "awaiting_approval");
+    setAgentStatus('承認待ち...', 'awaiting_approval');
     const runResRaw = await api(`/api/agent/sessions/${sessionId}/commands?stream=true`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ command, cwd: workspaceRoot }),
       raw: true,
     });
 
     let runRes;
-    const contentType = runResRaw.headers.get("content-type") || "";
-    if (contentType.includes("application/json")) {
+    const contentType = runResRaw.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
       runRes = await runResRaw.json();
     } else {
       const stepId = addAgentTimelineStep(
-        "action",
-        `コマンド実行: ${command.split(" ")[0]}`,
-        "自動承認により実行を開始します...",
-        "",
+        'action',
+        `コマンド実行: ${command.split(' ')[0]}`,
+        '自動承認により実行を開始します...',
+        '',
       );
       runRes = await processCommandStream(runResRaw, stepId);
     }
@@ -1119,24 +1119,24 @@ const AGENT_TOOL_HANDLERS = {
         workspaceRoot,
         runRes.approvalToken,
         async () => {
-          setAgentStatus("実行中...", "executing");
+          setAgentStatus('実行中...', 'executing');
           try {
             const resRaw = await api(`/api/agent/sessions/${sessionId}/approve?stream=true`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ approvalToken: runRes.approvalToken }),
               raw: true,
             });
             let res;
-            const resContentType = resRaw.headers.get("content-type") || "";
-            if (resContentType.includes("application/json")) {
+            const resContentType = resRaw.headers.get('content-type') || '';
+            if (resContentType.includes('application/json')) {
               res = await resRaw.json();
             } else {
               const stepId = addAgentTimelineStep(
-                "action",
-                `コマンド実行: ${command.split(" ")[0]}`,
-                "実行を開始します...",
-                "",
+                'action',
+                `コマンド実行: ${command.split(' ')[0]}`,
+                '実行を開始します...',
+                '',
               );
               res = await processCommandStream(resRaw, stepId);
             }
@@ -1150,7 +1150,7 @@ const AGENT_TOOL_HANDLERS = {
     });
 
     state.agent.resolver = null;
-    if (approvalResult.abort) return { text: "ABORTED", success: false, abort: true };
+    if (approvalResult.abort) return { text: 'ABORTED', success: false, abort: true };
     if (!approvalResult.approved) return { text: `拒否されました: ${approvalResult.reason}`, success: false };
     if (approvalResult.error) return { text: `エラー: ${approvalResult.error.message}`, success: false };
 
@@ -1163,17 +1163,17 @@ const AGENT_TOOL_HANDLERS = {
 };
 
 async function runAgentLoop(initialInstruction) {
-  const workspaceRoot = dom.explorerPath.value || "";
-  setAgentStatus("初期化中...", "thinking");
+  const workspaceRoot = dom.explorerPath.value || '';
+  setAgentStatus('初期化中...', 'thinking');
 
   // Show user's initial message as a user chat bubble
-  addAgentTimelineStep("user", "指示", initialInstruction);
+  addAgentTimelineStep('user', '指示', initialInstruction);
 
   if (!state.agent.sessionId) {
     try {
-      const sessionData = await api("/api/agent/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const sessionData = await api('/api/agent/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           cwd: workspaceRoot,
           task: initialInstruction,
@@ -1181,17 +1181,17 @@ async function runAgentLoop(initialInstruction) {
       });
       state.agent.sessionId = sessionData.session.id;
       addAgentTimelineStep(
-        "thought",
-        "セッション開始",
+        'thought',
+        'セッション開始',
         `エージェントセッションが開始されました。\nワークスペース: ${workspaceRoot}`,
       );
     } catch (e) {
-      addAgentTimelineStep("error", "セッション作成失敗", `セッションの初期化に失敗しました: ${e.message}`);
-      setAgentStatus("エラー", "error");
+      addAgentTimelineStep('error', 'セッション作成失敗', `セッションの初期化に失敗しました: ${e.message}`);
+      setAgentStatus('エラー', 'error');
       return;
     }
   } else {
-    addAgentTimelineStep("thought", "セッション再開", `既存のセッションで追加指示を実行します。`);
+    addAgentTimelineStep('thought', 'セッション再開', `既存のセッションで追加指示を実行します。`);
   }
 
   const sessionId = state.agent.sessionId;
@@ -1200,14 +1200,14 @@ async function runAgentLoop(initialInstruction) {
   try {
     const listRes = await api(`/api/fs/list?dir=${encodeURIComponent(workspaceRoot)}`);
     const filesList = listRes.items
-      .map((item) => `- ${item.isDirectory ? "[Dir] " : "[File] "}${item.name}`)
-      .join("\n");
+      .map((item) => `- ${item.isDirectory ? '[Dir] ' : '[File] '}${item.name}`)
+      .join('\n');
     workspaceFilesText += filesList;
   } catch (err) {
-    workspaceFilesText += "(ファイル一覧の取得に失敗しました)";
+    workspaceFilesText += '(ファイル一覧の取得に失敗しました)';
   }
 
-  const modelSelected = $("codeModel")?.value || "qwen3-coder-plus";
+  const modelSelected = $('codeModel')?.value || 'qwen3-coder-plus';
 
   const sysPrompt = `あなたは極めて優秀なソフトウェアエンジニアAIエージェントです。
 あなたの目的は、ユーザーの指示を「正確に」かつ「安全に」達成することです。
@@ -1282,14 +1282,14 @@ export const add = (a, b) => {
 ${workspaceFilesText}
 
 現在の Monaco エディタで開いているファイル:
-パス: ${state.editor.activeFilePath || "なし"}
+パス: ${state.editor.activeFilePath || 'なし'}
 `;
 
   if (state.agent.history.length === 0) {
-    state.agent.history = [{ role: "user", content: `${sysPrompt}\n\n【指示】\n${initialInstruction}` }];
+    state.agent.history = [{ role: 'user', content: `${sysPrompt}\n\n【指示】\n${initialInstruction}` }];
   } else {
     state.agent.history.push({
-      role: "user",
+      role: 'user',
       content: `【ユーザーからの追加指示】\n${initialInstruction}`,
     });
     trimAgentHistory(state.agent.history);
@@ -1300,7 +1300,7 @@ ${workspaceFilesText}
   let consecutiveParseErrors = 0;
   const MAX_CONSECUTIVE_ERRORS = 3;
   try {
-    const agentConfig = await api("/api/agent/config");
+    const agentConfig = await api('/api/agent/config');
     if (agentConfig.maxLoops) maxLoops = agentConfig.maxLoops;
   } catch {
     // Use default
@@ -1308,13 +1308,13 @@ ${workspaceFilesText}
 
   while (state.agent.active && loopCount < maxLoops) {
     loopCount++;
-    setAgentStatus("思考中...", "thinking");
+    setAgentStatus('思考中...', 'thinking');
 
     let chatRes;
     try {
-      chatRes = await api("/api/agent/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      chatRes = await api('/api/agent/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: state.agent.history,
           model: modelSelected,
@@ -1324,33 +1324,33 @@ ${workspaceFilesText}
         timeout: 600000,
       });
     } catch (e) {
-      addAgentTimelineStep("error", "AI通信失敗", `AIとの通信に失敗しました: ${e.message}`);
-      setAgentStatus("エラー", "error");
+      addAgentTimelineStep('error', 'AI通信失敗', `AIとの通信に失敗しました: ${e.message}`);
+      setAgentStatus('エラー', 'error');
       break;
     }
 
-    const aiText = chatRes.text || "";
+    const aiText = chatRes.text || '';
     if (!aiText) {
-      addAgentTimelineStep("error", "応答空", "AIからの応答が空でした。");
-      setAgentStatus("エラー", "error");
+      addAgentTimelineStep('error', '応答空', 'AIからの応答が空でした。');
+      setAgentStatus('エラー', 'error');
       break;
     }
 
     const parsed = parseXMLTags(aiText);
 
     if (parsed.thought) {
-      addAgentTimelineStep("thought", "思考プロセス", parsed.thought);
+      addAgentTimelineStep('thought', '思考プロセス', parsed.thought);
     } else {
-      addAgentTimelineStep("thought", "思考プロセス", aiText);
+      addAgentTimelineStep('thought', '思考プロセス', aiText);
     }
 
     if (parsed.finish) {
       addAgentTimelineStep(
-        "result",
-        "タスク完了",
+        'result',
+        'タスク完了',
         `エージェントがタスクの完了を報告しました。\n\n要約:\n${parsed.finish}`,
       );
-      setAgentStatus("完了", "completed");
+      setAgentStatus('完了', 'completed');
       break;
     }
 
@@ -1361,11 +1361,11 @@ ${workspaceFilesText}
 
       const paramListStr = Object.entries(params)
         .map(([k, v]) => `• ${k}: ${v}`)
-        .join("\n");
-      addAgentTimelineStep("action", `ツール呼び出し: ${toolName}`, paramListStr);
-      setAgentStatus("実行中...", "executing");
+        .join('\n');
+      addAgentTimelineStep('action', `ツール呼び出し: ${toolName}`, paramListStr);
+      setAgentStatus('実行中...', 'executing');
 
-      let toolResultText = "";
+      let toolResultText = '';
       let toolSuccess = false;
 
       try {
@@ -1386,9 +1386,9 @@ ${workspaceFilesText}
         // loopCount. This avoids draining maxLoops while the user is
         // reviewing approvals.
         if (result.retryable) {
-          state.agent.history.push({ role: "assistant", content: aiText });
+          state.agent.history.push({ role: 'assistant', content: aiText });
           state.agent.history.push({
-            role: "user",
+            role: 'user',
             content: `<tool_response>\n${result.text}\n</tool_response>`,
           });
           trimAgentHistory(state.agent.history);
@@ -1405,38 +1405,38 @@ ${workspaceFilesText}
       }
 
       addAgentTimelineStep(
-        toolSuccess ? "result" : "error",
+        toolSuccess ? 'result' : 'error',
         `ツール結果: ${toolName}`,
-        toolSuccess ? "ツールの実行が完了しました。" : "エラーまたはキャンセルが発生しました。",
+        toolSuccess ? 'ツールの実行が完了しました。' : 'エラーまたはキャンセルが発生しました。',
         toolResultText,
       );
 
       const feedbackMsg = `<tool_response>\n${toolResultText}\n</tool_response>`;
 
-      state.agent.history.push({ role: "assistant", content: aiText });
-      state.agent.history.push({ role: "user", content: feedbackMsg });
+      state.agent.history.push({ role: 'assistant', content: aiText });
+      state.agent.history.push({ role: 'user', content: feedbackMsg });
       trimAgentHistory(state.agent.history);
     } else {
       consecutiveParseErrors++;
       if (consecutiveParseErrors >= MAX_CONSECUTIVE_ERRORS) {
         addAgentTimelineStep(
-          "error",
-          "パースエラー",
+          'error',
+          'パースエラー',
           `AIがフォーマットに従わない状態が ${MAX_CONSECUTIVE_ERRORS} 回連続したため、安全のためにエージェントを強制停止します。`,
         );
-        setAgentStatus("エラー", "error");
+        setAgentStatus('エラー', 'error');
         break;
       }
 
       const errMsg = `エラー: ツール呼び出しまたはタスク完了タグ (<call_tool> または <finish>) が見つかりませんでした。\n指示に従って、思考を <thought>タグで囲み、直後に呼び出すツールを <call_tool> タグで指定してください。`;
       addAgentTimelineStep(
-        "error",
-        "パース失敗",
-        "AIが定義されたXMLフォーマットに準拠していません。自動修正指示を送信します。",
+        'error',
+        'パース失敗',
+        'AIが定義されたXMLフォーマットに準拠していません。自動修正指示を送信します。',
       );
 
-      state.agent.history.push({ role: "assistant", content: aiText });
-      state.agent.history.push({ role: "user", content: errMsg });
+      state.agent.history.push({ role: 'assistant', content: aiText });
+      state.agent.history.push({ role: 'user', content: errMsg });
       trimAgentHistory(state.agent.history);
     }
 
@@ -1445,21 +1445,21 @@ ${workspaceFilesText}
 
   if (loopCount >= maxLoops && state.agent.active) {
     addAgentTimelineStep(
-      "error",
-      "制限到達",
+      'error',
+      '制限到達',
       `実行ステップ数が上限 (${maxLoops}) に達したため、安全のために停止しました。`,
     );
-    setAgentStatus("エラー", "error");
+    setAgentStatus('エラー', 'error');
   }
 
   state.agent.active = false;
-  dom.startAgentBtn.classList.remove("is-hidden");
-  dom.sendAgentFeedbackBtn.classList.remove("is-shown");
-  dom.stopAgentBtn.classList.remove("is-shown");
-  dom.resetAgentBtn.classList.remove("is-hidden");
-  dom.agentInstruction.placeholder = "指示を入力してエージェントを開始...";
-  if (dom.agentStatus.textContent !== "完了" && dom.agentStatus.textContent !== "エラー") {
-    setAgentStatus("待機中", "idle");
+  dom.startAgentBtn.classList.remove('is-hidden');
+  dom.sendAgentFeedbackBtn.classList.remove('is-shown');
+  dom.stopAgentBtn.classList.remove('is-shown');
+  dom.resetAgentBtn.classList.remove('is-hidden');
+  dom.agentInstruction.placeholder = '指示を入力してエージェントを開始...';
+  if (dom.agentStatus.textContent !== '完了' && dom.agentStatus.textContent !== 'エラー') {
+    setAgentStatus('待機中', 'idle');
   }
 }
 
@@ -1467,37 +1467,37 @@ dom.startAgentBtn.onclick = async () => {
   if (state.agent.active) return;
   const instruction = dom.agentInstruction.value.trim();
   if (!instruction) {
-    toast.warning("エージェントへの指示を入力してください");
+    toast.warning('エージェントへの指示を入力してください');
     return;
   }
 
   // Clear input so user can type feedback immediately
-  dom.agentInstruction.value = "";
-  dom.agentInstruction.placeholder = "追加の指示やヒントを入力...";
+  dom.agentInstruction.value = '';
+  dom.agentInstruction.placeholder = '追加の指示やヒントを入力...';
 
   state.agent.active = true;
-  dom.startAgentBtn.classList.add("is-hidden");
-  dom.sendAgentFeedbackBtn.classList.add("is-shown");
-  dom.stopAgentBtn.classList.add("is-shown");
-  dom.resetAgentBtn.classList.add("is-hidden");
+  dom.startAgentBtn.classList.add('is-hidden');
+  dom.sendAgentFeedbackBtn.classList.add('is-shown');
+  dom.stopAgentBtn.classList.add('is-shown');
+  dom.resetAgentBtn.classList.add('is-hidden');
 
   try {
     await runAgentLoop(instruction);
   } catch (err) {
-    console.error("Agent loop crashed:", err);
-    setAgentStatus("エラー", "error");
+    console.error('Agent loop crashed:', err);
+    setAgentStatus('エラー', 'error');
     addAgentTimelineStep(
-      "error",
-      "システムクラッシュ",
+      'error',
+      'システムクラッシュ',
       `エージェントのループ処理中に問題が発生しました: ${err.message}`,
     );
   } finally {
     state.agent.active = false;
-    dom.startAgentBtn.classList.remove("is-hidden");
-    dom.sendAgentFeedbackBtn.classList.remove("is-shown");
-    dom.stopAgentBtn.classList.remove("is-shown");
-    dom.resetAgentBtn.classList.remove("is-hidden");
-    dom.agentInstruction.placeholder = "指示を入力してエージェントを開始...";
+    dom.startAgentBtn.classList.remove('is-hidden');
+    dom.sendAgentFeedbackBtn.classList.remove('is-shown');
+    dom.stopAgentBtn.classList.remove('is-shown');
+    dom.resetAgentBtn.classList.remove('is-hidden');
+    dom.agentInstruction.placeholder = '指示を入力してエージェントを開始...';
   }
 };
 
@@ -1508,14 +1508,14 @@ dom.stopAgentBtn.onclick = () => {
     state.agent.resolver({ abort: true });
   }
   // M-2: pending approvals become orphans once we stop the agent — clean them up.
-  document.querySelectorAll(".agent-step.approval").forEach((el) => el.__finalizeApproval?.());
-  setAgentStatus("停止", "idle");
-  addAgentTimelineStep("thought", "停止", "ユーザーによって停止されました。");
+  document.querySelectorAll('.agent-step.approval').forEach((el) => el.__finalizeApproval?.());
+  setAgentStatus('停止', 'idle');
+  addAgentTimelineStep('thought', '停止', 'ユーザーによって停止されました。');
 };
 
 dom.resetAgentBtn.onclick = async () => {
-  const accepted = await toast.confirm("エージェントのセッション履歴をリセットしますか？", {
-    type: "warning",
+  const accepted = await toast.confirm('エージェントのセッション履歴をリセットしますか？', {
+    type: 'warning',
   });
   if (accepted) {
     if (state.agent.resolver) {
@@ -1524,53 +1524,53 @@ dom.resetAgentBtn.onclick = async () => {
     // M-2: Clean up any pending approval cards so they don't outlive the
     // session (they would otherwise become "orphan" cards that fail if the
     // user clicks approve after reset).
-    document.querySelectorAll(".agent-step.approval").forEach((el) => el.__finalizeApproval?.());
+    document.querySelectorAll('.agent-step.approval').forEach((el) => el.__finalizeApproval?.());
     state.agent.sessionId = null;
     state.agent.history = [];
     const log = dom.agentActivityLog;
     if (log) {
-      log.textContent = "";
-      const placeholder = document.createElement("div");
-      placeholder.className = "timeline-placeholder timeline-placeholder-inline";
-      placeholder.textContent = "指示を入力して、エージェントとのチャットを開始してください。";
+      log.textContent = '';
+      const placeholder = document.createElement('div');
+      placeholder.className = 'timeline-placeholder timeline-placeholder-inline';
+      placeholder.textContent = '指示を入力して、エージェントとのチャットを開始してください。';
       log.appendChild(placeholder);
     }
-    setAgentStatus("待機中", "idle");
-    dom.agentInstruction.placeholder = "指示を入力してエージェントを開始...";
-    dom.startAgentBtn.classList.remove("is-hidden");
-    dom.sendAgentFeedbackBtn.classList.remove("is-shown");
-    dom.stopAgentBtn.classList.remove("is-shown");
-    dom.resetAgentBtn.classList.remove("is-hidden");
-    toast.success("セッションをリセットしました");
+    setAgentStatus('待機中', 'idle');
+    dom.agentInstruction.placeholder = '指示を入力してエージェントを開始...';
+    dom.startAgentBtn.classList.remove('is-hidden');
+    dom.sendAgentFeedbackBtn.classList.remove('is-shown');
+    dom.stopAgentBtn.classList.remove('is-shown');
+    dom.resetAgentBtn.classList.remove('is-hidden');
+    toast.success('セッションをリセットしました');
   }
 };
 
 dom.sendAgentFeedbackBtn.onclick = () => {
   const feedback = dom.agentInstruction.value.trim();
   if (!feedback) return;
-  dom.agentInstruction.value = "";
+  dom.agentInstruction.value = '';
 
-  addAgentTimelineStep("user", "追加指示", feedback);
+  addAgentTimelineStep('user', '追加指示', feedback);
 
   if (state.agent.resolver) {
     state.agent.resolver({ approved: false, reason: `ユーザー指示: ${feedback}` });
   } else {
     state.agent.history.push({
-      role: "user",
+      role: 'user',
       content: `【ユーザーの追加フィードバック】\n${feedback}`,
     });
   }
 };
 
-dom.agentInstruction.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
+dom.agentInstruction.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     if (state.agent.active) {
       dom.sendAgentFeedbackBtn.click();
     } else {
       dom.startAgentBtn.click();
     }
-  } else if (e.key === "Escape" && state.agent.active) {
+  } else if (e.key === 'Escape' && state.agent.active) {
     e.preventDefault();
     dom.stopAgentBtn.click();
   }
@@ -1578,15 +1578,15 @@ dom.agentInstruction.addEventListener("keydown", (e) => {
 
 async function initWorkspace() {
   try {
-    const config = await api("/api/fs/config");
+    const config = await api('/api/fs/config');
 
     // Populate root selector
-    const rootSelector = $("rootSelector");
+    const rootSelector = $('rootSelector');
     if (rootSelector) {
-      rootSelector.textContent = "";
+      rootSelector.textContent = '';
 
       // Add default root
-      const defaultOpt = document.createElement("option");
+      const defaultOpt = document.createElement('option');
       defaultOpt.value = config.root;
       defaultOpt.textContent = `📁 ${config.root}`;
       rootSelector.appendChild(defaultOpt);
@@ -1595,7 +1595,7 @@ async function initWorkspace() {
       if (config.allowedRoots && config.allowedRoots.length > 1) {
         for (const root of config.allowedRoots) {
           if (root !== config.root) {
-            const opt = document.createElement("option");
+            const opt = document.createElement('option');
             opt.value = root;
             opt.textContent = `📁 ${root}`;
             rootSelector.appendChild(opt);
@@ -1604,35 +1604,35 @@ async function initWorkspace() {
       }
 
       // Add "Browse..." option
-      const browseOpt = document.createElement("option");
-      browseOpt.value = "__browse__";
-      browseOpt.textContent = "📂 フォルダを選択...";
+      const browseOpt = document.createElement('option');
+      browseOpt.value = '__browse__';
+      browseOpt.textContent = '📂 フォルダを選択...';
       rootSelector.appendChild(browseOpt);
 
       rootSelector.onchange = async () => {
-        if (rootSelector.value === "__browse__") {
+        if (rootSelector.value === '__browse__') {
           openFolderPicker(config.root);
           rootSelector.value = config.root;
           return;
         }
 
-        $("explorerPath").value = rootSelector.value;
+        $('explorerPath').value = rootSelector.value;
         await loadWorkspace(rootSelector.value);
       };
     }
 
     // Open folder button
-    const openFolderBtn = $("openFolderBtn");
+    const openFolderBtn = $('openFolderBtn');
     if (openFolderBtn && rootSelector) {
       openFolderBtn.onclick = () => {
-        rootSelector.value = "__browse__";
+        rootSelector.value = '__browse__';
         rootSelector.onchange();
       };
     }
 
     loadWorkspace(config.defaultRoot || config.root);
   } catch (e) {
-    console.error("Failed to load initial config", e);
+    console.error('Failed to load initial config', e);
     loadWorkspace();
   }
 }
@@ -1641,15 +1641,15 @@ let openFolderPicker = () => {};
 let closeFolderPicker = () => {};
 
 function initFolderPicker() {
-  const modal = $("folderPickerModal");
-  const pathInput = $("folderPickerPath");
-  const currentPath = $("folderPickerCurrentPath");
-  const drives = $("folderPickerDrives");
-  const body = $("folderPickerBody");
-  const upButton = $("folderPickerUp");
-  const openButton = $("folderPickerOpen");
-  const cancelButton = $("folderPickerCancel");
-  const errorBox = $("folderPickerError");
+  const modal = $('folderPickerModal');
+  const pathInput = $('folderPickerPath');
+  const currentPath = $('folderPickerCurrentPath');
+  const drives = $('folderPickerDrives');
+  const body = $('folderPickerBody');
+  const upButton = $('folderPickerUp');
+  const openButton = $('folderPickerOpen');
+  const cancelButton = $('folderPickerCancel');
+  const errorBox = $('folderPickerError');
 
   if (
     !modal ||
@@ -1665,29 +1665,29 @@ function initFolderPicker() {
     return;
   }
 
-  let folderPickerCurrentPath = "";
+  let folderPickerCurrentPath = '';
 
   const hideError = () => {
-    errorBox.classList.remove("is-shown");
-    errorBox.textContent = "";
+    errorBox.classList.remove('is-shown');
+    errorBox.textContent = '';
   };
 
   const setLoading = () => {
-    body.textContent = "";
-    const loadingDiv = document.createElement("div");
-    loadingDiv.className = "folder-picker-loading";
-    loadingDiv.textContent = "フォルダを読み込み中...";
+    body.textContent = '';
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'folder-picker-loading';
+    loadingDiv.textContent = 'フォルダを読み込み中...';
     body.appendChild(loadingDiv);
   };
 
   const renderDrives = async () => {
     try {
-      const data = await api("/api/fs/drives");
-      drives.textContent = "";
+      const data = await api('/api/fs/drives');
+      drives.textContent = '';
       data.drives.forEach((drive) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "folder-picker-drive";
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'folder-picker-drive';
         button.textContent = drive.name;
         button.title = drive.path;
         button.onclick = () => {
@@ -1697,17 +1697,17 @@ function initFolderPicker() {
       });
       updateDriveSelection();
     } catch (err) {
-      drives.textContent = "";
+      drives.textContent = '';
     }
   };
 
   const updateDriveSelection = () => {
-    [...drives.querySelectorAll(".folder-picker-drive")].forEach((button) => {
+    [...drives.querySelectorAll('.folder-picker-drive')].forEach((button) => {
       const drivePath = button.title;
       const isDrive =
         folderPickerCurrentPath === drivePath ||
         folderPickerCurrentPath.toLowerCase().startsWith(drivePath.toLowerCase());
-      button.classList.toggle("active", isDrive);
+      button.classList.toggle('active', isDrive);
     });
   };
 
@@ -1721,76 +1721,76 @@ function initFolderPicker() {
 
     try {
       const data = await api(`/api/fs/list?dir=${encodeURIComponent(dir)}`);
-      body.textContent = "";
+      body.textContent = '';
 
       const directories = data.items.filter((item) => item.isDirectory);
       if (directories.length === 0) {
-        const emptyDiv = document.createElement("div");
-        emptyDiv.className = "folder-picker-empty";
-        emptyDiv.textContent = "表示できるフォルダがありません";
+        const emptyDiv = document.createElement('div');
+        emptyDiv.className = 'folder-picker-empty';
+        emptyDiv.textContent = '表示できるフォルダがありません';
         body.appendChild(emptyDiv);
         return;
       }
 
       directories.forEach((item) => {
-        const row = document.createElement("div");
-        row.className = "folder-picker-item";
+        const row = document.createElement('div');
+        row.className = 'folder-picker-item';
         row.tabIndex = 0;
         row.dataset.path = item.path;
-        const iconSpan = document.createElement("span");
-        iconSpan.className = "folder-picker-item-icon";
-        iconSpan.textContent = "\uD83D\uDCC1";
+        const iconSpan = document.createElement('span');
+        iconSpan.className = 'folder-picker-item-icon';
+        iconSpan.textContent = '\uD83D\uDCC1';
         row.appendChild(iconSpan);
-        const nameSpan = document.createElement("span");
-        nameSpan.className = "folder-picker-item-name";
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'folder-picker-item-name';
         nameSpan.textContent = item.name;
         row.appendChild(nameSpan);
         row.onclick = () => {
           pathInput.value = item.path;
           body
-            .querySelectorAll(".folder-picker-item.selected")
-            .forEach((el) => el.classList.remove("selected"));
-          row.classList.add("selected");
+            .querySelectorAll('.folder-picker-item.selected')
+            .forEach((el) => el.classList.remove('selected'));
+          row.classList.add('selected');
           row.focus();
         };
         row.ondblclick = () => renderFolderPickerList(item.path);
         body.appendChild(row);
       });
     } catch (err) {
-      body.textContent = "";
-      const error = document.createElement("div");
-      error.className = "folder-picker-error-text";
-      error.textContent = `フォルダを読み込めませんでした: ${err?.message || "不明なエラー"}`;
+      body.textContent = '';
+      const error = document.createElement('div');
+      error.className = 'folder-picker-error-text';
+      error.textContent = `フォルダを読み込めませんでした: ${err?.message || '不明なエラー'}`;
       body.appendChild(error);
     }
   };
 
-  openFolderPicker = (initialPath = "") => {
-    const initial = initialPath || $("explorerPath").value || "";
+  openFolderPicker = (initialPath = '') => {
+    const initial = initialPath || $('explorerPath').value || '';
     folderPickerCurrentPath = initial;
     hideError();
-    modal.classList.remove("u-hidden");
-    modal.classList.remove("is-hidden");
+    modal.classList.remove('u-hidden');
+    modal.classList.remove('is-hidden');
     renderDrives();
     renderFolderPickerList(initial);
     setTimeout(() => pathInput.focus(), 0);
 
     modal._previousFocus = document.activeElement;
-    modal.addEventListener("keydown", trapFocus);
+    modal.addEventListener('keydown', trapFocus);
   };
 
   closeFolderPicker = () => {
-    modal.classList.add("u-hidden");
-    modal.classList.add("is-hidden");
+    modal.classList.add('u-hidden');
+    modal.classList.add('is-hidden');
     hideError();
-    modal.removeEventListener("keydown", trapFocus);
+    modal.removeEventListener('keydown', trapFocus);
     if (modal._previousFocus) {
       modal._previousFocus.focus();
     }
   };
 
   function trapFocus(e) {
-    if (e.key !== "Tab") return;
+    if (e.key !== 'Tab') return;
     const focusable = modal.querySelectorAll(
       'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
     );
@@ -1811,12 +1811,12 @@ function initFolderPicker() {
   }
 
   upButton.onclick = () => {
-    const normalized = folderPickerCurrentPath.replace(/[\\/]$/, "");
+    const normalized = folderPickerCurrentPath.replace(/[\\/]$/, '');
     if (/^[A-Za-z]:[\\/]?$/.test(normalized)) {
       return;
     }
 
-    const lastSlash = Math.max(normalized.lastIndexOf("\\"), normalized.lastIndexOf("/"));
+    const lastSlash = Math.max(normalized.lastIndexOf('\\'), normalized.lastIndexOf('/'));
     if (lastSlash <= 0) {
       return;
     }
@@ -1830,19 +1830,19 @@ function initFolderPicker() {
   openButton.onclick = async () => {
     const path = pathInput.value.trim();
     if (!path) {
-      errorBox.textContent = "フォルダの絶対パスを入力してください。";
-      errorBox.classList.add("is-shown");
+      errorBox.textContent = 'フォルダの絶対パスを入力してください。';
+      errorBox.classList.add('is-shown');
       return;
     }
 
     try {
-      const res = await api("/api/fs/workspace/select", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await api('/api/fs/workspace/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dir: path }),
       });
 
-      const rootSelector = $("rootSelector");
+      const rootSelector = $('rootSelector');
       if (rootSelector) {
         let exists = false;
         for (let i = 0; i < rootSelector.options.length; i++) {
@@ -1854,7 +1854,7 @@ function initFolderPicker() {
         }
 
         if (!exists) {
-          const newOpt = document.createElement("option");
+          const newOpt = document.createElement('option');
           newOpt.value = res.dir;
           newOpt.textContent = `📁 ${res.dir}`;
           rootSelector.insertBefore(newOpt, rootSelector.lastElementChild);
@@ -1862,32 +1862,32 @@ function initFolderPicker() {
         }
       }
 
-      $("explorerPath").value = res.dir;
+      $('explorerPath').value = res.dir;
       await loadWorkspace(res.dir);
       closeFolderPicker();
     } catch (err) {
       errorBox.textContent = `フォルダ選択失敗: ${err.message}`;
-      errorBox.classList.add("is-shown");
+      errorBox.classList.add('is-shown');
     }
   };
 
   cancelButton.onclick = closeFolderPicker;
 
   pathInput.onkeydown = (event) => {
-    if (event.key === "Enter") {
+    if (event.key === 'Enter') {
       renderFolderPickerList(pathInput.value.trim());
-    } else if (event.key === "Escape") {
+    } else if (event.key === 'Escape') {
       closeFolderPicker();
     }
   };
 
   body.onkeydown = (event) => {
-    if (event.key === "Enter") {
-      const selected = body.querySelector(".folder-picker-item.selected");
+    if (event.key === 'Enter') {
+      const selected = body.querySelector('.folder-picker-item.selected');
       if (selected) {
         renderFolderPickerList(selected.dataset.path);
       }
-    } else if (event.key === "Escape") {
+    } else if (event.key === 'Escape') {
       closeFolderPicker();
     }
   };
@@ -1903,18 +1903,18 @@ function selectModelForPicker(inputId, modelObj) {
   const hiddenInput = document.getElementById(inputId);
   if (hiddenInput) hiddenInput.value = modelObj.id;
   const btn = document.querySelector(`button[data-target-input="${inputId}"]`);
-  const labelSpan = btn?.querySelector("span:first-of-type");
+  const labelSpan = btn?.querySelector('span:first-of-type');
   if (labelSpan) labelSpan.textContent = modelObj.label;
 }
 
-const STORAGE_KEY_CREDIT_SAVING = "monaco_client_credit_saving";
+const STORAGE_KEY_CREDIT_SAVING = 'monaco_client_credit_saving';
 
 function initCreditSavingMode() {
-  const toggle = $("creditSavingToggle");
+  const toggle = $('creditSavingToggle');
   if (!toggle) return;
 
   const saved = localStorage.getItem(STORAGE_KEY_CREDIT_SAVING);
-  state.creditSaving = saved === "true";
+  state.creditSaving = saved === 'true';
   toggle.checked = state.creditSaving;
 
   toggle.onchange = (e) => {
@@ -1927,18 +1927,18 @@ function initCreditSavingMode() {
 }
 
 function applyCreditSavingMode() {
-  const webSearch = $("webSearch");
-  const codeWebSearch = $("codeWebSearch");
-  const numOutputs = $("numOutputs");
-  const editorN = $("editorN");
-  const editorQuality = $("editorQuality");
+  const webSearch = $('webSearch');
+  const codeWebSearch = $('codeWebSearch');
+  const numOutputs = $('numOutputs');
+  const editorN = $('editorN');
+  const editorQuality = $('editorQuality');
 
   if (state.creditSaving) {
     if (webSearch) {
       webSearch.checked = false;
       webSearch.disabled = true;
-      const chatSettings = $("chatWebSearchSettings");
-      if (chatSettings) chatSettings.classList.remove("is-shown");
+      const chatSettings = $('chatWebSearchSettings');
+      if (chatSettings) chatSettings.classList.remove('is-shown');
     }
     if (codeWebSearch) {
       codeWebSearch.checked = false;
@@ -1954,9 +1954,9 @@ function applyCreditSavingMode() {
       editorN.disabled = true;
     }
     if (editorQuality) {
-      editorQuality.value = "medium";
+      editorQuality.value = 'medium';
       for (let i = 0; i < editorQuality.options.length; i++) {
-        if (editorQuality.options[i].value === "high") {
+        if (editorQuality.options[i].value === 'high') {
           editorQuality.options[i].disabled = true;
         }
       }
@@ -1964,46 +1964,46 @@ function applyCreditSavingMode() {
 
     const chatModels = getAllChatModels();
     if (chatModels.length > 0) {
-      const currentChat = $("chatModel")?.value;
+      const currentChat = $('chatModel')?.value;
       const currentModelObj = chatModels.find((m) => m.id === currentChat);
       if (
         currentChat &&
-        (!currentModelObj || !currentModelObj.tags || !currentModelObj.tags.includes("fast"))
+        (!currentModelObj || !currentModelObj.tags || !currentModelObj.tags.includes('fast'))
       ) {
         const fallback =
-          chatModels.find((m) => m.id === "gpt-4o-mini") ||
-          chatModels.find((m) => m.tags && m.tags.includes("fast"));
-        if (fallback) selectModelForPicker("chatModel", fallback);
+          chatModels.find((m) => m.id === 'gpt-4o-mini') ||
+          chatModels.find((m) => m.tags && m.tags.includes('fast'));
+        if (fallback) selectModelForPicker('chatModel', fallback);
       }
     }
 
     const codeModels = getAllCodeModels();
     if (codeModels.length > 0) {
-      const currentCode = $("codeModel")?.value;
+      const currentCode = $('codeModel')?.value;
       const currentModelObj = codeModels.find((m) => m.id === currentCode);
       if (
         currentCode &&
-        (!currentModelObj || !currentModelObj.tags || !currentModelObj.tags.includes("fast"))
+        (!currentModelObj || !currentModelObj.tags || !currentModelObj.tags.includes('fast'))
       ) {
         const fallback =
-          codeModels.find((m) => m.id === "qwen3-coder-flash") ||
-          codeModels.find((m) => m.tags && m.tags.includes("fast"));
-        if (fallback) selectModelForPicker("codeModel", fallback);
+          codeModels.find((m) => m.id === 'qwen3-coder-flash') ||
+          codeModels.find((m) => m.tags && m.tags.includes('fast'));
+        if (fallback) selectModelForPicker('codeModel', fallback);
       }
     }
 
     const imgModels = getAllImageModels();
     if (imgModels.length > 0) {
-      const currentImage = $("imageModel")?.value;
+      const currentImage = $('imageModel')?.value;
       const currentModelObj = imgModels.find((m) => m.id === currentImage);
       if (
         currentImage &&
-        (!currentModelObj || !currentModelObj.tags || !currentModelObj.tags.includes("fast"))
+        (!currentModelObj || !currentModelObj.tags || !currentModelObj.tags.includes('fast'))
       ) {
         const fallback =
-          imgModels.find((m) => m.id === "gpt-image-1-mini") ||
-          imgModels.find((m) => m.tags && m.tags.includes("fast"));
-        if (fallback) selectModelForPicker("imageModel", fallback);
+          imgModels.find((m) => m.id === 'gpt-image-1-mini') ||
+          imgModels.find((m) => m.tags && m.tags.includes('fast'));
+        if (fallback) selectModelForPicker('imageModel', fallback);
       }
     }
   } else {
@@ -2027,17 +2027,17 @@ initCreditSavingMode();
 // Chat form fields (conversationId, webSearch toggle, etc.) are saved
 // on every change and restored on startup.
 (function initConversationPersistence() {
-  const CONV_STORAGE_KEY = "monaco_client_conversation";
+  const CONV_STORAGE_KEY = 'monaco_client_conversation';
 
   const convFields = [
-    { id: "conversationId", type: "value" },
-    { id: "conversationTitle", type: "value" },
-    { id: "webSearch", type: "checkbox" },
-    { id: "chatNumOfSite", type: "value" },
-    { id: "chatMaxWord", type: "value" },
-    { id: "withMemories", type: "checkbox" },
-    { id: "isMixed", type: "checkbox" },
-    { id: "brandVoiceId", type: "value" },
+    { id: 'conversationId', type: 'value' },
+    { id: 'conversationTitle', type: 'value' },
+    { id: 'webSearch', type: 'checkbox' },
+    { id: 'chatNumOfSite', type: 'value' },
+    { id: 'chatMaxWord', type: 'value' },
+    { id: 'withMemories', type: 'checkbox' },
+    { id: 'isMixed', type: 'checkbox' },
+    { id: 'brandVoiceId', type: 'value' },
   ];
 
   // Restore saved state
@@ -2048,7 +2048,7 @@ initCreditSavingMode();
       for (const { id, type } of convFields) {
         const el = document.getElementById(id);
         if (!el || data[id] === undefined) continue;
-        if (type === "checkbox") el.checked = data[id];
+        if (type === 'checkbox') el.checked = data[id];
         else el.value = data[id];
       }
     }
@@ -2065,7 +2065,7 @@ initCreditSavingMode();
       for (const { id, type } of convFields) {
         const el = document.getElementById(id);
         if (!el) continue;
-        data[id] = type === "checkbox" ? el.checked : el.value;
+        data[id] = type === 'checkbox' ? el.checked : el.value;
       }
       try {
         localStorage.setItem(CONV_STORAGE_KEY, JSON.stringify(data));
@@ -2078,39 +2078,39 @@ initCreditSavingMode();
   for (const { id, type } of convFields) {
     const el = document.getElementById(id);
     if (!el) continue;
-    el.addEventListener(type === "checkbox" ? "change" : "input", save);
+    el.addEventListener(type === 'checkbox' ? 'change' : 'input', save);
   }
 
   // Also save conversationId when the "create conversation" button sets it.
-  const convInput = document.getElementById("conversationId");
+  const convInput = document.getElementById('conversationId');
   if (convInput) {
     const observer = new MutationObserver(() => save());
-    observer.observe(convInput, { attributes: true, attributeFilter: ["value"] });
+    observer.observe(convInput, { attributes: true, attributeFilter: ['value'] });
   }
 })();
 
 // UI-3: Sidebar resize via drag handle (mouse + touch)
 (function initSidebarResize() {
-  const handle = document.querySelector(".sidebar-resize-handle");
+  const handle = document.querySelector('.sidebar-resize-handle');
   if (!handle) return;
-  const sidebar = handle.closest(".sidebar");
+  const sidebar = handle.closest('.sidebar');
   if (!sidebar) return;
   const root = document.documentElement;
 
   let isDragging = false;
 
   function getResizeMetrics() {
-    const minW = parseInt(getComputedStyle(root).getPropertyValue("--sidebar-min-width")) || 200;
-    const maxW = parseInt(getComputedStyle(root).getPropertyValue("--sidebar-max-width")) || 320;
-    const current = parseInt(getComputedStyle(root).getPropertyValue("--sidebar-width")) || 280;
+    const minW = parseInt(getComputedStyle(root).getPropertyValue('--sidebar-min-width')) || 200;
+    const maxW = parseInt(getComputedStyle(root).getPropertyValue('--sidebar-max-width')) || 320;
+    const current = parseInt(getComputedStyle(root).getPropertyValue('--sidebar-width')) || 280;
     return { minW, maxW, current };
   }
 
   function syncResizeAria(width = getResizeMetrics().current) {
     const { minW, maxW } = getResizeMetrics();
-    handle.setAttribute("aria-valuemin", String(minW));
-    handle.setAttribute("aria-valuemax", String(maxW));
-    handle.setAttribute("aria-valuenow", String(width));
+    handle.setAttribute('aria-valuemin', String(minW));
+    handle.setAttribute('aria-valuemax', String(maxW));
+    handle.setAttribute('aria-valuenow', String(width));
   }
 
   function applyWidth(clientX) {
@@ -2118,7 +2118,7 @@ initCreditSavingMode();
     let w = clientX;
     if (w < minW) w = minW;
     if (w > maxW) w = maxW;
-    root.style.setProperty("--sidebar-width", w + "px");
+    root.style.setProperty('--sidebar-width', w + 'px');
     syncResizeAria(w);
   }
 
@@ -2128,38 +2128,38 @@ initCreditSavingMode();
   };
 
   // Mouse events
-  handle.addEventListener("mousedown", (e) => {
+  handle.addEventListener('mousedown', (e) => {
     setDragging(true);
     e.preventDefault();
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
   });
 
-  document.addEventListener("mousemove", (e) => {
+  document.addEventListener('mousemove', (e) => {
     if (!isDragging) return;
     applyWidth(e.clientX);
   });
 
-  document.addEventListener("mouseup", () => {
+  document.addEventListener('mouseup', () => {
     if (isDragging) {
       setDragging(false);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
     }
   });
 
   // Touch events
   handle.addEventListener(
-    "touchstart",
+    'touchstart',
     () => {
       setDragging(true);
-      document.body.style.userSelect = "none";
+      document.body.style.userSelect = 'none';
     },
     { passive: true },
   );
 
   document.addEventListener(
-    "touchmove",
+    'touchmove',
     (e) => {
       if (!isDragging) return;
       const touch = e.touches[0];
@@ -2168,34 +2168,34 @@ initCreditSavingMode();
     { passive: true },
   );
 
-  document.addEventListener("touchend", () => {
+  document.addEventListener('touchend', () => {
     if (isDragging) {
       setDragging(false);
-      document.body.style.userSelect = "";
+      document.body.style.userSelect = '';
     }
   });
 
   // Keyboard support
-  handle.addEventListener("keydown", (e) => {
+  handle.addEventListener('keydown', (e) => {
     const { minW, maxW, current } = getResizeMetrics();
     const step = e.shiftKey ? 20 : 5;
     let nextWidth = current;
-    if (e.key === "ArrowLeft") {
+    if (e.key === 'ArrowLeft') {
       e.preventDefault();
       nextWidth = Math.max(minW, current - step);
-    } else if (e.key === "ArrowRight") {
+    } else if (e.key === 'ArrowRight') {
       e.preventDefault();
       nextWidth = Math.min(maxW, current + step);
-    } else if (e.key === "Home") {
+    } else if (e.key === 'Home') {
       e.preventDefault();
       nextWidth = minW;
-    } else if (e.key === "End") {
+    } else if (e.key === 'End') {
       e.preventDefault();
       nextWidth = maxW;
     } else {
       return;
     }
-    root.style.setProperty("--sidebar-width", nextWidth + "px");
+    root.style.setProperty('--sidebar-width', nextWidth + 'px');
     syncResizeAria(nextWidth);
   });
 

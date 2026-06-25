@@ -6,7 +6,7 @@
 const FALLBACK = {
   port: 3000,
   maxFileSize: 25 * 1024 * 1024,
-  maxJsonBodySize: "2mb",
+  maxJsonBodySize: '2mb',
   assetProxyTimeoutMs: 30_000,
   assetProxyMaxSize: 50 * 1024 * 1024,
   apiTimeout: 60_000,
@@ -40,14 +40,14 @@ const MAX_ASSET_PROXY_TIMEOUT = 5 * 60 * 1000;
 const MIN_FILE_SIZE = 1;
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
-const VALID_LOG_LEVELS = new Set(["error", "warn", "info", "debug"]);
+const VALID_LOG_LEVELS = new Set(['error', 'warn', 'info', 'debug']);
 
 /**
  * B-11: Strict integer parser. Returns the fallback when the value is
  * missing, non-numeric, out of [min, max], or not a finite integer.
  */
 function intInRange(raw, min, max, fallback) {
-  if (raw === undefined || raw === null || raw === "") return fallback;
+  if (raw === undefined || raw === null || raw === '') return fallback;
   const n = Number(raw);
   if (!Number.isFinite(n) || !Number.isInteger(n) || n < min || n > max) {
     return fallback;
@@ -56,8 +56,8 @@ function intInRange(raw, min, max, fallback) {
 }
 
 function parseBoolean(raw, fallback) {
-  if (raw === undefined || raw === null || raw === "") return fallback;
-  return String(raw).toLowerCase() === "true";
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  return String(raw).toLowerCase() === 'true';
 }
 
 function parseString(raw, fallback, validator = null) {
@@ -98,17 +98,17 @@ function parseApiUrl(raw, fallback) {
   if (!raw) return fallback;
   try {
     const u = new URL(String(raw));
-    if (u.protocol !== "https:" && u.protocol !== "http:") return fallback;
-    return u.toString().replace(/\/$/, "");
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return fallback;
+    return u.toString().replace(/\/$/, '');
   } catch {
     return fallback;
   }
 }
 
 function parseLogLevel(raw) {
-  if (!raw) return "info";
+  if (!raw) return 'info';
   const v = String(raw).toLowerCase();
-  return VALID_LOG_LEVELS.has(v) ? v : "info";
+  return VALID_LOG_LEVELS.has(v) ? v : 'info';
 }
 
 export const serverConfig = {
@@ -139,18 +139,18 @@ export const serverConfig = {
   apiRetryDelay: intInRange(process.env.API_RETRY_DELAY, 0, MAX_API_TIMEOUT, FALLBACK.apiRetryDelay),
 
   // Default models
-  defaultChatModel: parseString(process.env.DEFAULT_CHAT_MODEL, "gpt-4o-mini", (s) => s.length <= 100),
-  defaultCodeModel: parseString(process.env.DEFAULT_CODE_MODEL, "qwen3-coder-plus", (s) => s.length <= 100),
-  defaultImageModel: parseString(process.env.DEFAULT_IMAGE_MODEL, "gpt-image-2", (s) => s.length <= 100),
+  defaultChatModel: parseString(process.env.DEFAULT_CHAT_MODEL, 'gpt-4o-mini', (s) => s.length <= 100),
+  defaultCodeModel: parseString(process.env.DEFAULT_CODE_MODEL, 'qwen3-coder-plus', (s) => s.length <= 100),
+  defaultImageModel: parseString(process.env.DEFAULT_IMAGE_MODEL, 'gpt-image-2', (s) => s.length <= 100),
   defaultImageEditorModel: parseString(
     process.env.DEFAULT_IMAGE_EDITOR_MODEL,
-    "gpt-image-2",
+    'gpt-image-2',
     (s) => s.length <= 100,
   ),
 
   // API base URL override (1min.ai production by default; useful for
   // local mock servers or staging environments).
-  apiBaseUrl: parseApiUrl(process.env.ONE_MIN_AI_API_BASE_URL, "https://api.1min.ai"),
+  apiBaseUrl: parseApiUrl(process.env.ONE_MIN_AI_API_BASE_URL, 'https://api.1min.ai'),
 
   // Rate limiting
   rateLimitWindowMs: intInRange(

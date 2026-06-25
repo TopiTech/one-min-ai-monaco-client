@@ -1,4 +1,4 @@
-import { createApp } from "../server.js";
+import { createApp } from '../server.js';
 
 /**
  * Creates and configures a clean Express application instance for route testing.
@@ -16,34 +16,34 @@ export function createTestApp() {
  */
 export const testPayloads = {
   chat: {
-    prompt: "Hello AI",
-    model: "gpt-4o-mini",
+    prompt: 'Hello AI',
+    model: 'gpt-4o-mini',
     webSearch: false,
   },
   image: {
-    prompt: "a beautiful futuristic workspace",
-    model: "gpt-image-2",
+    prompt: 'a beautiful futuristic workspace',
+    model: 'gpt-image-2',
     num_outputs: 1,
-    aspect_ratio: "1:1",
+    aspect_ratio: '1:1',
   },
   imageEditor: {
-    imageUrl: "assets/some-key.png",
-    prompt: "change background to sunset",
-    model: "gpt-image-2",
-    size: "1024x1024",
+    imageUrl: 'assets/some-key.png',
+    prompt: 'change background to sunset',
+    model: 'gpt-image-2',
+    size: '1024x1024',
   },
   codeGenerate: {
-    instruction: "Create a sum function",
-    fileName: "math.js",
-    language: "javascript",
-    code: "",
+    instruction: 'Create a sum function',
+    fileName: 'math.js',
+    language: 'javascript',
+    code: '',
   },
   codeAutocomplete: {
-    code: "function add(a, b) {\n  return a + b;\n}\n\n// call add",
+    code: 'function add(a, b) {\n  return a + b;\n}\n\n// call add',
     line: 5,
     column: 1,
-    fileName: "math.js",
-    language: "javascript",
+    fileName: 'math.js',
+    language: 'javascript',
   },
 };
 
@@ -52,31 +52,31 @@ export const testPayloads = {
  */
 export const mockResponses = {
   chat: {
-    result: "Hello! I am an AI assistant.",
+    result: 'Hello! I am an AI assistant.',
     aiRecord: {
-      uuid: "chat-uuid-123",
+      uuid: 'chat-uuid-123',
       aiRecordDetail: {
-        resultObject: "Hello! I am an AI assistant.",
+        resultObject: 'Hello! I am an AI assistant.',
       },
     },
   },
   image: {
     result: {
-      images: ["https://api.1min.ai/assets/generated-1.png"],
+      images: ['https://api.1min.ai/assets/generated-1.png'],
     },
     aiRecord: {
-      uuid: "image-uuid-123",
+      uuid: 'image-uuid-123',
       resultObject: {
-        images: ["https://api.1min.ai/assets/generated-1.png"],
+        images: ['https://api.1min.ai/assets/generated-1.png'],
       },
     },
   },
   code: {
-    result: "```javascript\nfunction sum(a, b) {\n  return a + b;\n}\n```",
+    result: '```javascript\nfunction sum(a, b) {\n  return a + b;\n}\n```',
     aiRecord: {
-      uuid: "code-uuid-123",
+      uuid: 'code-uuid-123',
       aiRecordDetail: {
-        resultObject: "```javascript\nfunction sum(a, b) {\n  return a + b;\n}\n```",
+        resultObject: '```javascript\nfunction sum(a, b) {\n  return a + b;\n}\n```',
       },
     },
   },

@@ -5,7 +5,7 @@
  * switching between tabs, and saving files.
  */
 
-import { api } from "./api.js";
+import { api } from './api.js';
 
 /**
  * Create the editor tab manager.
@@ -28,15 +28,15 @@ export function createEditorTabManager(editorState, editorManager, dom) {
   function renderTabs() {
     const container = dom.editorTabsBar;
     if (!container) return;
-    container.textContent = "";
+    container.textContent = '';
 
     editorState.openTabs.forEach((pathVal) => {
-      const fileName = pathVal.replace(/\\/g, "/").split("/").pop();
-      const tabEl = document.createElement("div");
-      tabEl.className = `editor-tab ${pathVal === editorState.activeFilePath ? "active" : ""}`;
+      const fileName = pathVal.replace(/\\/g, '/').split('/').pop();
+      const tabEl = document.createElement('div');
+      tabEl.className = `editor-tab ${pathVal === editorState.activeFilePath ? 'active' : ''}`;
       tabEl.title = pathVal;
 
-      const nameSpan = document.createElement("span");
+      const nameSpan = document.createElement('span');
       nameSpan.textContent = fileName;
       nameSpan.onclick = () => {
         if (pathVal !== editorState.activeFilePath) {
@@ -45,9 +45,9 @@ export function createEditorTabManager(editorState, editorManager, dom) {
       };
       tabEl.appendChild(nameSpan);
 
-      const closeBtn = document.createElement("span");
-      closeBtn.className = "close-tab-btn";
-      closeBtn.textContent = "\u00d7";
+      const closeBtn = document.createElement('span');
+      closeBtn.className = 'close-tab-btn';
+      closeBtn.textContent = '\u00d7';
       closeBtn.onclick = (e) => {
         e.stopPropagation();
         closeTab(pathVal);
@@ -61,12 +61,12 @@ export function createEditorTabManager(editorState, editorManager, dom) {
   function resetEditorToBlank() {
     editorState.activeFilePath = null;
     if (editorManager.instance) {
-      editorManager.instance.setModel(monaco.editor.createModel("", "plaintext"));
+      editorManager.instance.setModel(monaco.editor.createModel('', 'plaintext'));
     }
-    dom.currentFileName.textContent = "ファイルが選択されていません";
-    dom.currentFileName.title = "";
+    dom.currentFileName.textContent = 'ファイルが選択されていません';
+    dom.currentFileName.title = '';
     dom.saveFileBtn.disabled = true;
-    document.querySelectorAll(".tree-node.file").forEach((x) => x.classList.remove("active"));
+    document.querySelectorAll('.tree-node.file').forEach((x) => x.classList.remove('active'));
   }
 
   async function switchToTab(filePath) {
@@ -77,12 +77,12 @@ export function createEditorTabManager(editorState, editorManager, dom) {
         if (editorManager.instance) {
           editorManager.instance.setModel(model);
           editorState.activeFilePath = filePath;
-          dom.currentFileName.textContent = filePath.replace(/\\/g, "/").split("/").pop();
+          dom.currentFileName.textContent = filePath.replace(/\\/g, '/').split('/').pop();
           dom.currentFileName.title = filePath;
           dom.saveFileBtn.disabled = false;
 
-          document.querySelectorAll(".tree-node.file").forEach((x) => {
-            x.classList.toggle("active", x.dataset.path === filePath);
+          document.querySelectorAll('.tree-node.file').forEach((x) => {
+            x.classList.toggle('active', x.dataset.path === filePath);
           });
           renderTabs();
         }
@@ -99,10 +99,10 @@ export function createEditorTabManager(editorState, editorManager, dom) {
     const tabIndex = editorState.openTabs.indexOf(filePath);
     if (tabIndex === -1) return;
 
-    const accepted = await toast.confirm("タブを閉じますか？未保存の変更は失われます。", {
-      confirmText: "閉じる",
-      cancelText: "キャンセル",
-      type: "warning",
+    const accepted = await toast.confirm('タブを閉じますか？未保存の変更は失われます。', {
+      confirmText: '閉じる',
+      cancelText: 'キャンセル',
+      type: 'warning',
     });
     if (!accepted) return;
 
@@ -149,9 +149,9 @@ export function createEditorTabManager(editorState, editorManager, dom) {
           const accepted = await toast.confirm(
             `ファイルサイズが大きいため（約 ${(contentSize / 1024 / 1024).toFixed(1)} MB）、エディタの動作が遅くなる可能性があります。開きますか？`,
             {
-              confirmText: "開く",
-              cancelText: "キャンセル",
-              type: "warning",
+              confirmText: '開く',
+              cancelText: 'キャンセル',
+              type: 'warning',
             },
           );
           if (!accepted) return;
@@ -167,12 +167,12 @@ export function createEditorTabManager(editorState, editorManager, dom) {
         editorManager.disposeUnusedModels();
 
         editorState.activeFilePath = filePath;
-        dom.currentFileName.textContent = filePath.replace(/\\/g, "/").split("/").pop();
+        dom.currentFileName.textContent = filePath.replace(/\\/g, '/').split('/').pop();
         dom.currentFileName.title = filePath;
         dom.saveFileBtn.disabled = false;
 
-        document.querySelectorAll(".tree-node.file").forEach((x) => {
-          x.classList.toggle("active", x.dataset.path === filePath);
+        document.querySelectorAll('.tree-node.file').forEach((x) => {
+          x.classList.toggle('active', x.dataset.path === filePath);
         });
         renderTabs();
       }
@@ -186,18 +186,18 @@ export function createEditorTabManager(editorState, editorManager, dom) {
     const content = editorManager.instance.getValue();
     const setStatus = window.__bootstrapSetStatus;
     try {
-      if (setStatus) setStatus("保存中...", "warn");
-      await api("/api/fs/write", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      if (setStatus) setStatus('保存中...', 'warn');
+      await api('/api/fs/write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: editorState.activeFilePath, content }),
       });
-      if (setStatus) setStatus("保存完了", "ok");
-      toast.success("ファイルを保存しました");
+      if (setStatus) setStatus('保存完了', 'ok');
+      toast.success('ファイルを保存しました');
       if (_saveStatusTimer) clearTimeout(_saveStatusTimer);
       _saveStatusTimer = setTimeout(() => {
-        if (document.getElementById("status")?.textContent === "保存完了") {
-          if (setStatus) setStatus("準備完了");
+        if (document.getElementById('status')?.textContent === '保存完了') {
+          if (setStatus) setStatus('準備完了');
         }
       }, 2000);
     } catch (e) {

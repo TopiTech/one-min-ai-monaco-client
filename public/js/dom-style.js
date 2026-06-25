@@ -17,7 +17,7 @@
  * replaced on subsequent calls so we don't leak duplicate rules.
  */
 
-const STYLE_ELEMENT_ID = "csp-dynamic-styles";
+const STYLE_ELEMENT_ID = 'csp-dynamic-styles';
 const ruleIndex = new Map(); // selector -> raw rule
 let styleEl = null;
 
@@ -26,33 +26,33 @@ function ensureStyleElement() {
   const nonce = document.querySelector('meta[name="csp-nonce"]')?.content || undefined;
   styleEl = document.getElementById(STYLE_ELEMENT_ID);
   if (!styleEl) {
-    styleEl = document.createElement("style");
+    styleEl = document.createElement('style');
     styleEl.id = STYLE_ELEMENT_ID;
-    if (nonce) styleEl.setAttribute("nonce", nonce);
+    if (nonce) styleEl.setAttribute('nonce', nonce);
     document.head.appendChild(styleEl);
-  } else if (nonce && !styleEl.getAttribute("nonce")) {
-    styleEl.setAttribute("nonce", nonce);
+  } else if (nonce && !styleEl.getAttribute('nonce')) {
+    styleEl.setAttribute('nonce', nonce);
   }
   return styleEl;
 }
 
 function ruleKey(css) {
   // Use the first selector-like token (text before "{") as the dedup key.
-  const idx = css.indexOf("{");
+  const idx = css.indexOf('{');
   if (idx === -1) return css;
   return css.slice(0, idx).trim();
 }
 
 function serialize() {
-  let out = "";
+  let out = '';
   for (const rule of ruleIndex.values()) {
-    out += rule + "\n";
+    out += rule + '\n';
   }
   return out;
 }
 
 export function injectStyle(css) {
-  if (typeof css !== "string" || !css.trim()) return;
+  if (typeof css !== 'string' || !css.trim()) return;
   const key = ruleKey(css);
   if (!key) return;
   ruleIndex.set(key, css);
@@ -63,6 +63,6 @@ export function injectStyle(css) {
 export function clearInjectedStyles() {
   ruleIndex.clear();
   if (styleEl && document.head.contains(styleEl)) {
-    styleEl.textContent = "";
+    styleEl.textContent = '';
   }
 }

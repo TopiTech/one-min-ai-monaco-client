@@ -5,26 +5,26 @@
  * Only the marked.min.js and DOMPurify purify.min.js bundles are vendored;
  * Monaco is handled separately by copy-monaco.js.
  */
-import { cpSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { cpSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const projectRoot = join(__dirname, "..");
-const vendorDir = join(projectRoot, "public", "vendor");
+const projectRoot = join(__dirname, '..');
+const vendorDir = join(projectRoot, 'public', 'vendor');
 
 if (!existsSync(vendorDir)) mkdirSync(vendorDir, { recursive: true });
 
 const files = [
   {
-    src: join(projectRoot, "node_modules", "dompurify", "dist", "purify.min.js"),
-    dest: join(vendorDir, "purify.min.js"),
+    src: join(projectRoot, 'node_modules', 'dompurify', 'dist', 'purify.min.js'),
+    dest: join(vendorDir, 'purify.min.js'),
   },
   {
     // marked 18+ no longer ships a marked.min.js bundle; the UMD build at
     // lib/marked.umd.js is what the package.json "browser" field points to.
-    src: join(projectRoot, "node_modules", "marked", "lib", "marked.umd.js"),
-    dest: join(vendorDir, "marked.min.js"),
+    src: join(projectRoot, 'node_modules', 'marked', 'lib', 'marked.umd.js'),
+    dest: join(vendorDir, 'marked.min.js'),
   },
 ];
 

@@ -1,20 +1,20 @@
-import express from "express";
-import crypto from "crypto";
-import { spawn } from "child_process";
-import { executeCommand, checkCommandSafety } from "../services/command-runner.js";
-import { detectBinaryContent } from "../utils/mime-guard.js";
+import express from 'express';
+import crypto from 'crypto';
+import { spawn } from 'child_process';
+import { executeCommand, checkCommandSafety } from '../services/command-runner.js';
+import { detectBinaryContent } from '../utils/mime-guard.js';
 import {
   validatePath,
   revalidateRealPath,
   assertNotProtectedPath,
   assertNotWriteProtectedPath,
   getAllowedRoots,
-} from "../utils/fs-guard.js";
-import { serverConfig } from "../config/server.js";
-import fs from "fs/promises";
-import path from "path";
-import { z } from "zod";
-import logger from "../utils/logger.js";
+} from '../utils/fs-guard.js';
+import { serverConfig } from '../config/server.js';
+import fs from 'fs/promises';
+import path from 'path';
+import { z } from 'zod';
+import logger from '../utils/logger.js';
 
 const sessionCreateSchema = z.object({
   id: z.string().optional(),
@@ -23,27 +23,27 @@ const sessionCreateSchema = z.object({
 });
 
 const commandExecuteSchema = z.object({
-  command: z.string({ required_error: "command is required" }).min(1, "command is required"),
+  command: z.string({ required_error: 'command is required' }).min(1, 'command is required'),
   cwd: z.string().optional(),
   timeoutMs: z.number().int().positive().optional(),
 });
 
 const approveSchema = z.object({
   approvalToken: z
-    .string({ required_error: "approvalToken is required" })
-    .min(1, "approvalToken is required"),
+    .string({ required_error: 'approvalToken is required' })
+    .min(1, 'approvalToken is required'),
   timeoutMs: z.number().int().positive().optional(),
 });
 
 const fileReadSchema = z
   .object({
-    path: z.string({ required_error: "path is required" }).min(1, "path is required"),
+    path: z.string({ required_error: 'path is required' }).min(1, 'path is required'),
     startLine: z.preprocess(
-      (val) => (val === undefined || val === null || val === "" ? undefined : Number(val)),
+      (val) => (val === undefined || val === null || val === '' ? undefined : Number(val)),
       z.number().int().min(1).optional(),
     ),
     endLine: z.preprocess(
-      (val) => (val === undefined || val === null || val === "" ? undefined : Number(val)),
+      (val) => (val === undefined || val === null || val === '' ? undefined : Number(val)),
       z.number().int().min(1).optional(),
     ),
   })
@@ -55,20 +55,20 @@ const fileReadSchema = z
       return true;
     },
     {
-      message: "startLine must be less than or equal to endLine",
-      path: ["startLine"],
+      message: 'startLine must be less than or equal to endLine',
+      path: ['startLine'],
     },
   );
 
 const fileWriteSchema = z.object({
-  path: z.string({ required_error: "path is required" }).min(1, "path is required"),
+  path: z.string({ required_error: 'path is required' }).min(1, 'path is required'),
   content: z.string().optional(),
 });
 
 const searchSchema = z.object({
   query: z
-    .string({ required_error: "query is required", invalid_type_error: "query is required" })
-    .min(1, "query is required"),
+    .string({ required_error: 'query is required', invalid_type_error: 'query is required' })
+    .min(1, 'query is required'),
   dir: z.string().optional(),
   maxResults: z.preprocess(
     (val) => (val === undefined ? undefined : Number(val)),
@@ -77,7 +77,7 @@ const searchSchema = z.object({
 });
 
 const MAX_AGENT_READ_SIZE = 10 * 1024 * 1024;
-const SKIPPED_DIRS = new Set(["node_modules", ".git", ".venv"]);
+const SKIPPED_DIRS = new Set(['node_modules', '.git', '.venv']);
 
 function resolveAgentPath(targetPath, sessionCwd = process.cwd()) {
   return path.isAbsolute(targetPath) ? targetPath : path.join(sessionCwd, targetPath);
@@ -86,7 +86,7 @@ function resolveAgentPath(targetPath, sessionCwd = process.cwd()) {
 function getSession(req, res) {
   const session = sessions.get(req.params.id);
   if (!session) {
-    res.status(404).json({ error: "Session not found" });
+    res.status(404).json({ error: 'Session not found' });
     return null;
   }
   session.lastAccessedAt = Date.now();
@@ -96,12 +96,12 @@ function getSession(req, res) {
 const router = express.Router();
 
 // Persistent session storage
-const DATA_DIR = path.join(process.cwd(), ".mimocode", "data");
-const SESSIONS_FILE = path.join(DATA_DIR, "agent_sessions.json");
+const DATA_DIR = path.join(process.cwd(), '.mimocode', 'data');
+const SESSIONS_FILE = path.join(DATA_DIR, 'agent_sessions.json');
 // Pending commands also persist to disk so approval tokens survive a
 // server restart (within their 5-minute expiry window).
-const PENDING_COMMANDS_FILE = path.join(DATA_DIR, "pending_commands.json");
-const isTestMode = process.env.NODE_ENV === "test";
+const PENDING_COMMANDS_FILE = path.join(DATA_DIR, 'pending_commands.json');
+const isTestMode = process.env.NODE_ENV === 'test';
 
 let sessions = new Map();
 const pendingCommands = new Map();
@@ -168,7 +168,7 @@ const sessionLock = new SessionLock();
  * @param {string} [opts.label="data"] - Label for error logging.
  * @returns {{ save: () => void, flush: () => Promise<void> }}
  */
-function createDebouncedFileWriter(filePath, serialize, { delayMs = 50, label = "data" } = {}) {
+function createDebouncedFileWriter(filePath, serialize, { delayMs = 50, label = 'data' } = {}) {
   let timer = null;
   let isWriting = false;
   let needsSave = false;
@@ -189,8 +189,8 @@ function createDebouncedFileWriter(filePath, serialize, { delayMs = 50, label = 
         return;
       }
       const data = await serialize();
-      const tmpFile = filePath + ".tmp";
-      await fs.writeFile(tmpFile, data, { encoding: "utf-8", mode: 0o600 });
+      const tmpFile = filePath + '.tmp';
+      await fs.writeFile(tmpFile, data, { encoding: 'utf-8', mode: 0o600 });
       await fs.rename(tmpFile, filePath);
     } catch (err) {
       logger.error(`Failed to save ${label} to file`, { error: err.message });
@@ -223,7 +223,7 @@ async function loadPendingCommands() {
   _pendingLoadReady = (async () => {
     try {
       await ensureDataDir();
-      const data = await fs.readFile(PENDING_COMMANDS_FILE, "utf-8");
+      const data = await fs.readFile(PENDING_COMMANDS_FILE, 'utf-8');
       const parsed = JSON.parse(data);
       const now = Date.now();
       const FIVE_MIN = 5 * 60 * 1000;
@@ -234,8 +234,8 @@ async function loadPendingCommands() {
       }
       logger.info(`Loaded ${pendingCommands.size} pending commands from persistence`);
     } catch (err) {
-      if (err.code !== "ENOENT") {
-        logger.error("Failed to load pending commands from file", { error: err.message });
+      if (err.code !== 'ENOENT') {
+        logger.error('Failed to load pending commands from file', { error: err.message });
       }
     }
   })();
@@ -245,7 +245,7 @@ async function loadPendingCommands() {
 const pendingWriter = createDebouncedFileWriter(
   PENDING_COMMANDS_FILE,
   () => JSON.stringify(Object.fromEntries(pendingCommands), null, 2),
-  { label: "pending commands" },
+  { label: 'pending commands' },
 );
 
 function savePendingCommands() {
@@ -260,7 +260,7 @@ async function ensureDataDir() {
   _dirReady = fs.mkdir(DATA_DIR, { recursive: true }).catch((err) => {
     // Reset so a future call can retry (e.g. after a transient fs error).
     _dirReady = null;
-    logger.error("Failed to create data directory", { error: err.message });
+    logger.error('Failed to create data directory', { error: err.message });
   });
   return _dirReady;
 }
@@ -272,18 +272,18 @@ async function loadSessions() {
   if (isTestMode) return;
   try {
     await ensureDataDir();
-    const data = await fs.readFile(SESSIONS_FILE, "utf-8");
+    const data = await fs.readFile(SESSIONS_FILE, 'utf-8');
     const parsed = JSON.parse(data);
     for (const [id, session] of Object.entries(parsed)) {
       if (!sessions.has(id)) {
-        session.status = "idle"; // Ensure status is idle on load
+        session.status = 'idle'; // Ensure status is idle on load
         sessions.set(id, session);
       }
     }
     logger.info(`Loaded ${Object.keys(parsed).length} agent sessions from persistence`);
   } catch (err) {
-    if (err.code !== "ENOENT") {
-      logger.error("Failed to load sessions from file", { error: err.message });
+    if (err.code !== 'ENOENT') {
+      logger.error('Failed to load sessions from file', { error: err.message });
     }
   }
 }
@@ -298,19 +298,19 @@ const sessionWriter = createDebouncedFileWriter(
       rawSessions,
       (key, value) => {
         if (
-          typeof value === "string" &&
+          typeof value === 'string' &&
           apiKey &&
-          apiKey !== "your_1min_ai_api_key_here" &&
+          apiKey !== 'your_1min_ai_api_key_here' &&
           value.includes(apiKey)
         ) {
-          return value.split(apiKey).join("***MASKED***");
+          return value.split(apiKey).join('***MASKED***');
         }
         return value;
       },
       2,
     );
   },
-  { label: "sessions" },
+  { label: 'sessions' },
 );
 
 /**
@@ -330,14 +330,14 @@ const MAX_PENDING_COMMANDS = 100;
 
 async function addHistoryEntry(session, entry) {
   if (entry.result) {
-    const stdoutRaw = entry.result.stdout || "";
-    const stderrRaw = entry.result.stderr || "";
+    const stdoutRaw = entry.result.stdout || '';
+    const stderrRaw = entry.result.stderr || '';
     const stdoutTruncated = stdoutRaw.length > MAX_HISTORY_RESULT_SIZE;
     const stderrTruncated = stderrRaw.length > MAX_HISTORY_RESULT_SIZE;
     entry.result = {
       ...entry.result,
-      stdout: stdoutRaw ? stdoutRaw.slice(0, MAX_HISTORY_RESULT_SIZE) : "",
-      stderr: stderrRaw ? stderrRaw.slice(0, MAX_HISTORY_RESULT_SIZE) : "",
+      stdout: stdoutRaw ? stdoutRaw.slice(0, MAX_HISTORY_RESULT_SIZE) : '',
+      stderr: stderrRaw ? stderrRaw.slice(0, MAX_HISTORY_RESULT_SIZE) : '',
       truncated: stdoutTruncated || stderrTruncated,
       stdoutTruncated,
       stderrTruncated,
@@ -361,7 +361,7 @@ function cleanupExpiredSessions() {
     // M-5: Never reap a session that is actively executing a command —
     // doing so would orphan the spawned child process and confuse the
     // client waiting on the response.
-    if (session.status === "running") continue;
+    if (session.status === 'running') continue;
     if (now - session.lastAccessedAt > serverConfig.sessionTtlMs) {
       sessions.delete(id);
       changed = true;
@@ -381,7 +381,7 @@ function cleanupExpiredSessions() {
     try {
       const files = await fs.readdir(DATA_DIR);
       for (const file of files) {
-        if (file.endsWith(".tmp")) {
+        if (file.endsWith('.tmp')) {
           const filePath = path.join(DATA_DIR, file);
           const stat = await fs.stat(filePath);
           if (now - stat.mtimeMs > 30 * 60 * 1000) {
@@ -401,11 +401,11 @@ cleanupTimer.unref();
 /**
  * Create a new agent session.
  */
-router.post("/sessions", async (req, res, next) => {
+router.post('/sessions', async (req, res, next) => {
   try {
     const result = sessionCreateSchema.safeParse(req.body);
     if (!result.success)
-      return res.status(400).json({ error: result.error.issues[0]?.message || "Validation error" });
+      return res.status(400).json({ error: result.error.issues[0]?.message || 'Validation error' });
     const { id, cwd, task } = result.data;
     const sessionId = id || crypto.randomUUID();
 
@@ -424,9 +424,9 @@ router.post("/sessions", async (req, res, next) => {
     const session = {
       id: sessionId,
       cwd: validatedCwd,
-      task: task || "",
+      task: task || '',
       history: [],
-      status: "idle",
+      status: 'idle',
       createdAt: new Date().toISOString(),
       lastAccessedAt: Date.now(),
     };
@@ -436,11 +436,11 @@ router.post("/sessions", async (req, res, next) => {
       // M-5: Never evict a session that is actively running a command —
       // killing it would orphan the spawned child process. Prefer evicting
       // the oldest idle/non-running session instead.
-      const evictableEntries = Array.from(sessions.entries()).filter(([, s]) => s.status !== "running");
+      const evictableEntries = Array.from(sessions.entries()).filter(([, s]) => s.status !== 'running');
       if (evictableEntries.length === 0) {
         return res.status(503).json({
           error:
-            "Maximum concurrent sessions reached and all sessions are currently running. Try again later.",
+            'Maximum concurrent sessions reached and all sessions are currently running. Try again later.',
         });
       }
       const oldestId = evictableEntries.reduce((a, b) =>
@@ -462,7 +462,7 @@ router.post("/sessions", async (req, res, next) => {
 /**
  * Get session info.
  */
-router.get("/sessions/:id", (req, res) => {
+router.get('/sessions/:id', (req, res) => {
   const session = getSession(req, res);
   if (!session) return;
   res.json({ session });
@@ -471,7 +471,7 @@ router.get("/sessions/:id", (req, res) => {
 /**
  * List all sessions.
  */
-router.get("/sessions", (_req, res) => {
+router.get('/sessions', (_req, res) => {
   const list = Array.from(sessions.values()).map((s) => ({
     id: s.id,
     task: s.task,
@@ -484,7 +484,7 @@ router.get("/sessions", (_req, res) => {
 /**
  * Execute a command within a session.
  */
-router.post("/sessions/:id/commands", async (req, res, next) => {
+router.post('/sessions/:id/commands', async (req, res, next) => {
   try {
     const session = getSession(req, res);
     if (!session) return;
@@ -492,16 +492,16 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
     // Check if command execution is enabled
     if (!serverConfig.enableCommandExecution) {
       return res.status(403).json({
-        error: "Command execution is disabled. Set ENABLE_COMMAND_EXECUTION=true to enable.",
+        error: 'Command execution is disabled. Set ENABLE_COMMAND_EXECUTION=true to enable.',
       });
     }
 
     const resultBody = commandExecuteSchema.safeParse(req.body);
     if (!resultBody.success)
-      return res.status(400).json({ error: resultBody.error.issues[0]?.message || "Validation error" });
+      return res.status(400).json({ error: resultBody.error.issues[0]?.message || 'Validation error' });
     const { command, cwd, timeoutMs } = resultBody.data;
 
-    const isStream = req.query.stream === "true";
+    const isStream = req.query.stream === 'true';
 
     // Validate working directory
     const workingDir = path.resolve(resolveAgentPath(cwd || session.cwd, session.cwd));
@@ -555,11 +555,11 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
         approvalToken,
         command,
         cwd: workingDir,
-        message: "このコマンドを実行しますか？",
+        message: 'このコマンドを実行しますか？',
       });
     }
 
-    session.status = "running";
+    session.status = 'running';
     logger.info(`Executing command (auto-approved or bypass-auth)`, {
       sessionId: req.params.id,
       command: command.split(/\s+/)[0],
@@ -570,9 +570,9 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
     try {
       let onOutput = null;
       if (isStream) {
-        res.setHeader("Content-Type", "text/event-stream");
-        res.setHeader("Cache-Control", "no-cache");
-        res.setHeader("Connection", "keep-alive");
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
         res.flushHeaders();
 
         onOutput = (type, text) => {
@@ -587,7 +587,7 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
         onOutput,
       });
     } finally {
-      session.status = "idle";
+      session.status = 'idle';
     }
     logger.info(`Command execution finished`, {
       sessionId: req.params.id,
@@ -596,7 +596,7 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
       timedOut: result.timedOut,
     });
     await addHistoryEntry(session, {
-      type: "command",
+      type: 'command',
       command,
       cwd: workingDir,
       result,
@@ -623,19 +623,19 @@ router.post("/sessions/:id/commands", async (req, res, next) => {
 /**
  * Approve and execute a pending command.
  */
-router.post("/sessions/:id/approve", async (req, res, next) => {
+router.post('/sessions/:id/approve', async (req, res, next) => {
   try {
     const session = getSession(req, res);
     if (!session) return;
 
     const resultBody = approveSchema.safeParse(req.body);
     if (!resultBody.success)
-      return res.status(400).json({ error: resultBody.error.issues[0]?.message || "Validation error" });
+      return res.status(400).json({ error: resultBody.error.issues[0]?.message || 'Validation error' });
     const { approvalToken, timeoutMs } = resultBody.data;
 
-    const isStream = req.query.stream === "true";
+    const isStream = req.query.stream === 'true';
     if (!pendingCommands.has(approvalToken)) {
-      return res.status(400).json({ error: "Invalid or expired approval token" });
+      return res.status(400).json({ error: 'Invalid or expired approval token' });
     }
 
     const pending = pendingCommands.get(approvalToken);
@@ -644,7 +644,7 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
 
     // Verify session ID matches
     if (pending.sessionId !== req.params.id) {
-      return res.status(403).json({ error: "Session ID mismatch" });
+      return res.status(403).json({ error: 'Session ID mismatch' });
     }
 
     // Re-verify safety before execution
@@ -660,7 +660,7 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
     validatePath(workingDir);
     assertNotProtectedPath(workingDir);
 
-    session.status = "running";
+    session.status = 'running';
     logger.info(`Executing approved command`, {
       sessionId: req.params.id,
       command: pending.command.split(/\s+/)[0],
@@ -671,9 +671,9 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
     try {
       let onOutput = null;
       if (isStream) {
-        res.setHeader("Content-Type", "text/event-stream");
-        res.setHeader("Cache-Control", "no-cache");
-        res.setHeader("Connection", "keep-alive");
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
         res.flushHeaders();
 
         onOutput = (type, text) => {
@@ -688,7 +688,7 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
         onOutput,
       });
     } finally {
-      session.status = "idle";
+      session.status = 'idle';
     }
     logger.info(`Approved command finished`, {
       sessionId: req.params.id,
@@ -697,7 +697,7 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
       timedOut: result.timedOut,
     });
     await addHistoryEntry(session, {
-      type: "command",
+      type: 'command',
       command: pending.command,
       cwd: workingDir,
       result,
@@ -727,14 +727,14 @@ router.post("/sessions/:id/approve", async (req, res, next) => {
 /**
  * Read file within session context.
  */
-router.get("/sessions/:id/files", async (req, res, next) => {
+router.get('/sessions/:id/files', async (req, res, next) => {
   try {
     const session = getSession(req, res);
     if (!session) return;
 
     const resultQuery = fileReadSchema.safeParse(req.query);
     if (!resultQuery.success)
-      return res.status(400).json({ error: resultQuery.error.issues[0]?.message || "Validation error" });
+      return res.status(400).json({ error: resultQuery.error.issues[0]?.message || 'Validation error' });
     const { path: filePath, startLine, endLine } = resultQuery.data;
 
     const resolvedPath = validatePath(resolveAgentPath(filePath, session.cwd));
@@ -744,7 +744,7 @@ router.get("/sessions/:id/files", async (req, res, next) => {
 
     const stat = await fs.stat(realPath);
     if (stat.isDirectory()) {
-      return res.status(400).json({ error: "Specified path is a directory" });
+      return res.status(400).json({ error: 'Specified path is a directory' });
     }
     if (stat.size > MAX_AGENT_READ_SIZE) {
       return res.status(413).json({
@@ -754,16 +754,16 @@ router.get("/sessions/:id/files", async (req, res, next) => {
 
     const buffer = await fs.readFile(realPath);
     if (detectBinaryContent(buffer)) {
-      return res.status(400).json({ error: "Cannot read binary files as text in the agent." });
+      return res.status(400).json({ error: 'Cannot read binary files as text in the agent.' });
     }
 
-    const content = buffer.toString("utf-8");
+    const content = buffer.toString('utf-8');
     let finalContent = content;
     if (startLine !== undefined || endLine !== undefined) {
       const lines = content.split(/\r?\n/);
       const start = startLine !== undefined ? startLine - 1 : 0;
       const end = endLine !== undefined ? endLine : lines.length;
-      finalContent = lines.slice(start, end).join("\n");
+      finalContent = lines.slice(start, end).join('\n');
     }
 
     res.json({
@@ -778,14 +778,14 @@ router.get("/sessions/:id/files", async (req, res, next) => {
 /**
  * Write file within session context.
  */
-router.post("/sessions/:id/files", async (req, res, next) => {
+router.post('/sessions/:id/files', async (req, res, next) => {
   try {
     const session = getSession(req, res);
     if (!session) return;
 
     const resultBody = fileWriteSchema.safeParse(req.body);
     if (!resultBody.success)
-      return res.status(400).json({ error: resultBody.error.issues[0]?.message || "Validation error" });
+      return res.status(400).json({ error: resultBody.error.issues[0]?.message || 'Validation error' });
     const { path: filePath, content } = resultBody.data;
 
     const resolvedPath = validatePath(resolveAgentPath(filePath, session.cwd));
@@ -800,15 +800,15 @@ router.post("/sessions/:id/files", async (req, res, next) => {
         assertNotWriteProtectedPath(realPath);
       }
     } catch (err) {
-      if (err.code !== "ENOENT") throw err;
+      if (err.code !== 'ENOENT') throw err;
     }
 
     const dir = path.dirname(realPath);
     await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(realPath, content || "", "utf-8");
+    await fs.writeFile(realPath, content || '', 'utf-8');
 
     await addHistoryEntry(session, {
-      type: "write",
+      type: 'write',
       path: realPath,
       timestamp: new Date().toISOString(),
     });
@@ -829,12 +829,12 @@ let _isRgAvailable = null;
 async function checkRgAvailable() {
   if (_isRgAvailable !== null) return _isRgAvailable;
   return new Promise((resolve) => {
-    const child = spawn("rg", ["--version"], { stdio: "ignore" });
-    child.on("close", (code) => {
+    const child = spawn('rg', ['--version'], { stdio: 'ignore' });
+    child.on('close', (code) => {
       _isRgAvailable = code === 0;
       resolve(_isRgAvailable);
     });
-    child.on("error", () => {
+    child.on('error', () => {
       _isRgAvailable = false;
       resolve(false);
     });
@@ -844,29 +844,29 @@ async function checkRgAvailable() {
 async function searchWithRg(dir, query, maxResults) {
   return new Promise((resolve) => {
     const args = [
-      "--line-number",
-      "--no-heading",
-      "--color",
-      "never",
-      "--fixed-strings",
-      "--ignore-case",
-      "--max-filesize",
-      "256K",
-      "--glob",
-      "!.git",
-      "--glob",
-      "!node_modules",
-      "--glob",
-      "!.venv",
-      "--",
+      '--line-number',
+      '--no-heading',
+      '--color',
+      'never',
+      '--fixed-strings',
+      '--ignore-case',
+      '--max-filesize',
+      '256K',
+      '--glob',
+      '!.git',
+      '--glob',
+      '!node_modules',
+      '--glob',
+      '!.venv',
+      '--',
       query,
       dir,
     ];
 
-    const child = spawn("rg", args);
-    let stdout = "";
+    const child = spawn('rg', args);
+    let stdout = '';
     let resultCount = 0;
-    child.stdout.on("data", (data) => {
+    child.stdout.on('data', (data) => {
       stdout += data.toString();
       // Early exit: count lines to avoid buffering large outputs in memory.
       // rg outputs one result per line; stop accumulating once we have
@@ -881,7 +881,7 @@ async function searchWithRg(dir, query, maxResults) {
       }
     });
 
-    child.on("close", (code) => {
+    child.on('close', (code) => {
       if (code !== 0 && code !== 1) {
         resolve(null);
         return;
@@ -893,20 +893,20 @@ async function searchWithRg(dir, query, maxResults) {
         if (results.length >= maxResults) break;
         if (!line.trim()) continue;
 
-        const parts = line.split(":");
+        const parts = line.split(':');
         if (parts.length >= 3) {
           let file;
           let lineNumStr;
           let content;
 
-          if (process.platform === "win32" && parts[0].length === 1 && /^[a-zA-Z]$/.test(parts[0])) {
-            file = parts[0] + ":" + parts[1];
+          if (process.platform === 'win32' && parts[0].length === 1 && /^[a-zA-Z]$/.test(parts[0])) {
+            file = parts[0] + ':' + parts[1];
             lineNumStr = parts[2];
-            content = parts.slice(3).join(":");
+            content = parts.slice(3).join(':');
           } else {
             file = parts[0];
             lineNumStr = parts[1];
-            content = parts.slice(2).join(":");
+            content = parts.slice(2).join(':');
           }
 
           const lineNum = parseInt(lineNumStr, 10);
@@ -928,7 +928,7 @@ async function searchWithRg(dir, query, maxResults) {
       resolve(results);
     });
 
-    child.on("error", () => {
+    child.on('error', () => {
       resolve(null);
     });
   });
@@ -937,14 +937,14 @@ async function searchWithRg(dir, query, maxResults) {
 /**
  * Search files within session context.
  */
-router.get("/sessions/:id/search", async (req, res, next) => {
+router.get('/sessions/:id/search', async (req, res, next) => {
   try {
     const session = getSession(req, res);
     if (!session) return;
 
     const resultQuery = searchSchema.safeParse(req.query);
     if (!resultQuery.success)
-      return res.status(400).json({ error: resultQuery.error.issues[0]?.message || "Validation error" });
+      return res.status(400).json({ error: resultQuery.error.issues[0]?.message || 'Validation error' });
     const { query, dir, maxResults } = resultQuery.data;
 
     const searchDir = dir || session.cwd;
@@ -988,7 +988,7 @@ async function searchInDirectory(dir, query, results, maxResults, depth = 0) {
     for (const entry of entries) {
       if (results.length >= maxResults) break;
 
-      if (SKIPPED_DIRS.has(entry.name) || entry.name.startsWith(".")) {
+      if (SKIPPED_DIRS.has(entry.name) || entry.name.startsWith('.')) {
         continue;
       }
 
@@ -1014,7 +1014,7 @@ async function searchInDirectory(dir, query, results, maxResults, depth = 0) {
           const stat = await fs.stat(revalidated);
           if (stat.size > 256 * 1024) continue;
 
-          const content = await fs.readFile(revalidated, "utf-8");
+          const content = await fs.readFile(revalidated, 'utf-8');
           const lines = content.split(/\r?\n/);
 
           for (let i = 0; i < lines.length; i++) {
@@ -1040,7 +1040,7 @@ async function searchInDirectory(dir, query, results, maxResults, depth = 0) {
 /**
  * List directory contents within session context.
  */
-router.get("/sessions/:id/dir", async (req, res, next) => {
+router.get('/sessions/:id/dir', async (req, res, next) => {
   try {
     const session = getSession(req, res);
     if (!session) return;
@@ -1051,7 +1051,7 @@ router.get("/sessions/:id/dir", async (req, res, next) => {
 
     const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
     const items = entries
-      .filter((entry) => entry.name !== ".git" && entry.name !== "node_modules" && entry.name !== ".venv")
+      .filter((entry) => entry.name !== '.git' && entry.name !== 'node_modules' && entry.name !== '.venv')
       .map((entry) => ({
         name: entry.name,
         isDirectory: entry.isDirectory(),
@@ -1070,17 +1070,17 @@ router.get("/sessions/:id/dir", async (req, res, next) => {
 /**
  * Apply a SEARCH/REPLACE diff to a file within session context.
  */
-router.post("/sessions/:id/diff", async (req, res, next) => {
+router.post('/sessions/:id/diff', async (req, res, next) => {
   try {
     const session = getSession(req, res);
     if (!session) return;
 
     const { path: filePath, diff, dryRun = false } = req.body;
     if (!filePath) {
-      return res.status(400).json({ error: "path is required" });
+      return res.status(400).json({ error: 'path is required' });
     }
     if (diff === undefined) {
-      return res.status(400).json({ error: "diff is required" });
+      return res.status(400).json({ error: 'diff is required' });
     }
 
     const agentPath = resolveAgentPath(filePath, session.cwd);
@@ -1089,7 +1089,7 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
     const realPath = revalidateRealPath(resolvedPath);
     assertNotWriteProtectedPath(realPath);
 
-    const content = await fs.readFile(realPath, "utf-8");
+    const content = await fs.readFile(realPath, 'utf-8');
 
     // M-13: Construct the regex inside the handler so its `lastIndex` is
     // reset on every call. Reusing a module-level /g regex would otherwise
@@ -1108,13 +1108,13 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
     if (blocks.length === 0) {
       return res.status(400).json({
         error:
-          "有効な SEARCH/REPLACE ブロックが見つかりませんでした。フォーマット（<<<<<<< SEARCH、=======、>>>>>>> REPLACE）を確認してください。",
+          '有効な SEARCH/REPLACE ブロックが見つかりませんでした。フォーマット（<<<<<<< SEARCH、=======、>>>>>>> REPLACE）を確認してください。',
       });
     }
 
     // Determine the original EOL format to preserve it
-    const hasCarriageReturn = content.includes("\r\n");
-    const eol = hasCarriageReturn ? "\r\n" : "\n";
+    const hasCarriageReturn = content.includes('\r\n');
+    const eol = hasCarriageReturn ? '\r\n' : '\n';
     let fileLines = content.split(/\r?\n/);
 
     for (const block of blocks) {
@@ -1142,8 +1142,8 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
 
       // 2. Try Normalized Match (ignore trailing spaces) if exact match fails
       if (matchCount === 0) {
-        const normFileLines = fileLines.map((l) => l.replace(/[ \t]+$/g, ""));
-        const normSearchLines = searchLines.map((l) => l.replace(/[ \t]+$/g, ""));
+        const normFileLines = fileLines.map((l) => l.replace(/[ \t]+$/g, ''));
+        const normSearchLines = searchLines.map((l) => l.replace(/[ \t]+$/g, ''));
 
         for (let i = 0; i <= normFileLines.length - normSearchLines.length; i++) {
           let match = true;
@@ -1183,8 +1183,8 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
       // Check results
       if (matchCount === 0) {
         // Try to find a "fuzzy" match to provide a better error hint
-        const cleanSearch = searchLines.map((l) => l.trim()).join("");
-        const cleanFile = fileLines.map((l) => l.trim()).join("");
+        const cleanSearch = searchLines.map((l) => l.trim()).join('');
+        const cleanFile = fileLines.map((l) => l.trim()).join('');
         const isFuzzyMatch = cleanFile.includes(cleanSearch);
 
         let errorMsg = `置換対象の SEARCH ブロックのコードが見つかりません。インデントや改行が既存ファイルの内容と完全に一致している必要があります。`;
@@ -1212,12 +1212,12 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
       }
 
       // Determine indentation mapping from the first non-empty matched line
-      let fileIndent = "";
-      let searchIndent = "";
+      let fileIndent = '';
+      let searchIndent = '';
       let foundIndentLine = false;
 
       for (let j = 0; j < searchLines.length; j++) {
-        if (searchLines[j].trim() !== "") {
+        if (searchLines[j].trim() !== '') {
           fileIndent = fileLines[matchedIndex + j].match(/^\s*/)[0];
           searchIndent = searchLines[j].match(/^\s*/)[0];
           foundIndentLine = true;
@@ -1232,7 +1232,7 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
 
       // Adjust replacement lines to match the file's indentation level
       const adjustedReplaceLines = replaceLines.map((line) => {
-        if (line.trim() === "") return "";
+        if (line.trim() === '') return '';
         if (searchIndent && line.startsWith(searchIndent)) {
           return fileIndent + line.slice(searchIndent.length);
         }
@@ -1249,10 +1249,10 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
     const newContent = fileLines.join(eol);
 
     if (!dryRun) {
-      await fs.writeFile(realPath, newContent, "utf-8");
+      await fs.writeFile(realPath, newContent, 'utf-8');
 
       await addHistoryEntry(session, {
-        type: "diff",
+        type: 'diff',
         path: realPath,
         timestamp: new Date().toISOString(),
       });
@@ -1264,7 +1264,7 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
       // M-5: Only return newContent on dryRun to avoid sending large file contents
       // unnecessarily when the write has already been committed to disk.
       ...(dryRun ? { newContent } : {}),
-      message: dryRun ? "プレビューを生成しました。" : `${blocks.length}個のブロックの置換に成功しました。`,
+      message: dryRun ? 'プレビューを生成しました。' : `${blocks.length}個のブロックの置換に成功しました。`,
     });
   } catch (err) {
     next(err);
@@ -1274,13 +1274,13 @@ router.post("/sessions/:id/diff", async (req, res, next) => {
 /**
  * Delete all sessions and pending commands.
  */
-router.delete("/sessions/all", (req, res, next) => {
+router.delete('/sessions/all', (req, res, next) => {
   try {
     sessions.clear();
     pendingCommands.clear();
     saveSessions();
     savePendingCommands();
-    res.json({ ok: true, message: "All sessions and pending commands cleared" });
+    res.json({ ok: true, message: 'All sessions and pending commands cleared' });
   } catch (err) {
     next(err);
   }
@@ -1289,7 +1289,7 @@ router.delete("/sessions/all", (req, res, next) => {
 /**
  * Get allowed roots.
  */
-router.get("/config", (_req, res) => {
+router.get('/config', (_req, res) => {
   res.json({
     enableCommandExecution: serverConfig.enableCommandExecution,
     commandTimeoutMs: serverConfig.commandTimeoutMs,

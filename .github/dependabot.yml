@@ -1,47 +1,47 @@
 version: 2
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
+  - package-ecosystem: 'npm'
+    directory: '/'
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "Asia/Tokyo"
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
+      timezone: 'Asia/Tokyo'
     open-pull-requests-limit: 10
     labels:
-      - "dependencies"
-      - "automerge"
+      - 'dependencies'
+      - 'automerge'
     groups:
       runtime-minor:
         patterns:
-          - "express"
-          - "helmet"
-          - "multer"
+          - 'express'
+          - 'helmet'
+          - 'multer'
         update-types:
-          - "minor"
-          - "patch"
+          - 'minor'
+          - 'patch'
       runtime-major:
         patterns:
-          - "express"
-          - "helmet"
-          - "multer"
+          - 'express'
+          - 'helmet'
+          - 'multer'
         update-types:
-          - "major"
+          - 'major'
       dev-minor:
         patterns:
-          - "jest"
-          - "supertest"
+          - 'jest'
+          - 'supertest'
         update-types:
-          - "minor"
-          - "patch"
+          - 'minor'
+          - 'patch'
       # Security-sensitive packages: always open individual PRs for audits
       security:
         patterns:
-          - "marked"
-          - "dompurify"
-          - "helmet"
+          - 'marked'
+          - 'dompurify'
+          - 'helmet'
     ignore:
       # GH-5: monaco-editor major versions require manual verification
       # because the bundled vs/ directory must be synced.
-      - dependency-name: "monaco-editor"
-        update-types: ["version-update:semver-major"]
+      - dependency-name: 'monaco-editor'
+        update-types: ['version-update:semver-major']

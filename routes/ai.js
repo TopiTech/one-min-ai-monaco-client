@@ -1,24 +1,24 @@
-import express from "express";
-import { z } from "zod";
+import express from 'express';
+import { z } from 'zod';
 import {
   callOneMin,
   extractText,
   isFailedResponse,
   extractFailureMessage,
   parseResponsePayload,
-} from "../utils/api-client.js";
-import { getChatModels, getCodeModels, getImageModels } from "../config/models.js";
-import { parseWebSearchParams, buildCodePayload } from "../utils/web-search.js";
-import logger from "../utils/logger.js";
+} from '../utils/api-client.js';
+import { getChatModels, getCodeModels, getImageModels } from '../config/models.js';
+import { parseWebSearchParams, buildCodePayload } from '../utils/web-search.js';
+import logger from '../utils/logger.js';
 
 const router = express.Router();
 
-import { serverConfig } from "../config/server.js";
+import { serverConfig } from '../config/server.js';
 
 function getDefaultModel(type) {
-  if (type === "CODE_GENERATOR") return serverConfig.defaultCodeModel;
-  if (type === "IMAGE_GENERATOR") return serverConfig.defaultImageModel;
-  if (type === "IMAGE_EDITOR") return serverConfig.defaultImageEditorModel;
+  if (type === 'CODE_GENERATOR') return serverConfig.defaultCodeModel;
+  if (type === 'IMAGE_GENERATOR') return serverConfig.defaultImageModel;
+  if (type === 'IMAGE_EDITOR') return serverConfig.defaultImageEditorModel;
   return serverConfig.defaultChatModel;
 }
 
@@ -32,63 +32,63 @@ const rawAttachmentsSchema = z
       .any()
       .superRefine((val, ctx) => {
         if (val === undefined) return;
-        if (typeof val !== "object" || Array.isArray(val)) {
+        if (typeof val !== 'object' || Array.isArray(val)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "attachments must be an object",
+            message: 'attachments must be an object',
           });
           return;
         }
         const looksLikeAssetRef = (s) =>
-          typeof s === "string" &&
+          typeof s === 'string' &&
           s.length <= 1024 &&
           (/^https?:\/\//i.test(s) || /^[A-Za-z0-9._/-]+$/.test(s));
 
         if (val.images !== undefined) {
           if (
             !Array.isArray(val.images) ||
-            val.images.some((x) => typeof x !== "string" || !looksLikeAssetRef(x))
+            val.images.some((x) => typeof x !== 'string' || !looksLikeAssetRef(x))
           ) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: "attachments.images must be an array of URLs or 1min.ai asset keys",
+              message: 'attachments.images must be an array of URLs or 1min.ai asset keys',
             });
           } else if (val.images.length > 16) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: "attachments.images exceeds 16 entries",
+              message: 'attachments.images exceeds 16 entries',
             });
           }
         }
         if (val.files !== undefined) {
           if (
             !Array.isArray(val.files) ||
-            val.files.some((x) => typeof x !== "string" || !looksLikeAssetRef(x))
+            val.files.some((x) => typeof x !== 'string' || !looksLikeAssetRef(x))
           ) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: "attachments.files must be an array of URLs or 1min.ai asset keys",
+              message: 'attachments.files must be an array of URLs or 1min.ai asset keys',
             });
           } else if (val.files.length > 16) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: "attachments.files exceeds 16 entries",
+              message: 'attachments.files exceeds 16 entries',
             });
           }
         }
       })
       .transform((val) => {
-        if (val === undefined || typeof val !== "object" || Array.isArray(val)) return undefined;
+        if (val === undefined || typeof val !== 'object' || Array.isArray(val)) return undefined;
         const out = {};
         if (val.images !== undefined && Array.isArray(val.images)) {
           const cleaned = val.images
-            .map((x) => (typeof x === "string" ? x.slice(0, 1024) : ""))
+            .map((x) => (typeof x === 'string' ? x.slice(0, 1024) : ''))
             .filter(Boolean);
           if (cleaned.length) out.images = cleaned;
         }
         if (val.files !== undefined && Array.isArray(val.files)) {
           const cleaned = val.files
-            .map((x) => (typeof x === "string" ? x.slice(0, 1024) : ""))
+            .map((x) => (typeof x === 'string' ? x.slice(0, 1024) : ''))
             .filter(Boolean);
           if (cleaned.length) out.files = cleaned;
         }
@@ -99,31 +99,31 @@ const rawAttachmentsSchema = z
 
 const chatRequestSchema = z.object({
   prompt: z.preprocess(
-    (val) => (val === undefined || val === null ? "" : String(val)),
+    (val) => (val === undefined || val === null ? '' : String(val)),
     z
       .string()
-      .refine((val) => val.trim().length > 0, { message: "prompt is required" })
-      .refine((val) => val.length <= 50000, { message: "prompt exceeds maximum length of 50000 characters" }),
+      .refine((val) => val.trim().length > 0, { message: 'prompt is required' })
+      .refine((val) => val.length <= 50000, { message: 'prompt exceeds maximum length of 50000 characters' }),
   ),
   model: z.string().optional(),
   conversationId: z.string().optional(),
   attachments: rawAttachmentsSchema,
-  webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
+  webSearch: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
   numOfSite: z.preprocess(
-    (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
+    (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
     z.number().int().optional(),
   ),
   maxWord: z.preprocess(
-    (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
+    (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
     z.number().int().optional(),
   ),
   history: z.preprocess(
-    (val) => (val === undefined ? true : val === "true" || val === true),
+    (val) => (val === undefined ? true : val === 'true' || val === true),
     z.boolean().default(true),
   ),
-  withMemories: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
+  withMemories: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
   brandVoiceId: z.string().optional(),
-  isMixed: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
+  isMixed: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
 });
 
 function buildChatPayload({
@@ -140,8 +140,8 @@ function buildChatPayload({
   isMixed,
 }) {
   return {
-    type: "UNIFY_CHAT_WITH_AI",
-    model: model || getDefaultModel("CHAT"),
+    type: 'UNIFY_CHAT_WITH_AI',
+    model: model || getDefaultModel('CHAT'),
     promptObject: {
       prompt: String(prompt),
       settings: {
@@ -171,7 +171,7 @@ function buildChatPayload({
 function parseChatRequest(body) {
   const result = chatRequestSchema.safeParse(body);
   if (!result.success) {
-    const errorMsg = result.error.issues[0]?.message || "Validation error";
+    const errorMsg = result.error.issues[0]?.message || 'Validation error';
     return { error: { status: 400, message: errorMsg } };
   }
   const data = result.data;
@@ -192,17 +192,17 @@ function parseChatRequest(body) {
 }
 
 // Available models endpoint
-router.get("/models", (_req, res) => {
+router.get('/models', (_req, res) => {
   res.json({ chatModels: getChatModels(), codeModels: getCodeModels(), imageModels: getImageModels() });
 });
 
-router.post("/chat", async (req, res, next) => {
+router.post('/chat', async (req, res, next) => {
   try {
     const { error, payload } = parseChatRequest(req.body);
     if (error) return res.status(error.status).json({ error: error.message });
 
-    const data = await callOneMin("/api/chat-with-ai", {
-      headers: { "Content-Type": "application/json" },
+    const data = await callOneMin('/api/chat-with-ai', {
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     if (isFailedResponse(data)) {
@@ -217,30 +217,30 @@ router.post("/chat", async (req, res, next) => {
   }
 });
 
-router.post("/chat/stream", async (req, res, next) => {
+router.post('/chat/stream', async (req, res, next) => {
   try {
     const { error, payload } = parseChatRequest(req.body);
     if (error) return res.status(error.status).json({ error: error.message });
 
     const controller = new AbortController();
-    res.on("close", () => {
+    res.on('close', () => {
       if (!res.writableEnded) {
-        logger.info("Client closed the connection. Aborting stream request.");
+        logger.info('Client closed the connection. Aborting stream request.');
         controller.abort();
       }
     });
 
     // L-3: Explicitly mark as non-idempotent so retries never duplicate
     // upstream aiRecords or cause duplicate billing on transient failures.
-    const response = await callOneMin("/api/chat-with-ai?isStreaming=true", {
-      headers: { "Content-Type": "application/json" },
+    const response = await callOneMin('/api/chat-with-ai?isStreaming=true', {
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       raw: true,
       signal: controller.signal,
       idempotent: false,
     });
 
-    if (response.headers.get("content-type")?.includes("application/json")) {
+    if (response.headers.get('content-type')?.includes('application/json')) {
       // Non-streaming fallback (server didn't honor isStreaming).
       const data = await response.json().catch(() => null);
       if (isFailedResponse(data)) {
@@ -254,26 +254,26 @@ router.post("/chat/stream", async (req, res, next) => {
 
     if (!response.ok) {
       const errorPayload = await parseResponsePayload(response);
-      const isDev = process.env.NODE_ENV === "development";
+      const isDev = process.env.NODE_ENV === 'development';
       return res.status(response.status).json({
         error: `1min.ai API error: ${response.status}`,
         details: isDev
-          ? errorPayload?.error?.message || errorPayload?.message || "Upstream API Error"
-          : "Upstream API Error",
+          ? errorPayload?.error?.message || errorPayload?.message || 'Upstream API Error'
+          : 'Upstream API Error',
       });
     }
 
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no");
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     // B-1: Shortened heartbeat interval (15s) for better proxy compatibility
     const heartbeatInterval = setInterval(() => {
       if (!res.writableEnded) {
-        res.write(":\n\n");
+        res.write(':\n\n');
       }
     }, 15_000);
 
@@ -289,10 +289,10 @@ router.post("/chat/stream", async (req, res, next) => {
         res.write(chunk);
       }
     } catch (streamErr) {
-      if (controller.signal.aborted || streamErr.name === "AbortError") {
-        logger.info("Stream reading aborted due to client disconnection.");
+      if (controller.signal.aborted || streamErr.name === 'AbortError') {
+        logger.info('Stream reading aborted due to client disconnection.');
       } else {
-        logger.warn("Stream interrupted", { error: streamErr.message });
+        logger.warn('Stream interrupted', { error: streamErr.message });
       }
     } finally {
       clearInterval(heartbeatInterval);
@@ -304,10 +304,10 @@ router.post("/chat/stream", async (req, res, next) => {
       res.end();
     }
   } catch (err) {
-    if (err.name === "AbortError" || err.status === 499) {
-      logger.info("Stream request aborted as client disconnected.");
+    if (err.name === 'AbortError' || err.status === 499) {
+      logger.info('Stream request aborted as client disconnected.');
       if (!res.headersSent) {
-        res.status(499).json({ error: "Client Closed Request" });
+        res.status(499).json({ error: 'Client Closed Request' });
       } else if (!res.writableEnded) {
         res.end();
       }
@@ -322,30 +322,30 @@ router.post("/chat/stream", async (req, res, next) => {
 });
 
 // Allowed conversation types that map to valid 1min.ai API feature types.
-const ALLOWED_CONVERSATION_TYPES = ["UNIFY_CHAT_WITH_AI", "CODE_GENERATOR", "IMAGE_GENERATOR"];
+const ALLOWED_CONVERSATION_TYPES = ['UNIFY_CHAT_WITH_AI', 'CODE_GENERATOR', 'IMAGE_GENERATOR'];
 
 const conversationCreateSchema = z.object({
   title: z.preprocess(
-    (val) => (val === undefined || val === null ? "New AI Conversation" : String(val)),
-    z.string().min(1).max(500).default("New AI Conversation"),
+    (val) => (val === undefined || val === null ? 'New AI Conversation' : String(val)),
+    z.string().min(1).max(500).default('New AI Conversation'),
   ),
   model: z.string().max(200).optional(),
   type: z.preprocess(
-    (val) => (val === undefined || val === null ? "UNIFY_CHAT_WITH_AI" : String(val)),
+    (val) => (val === undefined || val === null ? 'UNIFY_CHAT_WITH_AI' : String(val)),
     z
       .string()
       .refine((val) => ALLOWED_CONVERSATION_TYPES.includes(val), {
-        message: `type must be one of: ${ALLOWED_CONVERSATION_TYPES.join(", ")}`,
+        message: `type must be one of: ${ALLOWED_CONVERSATION_TYPES.join(', ')}`,
       })
-      .default("UNIFY_CHAT_WITH_AI"),
+      .default('UNIFY_CHAT_WITH_AI'),
   ),
 });
 
-router.post("/conversations", async (req, res, next) => {
+router.post('/conversations', async (req, res, next) => {
   try {
     const result = conversationCreateSchema.safeParse(req.body);
     if (!result.success) {
-      const errorMsg = result.error.issues[0]?.message || "Validation error";
+      const errorMsg = result.error.issues[0]?.message || 'Validation error';
       return res.status(400).json({ error: errorMsg });
     }
     const { title, model, type } = result.data;
@@ -356,8 +356,8 @@ router.post("/conversations", async (req, res, next) => {
     };
     // M-1: Conversation creation is non-idempotent — a retry would create a
     // duplicate conversation. Disable retries explicitly.
-    const data = await callOneMin("/api/conversations", {
-      headers: { "Content-Type": "application/json" },
+    const data = await callOneMin('/api/conversations', {
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       idempotent: false,
     });
@@ -381,7 +381,7 @@ router.post("/conversations", async (req, res, next) => {
 const outputCompressionSchema = z
   .preprocess(
     (val) => {
-      if (val === undefined || val === "" || (typeof val === "string" && val.trim() === "")) {
+      if (val === undefined || val === '' || (typeof val === 'string' && val.trim() === '')) {
         return undefined;
       }
       return val;
@@ -394,14 +394,14 @@ const outputCompressionSchema = z
         if (isNaN(n) || !Number.isFinite(n)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "output_compression must be a finite number",
+            message: 'output_compression must be a finite number',
           });
           return;
         }
         if (!Number.isInteger(n) || n < 0 || n > 100) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "output_compression must be an integer between 0 and 100",
+            message: 'output_compression must be an integer between 0 and 100',
           });
         }
       })
@@ -415,37 +415,37 @@ const outputCompressionSchema = z
 const imageGenerateSchema = z
   .object({
     prompt: z.preprocess(
-      (val) => (val === undefined || val === null ? "" : String(val)),
-      z.string().refine((val) => val.trim().length > 0, { message: "prompt is required" }),
+      (val) => (val === undefined || val === null ? '' : String(val)),
+      z.string().refine((val) => val.trim().length > 0, { message: 'prompt is required' }),
     ),
     model: z.string().optional(),
     num_outputs: z.preprocess(
       (val) => (val === undefined ? 1 : Number(val)),
       z
         .number()
-        .min(1, "num_outputs must be between 1 and 10")
-        .max(10, "num_outputs must be between 1 and 10"),
+        .min(1, 'num_outputs must be between 1 and 10')
+        .max(10, 'num_outputs must be between 1 and 10'),
     ),
-    aspect_ratio: z.string().default("1:1"),
-    quality: z.string().default("medium"),
-    background: z.string().default("auto"),
+    aspect_ratio: z.string().default('1:1'),
+    quality: z.string().default('medium'),
+    background: z.string().default('auto'),
     output_format: z
       .string()
-      .default("png")
-      .refine((val) => ["png", "webp", "jpeg", "jpg"].includes(val), {
-        message: "output_format must be one of: png, webp, jpeg, jpg",
+      .default('png')
+      .refine((val) => ['png', 'webp', 'jpeg', 'jpg'].includes(val), {
+        message: 'output_format must be one of: png, webp, jpeg, jpg',
       }),
     output_compression: outputCompressionSchema,
     size: z.string().optional(),
   })
   .superRefine((data, ctx) => {
-    const selectedModel = data.model || getDefaultModel("IMAGE_GENERATOR");
-    const isGptImage = selectedModel.startsWith("gpt-image");
+    const selectedModel = data.model || getDefaultModel('IMAGE_GENERATOR');
+    const isGptImage = selectedModel.startsWith('gpt-image');
     if (!isGptImage) {
-      if (data.quality !== "medium" || data.background !== "auto" || data.output_compression !== undefined) {
+      if (data.quality !== 'medium' || data.background !== 'auto' || data.output_compression !== undefined) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "quality, background, and output_compression are only supported by gpt-image-* models",
+          message: 'quality, background, and output_compression are only supported by gpt-image-* models',
         });
       }
     }
@@ -454,31 +454,31 @@ const imageGenerateSchema = z
 const imageEditorSchema = z
   .object({
     imageUrl: z.preprocess(
-      (val) => (val === undefined || val === null ? "" : String(val)),
-      z.string().refine((val) => val.trim().length > 0, { message: "imageUrl or asset key is required" }),
+      (val) => (val === undefined || val === null ? '' : String(val)),
+      z.string().refine((val) => val.trim().length > 0, { message: 'imageUrl or asset key is required' }),
     ),
     prompt: z.preprocess(
-      (val) => (val === undefined || val === null ? "" : String(val)),
-      z.string().refine((val) => val.trim().length > 0, { message: "prompt is required" }),
+      (val) => (val === undefined || val === null ? '' : String(val)),
+      z.string().refine((val) => val.trim().length > 0, { message: 'prompt is required' }),
     ),
     model: z.string().optional(),
-    size: z.string().default("1024x1024"),
-    quality: z.string().default("medium"),
+    size: z.string().default('1024x1024'),
+    quality: z.string().default('medium'),
     n: z.preprocess((val) => (val === undefined ? 1 : Number(val)), z.number().default(1)),
-    background: z.string().default("auto"),
-    output_format: z.string().default("webp"),
+    background: z.string().default('auto'),
+    output_format: z.string().default('webp'),
     output_compression: outputCompressionSchema,
   })
   .superRefine((data, ctx) => {
-    const selectedModel = data.model || getDefaultModel("IMAGE_EDITOR");
-    const isGptImage = selectedModel.startsWith("gpt-image");
+    const selectedModel = data.model || getDefaultModel('IMAGE_EDITOR');
+    const isGptImage = selectedModel.startsWith('gpt-image');
 
     if (isGptImage) {
       const sizeMatch = String(data.size).match(/^(\d+)x(\d+)$/);
       if (!sizeMatch) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "size must be in WxH format (e.g. 1024x1024)",
+          message: 'size must be in WxH format (e.g. 1024x1024)',
         });
         return;
       }
@@ -487,32 +487,32 @@ const imageEditorSchema = z
       if (w % 16 !== 0 || h % 16 !== 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "width and height must be divisible by 16",
+          message: 'width and height must be divisible by 16',
         });
       }
       if (w * h < 655360 || w * h > 8294400) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "total pixels must be between 655,360 and 8,294,400",
+          message: 'total pixels must be between 655,360 and 8,294,400',
         });
       }
       if (Math.max(w, h) > 3840) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "max edge must be <= 3840px",
+          message: 'max edge must be <= 3840px',
         });
       }
       if (Math.max(w, h) / Math.min(w, h) > 3) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "aspect ratio must be <= 3:1",
+          message: 'aspect ratio must be <= 3:1',
         });
       }
     } else {
       if (data.size && !/^\d+x\d+$/.test(String(data.size))) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "size must be in WxH format (e.g. 1024x1024)",
+          message: 'size must be in WxH format (e.g. 1024x1024)',
         });
       }
     }
@@ -520,25 +520,25 @@ const imageEditorSchema = z
 
 function aspectRatioToSize(aspectRatio) {
   const map = {
-    "1:1": "1024x1024",
-    "16:9": "1536x1024",
-    "9:16": "1024x1536",
-    "4:3": "1280x1024",
-    "3:4": "1024x1280",
+    '1:1': '1024x1024',
+    '16:9': '1536x1024',
+    '9:16': '1024x1536',
+    '4:3': '1280x1024',
+    '3:4': '1024x1280',
   };
-  return map[aspectRatio] || "1024x1024";
+  return map[aspectRatio] || '1024x1024';
 }
 
-router.post("/images/generate", async (req, res, next) => {
+router.post('/images/generate', async (req, res, next) => {
   try {
     const result = imageGenerateSchema.safeParse(req.body);
     if (!result.success) {
-      const errorMsg = result.error.issues[0]?.message || "Validation error";
+      const errorMsg = result.error.issues[0]?.message || 'Validation error';
       return res.status(400).json({ error: errorMsg });
     }
     const data = result.data;
-    const selectedModel = data.model || getDefaultModel("IMAGE_GENERATOR");
-    const isGptImage = selectedModel.startsWith("gpt-image");
+    const selectedModel = data.model || getDefaultModel('IMAGE_GENERATOR');
+    const isGptImage = selectedModel.startsWith('gpt-image');
 
     const promptObject = {
       prompt: data.prompt,
@@ -560,12 +560,12 @@ router.post("/images/generate", async (req, res, next) => {
     }
 
     const payload = {
-      type: "IMAGE_GENERATOR",
+      type: 'IMAGE_GENERATOR',
       model: selectedModel,
       promptObject,
     };
-    const dataRes = await callOneMin("/api/features", {
-      headers: { "Content-Type": "application/json" },
+    const dataRes = await callOneMin('/api/features', {
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     if (isFailedResponse(dataRes)) {
@@ -581,16 +581,16 @@ router.post("/images/generate", async (req, res, next) => {
 });
 
 function extractAssetKey(imageUrl) {
-  if (!imageUrl || typeof imageUrl !== "string") return imageUrl;
+  if (!imageUrl || typeof imageUrl !== 'string') return imageUrl;
 
   let decoded = imageUrl;
 
   // Handle local proxy URLs
-  if (decoded.startsWith("/api/assets/proxy")) {
+  if (decoded.startsWith('/api/assets/proxy')) {
     try {
-      const parsedProxy = new URL(decoded, "http://localhost");
-      const keyParam = parsedProxy.searchParams.get("key");
-      const urlParam = parsedProxy.searchParams.get("url");
+      const parsedProxy = new URL(decoded, 'http://localhost');
+      const keyParam = parsedProxy.searchParams.get('key');
+      const urlParam = parsedProxy.searchParams.get('url');
       if (keyParam) {
         return extractAssetKey(keyParam);
       }
@@ -608,38 +608,38 @@ function extractAssetKey(imageUrl) {
       const parsed = new URL(decoded);
       // Path-style S3 URL: https://s3.us-east-1.amazonaws.com/asset.1min.ai/images/...
       if (/^s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname)) {
-        if (parsed.pathname.startsWith("/asset.1min.ai/")) {
-          return parsed.pathname.substring("/asset.1min.ai/".length);
+        if (parsed.pathname.startsWith('/asset.1min.ai/')) {
+          return parsed.pathname.substring('/asset.1min.ai/'.length);
         }
       }
       // Virtual-host S3 URL or direct domain: https://asset.1min.ai/images/...
       const isAllowedS3OrDomain =
-        parsed.hostname === "asset.1min.ai" ||
+        parsed.hostname === 'asset.1min.ai' ||
         /^asset\.1min\.ai\.s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname) ||
         /^asset\.1min\.ai\.s3-accelerate\.amazonaws\.com$/i.test(parsed.hostname) ||
         /^asset\.1min\.ai\.s3\.dualstack\.[\w-]+\.amazonaws\.com$/i.test(parsed.hostname);
 
       if (isAllowedS3OrDomain) {
-        return parsed.pathname.replace(/^\//, "");
+        return parsed.pathname.replace(/^\//, '');
       }
     } catch (e) {
       // ignore
     }
   }
 
-  return decoded.replace(/^\//, "");
+  return decoded.replace(/^\//, '');
 }
 
-router.post("/images/text-editor", async (req, res, next) => {
+router.post('/images/text-editor', async (req, res, next) => {
   try {
     const result = imageEditorSchema.safeParse(req.body);
     if (!result.success) {
-      const errorMsg = result.error.issues[0]?.message || "Validation error";
+      const errorMsg = result.error.issues[0]?.message || 'Validation error';
       return res.status(400).json({ error: errorMsg });
     }
     const data = result.data;
-    const selectedModel = data.model || getDefaultModel("IMAGE_EDITOR");
-    const isGptImage = selectedModel.startsWith("gpt-image");
+    const selectedModel = data.model || getDefaultModel('IMAGE_EDITOR');
+    const isGptImage = selectedModel.startsWith('gpt-image');
 
     const promptObject = {
       imageUrl: extractAssetKey(data.imageUrl),
@@ -657,13 +657,13 @@ router.post("/images/text-editor", async (req, res, next) => {
       }
     }
     const payload = {
-      type: "IMAGE_EDITOR",
+      type: 'IMAGE_EDITOR',
       model: selectedModel,
       promptObject,
     };
 
-    const dataRes = await callOneMin("/api/features", {
-      headers: { "Content-Type": "application/json" },
+    const dataRes = await callOneMin('/api/features', {
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     if (isFailedResponse(dataRes)) {
@@ -683,26 +683,26 @@ const MAX_PROMPT_LENGTH = 50_000;
 
 const codeGenerateSchema = z.object({
   instruction: z.preprocess(
-    (val) => (val === undefined || val === null ? "" : String(val)),
+    (val) => (val === undefined || val === null ? '' : String(val)),
     z
       .string()
-      .refine((val) => val.trim().length > 0, { message: "instruction is required" })
-      .refine((val) => val.length <= 50000, { message: "instruction exceeds 50000 characters" }),
+      .refine((val) => val.trim().length > 0, { message: 'instruction is required' })
+      .refine((val) => val.length <= 50000, { message: 'instruction exceeds 50000 characters' }),
   ),
-  fileName: z.string().default("untitled"),
-  language: z.string().default("plaintext"),
+  fileName: z.string().default('untitled'),
+  language: z.string().default('plaintext'),
   code: z.preprocess(
-    (val) => (val === undefined || val === null ? "" : String(val)),
-    z.string().refine((val) => val.length <= 100000, { message: "code exceeds 100000 characters" }),
+    (val) => (val === undefined || val === null ? '' : String(val)),
+    z.string().refine((val) => val.length <= 100000, { message: 'code exceeds 100000 characters' }),
   ),
   model: z.string().optional(),
-  webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
+  webSearch: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
   numOfSite: z.preprocess(
-    (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
+    (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
     z.number().int().optional(),
   ),
   maxWord: z.preprocess(
-    (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
+    (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
     z.number().int().optional(),
   ),
 });
@@ -712,14 +712,14 @@ function validateLineColumn(data, ctx) {
   if (!Number.isInteger(lineNum) || lineNum < 1 || lineNum > 1000000) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "line must be a positive integer",
+      message: 'line must be a positive integer',
     });
   }
   const colNum = Number(data.column);
   if (!Number.isInteger(colNum) || colNum < 1 || colNum > 1000000) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "column must be a positive integer",
+      message: 'column must be a positive integer',
     });
   }
 }
@@ -727,20 +727,20 @@ function validateLineColumn(data, ctx) {
 const codeAutocompleteSchema = z
   .object({
     code: z
-      .string({ required_error: "code, line, and column are required" })
-      .refine((val) => val.length <= 100000, { message: "code exceeds 100000 characters" }),
-    line: z.any({ required_error: "code, line, and column are required" }),
-    column: z.any({ required_error: "code, line, and column are required" }),
+      .string({ required_error: 'code, line, and column are required' })
+      .refine((val) => val.length <= 100000, { message: 'code exceeds 100000 characters' }),
+    line: z.any({ required_error: 'code, line, and column are required' }),
+    column: z.any({ required_error: 'code, line, and column are required' }),
     fileName: z.string().optional(),
     language: z.string().optional(),
     model: z.string().optional(),
-    webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
+    webSearch: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
     numOfSite: z.preprocess(
-      (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
+      (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
       z.number().int().optional(),
     ),
     maxWord: z.preprocess(
-      (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
+      (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
       z.number().int().optional(),
     ),
   })
@@ -749,24 +749,24 @@ const codeAutocompleteSchema = z
 const codeInlineChatSchema = z
   .object({
     prompt: z
-      .string({ required_error: "prompt, code, line, and column are required" })
-      .refine((val) => val.trim().length > 0, { message: "prompt, code, line, and column are required" })
-      .refine((val) => val.length <= 50000, { message: "prompt exceeds 50000 characters" }),
+      .string({ required_error: 'prompt, code, line, and column are required' })
+      .refine((val) => val.trim().length > 0, { message: 'prompt, code, line, and column are required' })
+      .refine((val) => val.length <= 50000, { message: 'prompt exceeds 50000 characters' }),
     code: z
-      .string({ required_error: "prompt, code, line, and column are required" })
-      .refine((val) => val.length <= 100000, { message: "code exceeds 100000 characters" }),
-    line: z.any({ required_error: "prompt, code, line, and column are required" }),
-    column: z.any({ required_error: "prompt, code, line, and column are required" }),
+      .string({ required_error: 'prompt, code, line, and column are required' })
+      .refine((val) => val.length <= 100000, { message: 'code exceeds 100000 characters' }),
+    line: z.any({ required_error: 'prompt, code, line, and column are required' }),
+    column: z.any({ required_error: 'prompt, code, line, and column are required' }),
     fileName: z.string().optional(),
     language: z.string().optional(),
     model: z.string().optional(),
-    webSearch: z.preprocess((val) => val === "true" || val === true, z.boolean().default(false)),
+    webSearch: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
     numOfSite: z.preprocess(
-      (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
+      (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
       z.number().int().optional(),
     ),
     maxWord: z.preprocess(
-      (val) => (val !== undefined && val !== "" ? Number(val) : undefined),
+      (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
       z.number().int().optional(),
     ),
   })
@@ -778,13 +778,13 @@ function buildCodeContext(code, line, column, contextLines = 100) {
   const colIndex = column - 1;
 
   const linesBefore = lines.slice(0, lineIndex);
-  const currentLine = lines[lineIndex] || "";
+  const currentLine = lines[lineIndex] || '';
   const beforeCurrent = currentLine.substring(0, colIndex);
   const afterCurrent = currentLine.substring(colIndex);
   const linesAfter = lines.slice(lineIndex + 1);
 
-  const beforeCode = [...linesBefore.slice(-contextLines), beforeCurrent].join("\n");
-  const afterCode = [afterCurrent, ...linesAfter.slice(0, contextLines)].join("\n");
+  const beforeCode = [...linesBefore.slice(-contextLines), beforeCurrent].join('\n');
+  const afterCode = [afterCurrent, ...linesAfter.slice(0, contextLines)].join('\n');
 
   return { beforeCode, afterCode };
 }
@@ -795,25 +795,25 @@ function buildCodeContext(code, line, column, contextLines = 100) {
  * and truncates to prevent prompt injection via crafted fileName or language fields.
  */
 function sanitizeForPrompt(value, maxLen = 256) {
-  if (typeof value !== "string") return "";
+  if (typeof value !== 'string') return '';
   return value
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "") // strip control chars, keep HT(\x09) LF(\x0a) CR(\x0d)
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '') // strip control chars, keep HT(\x09) LF(\x0a) CR(\x0d)
     .replace(/`{3}/g, "'''") // neutralize markdown code fence markers
     .slice(0, maxLen)
     .trim();
 }
 
 function stripCodeFences(text) {
-  if (!text.includes("```")) return text;
+  if (!text.includes('```')) return text;
   const match = text.match(/```(?:\w+)?\n([\s\S]*?)```/);
-  return match ? match[1] : text.replace(/```/g, "");
+  return match ? match[1] : text.replace(/```/g, '');
 }
 
-router.post("/code/generate", async (req, res, next) => {
+router.post('/code/generate', async (req, res, next) => {
   try {
     const result = codeGenerateSchema.safeParse(req.body);
     if (!result.success) {
-      const errorMsg = result.error.issues[0]?.message || "Validation error";
+      const errorMsg = result.error.issues[0]?.message || 'Validation error';
       return res.status(400).json({ error: errorMsg });
     }
     const data = result.data;
@@ -832,8 +832,8 @@ router.post("/code/generate", async (req, res, next) => {
       parsedNumOfSite,
       parsedMaxWord,
     });
-    const dataRes = await callOneMin("/api/features", {
-      headers: { "Content-Type": "application/json" },
+    const dataRes = await callOneMin('/api/features', {
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       timeout: 600000,
     });
@@ -849,11 +849,11 @@ router.post("/code/generate", async (req, res, next) => {
   }
 });
 
-router.post("/code/autocomplete", async (req, res, next) => {
+router.post('/code/autocomplete', async (req, res, next) => {
   try {
     const result = codeAutocompleteSchema.safeParse(req.body);
     if (!result.success) {
-      const errorMsg = result.error.issues[0]?.message || "Validation error";
+      const errorMsg = result.error.issues[0]?.message || 'Validation error';
       return res.status(400).json({ error: errorMsg });
     }
     const data = result.data;
@@ -873,8 +873,8 @@ router.post("/code/autocomplete", async (req, res, next) => {
 また、提案コードは「カーソルより前のコード」の直後からシームレスに繋がるようにしてください（すでに書かれているコードを重複して出力しないでください）。
 
 コンテキスト:
-ファイル名: ${sanitizeForPrompt(data.fileName || "untitled")}
-言語: ${sanitizeForPrompt(data.language || "plaintext")}
+ファイル名: ${sanitizeForPrompt(data.fileName || 'untitled')}
+言語: ${sanitizeForPrompt(data.language || 'plaintext')}
 
 カーソルより前のコード:
 ${beforeCode}
@@ -892,8 +892,8 @@ ${afterCode}
       parsedMaxWord,
     });
 
-    const dataRes = await callOneMin("/api/features", {
-      headers: { "Content-Type": "application/json" },
+    const dataRes = await callOneMin('/api/features', {
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     if (isFailedResponse(dataRes)) {
@@ -912,11 +912,11 @@ ${afterCode}
   }
 });
 
-router.post("/code/inline-chat", async (req, res, next) => {
+router.post('/code/inline-chat', async (req, res, next) => {
   try {
     const result = codeInlineChatSchema.safeParse(req.body);
     if (!result.success) {
-      const errorMsg = result.error.issues[0]?.message || "Validation error";
+      const errorMsg = result.error.issues[0]?.message || 'Validation error';
       return res.status(400).json({ error: errorMsg });
     }
     const data = result.data;
@@ -935,8 +935,8 @@ router.post("/code/inline-chat", async (req, res, next) => {
 必ず提案するコード「のみ」を出力し、説明やマークダウンのコードブロック記号(\`\`\`)は一切含めないでください。
 
 コンテキスト:
-ファイル名: ${sanitizeForPrompt(data.fileName || "untitled")}
-言語: ${sanitizeForPrompt(data.language || "plaintext")}
+ファイル名: ${sanitizeForPrompt(data.fileName || 'untitled')}
+言語: ${sanitizeForPrompt(data.language || 'plaintext')}
 ユーザー指示: ${data.prompt}
 
 カーソルより前のコード:
@@ -955,8 +955,8 @@ ${afterCode}
       parsedMaxWord,
     });
 
-    const dataRes = await callOneMin("/api/features", {
-      headers: { "Content-Type": "application/json" },
+    const dataRes = await callOneMin('/api/features', {
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     if (isFailedResponse(dataRes)) {

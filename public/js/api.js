@@ -1,6 +1,6 @@
-const statusEl = document.getElementById("status");
+const statusEl = document.getElementById('status');
 
-function setStatus(text, cls = "") {
+function setStatus(text, cls = '') {
   if (statusEl) {
     statusEl.textContent = text;
     statusEl.className = `status ${cls}`;
@@ -11,7 +11,7 @@ let _activeRequests = 0;
 
 async function api(path, options = {}) {
   _activeRequests++;
-  setStatus("通信中...", "warn");
+  setStatus('通信中...', 'warn');
 
   const { timeout = 60_000, signal, ...fetchOptions } = options;
   const controller = new AbortController();
@@ -19,10 +19,10 @@ async function api(path, options = {}) {
 
   if (signal) {
     if (signal.aborted) controller.abort();
-    else signal.addEventListener("abort", () => controller.abort(), { once: true });
+    else signal.addEventListener('abort', () => controller.abort(), { once: true });
   }
 
-  let outcome = "ok";
+  let outcome = 'ok';
   try {
     const headers = options.headers || {};
 
@@ -36,14 +36,14 @@ async function api(path, options = {}) {
 
     const data = await parseJsonOrTextResponse(res);
     if (!res.ok) {
-      outcome = "err";
+      outcome = 'err';
       throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
     }
 
     return data;
   } catch (e) {
     clearTimeout(timeoutId);
-    outcome = "err";
+    outcome = 'err';
     throw e;
   } finally {
     // L-6: Always decrement the in-flight counter and reflect terminal
@@ -51,7 +51,7 @@ async function api(path, options = {}) {
     // avoids the prior bug where the streaming branch forgot to clear it.
     _activeRequests = Math.max(0, _activeRequests - 1);
     if (_activeRequests === 0) {
-      setStatus(outcome === "err" ? "エラー" : "完了", outcome === "err" ? "err" : "ok");
+      setStatus(outcome === 'err' ? 'エラー' : '完了', outcome === 'err' ? 'err' : 'ok');
     }
   }
 }
@@ -60,11 +60,11 @@ async function parseJsonOrTextResponse(res) {
   const text = await res.text();
   if (!text) return {};
 
-  const contentType = res.headers.get("content-type") || "";
+  const contentType = res.headers.get('content-type') || '';
   if (
-    !contentType.includes("application/json") &&
-    !text.trim().startsWith("{") &&
-    !text.trim().startsWith("[")
+    !contentType.includes('application/json') &&
+    !text.trim().startsWith('{') &&
+    !text.trim().startsWith('[')
   ) {
     return { message: text };
   }
@@ -77,7 +77,7 @@ async function parseJsonOrTextResponse(res) {
 }
 
 function assetUrl(path) {
-  if (!path) return "";
+  if (!path) return '';
   // クエリパラメータに BFF トークンを載せないようにし、Cookie 認証のみにする
   if (/^https?:\/\//.test(path)) {
     return `/api/assets/proxy?url=${encodeURIComponent(path)}`;
@@ -102,11 +102,11 @@ function extractImages(data) {
   let raw = null;
   for (const c of candidates) {
     if (c == null) continue;
-    if (typeof c === "string" || Array.isArray(c)) {
+    if (typeof c === 'string' || Array.isArray(c)) {
       raw = c;
       break;
     }
-    if (c && typeof c === "object") {
+    if (c && typeof c === 'object') {
       if (Array.isArray(c.images)) {
         raw = c.images;
         break;
@@ -127,8 +127,8 @@ function extractImages(data) {
 
   return arr
     .map((x) => {
-      if (typeof x === "string") return x;
-      if (x && typeof x === "object") {
+      if (typeof x === 'string') return x;
+      if (x && typeof x === 'object') {
         return x.url || x.path || x.key || x.location || null;
       }
       return null;
