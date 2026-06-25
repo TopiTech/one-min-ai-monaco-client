@@ -16,29 +16,29 @@ const src = join(projectRoot, "node_modules", "monaco-editor", "min", "vs");
 const dest = join(projectRoot, "public", "vs");
 
 if (!existsSync(src)) {
-    console.error("Monaco Editor source not found at:", src);
-    process.exit(1);
+  console.error("Monaco Editor source not found at:", src);
+  process.exit(1);
 }
 
 function dirExists(dirPath) {
-    try {
-        return statSync(dirPath).isDirectory();
-    } catch {
-        return false;
-    }
+  try {
+    return statSync(dirPath).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 // Check if dest already has content (skip redundant copy)
 if (dirExists(dest)) {
-    try {
-        const entries = readdirSync(dest);
-        if (entries.length > 0) {
-            console.log(`Monaco Editor assets already present at ${dest}, skipping copy.`);
-            process.exit(0);
-        }
-    } catch {
-        // Fall through to copy
+  try {
+    const entries = readdirSync(dest);
+    if (entries.length > 0) {
+      console.log(`Monaco Editor assets already present at ${dest}, skipping copy.`);
+      process.exit(0);
     }
+  } catch {
+    // Fall through to copy
+  }
 }
 
 // Copy the entire vs/ directory

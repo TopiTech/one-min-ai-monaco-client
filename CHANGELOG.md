@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+
 - `/api/health` no longer exposes internal 1min.ai error messages
   (`models.error` → boolean `syncFailed`).
 - Image extraction falls back to `aiRecord.output` to support newer
@@ -24,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   redundant copy when `public/vs/` already matches `node_modules`.
 
 ### Added
+
 - `LICENSE` (MIT) and `SECURITY.md` for public distribution.
 - `.github/` issue and pull request templates and Dependabot config.
 - `monaco-editor` added to Dependabot monitoring.
@@ -37,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2026-06-17
 
 ### Added
+
 - BFF Express server that proxies the 1min.ai API without leaking the
   key to the browser.
 - Normal chat (`/api/chat`, `/api/chat/stream` with SSE) and conversation
@@ -59,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   session store.
 
 ### Security
+
 - `command-runner` with allowlist + dangerous-pattern blocking + shell
   metacharacter blocking.
 - MIME-type guard against binary spoofing as text.

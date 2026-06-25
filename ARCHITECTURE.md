@@ -104,9 +104,11 @@
 ## Key Design Decisions
 
 ### 1. BFF (Backend-for-Frontend) Pattern
+
 The Express server acts as a BFF, keeping the 1min.ai API key on the server side. The browser never has direct access to the API key.
 
 ### 2. Security-First Architecture
+
 - **localBffAuth**: Cookie + header double-submit pattern for CSRF protection
 - **fs-guard**: Path traversal protection, symlink resolution, protected paths
 - **CSP**: Strict policy with per-request nonces
@@ -114,21 +116,26 @@ The Express server acts as a BFF, keeping the 1min.ai API key on the server side
 - **Host validation**: DNS rebinding protection
 
 ### 3. Monaco Editor Integration
+
 The editor runs entirely in the browser. The BFF proxies all code-related API calls (`/api/code/*`). The editor is loaded via CDN by default, with an option for local copy.
 
 ### 4. Agent System
+
 The AI coding agent maintains server-side sessions with:
+
 - History management (trimming, persistence)
 - Command execution with approval flow
 - Pending command TTL (5 min)
 - SEARCH/REPLACE diff application
 
 ### 5. Rate Limiting
+
 All API endpoints are rate-limited per 1min.ai's official limits (180 req/min default). Autocomplete endpoints share the same limit to prevent upstream rejection.
 
 ## Data Flow
 
 ### Chat
+
 ```
 User Input → chat.js → api("/api/chat") → server.js → ai.js → api-client.js → 1min.ai API
                                                                                      │
@@ -136,6 +143,7 @@ User ← chat.js (SSE) ← server.js (streaming) ← ai.js ← api-client.js ←
 ```
 
 ### File Operations
+
 ```
 Editor Tab → app.js → api("/api/fs/*") → server.js → fs.js → fs-guard.js (validation)
                                                                       │
@@ -143,6 +151,7 @@ Editor Tab ← app.js ← server.js ← fs.js ←──────────�
 ```
 
 ### Agent Session
+
 ```
 Agent UI → app.js → api("/api/agent/*") → server.js → agent.js → api-client.js → 1min.ai
                                                                       │

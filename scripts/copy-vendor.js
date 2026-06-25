@@ -59,4 +59,3 @@ if (copied > 0) {
 } else if (skipped === files.length) {
   console.log(`Vendor assets already present at ${vendorDir}, skipping copy.`);
 }
-

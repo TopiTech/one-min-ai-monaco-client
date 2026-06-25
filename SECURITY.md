@@ -12,6 +12,7 @@
 Please **do not** open a public GitHub issue for security vulnerabilities.
 
 Use GitHub's private vulnerability reporting:
+
 - Go to https://github.com/TopiTech/one-min-ai-monaco-client/security/advisories/new
 - Provide a clear description, reproduction steps, and impact assessment.
 
