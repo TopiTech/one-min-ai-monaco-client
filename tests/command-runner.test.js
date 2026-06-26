@@ -46,12 +46,17 @@ describe('command-runner', () => {
       expect(checkCommandSafety('python -c "print(1)"').safe).toBe(false);
     });
 
-    test('should allow quoted arguments without shell metacharacters', () => {
+    it('should allow quoted arguments without shell metacharacters', () => {
       const result = checkCommandSafety('echo "hello world"');
       expect(result.safe).toBe(true);
     });
 
-    test('should block format command', () => {
+    it('should allow valid commands with metacharacters safely enclosed in quotes', () => {
+      const result = checkCommandSafety('git commit -m "fix & update | refactor; done"');
+      expect(result.safe).toBe(true);
+    });
+
+    it('should block format command', () => {
       const result = checkCommandSafety('format C:');
       expect(result.safe).toBe(false);
     });

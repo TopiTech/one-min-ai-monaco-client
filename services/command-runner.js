@@ -322,7 +322,10 @@ export function checkCommandSafety(command) {
 
   // B-3: Block shell metacharacters before allowlist check.
   // Developers do not need ; | && || ` $() > < in legitimate build/lint commands.
-  if (SHELL_INJECTION_PATTERN.test(trimmed)) {
+  // To avoid false positives on valid arguments (e.g. git commit -m "fix & update"),
+  // we strip the contents inside quotes before testing.
+  const unquoted = trimmed.replace(/"[^"]*"/g, '""').replace(/'[^']*'/g, "''");
+  if (SHELL_INJECTION_PATTERN.test(unquoted)) {
     return { safe: false, reason: 'Command contains shell metacharacters that could enable injection' };
   }
 

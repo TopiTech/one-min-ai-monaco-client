@@ -13,6 +13,7 @@ export function createEditorState() {
     openTabs: [],
     isInlineChatOpen: false,
     inlineChatDom: null,
+    originalVersions: {},
   };
 }
 
@@ -184,6 +185,27 @@ export function createEditorManager(state) {
     _instance?.layout();
   }
 
+  function markClean(filePath) {
+    const fileUri = monaco.Uri.file(filePath);
+    const model = monaco.editor.getModel(fileUri);
+    if (model) {
+      state.originalVersions[filePath] = model.getAlternativeVersionId();
+    }
+  }
+
+  function isDirty(filePath) {
+    const fileUri = monaco.Uri.file(filePath);
+    const model = monaco.editor.getModel(fileUri);
+    if (!model) return false;
+    const currentVersion = model.getAlternativeVersionId();
+    const originalVersion = state.originalVersions[filePath];
+    return originalVersion !== undefined && currentVersion !== originalVersion;
+  }
+
+  function isAnyDirty() {
+    return state.openTabs.some((filePath) => isDirty(filePath));
+  }
+
   return {
     init,
     dispose,
@@ -195,6 +217,9 @@ export function createEditorManager(state) {
     getLanguageId,
     focus,
     layout,
+    markClean,
+    isDirty,
+    isAnyDirty,
     get instance() {
       return _instance;
     },

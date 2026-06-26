@@ -236,18 +236,38 @@ export function isFailedResponse(data) {
   return String(status).toUpperCase() !== 'SUCCESS' && String(status).toUpperCase() !== 'COMPLETED';
 }
 
+function translateErrorMessage(msg) {
+  if (typeof msg !== 'string') return msg;
+  const lowerMsg = msg.toLowerCase();
+  if (lowerMsg.includes('invalid_api_key') || lowerMsg.includes('invalid api key')) {
+    return 'APIキーが無効です。設定を確認してください。';
+  }
+  if (
+    lowerMsg.includes('insufficient_quota') ||
+    lowerMsg.includes('quota exceeded') ||
+    lowerMsg.includes('billing')
+  ) {
+    return 'クレジット残高またはAPIの利用可能枠が不足しています。';
+  }
+  if (lowerMsg.includes('model not found') || lowerMsg.includes('invalid_model')) {
+    return '指定されたモデルが存在しません。';
+  }
+  return msg;
+}
+
 export function extractFailureMessage(data) {
   if (!data || typeof data !== 'object') return 'Upstream returned a failure status';
   // M-14: Do NOT fall back to data.message — 1min.ai uses that field for
   // generic lifecycle messages like "Stream completed" even on success,
   // which would otherwise be surfaced as a misleading failure reason.
-  return (
+  const rawMsg =
     data?.aiRecord?.aiRecordDetail?.errorMessage ||
     data?.aiRecord?.errorMessage ||
     data?.error?.message ||
     data?.error ||
-    'Upstream returned a failure status'
-  );
+    'Upstream returned a failure status';
+
+  return translateErrorMessage(rawMsg);
 }
 
 /**

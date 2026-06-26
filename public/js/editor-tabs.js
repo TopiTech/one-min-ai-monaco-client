@@ -100,12 +100,14 @@ export function createEditorTabManager(editorState, editorManager, dom) {
     const tabIndex = editorState.openTabs.indexOf(filePath);
     if (tabIndex === -1) return;
 
-    const accepted = await toast.confirm(t('tab_close_confirm'), {
-      confirmText: t('btn_close'),
-      cancelText: t('btn_cancel'),
-      type: 'warning',
-    });
-    if (!accepted) return;
+    if (editorManager.isDirty(filePath)) {
+      const accepted = await toast.confirm(t('tab_close_confirm'), {
+        confirmText: t('btn_close'),
+        cancelText: t('btn_cancel'),
+        type: 'warning',
+      });
+      if (!accepted) return;
+    }
 
     closeTabInternal(filePath);
   }
@@ -160,6 +162,7 @@ export function createEditorTabManager(editorState, editorManager, dom) {
 
         const model = editorManager.getOrCreateModel(filePath, data.content);
         editorManager.instance.setModel(model);
+        editorManager.markClean(filePath);
 
         if (!editorState.openTabs.includes(filePath)) {
           editorState.openTabs.push(filePath);
@@ -193,6 +196,7 @@ export function createEditorTabManager(editorState, editorManager, dom) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: editorState.activeFilePath, content }),
       });
+      editorManager.markClean(editorState.activeFilePath);
       if (setStatus) setStatus(t('save_complete'), 'ok');
       toast.success(t('file_saved'));
       if (_saveStatusTimer) clearTimeout(_saveStatusTimer);
