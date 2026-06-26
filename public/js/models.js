@@ -1,6 +1,7 @@
 import { injectStyle } from './dom-style.js';
 import { api } from './api.js';
 import { t } from './i18n.js';
+import { toast } from './toast.js';
 
 let _allChatModels = [];
 let _allCodeModels = [];
@@ -87,9 +88,7 @@ export async function loadModels() {
     _allChatModels = FALLBACK_CHAT_MODELS;
     _allCodeModels = FALLBACK_CODE_MODELS;
     _allImageModels = FALLBACK_IMAGE_MODELS;
-    if (typeof toast !== 'undefined') {
-      toast.warning(t('model_fetch_warning'));
-    }
+    toast.warning(t('model_fetch_warning'));
   }
 }
 

@@ -10,7 +10,7 @@ import crypto from 'crypto';
 import { callOneMin, normalizeAssetResponse } from './utils/api-client.js';
 import { serverConfig } from './config/server.js';
 import logger, { initLogger, sanitizeUrlForLogging } from './utils/logger.js';
-import { validateBufferMimeType } from './utils/mime-guard.js';
+import { validateBufferMimeType, getExtensionFromMimeType } from './utils/mime-guard.js';
 import fs from 'fs';
 import fsp from 'fs/promises';
 import { Readable } from 'stream';
@@ -375,10 +375,17 @@ async function handleAssetUpload(req, res, next) {
       mimetype: req.file.mimetype,
     });
 
-    const safeName = path
-      .basename(req.file.originalname || 'upload.bin')
+    let safeName = path
+      .basename(req.file.originalname || '')
       .replace(/[^a-zA-Z0-9._-]/g, '_')
       .substring(0, 255);
+
+    const ext = path.extname(safeName);
+    if (!safeName || !ext) {
+      const fallbackExt = getExtensionFromMimeType(req.file.mimetype);
+      const base = safeName || 'upload';
+      safeName = base + fallbackExt;
+    }
 
     // A-1: Stream the file directly from disk into FormData using openAsBlob
     // if available (Node 19.8+). This prevents OOM spikes when uploading
@@ -612,6 +619,7 @@ export function createApp(options = {}) {
   // Serve index.html (before express.json() since this is a GET)
   app.get(['/', '/index.html'], (req, res) => {
     try {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       let html = loadCachedHtml();
 
       const nonce = res.locals.nonce;
@@ -627,6 +635,7 @@ export function createApp(options = {}) {
 
       // Set the token as HttpOnly cookie (CSRF mitigation).
       // We no longer inject data-bff-token into the DOM to prevent exposure.
+      // Restrict scope to /api using path parameter.
       if (requireLocalAuth) {
         const ONE_DAY_MS = 24 * 60 * 60 * 1000;
         res.cookie('__bff_session', localAuthToken, {
@@ -634,6 +643,7 @@ export function createApp(options = {}) {
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'Strict',
           maxAge: ONE_DAY_MS,
+          path: '/api',
         });
       }
 

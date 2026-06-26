@@ -336,7 +336,7 @@ function toastConfirm(message, options = {}) {
 }
 
 // Export for use in other modules
-window.toast = {
+export const toast = {
   show: showToast,
   success: toastSuccess,
   error: toastError,
@@ -344,3 +344,4 @@ window.toast = {
   info: toastInfo,
   confirm: toastConfirm,
 };
+window.toast = toast;

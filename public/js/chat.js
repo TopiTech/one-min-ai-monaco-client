@@ -7,6 +7,7 @@ import { api, assetUrl } from './api.js';
 import { renderMarkdownSafely } from './utils.js';
 import { t } from './i18n.js';
 import { extractTextFromOneMinResponse } from './one-min-response.js';
+import { toast } from './toast.js';
 
 const MAX_MESSAGES = 200;
 const MAX_STREAM_MS = 5 * 60 * 1000;
@@ -235,7 +236,7 @@ export function createChatManager(dom, state) {
         } catch (err) {
           att.uploading = false;
           results[index] = { status: 'rejected', reason: err };
-          window.toast?.error(
+          toast.error(
             t('chat_upload_failed', { name: att.file.name, error: err.message || t('chat_unknown_error') }),
           );
         }
@@ -499,7 +500,7 @@ export function createChatManager(dom, state) {
         const message = e?.message || t('chat_unknown_error');
         console.error('Chat Stream Error:', e);
         aiContentDiv.textContent = `${t('status_error')}: ${message}`;
-        window.toast?.error(t('chat_error', { error: message }));
+        toast.error(t('chat_error', { error: message }));
         setStatus(t('status_error'), 'err');
         if (dom.chatLog) {
           dom.chatLog.setAttribute('aria-live', 'assertive');

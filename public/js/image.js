@@ -6,6 +6,7 @@ import { api, assetUrl, extractImages } from './api.js';
 import { injectStyle } from './dom-style.js';
 import { getAllImageModels } from './models.js';
 import { t } from './i18n.js';
+import { toast } from './toast.js';
 
 const MAX_CARDS = 50;
 
@@ -168,9 +169,7 @@ export function createImageManager(dom) {
     const model = dom.imageModel.value;
 
     if (!prompt) {
-      if (typeof toast !== 'undefined') {
-        toast.warning(t('img_enter_prompt'));
-      }
+      toast.warning(t('img_enter_prompt'));
       return;
     }
 
@@ -194,9 +193,7 @@ export function createImageManager(dom) {
             output_compression: document.getElementById('editorOutputCompression').value || undefined,
           }),
         });
-        if (typeof toast !== 'undefined') {
-          toast.success(t('img_edited'));
-        }
+        toast.success(t('img_edited'));
         dom.assetResult.textContent = JSON.stringify(data, null, 2);
         renderImages(data, imageUrl);
       } else {
@@ -210,16 +207,12 @@ export function createImageManager(dom) {
             aspect_ratio: document.getElementById('aspectRatio').value,
           }),
         });
-        if (typeof toast !== 'undefined') {
-          toast.success(t('img_generated_toast'));
-        }
+        toast.success(t('img_generated_toast'));
         dom.assetResult.textContent = JSON.stringify(data, null, 2);
         renderImages(data);
       }
     } catch (e) {
-      if (typeof toast !== 'undefined') {
-        toast.error(t('img_process_failed', { error: e.message }));
-      }
+      toast.error(t('img_process_failed', { error: e.message }));
     }
   }
 
@@ -243,13 +236,9 @@ export function createImageManager(dom) {
         dom.editorImageUrl.value = url || key;
         updateEditorImagePreview(url || key);
       }
-      if (typeof toast !== 'undefined') {
-        toast.success(t('img_upload_complete'));
-      }
+      toast.success(t('img_upload_complete'));
     } catch (e) {
-      if (typeof toast !== 'undefined') {
-        toast.error(t('img_upload_failed', { error: e.message }));
-      }
+      toast.error(t('img_upload_failed', { error: e.message }));
     } finally {
       if (generateBtn) generateBtn.disabled = false;
       if (assetInput) assetInput.disabled = false;

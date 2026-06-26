@@ -4066,6 +4066,7 @@ select:focus-visible {
 }
 
 .diff-editor-container {
+  position: relative;
   flex: 1;
   min-height: 400px;
   border: 1px solid var(--glass-border);

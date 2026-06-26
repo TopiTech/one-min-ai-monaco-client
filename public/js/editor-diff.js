@@ -1,3 +1,5 @@
+import { toast } from './toast.js';
+
 function nextFrame() {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
@@ -29,7 +31,7 @@ async function ensureDiffLayout(container, diffEditor) {
   diffEditor.layout();
 }
 
-export function createDiffDialog({ t, getToast, getThemeName }) {
+export function createDiffDialog({ t, getThemeName }) {
   let diffEditor = null;
   let resizeObserver = null;
 
@@ -72,7 +74,7 @@ export function createDiffDialog({ t, getToast, getThemeName }) {
       if (!diffEditor) {
         diffEditor = monaco.editor.createDiffEditor(container, {
           theme: getThemeName(),
-          automaticLayout: false,
+          automaticLayout: true,
           readOnly: true,
           renderSideBySide: !isInline,
           scrollBeyondLastLine: false,
@@ -156,7 +158,7 @@ export function createDiffDialog({ t, getToast, getThemeName }) {
       });
     } catch (error) {
       console.error('showDiffDialog error:', error);
-      getToast()?.error(`${t('diff_error')}${error.message}`);
+      toast.error(`${t('diff_error')}${error.message}`);
       document.getElementById('diffModal')?.classList.add('u-hidden');
       document.getElementById('diffModal')?.classList.add('is-hidden');
       return false;

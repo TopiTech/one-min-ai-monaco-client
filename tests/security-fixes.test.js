@@ -44,7 +44,7 @@ const { callOneMin } = await import('../utils/api-client.js');
 const { createApp } = await import('../server.js');
 const { checkCommandSafety } = await import('../services/command-runner.js');
 const { isFailedResponse, extractFailureMessage } = await import('../utils/api-client.js');
-const { validateBufferMimeType } = await import('../utils/mime-guard.js');
+const { validateBufferMimeType, getExtensionFromMimeType } = await import('../utils/mime-guard.js');
 const { revalidateRealPath } = await import('../utils/fs-guard.js');
 
 describe('Security fixes regression', () => {
@@ -419,6 +419,34 @@ describe('Security fixes regression', () => {
 
       expect(res.status).toBe(403);
       expect(res.body.error).toContain('Access denied: Path is outside the allowed directories');
+    });
+  });
+
+  describe('HTML Route Security (Cache-Control & Cookie Path)', () => {
+    test('serves HTML root with Cache-Control no-store and path=/api for session cookie', async () => {
+      const app = createApp({ requireLocalAuth: true, authToken: 'secret-token', enableRateLimit: false });
+      const res = await request(app).get('/');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['cache-control']).toBe('no-store, no-cache, must-revalidate');
+
+      const cookies = res.headers['set-cookie'] || [];
+      const sessionCookie = cookies.find((c) => c.startsWith('__bff_session='));
+      expect(sessionCookie).toBeDefined();
+      expect(sessionCookie.toLowerCase()).toContain('path=/api');
+    });
+  });
+
+  describe('mime-guard getExtensionFromMimeType helper', () => {
+    test('correctly maps standard mime types to extensions', () => {
+      expect(getExtensionFromMimeType('image/png')).toBe('.png');
+      expect(getExtensionFromMimeType('image/jpeg')).toBe('.jpg');
+      expect(getExtensionFromMimeType('application/pdf')).toBe('.pdf');
+      expect(getExtensionFromMimeType('application/json')).toBe('.json');
+      expect(getExtensionFromMimeType('text/plain')).toBe('.txt');
+      expect(getExtensionFromMimeType('text/html')).toBe('.html');
+      expect(getExtensionFromMimeType('image/unknown')).toBe('.bin');
+      expect(getExtensionFromMimeType(null)).toBe('.bin');
     });
   });
 });

@@ -33,6 +33,7 @@ import { createEditorTabManager } from './js/editor-tabs.js';
 import { createDiffDialog } from './js/editor-diff.js';
 import { createAgentRuntime } from './js/agent-core.js';
 import { t, setLanguage } from './js/i18n.js';
+import { toast } from './js/toast.js';
 
 // Helper to get element by ID
 const $ = (id) => document.getElementById(id);
@@ -209,7 +210,6 @@ const getMonacoThemeName = () =>
 
 const diffDialog = createDiffDialog({
   t: translateUiKey,
-  getToast: () => window.toast,
   getThemeName: getMonacoThemeName,
 });
 

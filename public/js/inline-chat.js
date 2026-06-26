@@ -7,6 +7,7 @@
 
 import { api } from './api.js';
 import { t } from './i18n.js';
+import { toast } from './toast.js';
 
 const WIDGET_ID = 'inline.chat.widget';
 

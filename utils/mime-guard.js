@@ -148,3 +148,49 @@ export function detectBinaryContent(buffer) {
   const probe = buffer.subarray(0, Math.min(buffer.length, 8192));
   return probe.includes(0x00);
 }
+
+const MIME_TO_EXTENSION = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'image/x-icon': '.ico',
+  'image/vnd.microsoft.icon': '.ico',
+  'application/pdf': '.pdf',
+  'application/zip': '.zip',
+  'application/x-zip-compressed': '.zip',
+  'video/mp4': '.mp4',
+  'audio/mpeg': '.mp3',
+  'audio/mp3': '.mp3',
+  'audio/wav': '.wav',
+  'audio/x-wav': '.wav',
+  'application/json': '.json',
+  'application/xml': '.xml',
+  'text/html': '.html',
+  'text/plain': '.txt',
+  'text/css': '.css',
+  'text/javascript': '.js',
+  'application/javascript': '.js',
+  'text/markdown': '.md',
+};
+
+/**
+ * Maps standard MIME types to their typical file extensions.
+ * @param {string} declaredMimeType
+ * @returns {string} The matching extension starting with a dot, or '.bin' fallback.
+ */
+export function getExtensionFromMimeType(declaredMimeType) {
+  if (!declaredMimeType) return '.bin';
+  const mime = String(declaredMimeType).toLowerCase();
+  if (MIME_TO_EXTENSION[mime]) {
+    return MIME_TO_EXTENSION[mime];
+  }
+  if (mime.startsWith('text/')) {
+    const sub = mime.substring(5);
+    if (/^[a-z0-9-]+$/.test(sub)) {
+      return sub === 'plain' ? '.txt' : `.${sub}`;
+    }
+  }
+  return '.bin';
+}
