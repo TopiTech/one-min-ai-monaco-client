@@ -232,7 +232,8 @@ describe('createSvgIcon / appendStepIcon', () => {
     expect(container.appendChild).toHaveBeenCalled();
     // First call is the SVG, second is the text node.
     const textNode = container.appendChild.mock.calls[1][0];
-    expect(textNode.data.startsWith('思考: ')).toBe(true);
+    // i18n returns the key when translations aren't loaded in test environment
+    expect(textNode.data.endsWith(': ')).toBe(true);
   });
   test('SVG_NS is the SVG namespace', () => {
     expect(SVG_NS).toBe(fakeSvgNS);

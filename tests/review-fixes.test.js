@@ -151,6 +151,14 @@ describe('Review Fixes', () => {
       const logger = new Logger({});
       expect(logger.level).toBe(2); // info level
     });
+
+    test('should strip query strings from logged URLs', async () => {
+      const { sanitizeUrlForLogging } = await import('../utils/logger.js');
+      expect(sanitizeUrlForLogging('/api/fs/read?path=C%3A%5Csecret%5Cfile.txt')).toBe('/api/fs/read');
+      expect(sanitizeUrlForLogging('https://localhost/api/assets/proxy?url=https%3A%2F%2Fexample.com')).toBe(
+        '/api/assets/proxy',
+      );
+    });
   });
 
   describe('API client error handling', () => {

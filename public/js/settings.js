@@ -3,6 +3,8 @@
  * Handles localStorage persistence for user preferences
  */
 
+import { t } from './i18n.js';
+
 const STORAGE_KEYS = {
   WEB_SEARCH: 'monaco_client_code_web_search',
   NUM_OF_SITE: 'monaco_client_code_num_of_site',
@@ -131,14 +133,11 @@ function initClearLocalData() {
   if (!clearBtn) return;
 
   clearBtn.addEventListener('click', async () => {
-    const confirmed = await window.toast?.confirm?.(
-      'ブラウザに保存された会話IDや表示設定を削除します。現在の画面を再読み込みしますか？',
-      {
-        confirmText: '削除して再読み込み',
-        cancelText: 'キャンセル',
-        type: 'warning',
-      },
-    );
+    const confirmed = await window.toast?.confirm?.(t('confirm_clear_data'), {
+      confirmText: t('btn_delete_reload'),
+      cancelText: t('btn_cancel'),
+      type: 'warning',
+    });
 
     if (!confirmed) return;
 

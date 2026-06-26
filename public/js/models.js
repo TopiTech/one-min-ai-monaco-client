@@ -1,5 +1,6 @@
 import { injectStyle } from './dom-style.js';
 import { api } from './api.js';
+import { t } from './i18n.js';
 
 let _allChatModels = [];
 let _allCodeModels = [];
@@ -65,7 +66,8 @@ const FALLBACK_IMAGE_MODELS = [
 
 export async function loadModels() {
   try {
-    const data = await api('/api/models');
+    const [data, health] = await Promise.all([api('/api/models'), api('/api/health').catch(() => null)]);
+
     _allChatModels =
       Array.isArray(data.chatModels) && data.chatModels.length > 0 ? data.chatModels : FALLBACK_CHAT_MODELS;
     _allCodeModels =
@@ -74,13 +76,19 @@ export async function loadModels() {
       Array.isArray(data.imageModels) && data.imageModels.length > 0
         ? data.imageModels
         : FALLBACK_IMAGE_MODELS;
+
+    if (health?.models?.source === 'fallback') {
+      // Keep the fallback state visible only in the console so the UI does not
+      // repeat the same notice on every reload.
+      console.info(health.models.error || t('model_fetch_warning'));
+    }
   } catch (e) {
-    console.warn('モデルリストの取得に失敗。フォールバックを適用します:', e);
+    console.warn(t('model_fetch_failed'), e);
     _allChatModels = FALLBACK_CHAT_MODELS;
     _allCodeModels = FALLBACK_CODE_MODELS;
     _allImageModels = FALLBACK_IMAGE_MODELS;
     if (typeof toast !== 'undefined') {
-      toast.warning('モデルリストの取得に失敗しました。オフライン用フォールバックを適用します。');
+      toast.warning(t('model_fetch_warning'));
     }
   }
 }
@@ -166,7 +174,7 @@ function renderPickerList(models, search = '', tag = 'all') {
   if (!Object.keys(groups).length) {
     const emptyDiv = document.createElement('div');
     emptyDiv.className = 'model-picker-empty';
-    emptyDiv.textContent = '見つかりませんでした';
+    emptyDiv.textContent = t('model_not_found');
     list.appendChild(emptyDiv);
     return;
   }
@@ -201,11 +209,11 @@ function renderPickerList(models, search = '', tag = 'all') {
       let costBadge = null;
       if (m.tags) {
         if (m.tags.includes('reasoning')) {
-          costBadge = { text: '思考・多消費', class: 'cost-high-reasoning', icon: '🧠💰💰' };
+          costBadge = { text: t('cost_reasoning'), class: 'cost-high-reasoning', icon: '🧠💰💰' };
         } else if (m.tags.includes('flagship')) {
-          costBadge = { text: '高消費', class: 'cost-high', icon: '💰💰' };
+          costBadge = { text: t('cost_flagship'), class: 'cost-high', icon: '💰💰' };
         } else if (m.tags.includes('fast')) {
-          costBadge = { text: '省エネ', class: 'cost-low', icon: '⚡💰' };
+          costBadge = { text: t('cost_fast'), class: 'cost-low', icon: '⚡💰' };
         }
       }
 

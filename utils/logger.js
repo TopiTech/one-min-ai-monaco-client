@@ -35,6 +35,23 @@ function normalizeLogLevel(level) {
 }
 
 const DEFAULT_LOG_DIR = path.join(__dirname, '..', 'logs');
+const MAX_LOG_PATH_LENGTH = 240;
+
+function sanitizeUrlForLogging(urlLike) {
+  if (!urlLike) return '/';
+  const raw = String(urlLike);
+  let pathOnly = raw;
+  try {
+    pathOnly = new URL(raw, 'http://localhost').pathname || '/';
+  } catch {
+    const qIndex = raw.indexOf('?');
+    pathOnly = qIndex >= 0 ? raw.slice(0, qIndex) : raw;
+  }
+  if (pathOnly.length > MAX_LOG_PATH_LENGTH) {
+    return pathOnly.slice(0, MAX_LOG_PATH_LENGTH) + '...[truncated]';
+  }
+  return pathOnly;
+}
 
 class Logger {
   constructor(options = {}) {
@@ -157,7 +174,7 @@ class Logger {
 
       res.on('finish', () => {
         const duration = Date.now() - start;
-        this.info(`${req.method} ${req.originalUrl}`, {
+        this.info(`${req.method} ${sanitizeUrlForLogging(req.originalUrl)}`, {
           status: res.statusCode,
           duration: `${duration}ms`,
           ip: req.ip,
@@ -198,5 +215,5 @@ export function initLogger(config = {}) {
   return logger;
 }
 
-export { Logger, logger };
+export { Logger, logger, sanitizeUrlForLogging };
 export default logger;

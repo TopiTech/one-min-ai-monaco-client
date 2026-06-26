@@ -14,7 +14,7 @@
   </head>
 
   <body>
-    <a href="#chatPrompt" class="skip-link">メインコンテンツへスキップ</a>
+    <a href="#chatPrompt" class="skip-link" data-i18n="skip_to_content">メインコンテンツへスキップ</a>
     <!-- Floating background liquid blobs -->
     <div class="liquid-bg-container">
       <div class="liquid-blob blob-1"></div>
@@ -30,12 +30,14 @@
       role="dialog"
       aria-modal="false"
       aria-label="モデル選択"
+      data-i18n-aria="model_select"
     >
       <div class="model-picker-search-row">
         <input
           id="modelPickerSearch"
           type="text"
           placeholder="モデルを検索..."
+          data-i18n-placeholder="search_models"
           autocomplete="off"
           role="combobox"
           aria-autocomplete="list"
@@ -43,21 +45,61 @@
           aria-controls="modelPickerList"
         />
       </div>
-      <div id="modelPickerTabs" class="model-picker-tabs" role="tablist" aria-label="モデルカテゴリ">
-        <button type="button" class="picker-tab active" data-tag="all" role="tab" aria-selected="true">
+      <div
+        id="modelPickerTabs"
+        class="model-picker-tabs"
+        role="tablist"
+        aria-label="モデルカテゴリ"
+        data-i18n-aria="model_category"
+      >
+        <button
+          type="button"
+          class="picker-tab active"
+          data-tag="all"
+          role="tab"
+          aria-selected="true"
+          data-i18n="tab_all"
+        >
           すべて
         </button>
-        <button type="button" class="picker-tab" data-tag="flagship" role="tab" aria-selected="false">
+        <button
+          type="button"
+          class="picker-tab"
+          data-tag="flagship"
+          role="tab"
+          aria-selected="false"
+          data-i18n="tab_flagship"
+        >
           フラグシップ
         </button>
-        <button type="button" class="picker-tab" data-tag="reasoning" role="tab" aria-selected="false">
+        <button
+          type="button"
+          class="picker-tab"
+          data-tag="reasoning"
+          role="tab"
+          aria-selected="false"
+          data-i18n="tab_reasoning"
+        >
           思考・論理
         </button>
-        <button type="button" class="picker-tab" data-tag="fast" role="tab" aria-selected="false">
+        <button
+          type="button"
+          class="picker-tab"
+          data-tag="fast"
+          role="tab"
+          aria-selected="false"
+          data-i18n="tab_fast"
+        >
           高速・軽量
         </button>
       </div>
-      <div id="modelPickerList" class="model-picker-list" role="listbox" aria-label="利用可能なモデル"></div>
+      <div
+        id="modelPickerList"
+        class="model-picker-list"
+        role="listbox"
+        aria-label="利用可能なモデル"
+        data-i18n-aria="available_models"
+      ></div>
     </div>
 
     <div id="app">
@@ -77,11 +119,13 @@
           role="button"
           aria-label="通常チャット"
           title="通常チャット"
+          data-i18n-aria="nav_chat"
+          data-i18n-title="nav_chat"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
           </svg>
-          <span>通常チャット</span>
+          <span data-i18n="nav_chat">通常チャット</span>
         </button>
         <button
           type="button"
@@ -90,13 +134,15 @@
           role="button"
           aria-label="画像生成 / テキスト編集"
           title="画像生成 / テキスト編集"
+          data-i18n-aria="nav_image"
+          data-i18n-title="nav_image"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
             <circle cx="8.5" cy="8.5" r="1.5"></circle>
             <polyline points="21 15 16 10 5 21"></polyline>
           </svg>
-          <span>画像生成 / テキスト編集</span>
+          <span data-i18n="nav_image">画像生成 / テキスト編集</span>
         </button>
         <button
           type="button"
@@ -105,25 +151,38 @@
           role="button"
           aria-label="コーディング"
           title="コーディング"
+          data-i18n-aria="nav_coding"
+          data-i18n-title="nav_coding"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
             <polyline points="16 18 22 12 16 6"></polyline>
             <polyline points="8 6 2 12 8 18"></polyline>
           </svg>
-          <span>コーディング</span>
+          <span data-i18n="nav_coding">コーディング</span>
         </button>
 
-        <button type="button" class="nav" data-view="settings" role="button" aria-label="設定" title="設定">
+        <button
+          type="button"
+          class="nav"
+          data-view="settings"
+          role="button"
+          aria-label="設定"
+          title="設定"
+          data-i18n-aria="nav_settings"
+          data-i18n-title="nav_settings"
+        >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="12" cy="12" r="3"></circle>
             <path
               d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h.09a1.65 1.65 0 0 0-1.51 1z"
             ></path>
           </svg>
-          <span>設定</span>
+          <span data-i18n="nav_settings">設定</span>
         </button>
 
-        <div class="hint">APIキーはサーバー側の <code>.env</code> に保存します。</div>
+        <div class="hint" data-i18n-html="api_key_hint">
+          APIキーはサーバー側の <code>.env</code> に保存します。
+        </div>
 
         <button type="button" id="themeToggle" class="theme-toggle">
           <svg
@@ -155,20 +214,22 @@
             <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
             <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
           </svg>
-          <span id="themeLabel">ダークモード</span>
+          <span id="themeLabel" data-i18n="theme_dark">ダークモード</span>
         </button>
 
         <div class="credit-save-box">
           <label class="check check--boxed">
             <input type="checkbox" id="creditSavingToggle" />
-            <span class="credit-save-label">クレジット節約モード</span>
+            <span class="credit-save-label" data-i18n="credit_save_mode">クレジット節約モード</span>
           </label>
         </div>
 
         <div class="perf-mode-box">
           <label class="check check--boxed">
             <input type="checkbox" id="perfModeToggle" />
-            <span class="perf-mode-label">パフォーマンスモード (アニメーションOFF)</span>
+            <span class="perf-mode-label" data-i18n="perf_mode"
+              >パフォーマンスモード (アニメーションOFF)</span
+            >
           </label>
         </div>
 
@@ -177,6 +238,7 @@
           role="separator"
           aria-orientation="vertical"
           aria-label="サイドバー幅を調整"
+          data-i18n-aria="sidebar_resize"
           aria-valuemin="200"
           aria-valuemax="320"
           aria-valuenow="280"
@@ -187,10 +249,10 @@
       <main class="main">
         <header class="topbar">
           <div>
-            <strong id="viewTitle">通常チャット</strong>
-            <span id="status" class="status" aria-live="polite">準備完了</span>
+            <strong id="viewTitle" data-i18n="nav_chat">通常チャット</strong>
+            <span id="status" class="status" aria-live="polite" data-i18n="status_ready">準備完了</span>
           </div>
-          <button type="button" id="healthBtn" class="ghost">ヘルスチェック</button>
+          <button type="button" id="healthBtn" class="ghost" data-i18n="health_check">ヘルスチェック</button>
         </header>
 
         <section id="chat" class="view active">
@@ -203,6 +265,7 @@
                 role="log"
                 aria-live="polite"
                 aria-label="チャットメッセージ"
+                data-i18n-aria="chat_messages"
               ></div>
 
               <!-- Image attachments area -->
@@ -217,11 +280,19 @@
                   rows="5"
                   aria-label="チャットメッセージ入力"
                   maxlength="50000"
+                  data-i18n-placeholder="chat_placeholder"
+                  data-i18n-aria="chat_input_label"
                 ></textarea>
                 <div class="char-counter" id="chatCharCounter" aria-live="polite"></div>
               </div>
               <div class="chat-input-row">
-                <button type="button" id="attachImageBtn" class="ghost small" title="ファイルを添付">
+                <button
+                  type="button"
+                  id="attachImageBtn"
+                  class="ghost small"
+                  title="ファイルを添付"
+                  data-i18n-title="attach_file"
+                >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="18"
@@ -284,7 +355,7 @@
                   </svg>
                 </button>
                 <input id="chatModel" value="gpt-4o-mini" type="hidden" />
-                <button type="button" id="sendChat" aria-label="メッセージを送信">
+                <button type="button" id="sendChat" aria-label="メッセージを送信" data-i18n-aria="btn_send">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="16"
@@ -299,9 +370,15 @@
                     <line x1="22" y1="2" x2="11" y2="13"></line>
                     <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                   </svg>
-                  送信
+                  <span data-i18n="btn_send">送信</span>
                 </button>
-                <button type="button" id="abortChat" class="ghost is-abort" title="生成を中止 (Escape)">
+                <button
+                  type="button"
+                  id="abortChat"
+                  class="ghost is-abort"
+                  title="生成を中止 (Escape)"
+                  data-i18n-title="abort_generation"
+                >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="16"
@@ -315,35 +392,50 @@
                   >
                     <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                   </svg>
-                  停止
+                  <span data-i18n="btn_stop">停止</span>
                 </button>
               </div>
             </div>
             <div class="card side">
-              <h2>Conversation</h2>
+              <h2 data-i18n="conversation">Conversation</h2>
               <div class="u-mb-12">
-                <label class="label-muted" for="conversationTitle">会話のタイトル</label>
+                <label class="label-muted" for="conversationTitle" data-i18n="conversation_title"
+                  >会話のタイトル</label
+                >
                 <input id="conversationTitle" value="My AI Conversation" />
               </div>
-              <button type="button" id="createConversation" class="btn-block-mb-18">会話を新規作成</button>
+              <button
+                type="button"
+                id="createConversation"
+                class="btn-block-mb-18"
+                data-i18n="create_conversation"
+              >
+                会話を新規作成
+              </button>
 
               <div class="u-mb-12">
-                <label class="label-muted" for="conversationId">conversationId (再開用)</label>
+                <label class="label-muted" for="conversationId" data-i18n="conversation_id_hint"
+                  >conversationId (再開用)</label
+                >
                 <input id="conversationId" placeholder="uuid (任意)" />
               </div>
 
               <label class="check">
                 <input type="checkbox" id="webSearch" />
-                <span>Web Search を有効化</span>
+                <span data-i18n="web_search_enable">Web Search を有効化</span>
               </label>
               <div id="chatWebSearchSettings" class="chat-web-search-settings">
                 <div class="row row--gap-8">
                   <div class="u-flex-1">
-                    <label for="chatNumOfSite" class="label-muted-sm"> サイト数 (1-10) </label>
+                    <label for="chatNumOfSite" class="label-muted-sm" data-i18n="num_sites_label">
+                      サイト数 (1-10)
+                    </label>
                     <input id="chatNumOfSite" type="number" min="1" max="10" value="3" class="input-sm" />
                   </div>
                   <div class="u-flex-1">
-                    <label for="chatMaxWord" class="label-muted-sm"> 最大単語数 </label>
+                    <label for="chatMaxWord" class="label-muted-sm" data-i18n="max_words_label">
+                      最大単語数
+                    </label>
                     <input
                       id="chatMaxWord"
                       type="number"
@@ -358,14 +450,16 @@
               </div>
               <label class="check">
                 <input type="checkbox" id="withMemories" />
-                <span>AI Memory を有効化</span>
+                <span data-i18n="ai_memory_enable">AI Memory を有効化</span>
               </label>
               <label class="check">
                 <input type="checkbox" id="isMixed" />
-                <span>モデル混在履歴を有効化</span>
+                <span data-i18n="mixed_model_enable">モデル混在履歴を有効化</span>
               </label>
               <div class="u-mt-12">
-                <label class="label-muted" for="brandVoiceId">Brand Voice ID (任意)</label>
+                <label class="label-muted" for="brandVoiceId" data-i18n="brand_voice_id"
+                  >Brand Voice ID (任意)</label
+                >
                 <input id="brandVoiceId" placeholder="ブランドボイスID" />
               </div>
             </div>
@@ -375,17 +469,21 @@
         <section id="image" class="view">
           <div class="panel two">
             <div class="card grow">
-              <h2>画像生成 / 編集</h2>
+              <h2 data-i18n="image_gen_title">画像生成 / 編集</h2>
 
               <textarea
                 id="imagePrompt"
                 rows="4"
                 placeholder="生成または編集のプロンプトを入力してください... (例: a minimal futuristic workspace, soft light または 背景を夕焼けに変えて、など)"
                 aria-label="画像生成プロンプト"
+                data-i18n-placeholder="image_prompt_placeholder"
+                data-i18n-aria="image_gen_prompt_label"
               ></textarea>
 
               <div class="image-input-source">
-                <h3 class="sub-h3">元画像 (画像編集を行う場合のみ指定してください)</h3>
+                <h3 class="sub-h3" data-i18n="source_image">
+                  元画像 (画像編集を行う場合のみ指定してください)
+                </h3>
                 <div class="row u-mb-10">
                   <input
                     id="assetInput"
@@ -393,17 +491,27 @@
                     accept="image/*,video/*,audio/*,application/pdf,text/*,application/json,application/xml,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     class="u-flex-2"
                   />
-                  <button type="button" id="uploadAsset" class="u-flex-1">アップロード</button>
+                  <button type="button" id="uploadAsset" class="u-flex-1" data-i18n="btn_upload">
+                    アップロード
+                  </button>
                 </div>
                 <div class="row image-preview-row">
                   <input
                     id="editorImageUrl"
                     placeholder="直接 asset key または画像 URL を入力..."
                     class="u-flex-1"
+                    data-i18n-placeholder="asset_key_placeholder"
                   />
-                  <button type="button" id="clearImageBtn" class="ghost small u-hidden">クリア</button>
+                  <button type="button" id="clearImageBtn" class="ghost small u-hidden" data-i18n="btn_clear">
+                    クリア
+                  </button>
                 </div>
-                <img id="editorImagePreview" class="image-preview" alt="元画像プレビュー" />
+                <img
+                  id="editorImagePreview"
+                  class="image-preview"
+                  alt="元画像プレビュー"
+                  data-i18n-aria="source_image_preview"
+                />
               </div>
 
               <div class="row u-mb-16">
@@ -452,10 +560,10 @@
               <div class="image-parameters-box">
                 <!-- Regular Text-to-Image settings -->
                 <div id="textToImageParams" class="param-group">
-                  <h4 class="sub-h4">テキストから生成用の設定</h4>
+                  <h4 class="sub-h4" data-i18n="text_to_image_settings">テキストから生成用の設定</h4>
                   <div class="row">
                     <div class="u-flex-1">
-                      <label class="label-muted-sm">アスペクト比</label>
+                      <label class="label-muted-sm" data-i18n="aspect_ratio">アスペクト比</label>
                       <select id="aspectRatio" class="u-w-full">
                         <option>1:1</option>
                         <option>16:9</option>
@@ -465,7 +573,7 @@
                       </select>
                     </div>
                     <div class="u-flex-1">
-                      <label class="label-muted-sm">生成枚数</label>
+                      <label class="label-muted-sm" data-i18n="num_outputs">生成枚数</label>
                       <input id="numOutputs" type="number" min="1" max="4" value="1" class="u-w-full" />
                     </div>
                   </div>
@@ -473,15 +581,15 @@
 
                 <!-- Image-to-Image (Edit) settings (shown dynamically) -->
                 <div id="imageToImageParams" class="param-group image-to-image-params">
-                  <h4 class="sub-h4">画像編集用の詳細設定</h4>
+                  <h4 class="sub-h4" data-i18n="image_edit_settings">画像編集用の詳細設定</h4>
 
                   <div class="row u-mb-10">
                     <div class="u-flex-2">
-                      <label class="label-muted-sm">出力サイズ</label>
+                      <label class="label-muted-sm" data-i18n="output_size">出力サイズ</label>
                       <input id="editorSize" value="1024x1024" placeholder="1024x1024" />
                     </div>
                     <div class="u-flex-1">
-                      <label class="label-muted-sm">品質</label>
+                      <label class="label-muted-sm" data-i18n="quality">品質</label>
                       <select id="editorQuality" class="u-w-full">
                         <option value="low">low</option>
                         <option value="medium" selected>medium</option>
@@ -492,11 +600,11 @@
 
                   <div class="row u-mb-10">
                     <div class="u-flex-1">
-                      <label class="label-muted-sm">生成枚数</label>
+                      <label class="label-muted-sm" data-i18n="num_outputs">生成枚数</label>
                       <input id="editorN" type="number" min="1" max="10" value="1" class="u-w-full" />
                     </div>
                     <div class="u-flex-2">
-                      <label class="label-muted-sm">背景処理</label>
+                      <label class="label-muted-sm" data-i18n="background_processing">背景処理</label>
                       <select id="editorBackground" class="u-w-full">
                         <option value="auto" selected>auto</option>
                         <option value="transparent">transparent</option>
@@ -507,7 +615,7 @@
 
                   <div class="row">
                     <div class="u-flex-1">
-                      <label class="label-muted-sm">フォーマット</label>
+                      <label class="label-muted-sm" data-i18n="format">フォーマット</label>
                       <select id="editorOutputFormat" class="u-w-full">
                         <option value="webp" selected>webp</option>
                         <option value="png">png</option>
@@ -515,13 +623,14 @@
                       </select>
                     </div>
                     <div class="u-flex-1">
-                      <label class="label-muted-sm">圧縮率 (0-100)</label>
+                      <label class="label-muted-sm" data-i18n="compression_rate">圧縮率 (0-100)</label>
                       <input
                         id="editorOutputCompression"
                         type="number"
                         min="0"
                         max="100"
                         placeholder="圧縮率"
+                        data-i18n-placeholder="compression_placeholder"
                         class="u-w-full"
                       />
                     </div>
@@ -545,12 +654,12 @@
                     d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"
                   ></path>
                 </svg>
-                <span id="generateImageBtnText">画像を生成</span>
+                <span id="generateImageBtnText" data-i18n="btn_generate_image">画像を生成</span>
               </button>
             </div>
 
             <div class="card side">
-              <h2>生成・編集結果</h2>
+              <h2 data-i18n="gen_edit_results">生成・編集結果</h2>
               <div id="imageGallery" class="gallery"></div>
               <pre id="assetResult" class="json json-preview-sm"></pre>
             </div>
@@ -560,9 +669,15 @@
         <section id="coding" class="view">
           <div class="ide">
             <div class="files card">
-              <h2>Files</h2>
+              <h2 data-i18n="files_title">Files</h2>
               <div class="explorer-toolbar">
-                <button type="button" id="openFolderBtn" class="ghost small" title="フォルダを開く">
+                <button
+                  type="button"
+                  id="openFolderBtn"
+                  class="ghost small"
+                  title="フォルダを開く"
+                  data-i18n-title="open_folder"
+                >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="14"
@@ -576,15 +691,31 @@
                       d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
                     ></path>
                   </svg>
-                  フォルダを開く
+                  <span data-i18n="open_folder">フォルダを開く</span>
                 </button>
-                <select id="rootSelector" class="root-selector" title="作業フォルダを選択">
-                  <option value="">読み込み中...</option>
+                <select
+                  id="rootSelector"
+                  class="root-selector"
+                  title="作業フォルダを選択"
+                  data-i18n-title="select_work_folder"
+                >
+                  <option value="" data-i18n="loading">読み込み中...</option>
                 </select>
               </div>
               <div class="explorer-path-box">
-                <input id="explorerPath" type="text" placeholder="絶対パス" />
-                <button type="button" id="explorerRefresh" class="ghost" title="更新">
+                <input
+                  id="explorerPath"
+                  type="text"
+                  placeholder="絶対パス"
+                  data-i18n-placeholder="absolute_path"
+                />
+                <button
+                  type="button"
+                  id="explorerRefresh"
+                  class="ghost"
+                  title="更新"
+                  data-i18n-title="btn_refresh"
+                >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="14"
@@ -600,13 +731,19 @@
                   </svg>
                 </button>
               </div>
-              <div id="fileTree" class="file-tree" role="tree" aria-label="ファイルツリー"></div>
-              <p class="muted">※ 実際のフォルダやファイルを開いて編集できます。</p>
+              <div
+                id="fileTree"
+                class="file-tree"
+                role="tree"
+                aria-label="ファイルツリー"
+                data-i18n-aria="file_tree_label"
+              ></div>
+              <p class="muted" data-i18n="file_tree_note">※ 実際のフォルダやファイルを開いて編集できます。</p>
             </div>
 
             <div class="editorWrap card">
               <div class="editor-header">
-                <span id="currentFileName">ファイルが選択されていません</span>
+                <span id="currentFileName" data-i18n="no_file_selected">ファイルが選択されていません</span>
                 <button type="button" id="saveFileBtn" class="ghost small" disabled>
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -621,7 +758,7 @@
                     <polyline points="17 21 17 13 7 13 7 21"></polyline>
                     <polyline points="7 3 7 8 15 8"></polyline>
                   </svg>
-                  保存 (Ctrl+S)
+                  <span data-i18n="btn_save">保存 (Ctrl+S)</span>
                 </button>
               </div>
               <div id="editorTabsBar" class="editor-tabs-bar"></div>
@@ -630,8 +767,10 @@
 
             <div class="assistant card agent-panel">
               <div class="agent-header">
-                <h2>AI Agent</h2>
-                <span id="agentStatus" class="agent-status-badge idle">待機中</span>
+                <h2 data-i18n="ai_agent">AI Agent</h2>
+                <span id="agentStatus" class="agent-status-badge idle" data-i18n="agent_status_idle"
+                  >待機中</span
+                >
               </div>
 
               <!-- Recommendation tip -->
@@ -650,9 +789,11 @@
                   <line x1="12" y1="8" x2="12.01" y2="8"></line>
                 </svg>
                 <span
-                  ><strong>推奨:</strong> エージェント機能は複雑なツール操作を伴うため、Tool Calling
-                  に強いモデル（GPT-4o, Claude 4.6 Sonnet, Gemini 2.5 Pro
-                  等）を選択することを強く推奨します。</span
+                  ><strong data-i18n="agent_recommend">推奨:</strong>
+                  <span data-i18n="agent_recommend_text"
+                    >エージェント機能は複雑なツール操作を伴うため、Tool Calling に強いモデル（GPT-4o, Claude
+                    4.6 Sonnet, Gemini 2.5 Pro 等）を選択することを強く推奨します。</span
+                  ></span
                 >
               </div>
 
@@ -663,19 +804,20 @@
                 role="log"
                 aria-live="polite"
                 aria-label="エージェントチャットログ"
+                data-i18n-aria="agent_chat_log_label"
               >
-                <div class="timeline-placeholder timeline-placeholder-inline">
+                <div class="timeline-placeholder timeline-placeholder-inline" data-i18n="agent_placeholder">
                   指示を入力して、エージェントとのチャットを開始してください。
                 </div>
               </div>
 
               <!-- Collapsible Settings -->
               <details class="agent-settings-details">
-                <summary>🤖 モデル・検索設定</summary>
+                <summary data-i18n="agent_model_search_settings">🤖 モデル・検索設定</summary>
                 <div class="agent-settings-body">
                   <div class="row">
                     <div class="u-flex-1">
-                      <label class="label-muted-sm"> コーディングモデル </label>
+                      <label class="label-muted-sm" data-i18n="coding_model"> コーディングモデル </label>
                       <button
                         id="codeModelBtn"
                         class="model-picker-btn is-small"
@@ -715,15 +857,19 @@
                   </div>
                   <label class="check check--inline">
                     <input type="checkbox" id="codeWebSearch" />
-                    <span class="u-text-sm">Web Search を有効化</span>
+                    <span class="u-text-sm" data-i18n="web_search_enable">Web Search を有効化</span>
                   </label>
                   <div class="row row--gap-12">
                     <div class="u-flex-1">
-                      <label for="codeNumOfSite" class="label-muted-xxs"> 検索サイト数 </label>
+                      <label for="codeNumOfSite" class="label-muted-xxs" data-i18n="search_site_count">
+                        検索サイト数
+                      </label>
                       <input id="codeNumOfSite" type="number" min="1" max="10" value="3" class="input-xs" />
                     </div>
                     <div class="u-flex-1">
-                      <label for="codeMaxWord" class="label-muted-xxs"> 最大単語数/サイト </label>
+                      <label for="codeMaxWord" class="label-muted-xxs" data-i18n="max_words_per_site">
+                        最大単語数/サイト
+                      </label>
                       <input
                         id="codeMaxWord"
                         type="number"
@@ -745,6 +891,7 @@
                   rows="2"
                   placeholder="指示を入力してエージェントを開始..."
                   class="agent-instruction-textarea"
+                  data-i18n-placeholder="agent_instruction_placeholder"
                 ></textarea>
                 <div class="agent-action-buttons">
                   <button type="button" id="startAgentBtn" class="agent-btn agent-btn--primary">
@@ -759,14 +906,16 @@
                     >
                       <polygon points="5 3 19 12 5 21 5 3"></polygon>
                     </svg>
-                    実行
+                    <span data-i18n="btn_execute">実行</span>
                   </button>
                   <button type="button" id="sendAgentFeedbackBtn" class="agent-btn agent-btn--primary-alt">
-                    送信
+                    <span data-i18n="btn_send_feedback">送信</span>
                   </button>
-                  <button type="button" id="stopAgentBtn" class="agent-btn agent-btn--danger">停止</button>
+                  <button type="button" id="stopAgentBtn" class="agent-btn agent-btn--danger">
+                    <span data-i18n="btn_stop_agent">停止</span>
+                  </button>
                   <button type="button" id="resetAgentBtn" class="agent-btn agent-btn--ghost">
-                    リセット
+                    <span data-i18n="btn_reset">リセット</span>
                   </button>
                 </div>
               </div>
@@ -782,21 +931,25 @@
 
         <section id="settings" class="view">
           <div class="card settings">
-            <h2>サーバー設定とAPI情報</h2>
-            <p>
+            <h2 data-i18n="settings_title">サーバー設定とAPI情報</h2>
+            <p data-i18n="settings_description">
               このアプリケーションはブラウザからローカルの中継Expressサーバーにアクセスし、ローカルサーバーが安全に
               1min.ai API と通信を行います。APIキーがフロントエンドに露出することはありません。
             </p>
             <ol>
-              <li>
+              <li data-i18n-html="settings_step1">
                 プロジェクトルートの <code>.env.example</code> をコピーして <code>.env</code> を作成します。
               </li>
-              <li><code>ONE_MIN_AI_API_KEY</code> にあなたの 1min.ai API キーを設定します。</li>
-              <li>ターミナルで <code>npm install</code> を実行して依存関係をインストールします。</li>
-              <li><code>npm start</code> を実行してサーバーを起動します。</li>
+              <li data-i18n-html="settings_step2">
+                <code>ONE_MIN_AI_API_KEY</code> にあなたの 1min.ai API キーを設定します。
+              </li>
+              <li data-i18n-html="settings_step3">
+                ターミナルで <code>npm install</code> を実行して依存関係をインストールします。
+              </li>
+              <li data-i18n-html="settings_step4"><code>npm start</code> を実行してサーバーを起動します。</li>
             </ol>
             <div class="env-defaults-box">
-              <h3 class="h3-white">環境変数デフォルト値</h3>
+              <h3 class="h3-white" data-i18n="env_defaults_title">環境変数デフォルト値</h3>
               <p class="env-defaults-text">
                 DEFAULT_CHAT_MODEL: <code>gpt-4o-mini</code><br />
                 DEFAULT_CODE_MODEL: <code>qwen3-coder-plus</code><br />
@@ -807,14 +960,27 @@
               </p>
             </div>
             <div class="settings-danger-zone" aria-labelledby="localDataHeading">
-              <h3 id="localDataHeading" class="h3-white">ローカル保存データ</h3>
-              <p class="env-defaults-text">
+              <h3 id="localDataHeading" class="h3-white" data-i18n="local_data_title">ローカル保存データ</h3>
+              <p class="env-defaults-text" data-i18n="local_data_description">
                 会話ID、Web Search 設定、テーマ、パフォーマンスモード、差分表示設定などはブラウザの
                 localStorage に保存されます。 共有端末では必要に応じて削除してください。
               </p>
-              <button id="clearLocalDataBtn" type="button" class="ghost small danger-action">
+              <button
+                id="clearLocalDataBtn"
+                type="button"
+                class="ghost small danger-action"
+                data-i18n="btn_clear_local_data"
+              >
                 ローカル保存データを削除
               </button>
+              <!-- Language Selector -->
+              <div class="env-defaults-box">
+                <h3 class="h3-white" data-i18n="lang_label">言語</h3>
+                <select id="langSelector" class="u-w-full">
+                  <option value="ja">日本語</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
             </div>
           </div>
         </section>
@@ -823,35 +989,50 @@
 
     <div id="folderPickerModal" class="folder-picker-modal u-hidden">
       <div class="folder-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="folderPickerTitle">
-        <h3 id="folderPickerTitle">フォルダを選択</h3>
-        <p>
+        <h3 id="folderPickerTitle" data-i18n="folder_picker_title">フォルダを選択</h3>
+        <p data-i18n="folder_picker_description">
           エクスプローラーで表示する作業フォルダを選択してください。許可されたルート配下のフォルダを開けます。
         </p>
 
         <div class="folder-picker-nav">
-          <button id="folderPickerUp" type="button" class="ghost small" title="上のフォルダへ">↑</button>
+          <button
+            id="folderPickerUp"
+            type="button"
+            class="ghost small"
+            title="上のフォルダへ"
+            data-i18n-title="btn_up_folder"
+          >
+            ↑
+          </button>
           <div id="folderPickerCurrentPath" class="folder-picker-current-path"></div>
         </div>
 
         <div id="folderPickerDrives" class="folder-picker-drives"></div>
 
         <div id="folderPickerBody" class="folder-picker-body">
-          <div class="folder-picker-loading">フォルダを読み込み中...</div>
+          <div class="folder-picker-loading" data-i18n="folder_loading">フォルダを読み込み中...</div>
         </div>
 
         <div class="folder-picker-path-row">
-          <input id="folderPickerPath" type="text" placeholder="フォルダの絶対パス" />
+          <input
+            id="folderPickerPath"
+            type="text"
+            placeholder="フォルダの絶対パス"
+            data-i18n-placeholder="folder_path_placeholder"
+          />
         </div>
 
         <div id="folderPickerError" class="folder-picker-error"></div>
 
-        <div class="folder-picker-help">
+        <div class="folder-picker-help" data-i18n="folder_picker_help">
           ここではアップロード用ファイル入力を使わず、アプリ内フォルダブラウザでドライブ/フォルダをたどって選択できます。
         </div>
 
         <div class="folder-picker-actions">
-          <button id="folderPickerCancel" type="button" class="ghost">キャンセル</button>
-          <button id="folderPickerOpen" type="button">開く</button>
+          <button id="folderPickerCancel" type="button" class="ghost" data-i18n="btn_cancel">
+            キャンセル
+          </button>
+          <button id="folderPickerOpen" type="button" data-i18n="btn_open">開く</button>
         </div>
       </div>
     </div>
@@ -859,17 +1040,17 @@
     <div id="diffModal" class="folder-picker-modal u-hidden">
       <div class="folder-picker-dialog folder-picker-dialog--wide">
         <div class="diff-header-row">
-          <h3>AI 提案の差分確認</h3>
+          <h3 data-i18n="diff_title">AI 提案の差分確認</h3>
           <label class="check diff-inline-toggle-label">
             <input type="checkbox" id="diffInlineToggle" />
-            <span>インライン表示</span>
+            <span data-i18n="diff_inline_display">インライン表示</span>
           </label>
         </div>
         <p id="diffFilePath" class="diff-file-path"></p>
         <div id="diffEditorContainer" class="diff-editor-container"></div>
         <div class="folder-picker-actions">
-          <button id="diffCancel" type="button" class="ghost">破棄</button>
-          <button id="diffApply" type="button">変更を適用</button>
+          <button id="diffCancel" type="button" class="ghost" data-i18n="btn_discard">破棄</button>
+          <button id="diffApply" type="button" data-i18n="btn_apply_changes">変更を適用</button>
         </div>
       </div>
     </div>
@@ -877,6 +1058,7 @@
     <script src="./vendor/purify.min.js"></script>
     <script src="./vendor/marked.min.js"></script>
     <script src="/vs/loader.js"></script>
+    <script type="module" src="./js/i18n.js"></script>
     <script type="module" src="./js/api.js"></script>
     <script type="module" src="./js/dom-style.js"></script>
     <script type="module" src="./js/models.js"></script>

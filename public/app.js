@@ -30,9 +30,19 @@ import { createImageManager, createImageState } from './js/image.js';
 import { createEditorManager, createEditorState } from './js/editor.js';
 import { createInlineChatManager } from './js/inline-chat.js';
 import { createEditorTabManager } from './js/editor-tabs.js';
+import { createDiffDialog } from './js/editor-diff.js';
+import { createAgentRuntime } from './js/agent-core.js';
+import { t, setLanguage } from './js/i18n.js';
 
 // Helper to get element by ID
 const $ = (id) => document.getElementById(id);
+
+const langSelector = $('langSelector');
+if (langSelector) {
+  langSelector.addEventListener('change', async () => {
+    await setLanguage(langSelector.value);
+  });
+}
 
 // Initialize Model Pickers
 loadModels().then(() => {
@@ -120,11 +130,7 @@ const state = {
 function toggleTheme() {
   toggleThemeFn();
   editorManager.updateTheme();
-  // Update diff editor theme if it exists
-  if (diffEditor) {
-    const theme = document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'vs-dark';
-    diffEditor.updateOptions({ theme });
-  }
+  diffDialog.syncTheme();
 }
 
 // Initialize theme and settings on DOM ready
@@ -163,7 +169,7 @@ $('healthBtn').onclick = async () => {
     const data = await api('/api/health');
     toast.success(JSON.stringify(data, null, 2), { duration: 8000 });
   } catch (e) {
-    toast.error(`ヘルスチェック失敗: ${e.message}`);
+    toast.error(t('health_check_failed', { error: e.message }));
   }
 };
 
@@ -193,6 +199,32 @@ document.addEventListener('editor-toggle-inline-chat', () => {
 state.chat = chatState;
 state.image = imageState;
 state.editor = editorState;
+
+function translateUiKey(key, params = {}) {
+  return t(key, params);
+}
+
+const getMonacoThemeName = () =>
+  document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'vs-dark';
+
+const diffDialog = createDiffDialog({
+  t: translateUiKey,
+  getToast: () => window.toast,
+  getThemeName: getMonacoThemeName,
+});
+
+const agentRuntime = createAgentRuntime({
+  dom,
+  state,
+  api,
+  t: translateUiKey,
+  parseXMLTags,
+  openFile: (...args) => openFile(...args),
+  showDiffDialog: (...args) => diffDialog.showDiffDialog(...args),
+  setAgentStatus,
+  addAgentTimelineStep,
+  addAgentApprovalStep,
+});
 
 // Use chat manager for sending and aborting
 $('abortChat').onclick = () => chatManager.abortChat();
@@ -244,19 +276,15 @@ async function checkHealth() {
   try {
     const data = await api('/api/health');
     if (!data?.ok) {
-      toast.error('サーバーのヘルスチェックに失敗しました。', {
+      toast.error(t('health_check_failed', { error: '' }), {
         duration: 10000,
       });
-      setStatus('ヘルスチェック失敗', 'err');
+      setStatus(t('health_check_failed', { error: '' }), 'err');
     } else if (data.models) {
       if (!data.models.ok) {
         console.warn('Model sync failure:', data.models.error);
         toast.warning(`モデル情報の同期に失敗しています。以前のデータを使用します: ${data.models.error}`, {
           duration: 8000,
-        });
-      } else if (data.models.source === 'fallback') {
-        toast.info('1min.ai のモデル一覧APIが利用できないため、内蔵モデル一覧を使用しています。', {
-          duration: 6000,
         });
       }
     }
@@ -278,7 +306,7 @@ $('createConversation').onclick = async () => {
     dom.conversationId.value = id;
     toast.success('会話を作成しました', { duration: 5000 });
   } catch (e) {
-    toast.error(`会話の作成に失敗しました: ${e.message}`);
+    toast.error(t('conversation_create_failed', { error: e.message }));
   }
 };
 
@@ -330,7 +358,7 @@ require(['vs/editor/editor.main'], () => {
 }, (err) => {
   // #22: Monaco AMD loader failure — show user-visible error
   const msg = err?.message || err || 'Failed to load Monaco Editor from local assets or server';
-  toast.error(`Monaco Editor の読み込みに失敗しました: ${msg}`);
+  toast.error(t('monaco_load_failed', { error: msg }));
   console.error('Monaco AMD load error:', err);
 });
 
@@ -361,7 +389,7 @@ async function loadWorkspace(dirPath = null) {
     tree.textContent = '';
     await renderTreeNodes(data.items, tree, 0);
   } catch (e) {
-    toast.error(`ワークスペースの読み込みに失敗しました: ${e.message}`);
+    toast.error(t('workspace_load_failed', { error: e.message }));
   }
 }
 
@@ -1482,7 +1510,7 @@ dom.startAgentBtn.onclick = async () => {
   dom.resetAgentBtn.classList.add('is-hidden');
 
   try {
-    await runAgentLoop(instruction);
+    await agentRuntime.runAgentLoop(instruction);
   } catch (err) {
     console.error('Agent loop crashed:', err);
     setAgentStatus('エラー', 'error');

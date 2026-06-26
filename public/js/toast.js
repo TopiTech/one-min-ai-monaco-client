@@ -3,6 +3,8 @@
  * Replaces native alert() with styled notifications
  */
 
+import { t } from './i18n.js';
+
 const toastContainer = document.createElement('div');
 toastContainer.id = 'toast-container';
 toastContainer.setAttribute('role', 'alert');
@@ -206,7 +208,7 @@ function showToast(message, options = {}) {
   if (dismissible) {
     const closeBtn = document.createElement('button');
     closeBtn.className = 'toast-close';
-    closeBtn.setAttribute('aria-label', '閉じる');
+    closeBtn.setAttribute('aria-label', t('toast_close'));
     const closeSvg = parseSvgIcon(
       `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
     );
@@ -283,7 +285,7 @@ function toastInfo(message, options = {}) {
  */
 function toastConfirm(message, options = {}) {
   return new Promise((resolve) => {
-    const { confirmText = '確認', cancelText = 'キャンセル', type = 'warning' } = options;
+    const { confirmText = t('toast_confirm'), cancelText = t('btn_cancel'), type = 'warning' } = options;
 
     const toast = document.createElement('div');
     toast.className = `toast toast-${type} toast--confirm`;

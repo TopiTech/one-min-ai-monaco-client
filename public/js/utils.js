@@ -7,32 +7,37 @@
  * should stay in the originating feature file.
  */
 
+import { t } from './i18n.js';
+
 export const SVG_NS = 'http://www.w3.org/2000/svg';
+
+const STEP_ICON_LABEL_KEYS = {
+  thought: 'icon_thought',
+  action: 'icon_tool_call',
+  result: 'icon_result',
+  error: 'icon_error',
+  approval: 'icon_approval_req',
+};
 
 const STEP_ICON_MAP = {
   thought: {
-    label: '思考',
     viewBox: '0 0 24 24',
     paths: 'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01M12 21a9 9 0 1 0-9-9',
   },
   action: {
-    label: 'ツール呼び出し',
     viewBox: '0 0 24 24',
     paths:
       'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm8.94-2.83 1.72 2.99a1 1 0 0 1-.41 1.36l-3.06 1.49a1 1 0 0 1-1.26-.27l-1.15-1.4a8 8 0 0 1-1.86.78l-.34 1.65A1 1 0 0 1 14 19h-4a1 1 0 0 1-1-.83l-.34-1.65a8 8 0 0 1-1.86-.78l-1.15 1.4a1 1 0 0 1-1.26.27L1.33 16.5a1 1 0 0 1-.41-1.36l1.72-2.99A8 8 0 0 1 3 10.5c0-.6.07-1.18.21-1.74L1.5 6.5a1 1 0 0 1 .41-1.36l3.06-1.49a1 1 0 0 1 1.26.27l1.15 1.4a8 8 0 0 1 1.86-.78L9.58 3a1 1 0 0 1 1-.83h4a1 1 0 0 1 1 .83l.34 1.65a8 8 0 0 1 1.86.78l1.15-1.4a1 1 0 0 1 1.26-.27l3.06 1.49a1 1 0 0 1 .41 1.36l-1.72 2.99c.14.56.21 1.14.21 1.74z',
   },
   result: {
-    label: '実行結果',
     viewBox: '0 0 24 24',
     paths: 'M20 6 9 17l-5-5',
   },
   error: {
-    label: 'エラー',
     viewBox: '0 0 24 24',
     paths: 'M12 9v4m0 4h.01M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z',
   },
   approval: {
-    label: '承認要求',
     viewBox: '0 0 24 24',
     paths:
       'M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4m0 4h.01',
@@ -125,8 +130,9 @@ export function createSvgIcon(viewBox, paths) {
  */
 export function appendStepIcon(container, type) {
   const cfg = STEP_ICON_MAP[type] || STEP_ICON_MAP.thought;
+  const labelKey = STEP_ICON_LABEL_KEYS[type] || STEP_ICON_LABEL_KEYS.thought;
   container.appendChild(createSvgIcon(cfg.viewBox, cfg.paths));
-  container.appendChild(document.createTextNode(cfg.label + ': '));
+  container.appendChild(document.createTextNode(t(labelKey) + ': '));
 }
 
 /**

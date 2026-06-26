@@ -15,6 +15,16 @@ export function sanitizePayload(payload) {
       'query',
       'input',
       'content',
+      'cwd',
+      'path',
+      'dir',
+      'file',
+      'filepath',
+      'filename',
+      'url',
+      'origin',
+      'referer',
+      'location',
     ];
     const sensitiveValueKeys = ['result', 'resultObject', 'result_object', 'raw'];
     const seen = new WeakSet();

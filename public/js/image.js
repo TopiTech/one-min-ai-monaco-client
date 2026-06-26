@@ -5,6 +5,7 @@
 import { api, assetUrl, extractImages } from './api.js';
 import { injectStyle } from './dom-style.js';
 import { getAllImageModels } from './models.js';
+import { t } from './i18n.js';
 
 const MAX_CARDS = 50;
 
@@ -76,7 +77,7 @@ export function createImageManager(dom) {
         range.max = '100';
         range.value = '50';
         range.className = 'slider-range';
-        range.setAttribute('aria-label', '画像比較スライダー');
+        range.setAttribute('aria-label', t('img_compare_slider'));
         range.setAttribute('role', 'slider');
         range.setAttribute('tabindex', '0');
         range.addEventListener('keydown', (e) => {
@@ -119,12 +120,12 @@ export function createImageManager(dom) {
       } else {
         const imgEl = document.createElement('img');
         imgEl.src = url;
-        imgEl.alt = 'AI生成画像';
+        imgEl.alt = t('img_generated');
         imgEl.onerror = function () {
           this.classList.add('is-error-hidden');
           const errorSpan = document.createElement('span');
           errorSpan.className = 'img-error-placeholder';
-          errorSpan.textContent = '⚠️ 画像の読み込みに失敗しました';
+          errorSpan.textContent = t('img_load_failed');
           this.after(errorSpan);
         };
         card.appendChild(imgEl);
@@ -145,7 +146,7 @@ export function createImageManager(dom) {
       if (sourceImageUrl) {
         const modelName = document.getElementById('imageModelLabel')?.textContent?.trim() || 'AI Model';
         const modelLabel = document.createElement('span');
-        modelLabel.textContent = `編集モデル: ${modelName}`;
+        modelLabel.textContent = t('img_edit_model', { model: modelName });
         modelLabel.className = 'image-card-model';
         infoRow.appendChild(modelLabel);
       }
@@ -168,7 +169,7 @@ export function createImageManager(dom) {
 
     if (!prompt) {
       if (typeof toast !== 'undefined') {
-        toast.warning('プロンプトを入力してください');
+        toast.warning(t('img_enter_prompt'));
       }
       return;
     }
@@ -194,7 +195,7 @@ export function createImageManager(dom) {
           }),
         });
         if (typeof toast !== 'undefined') {
-          toast.success('画像を編集しました');
+          toast.success(t('img_edited'));
         }
         dom.assetResult.textContent = JSON.stringify(data, null, 2);
         renderImages(data, imageUrl);
@@ -210,14 +211,14 @@ export function createImageManager(dom) {
           }),
         });
         if (typeof toast !== 'undefined') {
-          toast.success('画像を生成しました');
+          toast.success(t('img_generated_toast'));
         }
         dom.assetResult.textContent = JSON.stringify(data, null, 2);
         renderImages(data);
       }
     } catch (e) {
       if (typeof toast !== 'undefined') {
-        toast.error(`処理に失敗しました: ${e.message}`);
+        toast.error(t('img_process_failed', { error: e.message }));
       }
     }
   }
@@ -229,7 +230,7 @@ export function createImageManager(dom) {
 
     if (generateBtn) generateBtn.disabled = true;
     if (assetInput) assetInput.disabled = true;
-    if (onStatusChange) onStatusChange('アップロード中...', 'warn');
+    if (onStatusChange) onStatusChange(t('img_upload_status'), 'warn');
 
     const fd = new FormData();
     fd.append('asset', file);
@@ -243,16 +244,16 @@ export function createImageManager(dom) {
         updateEditorImagePreview(url || key);
       }
       if (typeof toast !== 'undefined') {
-        toast.success('アップロード完了');
+        toast.success(t('img_upload_complete'));
       }
     } catch (e) {
       if (typeof toast !== 'undefined') {
-        toast.error(`アセットのアップロードに失敗しました: ${e.message}`);
+        toast.error(t('img_upload_failed', { error: e.message }));
       }
     } finally {
       if (generateBtn) generateBtn.disabled = false;
       if (assetInput) assetInput.disabled = false;
-      if (onStatusChange) onStatusChange('準備完了', 'ok');
+      if (onStatusChange) onStatusChange(t('status_ready'), 'ok');
     }
   }
 
@@ -273,7 +274,7 @@ export function createImageManager(dom) {
       if (clearBtn) clearBtn.classList.remove('is-shown');
       if (imgToImgParams) imgToImgParams.classList.remove('is-shown');
       if (textToImgParams) textToImgParams.classList.remove('is-hidden');
-      if (btnText) btnText.textContent = '画像を生成';
+      if (btnText) btnText.textContent = t('img_generate_btn');
 
       if (modelObj && modelObj.tags && modelObj.tags.includes('editor') && !modelObj.tags.includes('image')) {
         const defaultGen = getAllImageModels().find(
@@ -292,7 +293,7 @@ export function createImageManager(dom) {
     if (clearBtn) clearBtn.classList.add('is-shown');
     if (imgToImgParams) imgToImgParams.classList.add('is-shown');
     if (textToImgParams) textToImgParams.classList.add('is-hidden');
-    if (btnText) btnText.textContent = '画像を編集';
+    if (btnText) btnText.textContent = t('img_edit_btn');
 
     const isEditorModel = modelObj && modelObj.tags && modelObj.tags.includes('editor');
     if (!isEditorModel) {

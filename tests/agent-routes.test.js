@@ -96,6 +96,18 @@ describe('Agent Directory and Patch Routes', () => {
       expect(readResponse.body.content).toBe('hello agent\n');
     });
 
+    test('should block reading protected agent persistence paths in session context', async () => {
+      const protectedFile = path.join(process.cwd(), '.mimocode', 'data', 'agent_sessions.json');
+      await fs.mkdir(path.dirname(protectedFile), { recursive: true });
+      await fs.writeFile(protectedFile, '{}', 'utf-8');
+
+      const response = await request(app)
+        .get(`/api/agent/sessions/${sessionId}/files`)
+        .query({ path: protectedFile });
+
+      expect(response.status).toBe(403);
+    });
+
     test('should read a specific slice of lines when startLine and/or endLine are provided', async () => {
       const content = 'line1\nline2\nline3\nline4\nline5';
       await fs.writeFile(testFile, content, 'utf-8');

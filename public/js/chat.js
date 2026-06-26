@@ -5,10 +5,18 @@
 
 import { api, assetUrl } from './api.js';
 import { renderMarkdownSafely } from './utils.js';
+import { t } from './i18n.js';
+import { extractTextFromOneMinResponse } from './one-min-response.js';
 
 const MAX_MESSAGES = 200;
 const MAX_STREAM_MS = 5 * 60 * 1000;
 const UPLOAD_CONCURRENCY = 3;
+const MAX_STREAM_RETRIES = 2;
+const RETRYABLE_STREAM_STATUSES = new Set([408, 429, 502, 503, 504]);
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export function createChatState() {
   return {
@@ -82,7 +90,7 @@ export function createChatManager(dom, state) {
           this.classList.add('is-error-hidden');
           const errorSpan = document.createElement('span');
           errorSpan.className = 'img-error-placeholder';
-          errorSpan.textContent = '⚠️ 画像の読み込みに失敗しました';
+          errorSpan.textContent = t('chat_image_load_failed');
           this.after(errorSpan);
         };
         imagesDiv.appendChild(imgEl);
@@ -146,7 +154,7 @@ export function createChatManager(dom, state) {
           this.classList.add('is-error-hidden');
           const errorSpan = document.createElement('span');
           errorSpan.className = 'img-error-placeholder';
-          errorSpan.textContent = '⚠️ 画像ロードエラー';
+          errorSpan.textContent = t('chat_image_error');
           this.after(errorSpan);
         };
         thumb.appendChild(img);
@@ -227,7 +235,9 @@ export function createChatManager(dom, state) {
         } catch (err) {
           att.uploading = false;
           results[index] = { status: 'rejected', reason: err };
-          window.toast?.error(`アップロード失敗 (${att.file.name}): ${err.message || '不明なエラー'}`);
+          window.toast?.error(
+            t('chat_upload_failed', { name: att.file.name, error: err.message || t('chat_unknown_error') }),
+          );
         }
         updateAttachmentPreview();
       }
@@ -258,7 +268,7 @@ export function createChatManager(dom, state) {
     state.chat.abortController = new AbortController();
 
     const imagePreviews = attachments.map((att) => ({ url: att.previewUrl }));
-    addMsg('user', prompt || '(画像のみ)', imagePreviews);
+    addMsg('user', prompt || t('chat_image_only'), imagePreviews);
     dom.chatPrompt.value = '';
 
     const aiMsgDiv = document.createElement('div');
@@ -280,7 +290,7 @@ export function createChatManager(dom, state) {
       dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
     }
 
-    setStatus('応答を受信中...', 'warn');
+    setStatus(t('chat_receiving'), 'warn');
     let fullText = '';
 
     try {
@@ -296,143 +306,185 @@ export function createChatManager(dom, state) {
       if (imageKeys.length > 0) apiAttachments.images = imageKeys;
       if (fileKeys.length > 0) apiAttachments.files = fileKeys;
 
-      const response = await api('/api/chat/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt,
-          model: dom.chatModel.value,
-          conversationId: dom.conversationId.value || undefined,
-          webSearch: dom.webSearch.checked,
-          numOfSite: dom.chatNumOfSite?.value ? parseInt(dom.chatNumOfSite.value) : undefined,
-          maxWord: dom.chatMaxWord?.value ? parseInt(dom.chatMaxWord.value) : undefined,
-          withMemories: dom.withMemories?.checked || false,
-          isMixed: dom.isMixed?.checked || false,
-          brandVoiceId: dom.brandVoiceId?.value?.trim() || undefined,
-          attachments: Object.keys(apiAttachments).length > 0 ? apiAttachments : undefined,
-        }),
-        signal: state.chat.abortController.signal,
-        raw: true,
+      const requestBody = JSON.stringify({
+        prompt,
+        model: dom.chatModel.value,
+        conversationId: dom.conversationId.value || undefined,
+        webSearch: dom.webSearch.checked,
+        numOfSite: dom.chatNumOfSite?.value ? parseInt(dom.chatNumOfSite.value) : undefined,
+        maxWord: dom.chatMaxWord?.value ? parseInt(dom.chatMaxWord.value) : undefined,
+        withMemories: dom.withMemories?.checked || false,
+        isMixed: dom.isMixed?.checked || false,
+        brandVoiceId: dom.brandVoiceId?.value?.trim() || undefined,
+        attachments: Object.keys(apiAttachments).length > 0 ? apiAttachments : undefined,
       });
 
-      if (!response.ok) {
-        if (response.status === 422) {
-          throw new Error('無効なリクエスト形式');
-        } else if (response.status >= 500) {
-          throw new Error('サーバーエラー');
-        } else {
-          throw new Error(`HTTP ${response.status}`);
-        }
-      }
+      for (let attempt = 0; attempt <= MAX_STREAM_RETRIES; attempt++) {
+        let reader = null;
+        let streamTimeoutId = null;
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let streamDone = false;
-      let streamError = null;
-      let currentEvent = 'content';
-
-      const streamTimeoutId = setTimeout(() => {
-        if (!streamDone) {
-          streamDone = true;
-          streamError = new Error('ストリーミングがタイムアウトしました（5分）');
-          reader.cancel().catch(() => {});
-        }
-      }, MAX_STREAM_MS);
-
-      let renderScheduled = false;
-      const scheduleRender = () => {
-        if (renderScheduled) return;
-        renderScheduled = true;
-        const run = () => {
-          renderScheduled = false;
-          if (fullText) {
-            renderMarkdownSafely(aiContentDiv, fullText);
-            dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
+        try {
+          if (attempt > 0) {
+            const retryMessage = `${t('chat_stream_retry', { attempt: attempt + 1, total: MAX_STREAM_RETRIES + 1 })}`;
+            aiContentDiv.textContent = retryMessage;
+            setStatus(retryMessage, 'warn');
+            await wait(Math.min(1000 * Math.pow(2, attempt - 1), 4000));
           }
-        };
-        if (typeof requestAnimationFrame === 'function') {
-          requestAnimationFrame(run);
-        } else {
-          setTimeout(run, 16);
-        }
-      };
 
-      while (!streamDone) {
-        const { done, value } = await reader.read();
-        if (done) break;
+          const response = await api('/api/chat/stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: requestBody,
+            signal: state.chat.abortController.signal,
+            raw: true,
+          });
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
+          if (!response.ok) {
+            let error;
+            if (response.status === 422) {
+              error = new Error(t('chat_invalid_request'));
+            } else if (response.status >= 500) {
+              error = new Error(t('chat_server_error'));
+            } else {
+              error = new Error(`HTTP ${response.status}`);
+            }
+            error.status = response.status;
+            throw error;
+          }
 
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            currentEvent = line.slice(7).trim();
+          reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let streamDone = false;
+          let streamError = null;
+          let currentEvent = 'content';
+
+          streamTimeoutId = setTimeout(() => {
+            if (!streamDone) {
+              streamDone = true;
+              streamError = new Error(t('chat_stream_timeout'));
+              streamError.status = 408;
+              reader?.cancel().catch(() => {});
+            }
+          }, MAX_STREAM_MS);
+
+          let renderScheduled = false;
+          const scheduleRender = () => {
+            if (renderScheduled) return;
+            renderScheduled = true;
+            const run = () => {
+              renderScheduled = false;
+              if (fullText) {
+                renderMarkdownSafely(aiContentDiv, fullText);
+                dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
+              }
+            };
+            if (typeof requestAnimationFrame === 'function') {
+              requestAnimationFrame(run);
+            } else {
+              setTimeout(run, 16);
+            }
+          };
+
+          while (!streamDone) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+
+            for (const line of lines) {
+              if (line.startsWith('event: ')) {
+                currentEvent = line.slice(7).trim();
+                continue;
+              }
+
+              if (!line.startsWith('data:')) continue;
+              const dataStr = line.replace(/^data:\s*/, '').trim();
+              if (!dataStr) continue;
+
+              if (dataStr === '[DONE]') {
+                streamDone = true;
+                break;
+              }
+
+              try {
+                const data = JSON.parse(dataStr);
+
+                if (currentEvent === 'error') {
+                  streamError = new Error(data?.error || data?.message || 'Stream error');
+                  streamDone = true;
+                  break;
+                }
+
+                if (currentEvent === 'done') {
+                  streamDone = true;
+                  break;
+                }
+
+                if (currentEvent === 'result') {
+                  const text = extractTextFromOneMinResponse(data?.aiRecord || data);
+                  if (text && !fullText) {
+                    fullText = text;
+                    renderMarkdownSafely(aiContentDiv, fullText);
+                  }
+                  continue;
+                }
+
+                const content =
+                  data?.content ||
+                  data?.choices?.[0]?.delta?.content ||
+                  data?.choices?.[0]?.message?.content ||
+                  data?.message?.content ||
+                  data?.delta?.content ||
+                  data?.text;
+                if (content) {
+                  fullText += content;
+                  scheduleRender();
+                }
+
+                const finishReason = data?.choices?.[0]?.finish_reason;
+                if (finishReason && finishReason !== 'null') {
+                  streamDone = true;
+                  break;
+                }
+              } catch {
+                console.debug('SSE non-JSON chunk:', dataStr);
+              }
+            }
+          }
+
+          if (streamError) throw streamError;
+          if (fullText) renderMarkdownSafely(aiContentDiv, fullText);
+          break;
+        } catch (e) {
+          const shouldRetry =
+            e?.name !== 'AbortError' &&
+            !fullText &&
+            attempt < MAX_STREAM_RETRIES &&
+            (!e?.status || RETRYABLE_STREAM_STATUSES.has(Number(e.status)));
+
+          if (shouldRetry) {
             continue;
           }
-
-          if (!line.startsWith('data:')) continue;
-          const dataStr = line.replace(/^data:\s*/, '').trim();
-          if (!dataStr) continue;
-
-          if (dataStr === '[DONE]') {
-            streamDone = true;
-            break;
+          throw e;
+        } finally {
+          if (streamTimeoutId) {
+            clearTimeout(streamTimeoutId);
           }
-
-          try {
-            const data = JSON.parse(dataStr);
-
-            if (currentEvent === 'error') {
-              streamError = new Error(data?.error || data?.message || 'Stream error');
-              streamDone = true;
-              break;
+          if (reader) {
+            try {
+              reader.releaseLock();
+            } catch {
+              // ignore
             }
-
-            if (currentEvent === 'done') {
-              streamDone = true;
-              break;
-            }
-
-            if (currentEvent === 'result') {
-              const text = extractTextFromRecord(data?.aiRecord || data);
-              if (text && !fullText) {
-                fullText = text;
-                renderMarkdownSafely(aiContentDiv, fullText);
-              }
-              continue;
-            }
-
-            const content =
-              data?.content ||
-              data?.choices?.[0]?.delta?.content ||
-              data?.choices?.[0]?.message?.content ||
-              data?.message?.content ||
-              data?.delta?.content ||
-              data?.text;
-            if (content) {
-              fullText += content;
-              scheduleRender();
-            }
-
-            const finishReason = data?.choices?.[0]?.finish_reason;
-            if (finishReason && finishReason !== 'null') {
-              streamDone = true;
-              break;
-            }
-          } catch {
-            console.debug('SSE non-JSON chunk:', dataStr);
           }
         }
       }
 
-      clearTimeout(streamTimeoutId);
-      if (streamError) throw streamError;
-      if (fullText) renderMarkdownSafely(aiContentDiv, fullText);
-
       if (!fullText) {
-        fullText = '(応答が空でした)';
+        fullText = t('chat_empty_response');
       }
 
       renderMarkdownSafely(aiContentDiv, fullText);
@@ -440,15 +492,15 @@ export function createChatManager(dom, state) {
       pruneChatLog();
     } catch (e) {
       if (e.name === 'AbortError') {
-        fullText += '\n\n*(キャンセルされました)*';
+        fullText += '\n\n*(' + t('chat_cancelled') + ')*';
         renderMarkdownSafely(aiContentDiv, fullText);
-        setStatus('キャンセルしました', 'warn');
+        setStatus(t('chat_cancelled'), 'warn');
       } else {
-        const message = e?.message || '不明なエラー';
+        const message = e?.message || t('chat_unknown_error');
         console.error('Chat Stream Error:', e);
-        aiContentDiv.textContent = `エラー: ${message}`;
-        window.toast?.error(`チャットエラー: ${message}`);
-        setStatus('エラー', 'err');
+        aiContentDiv.textContent = `${t('status_error')}: ${message}`;
+        window.toast?.error(t('chat_error', { error: message }));
+        setStatus(t('status_error'), 'err');
         if (dom.chatLog) {
           dom.chatLog.setAttribute('aria-live', 'assertive');
           setTimeout(() => dom.chatLog.setAttribute('aria-live', 'polite'), 3000);
@@ -460,7 +512,7 @@ export function createChatManager(dom, state) {
       sendBtn.disabled = false;
       sendBtn.classList.remove('u-hidden');
       abortBtn.classList.remove('is-shown');
-      setStatus('準備完了');
+      setStatus(t('status_ready'));
       state.chat.attachments.forEach((att) => {
         if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
       });
@@ -484,18 +536,4 @@ export function createChatManager(dom, state) {
     pruneChatLog,
     initCharCounter,
   };
-}
-
-function extractTextFromRecord(record) {
-  if (!record) return '';
-  if (typeof record === 'string') return record;
-  return (
-    record.content ||
-    record?.choices?.[0]?.delta?.content ||
-    record?.choices?.[0]?.message?.content ||
-    record?.message?.content ||
-    record?.delta?.content ||
-    record?.text ||
-    ''
-  );
 }

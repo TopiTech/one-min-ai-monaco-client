@@ -34,6 +34,7 @@ const ENV_KEYS = [
   'ENABLE_COMMAND_EXECUTION',
   'AGENT_AUTO_APPROVE',
   'ENABLE_DRIVES_SHELL_LOOKUP',
+  'ALLOW_UNSAFE_AGENT_AUTO_APPROVE',
 ];
 
 function clearEnv() {
@@ -186,5 +187,23 @@ describe('config/server.js env validation', () => {
     const c2 = await loadConfig();
     expect(c2.serverConfig.assetProxyTimeoutMs).toBe(30000);
     expect(c2.serverConfig.assetProxyMaxSize).toBe(50 * 1024 * 1024);
+  });
+
+  test('ALLOW_UNSAFE_AGENT_AUTO_APPROVE remains conservative like other boolean flags', async () => {
+    jest.resetModules();
+    process.env.ALLOW_UNSAFE_AGENT_AUTO_APPROVE = 'true';
+    process.env.ENABLE_COMMAND_EXECUTION = 'true';
+    process.env.AGENT_AUTO_APPROVE = 'true';
+    const c = await loadConfig();
+    expect(c.serverConfig.enableCommandExecution).toBe(true);
+    expect(c.serverConfig.agentAutoApprove).toBe(true);
+
+    jest.resetModules();
+    process.env.ALLOW_UNSAFE_AGENT_AUTO_APPROVE = '1';
+    process.env.ENABLE_COMMAND_EXECUTION = 'true';
+    process.env.AGENT_AUTO_APPROVE = 'true';
+    const c2 = await loadConfig();
+    expect(c2.serverConfig.enableCommandExecution).toBe(true);
+    expect(c2.serverConfig.agentAutoApprove).toBe(true);
   });
 });

@@ -3,6 +3,8 @@
  * Handles dark/light mode switching with localStorage persistence
  */
 
+import { t } from './i18n.js';
+
 const STORAGE_KEY_THEME = 'monaco_client_theme';
 
 let _themeToggleTimer = null;
@@ -65,7 +67,7 @@ export function updateThemeUI() {
 
   if (iconDark) iconDark.classList.toggle('is-hidden', isDark);
   if (iconLight) iconLight.classList.toggle('is-hidden', !isDark);
-  if (label) label.textContent = isDark ? 'ライトモード' : 'ダークモード';
+  if (label) label.textContent = isDark ? t('theme_light') : t('theme_dark');
 
   return isDark;
 }

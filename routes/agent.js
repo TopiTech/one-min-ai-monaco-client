@@ -547,7 +547,6 @@ router.post('/sessions/:id/commands', async (req, res, next) => {
         sessionId: req.params.id,
         command: command.split(/\s+/)[0],
         cwd: workingDir,
-        approvalToken,
       });
 
       return res.json({
@@ -563,7 +562,6 @@ router.post('/sessions/:id/commands', async (req, res, next) => {
     logger.info(`Executing command (auto-approved or bypass-auth)`, {
       sessionId: req.params.id,
       command: command.split(/\s+/)[0],
-      cwd: workingDir,
     });
 
     let result;
@@ -664,7 +662,6 @@ router.post('/sessions/:id/approve', async (req, res, next) => {
     logger.info(`Executing approved command`, {
       sessionId: req.params.id,
       command: pending.command.split(/\s+/)[0],
-      cwd: workingDir,
     });
 
     let result;

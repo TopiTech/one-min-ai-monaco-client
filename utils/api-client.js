@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { serverConfig } from '../config/server.js';
 import logger from './logger.js';
+import { extractTextFromOneMinResponse } from '../public/js/one-min-response.js';
 
 const API_BASE = serverConfig.apiBaseUrl;
 
@@ -216,37 +217,11 @@ export async function callOneMin(
   throw lastError;
 }
 
-function firstTextCandidate(data) {
-  const candidates = [
-    data?.aiRecord?.aiRecordDetail?.resultObject,
-    data?.aiRecord?.aiRecordDetail?.result,
-    // 画像URLの取得に aiRecord.output をフォールバックとして追加。
-    // 1min.ai が画像生成時に resultObject の代わりに output に URL を
-    // 返すケースがある（CHANGELOG 参照）。
-    data?.aiRecord?.output,
-    data?.aiRecord?.resultObject,
-    data?.result,
-    data?.message,
-    data?.text,
-    data?.content,
-  ];
-
-  for (const c of candidates) {
-    if (typeof c === 'string') return c || undefined;
-    if (Array.isArray(c)) {
-      const joined = c.map((x) => (typeof x === 'string' ? x : JSON.stringify(x, null, 2))).join('\n');
-      return joined || undefined;
-    }
-    if (c && typeof c === 'object') return JSON.stringify(c, null, 2);
-  }
-  return undefined;
-}
-
 /**
  * Extracts text content from a 1min.ai API response.
  */
 export function extractText(data) {
-  return firstTextCandidate(data) ?? JSON.stringify(data, null, 2);
+  return extractTextFromOneMinResponse(data);
 }
 
 /**
@@ -283,7 +258,7 @@ export function normalizeOneMinResponse(data) {
     data?.aiRecord?.aiRecordDetail?.resultObject ?? data?.aiRecord?.resultObject ?? data?.resultObject;
 
   return {
-    text: firstTextCandidate(data),
+    text: extractTextFromOneMinResponse(data),
     resultObject,
     conversationId:
       data?.aiRecord?.conversationId ??

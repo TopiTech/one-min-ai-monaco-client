@@ -6,6 +6,7 @@
  */
 
 import { api } from './api.js';
+import { t } from './i18n.js';
 
 /**
  * Create the editor tab manager.
@@ -63,7 +64,7 @@ export function createEditorTabManager(editorState, editorManager, dom) {
     if (editorManager.instance) {
       editorManager.instance.setModel(monaco.editor.createModel('', 'plaintext'));
     }
-    dom.currentFileName.textContent = 'ファイルが選択されていません';
+    dom.currentFileName.textContent = t('no_file_selected');
     dom.currentFileName.title = '';
     dom.saveFileBtn.disabled = true;
     document.querySelectorAll('.tree-node.file').forEach((x) => x.classList.remove('active'));
@@ -90,7 +91,7 @@ export function createEditorTabManager(editorState, editorManager, dom) {
         await openFile(filePath);
       }
     } catch (e) {
-      toast.error(`タブ切替に失敗しました: ${e.message}`);
+      toast.error(t('tab_switch_failed', { error: e.message }));
       closeTabInternal(filePath);
     }
   }
@@ -99,9 +100,9 @@ export function createEditorTabManager(editorState, editorManager, dom) {
     const tabIndex = editorState.openTabs.indexOf(filePath);
     if (tabIndex === -1) return;
 
-    const accepted = await toast.confirm('タブを閉じますか？未保存の変更は失われます。', {
-      confirmText: '閉じる',
-      cancelText: 'キャンセル',
+    const accepted = await toast.confirm(t('tab_close_confirm'), {
+      confirmText: t('btn_close'),
+      cancelText: t('btn_cancel'),
       type: 'warning',
     });
     if (!accepted) return;
@@ -147,10 +148,10 @@ export function createEditorTabManager(editorState, editorManager, dom) {
         const LARGE_FILE_THRESHOLD = 2 * 1024 * 1024; // 2MB
         if (contentSize > LARGE_FILE_THRESHOLD) {
           const accepted = await toast.confirm(
-            `ファイルサイズが大きいため（約 ${(contentSize / 1024 / 1024).toFixed(1)} MB）、エディタの動作が遅くなる可能性があります。開きますか？`,
+            t('file_size_warning', { size: (contentSize / 1024 / 1024).toFixed(1) }),
             {
-              confirmText: '開く',
-              cancelText: 'キャンセル',
+              confirmText: t('btn_open_file'),
+              cancelText: t('btn_cancel'),
               type: 'warning',
             },
           );
@@ -177,7 +178,7 @@ export function createEditorTabManager(editorState, editorManager, dom) {
         renderTabs();
       }
     } catch (e) {
-      toast.error(`ファイルの読み込みに失敗しました: ${e.message}`);
+      toast.error(t('file_load_failed', { error: e.message }));
     }
   }
 
@@ -186,22 +187,22 @@ export function createEditorTabManager(editorState, editorManager, dom) {
     const content = editorManager.instance.getValue();
     const setStatus = window.__bootstrapSetStatus;
     try {
-      if (setStatus) setStatus('保存中...', 'warn');
+      if (setStatus) setStatus(t('saving'), 'warn');
       await api('/api/fs/write', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: editorState.activeFilePath, content }),
       });
-      if (setStatus) setStatus('保存完了', 'ok');
-      toast.success('ファイルを保存しました');
+      if (setStatus) setStatus(t('save_complete'), 'ok');
+      toast.success(t('file_saved'));
       if (_saveStatusTimer) clearTimeout(_saveStatusTimer);
       _saveStatusTimer = setTimeout(() => {
-        if (document.getElementById('status')?.textContent === '保存完了') {
-          if (setStatus) setStatus('準備完了');
+        if (document.getElementById('status')?.textContent === t('save_complete')) {
+          if (setStatus) setStatus(t('status_ready'));
         }
       }, 2000);
     } catch (e) {
-      toast.error(`ファイルの保存に失敗しました: ${e.message}`);
+      toast.error(t('file_save_failed', { error: e.message }));
     }
   }
 

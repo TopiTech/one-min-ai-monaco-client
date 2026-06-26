@@ -6,6 +6,7 @@
  */
 
 import { api } from './api.js';
+import { t } from './i18n.js';
 
 const WIDGET_ID = 'inline.chat.widget';
 
@@ -26,7 +27,7 @@ export function createInlineChatManager(editorState, editorManager, dom) {
     widgetDom = document.createElement('div');
     widgetDom.className = 'inline-chat-widget';
     widgetDom.setAttribute('role', 'dialog');
-    widgetDom.setAttribute('aria-label', 'AIインラインチャット');
+    widgetDom.setAttribute('aria-label', t('inline_chat_label'));
 
     const inputRow = document.createElement('div');
     inputRow.className = 'inline-chat-input-row';
@@ -34,14 +35,14 @@ export function createInlineChatManager(editorState, editorManager, dom) {
     const promptInput = document.createElement('input');
     promptInput.type = 'text';
     promptInput.id = 'inlineChatPrompt';
-    promptInput.placeholder = 'AIへの指示を入力 (例: ループを追加)...';
-    promptInput.setAttribute('aria-label', 'AIへの指示');
+    promptInput.placeholder = t('inline_chat_placeholder');
+    promptInput.setAttribute('aria-label', t('inline_chat_prompt_label'));
 
     const submitBtn = document.createElement('button');
     submitBtn.type = 'button';
     submitBtn.id = 'inlineChatSubmit';
-    submitBtn.textContent = '送信';
-    submitBtn.setAttribute('aria-label', '送信');
+    submitBtn.textContent = t('btn_send');
+    submitBtn.setAttribute('aria-label', t('btn_send'));
 
     inputRow.appendChild(promptInput);
     inputRow.appendChild(submitBtn);
@@ -49,7 +50,7 @@ export function createInlineChatManager(editorState, editorManager, dom) {
     const statusDiv = document.createElement('div');
     statusDiv.id = 'inlineChatStatus';
     statusDiv.className = 'inline-chat-status';
-    statusDiv.textContent = '生成中...';
+    statusDiv.textContent = t('inline_chat_generating');
     statusDiv.setAttribute('role', 'status');
     statusDiv.setAttribute('aria-live', 'polite');
 
@@ -124,9 +125,9 @@ export function createInlineChatManager(editorState, editorManager, dom) {
       });
 
       if (data.code) {
-        const accepted = await toast.confirm('AIがコードを生成しました。適用しますか？', {
-          confirmText: '適用',
-          cancelText: '破棄',
+        const accepted = await toast.confirm(t('inline_chat_apply_confirm'), {
+          confirmText: t('btn_apply'),
+          cancelText: t('btn_discard'),
           type: 'info',
         });
 
@@ -140,13 +141,13 @@ export function createInlineChatManager(editorState, editorManager, dom) {
           const id = { major: 1, minor: 1 };
           const op = { identifier: id, range, text: data.code, forceMoveMarkers: true };
           editorManager.instance.executeEdits('copilot-inline-chat', [op]);
-          toast.success('コードを適用しました');
+          toast.success(t('inline_chat_applied'));
         } else {
-          toast.info('生成されたコードを破棄しました');
+          toast.info(t('inline_chat_discarded'));
         }
       }
     } catch (e) {
-      toast.error(`AIコード生成に失敗しました: ${e.message}`);
+      toast.error(t('inline_chat_failed', { error: e.message }));
     } finally {
       statusDiv.classList.remove('is-shown', 'loading');
       statusDiv.className = 'inline-chat-status';
@@ -158,7 +159,7 @@ export function createInlineChatManager(editorState, editorManager, dom) {
 
   function toggleInlineChat() {
     if (!editorState.activeFilePath) {
-      toast.warning('ファイルを編集するには、左のツリーからファイルを開いてください。');
+      toast.warning(t('inline_chat_no_file'));
       return;
     }
     if (isOpen) {

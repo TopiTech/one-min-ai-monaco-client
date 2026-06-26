@@ -126,6 +126,8 @@ describe('fs-guard', () => {
       expect(isProtectedPath(path.join(customRoot, '.npmrc'))).toBe(true);
       expect(isProtectedPath(path.join(customRoot, 'private.pem'))).toBe(true);
       expect(isProtectedPath(path.join(customRoot, 'id_rsa'))).toBe(true);
+      expect(isProtectedPath(path.join(customRoot, '.mimocode', 'data', 'agent_sessions.json'))).toBe(true);
+      expect(isProtectedPath(path.join(customRoot, '.commandcode', 'state.json'))).toBe(true);
       // Should not be protected
       expect(isProtectedPath(path.join(customRoot, 'src', 'app.js'))).toBe(false);
       expect(isProtectedPath(path.join(customRoot, 'src', 'secrets-archive.txt'))).toBe(false);
@@ -144,6 +146,10 @@ describe('fs-guard', () => {
 
       expect(isWriteProtectedPath(path.join(customRoot, 'private.pem'))).toBe(true);
       expect(isWriteProtectedPath(path.join(customRoot, 'id_rsa'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(customRoot, '.mimocode', 'data', 'pending_commands.json'))).toBe(
+        true,
+      );
+      expect(isWriteProtectedPath(path.join(customRoot, '.commandcode', 'state.json'))).toBe(true);
       // deep paths under utils/ stay protected via `**`
       expect(isWriteProtectedPath(path.join(customRoot, 'utils', 'deep', 'nested', 'file.js'))).toBe(true);
       expect(isWriteProtectedPath(path.join(customRoot, 'src', 'app.js'))).toBe(false);

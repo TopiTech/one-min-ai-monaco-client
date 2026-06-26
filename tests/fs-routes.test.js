@@ -256,6 +256,15 @@ describe('FS Routes', () => {
       expect(res.status).toBe(403);
     });
 
+    test('read blocks protected agent persistence paths', async () => {
+      const mimocodeFile = path.join(tmpDir, '.mimocode', 'data', 'agent_sessions.json');
+      await fs.mkdir(path.dirname(mimocodeFile), { recursive: true });
+      await fs.writeFile(mimocodeFile, '{}', 'utf-8');
+
+      const res = await request(app).get('/api/fs/read').query({ path: mimocodeFile });
+      expect(res.status).toBe(403);
+    });
+
     test('write blocks protected server.js path', async () => {
       const res = await request(app).post('/api/fs/write').send({ path: 'server.js', content: 'bad' });
       expect(res.status).toBe(403);

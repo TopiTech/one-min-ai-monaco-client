@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 const statusEl = document.getElementById('status');
 
 function setStatus(text, cls = '') {
@@ -11,7 +13,7 @@ let _activeRequests = 0;
 
 async function api(path, options = {}) {
   _activeRequests++;
-  setStatus('通信中...', 'warn');
+  setStatus(t('status_communicating'), 'warn');
 
   const { timeout = 60_000, signal, ...fetchOptions } = options;
   const controller = new AbortController();
@@ -51,7 +53,7 @@ async function api(path, options = {}) {
     // avoids the prior bug where the streaming branch forgot to clear it.
     _activeRequests = Math.max(0, _activeRequests - 1);
     if (_activeRequests === 0) {
-      setStatus(outcome === 'err' ? 'エラー' : '完了', outcome === 'err' ? 'err' : 'ok');
+      setStatus(outcome === 'err' ? t('status_error') : t('status_done'), outcome === 'err' ? 'err' : 'ok');
     }
   }
 }

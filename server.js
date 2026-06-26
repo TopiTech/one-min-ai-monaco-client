@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { callOneMin, normalizeAssetResponse } from './utils/api-client.js';
 import { serverConfig } from './config/server.js';
-import logger, { initLogger } from './utils/logger.js';
+import logger, { initLogger, sanitizeUrlForLogging } from './utils/logger.js';
 import { validateBufferMimeType } from './utils/mime-guard.js';
 import fs from 'fs';
 import fsp from 'fs/promises';
@@ -792,11 +792,12 @@ export function createApp(options = {}) {
     // coming from localhost/127.0.0.1.
     const exposeDetails = isLocalHost && isDev;
 
-    logger.error(`API Error: ${status}`, {
+    const logLevel = status >= 500 ? 'error' : 'warn';
+    logger[logLevel](`API Error: ${status}`, {
       error: err.message,
       status,
       method: req.method,
-      url: req.originalUrl,
+      url: sanitizeUrlForLogging(req.originalUrl),
       payload: exposeDetails ? err.payload : undefined,
       stack: exposeDetails ? err.stack : undefined,
     });
@@ -820,6 +821,21 @@ function validateEnvironment() {
   if (missing.length > 0) {
     logger.error('Missing required environment variables', { missing });
     process.exit(1);
+  }
+
+  if (serverConfig.enableCommandExecution && serverConfig.agentAutoApprove) {
+    const sandboxConfirmed =
+      String(process.env.ALLOW_UNSAFE_AGENT_AUTO_APPROVE || '').toLowerCase() === 'true';
+    if (!sandboxConfirmed) {
+      logger.error(
+        'Refusing to start: ENABLE_COMMAND_EXECUTION=true and AGENT_AUTO_APPROVE=true require a sandbox confirmation. ' +
+          'Set ALLOW_UNSAFE_AGENT_AUTO_APPROVE=true only inside an isolated sandbox or Docker environment.',
+      );
+      process.exit(1);
+    }
+    logger.warn(
+      'Unsafe agent auto-approve override enabled. Ensure this server is running only inside an isolated sandbox.',
+    );
   }
 
   // Warning for important but optional configs
