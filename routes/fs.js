@@ -126,7 +126,16 @@ router.get('/roots', (_req, res) => {
 /**
  * Get available drives on Windows.
  */
+let cachedDrives = null;
+let lastDrivesLookupTime = 0;
+const DRIVES_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 router.get('/drives', async (_req, res) => {
+  const now = Date.now();
+  if (cachedDrives && now - lastDrivesLookupTime < DRIVES_CACHE_TTL_MS) {
+    return res.json({ drives: cachedDrives });
+  }
+
   const drives = [];
 
   if (process.platform === 'win32') {
@@ -204,6 +213,9 @@ router.get('/drives', async (_req, res) => {
       drives.push({ name: 'Home', path: homeDir, type: 'home' });
     }
   }
+
+  cachedDrives = drives;
+  lastDrivesLookupTime = now;
 
   res.json({ drives });
 });

@@ -60,16 +60,28 @@ const WRITE_PROTECTED_PATH_GLOBS = [
  * @returns {RegExp}
  */
 function globToRegExp(glob) {
+  if (typeof glob !== 'string' || glob.length === 0) {
+    return /^$/;
+  }
+
+  // Guard against extremely long patterns to prevent ReDoS on compilation
+  if (glob.length > 256) {
+    throw new Error('Glob pattern is too long');
+  }
+
+  // Normalize excessive stars (e.g. *** -> **)
+  const normalizedGlob = glob.replace(/\*{3,}/g, '**');
+
   let regex = '';
-  for (let i = 0; i < glob.length; i++) {
-    const c = glob[i];
+  for (let i = 0; i < normalizedGlob.length; i++) {
+    const c = normalizedGlob[i];
     if (c === '*') {
-      if (glob[i + 1] === '*') {
+      if (normalizedGlob[i + 1] === '*') {
         regex += '.*';
         i++; // skip the second *
         // Consume an optional trailing `/` so `**/` matches zero or more
         // directory levels.
-        if (glob[i + 1] === '/') i++;
+        if (normalizedGlob[i + 1] === '/') i++;
       } else {
         regex += '[^/]*';
       }

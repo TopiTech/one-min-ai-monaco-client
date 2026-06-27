@@ -1,0 +1,103 @@
+import helmet from 'helmet';
+import crypto from 'crypto';
+import logger from '../utils/logger.js';
+import { serverConfig } from '../config/server.js';
+
+const customOrigins = (process.env.ALLOWED_CORS_ORIGINS || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+export function isAllowedHostHeader(hostStr) {
+  if (/^127\.0\.0\.1(?::\d+)?$/i.test(hostStr) || /^localhost(?::\d+)?$/i.test(hostStr)) return true;
+  for (const o of customOrigins) {
+    try {
+      if (new URL(o).host === hostStr) return true;
+    } catch {
+      // ignore
+    }
+  }
+  return false;
+}
+
+export function isAllowedOriginStr(originStr) {
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(originStr)) return true;
+  return customOrigins.includes(originStr);
+}
+
+// Host header validation to prevent DNS Rebinding
+export function hostHeaderValidation(req, res, next) {
+  const host = req.get('host');
+  if (!host) {
+    return res.status(400).json({ error: 'Host header is required' });
+  }
+  if (!isAllowedHostHeader(host)) {
+    logger.warn('Blocked request with suspicious Host header', { host });
+    return res.status(403).json({ error: 'Access denied: Invalid Host header' });
+  }
+  next();
+}
+
+// Per-request nonce middleware
+export function generateNonce(req, res, next) {
+  res.locals.nonce = crypto.randomBytes(16).toString('base64');
+  next();
+}
+
+// CSP configuration middleware
+export function configureCSP() {
+  return helmet({
+    contentSecurityPolicy: {
+      directives: {
+        'default-src': ["'self'"],
+        'script-src': ["'self'", (_req, res) => `'nonce-${res.locals.nonce}'`, 'blob:'],
+        'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        'style-src-attr': ["'unsafe-inline'"],
+        'upgrade-insecure-requests': [],
+        'img-src': ["'self'", 'data:', 'https:', 'blob:'],
+        'connect-src': ["'self'", serverConfig.apiBaseUrl],
+        'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com'],
+        'object-src': ["'none'"],
+        'media-src': ["'self'"],
+        'frame-src': ["'none'"],
+        'worker-src': ["'self'", 'blob:'],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+  });
+}
+
+// CORS middleware
+export function corsHeaders(req, res, next) {
+  const origin = req.get('origin');
+  if (origin) {
+    if (isAllowedOriginStr(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-local-bff-token, Authorization, Cookie');
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Max-Age', '86400');
+    } else {
+      logger.warn('CORS request blocked from origin', { origin });
+      return res.status(403).json({ error: 'CORS request blocked: Origin not allowed' });
+    }
+  }
+  if (req.method === 'OPTIONS') {
+    if (origin && !isAllowedOriginStr(origin)) {
+      logger.warn('CORS preflight blocked from origin', { origin });
+      return res.status(403).json({ error: 'CORS preflight blocked: Origin not allowed' });
+    }
+    return res.sendStatus(204);
+  }
+  next();
+}
+
+// Security headers middleware (Additional headers)
+export function securityHeaders(req, res, next) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  next();
+}

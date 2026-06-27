@@ -153,9 +153,15 @@ function createDebouncedFileWriter(filePath, serialize, { delayMs = 50, label = 
         return;
       }
       const data = await serialize();
-      const tmpFile = filePath + '.tmp';
-      await fs.writeFile(tmpFile, data, { encoding: 'utf-8', mode: 0o600 });
-      await fs.rename(tmpFile, filePath);
+      const suffix = crypto.randomBytes(4).toString('hex');
+      const tmpFile = `${filePath}.${suffix}.tmp`;
+      try {
+        await fs.writeFile(tmpFile, data, { encoding: 'utf-8', mode: 0o600 });
+        await fs.rename(tmpFile, filePath);
+      } catch (writeErr) {
+        await fs.unlink(tmpFile).catch(() => {});
+        throw writeErr;
+      }
     } catch (err) {
       logger.error(`Failed to save ${label} to file`, { error: err.message });
     } finally {
@@ -1281,5 +1287,13 @@ router.get('/config', (_req, res) => {
     allowedRoots: getAllowedRoots(),
   });
 });
+
+export async function flushPendingWriters() {
+  logger.info('Flushing pending agent sessions and commands writers...');
+  await Promise.all([
+    sessionWriter.flush ? sessionWriter.flush() : Promise.resolve(),
+    pendingWriter.flush ? pendingWriter.flush() : Promise.resolve(),
+  ]);
+}
 
 export default router;

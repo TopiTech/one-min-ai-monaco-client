@@ -10,6 +10,8 @@ const FALLBACK = {
   assetProxyTimeoutMs: 30_000,
   assetProxyMaxSize: 50 * 1024 * 1024,
   apiTimeout: 60_000,
+  apiStreamTimeoutMs: 300_000,
+  agentChatTimeoutMs: 600_000,
   apiRetryAttempts: 3,
   apiRetryDelay: 2_000,
   rateLimitWindowMs: 60 * 1000,
@@ -206,6 +208,21 @@ export const serverConfig = {
   logLevel: parseLogLevel(process.env.LOG_LEVEL),
   logToFile: parseBoolean(process.env.LOG_TO_FILE, false),
   logFilePath: parseString(process.env.LOG_FILE, undefined, (s) => s.length <= 512),
+  exposeErrorDetails: parseBoolean(process.env.EXPOSE_ERROR_DETAILS, process.env.NODE_ENV === 'development'),
+
+  // Custom Timeouts
+  apiStreamTimeoutMs: intInRange(
+    process.env.API_STREAM_TIMEOUT_MS,
+    MIN_API_TIMEOUT,
+    MAX_API_TIMEOUT,
+    FALLBACK.apiStreamTimeoutMs,
+  ),
+  agentChatTimeoutMs: intInRange(
+    process.env.AGENT_CHAT_TIMEOUT_MS,
+    MIN_API_TIMEOUT,
+    MAX_API_TIMEOUT,
+    FALLBACK.agentChatTimeoutMs,
+  ),
 
   // Allowed extra commands (comma-separated list, e.g. "npx,pip")
   allowedExtraCommands: new Set(

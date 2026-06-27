@@ -16,6 +16,15 @@ import fsp from 'fs/promises';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { sanitizePayload } from './utils/sanitize.js';
+import { createLocalAuthToken, localBffAuth } from './middlewares/auth.js';
+import {
+  hostHeaderValidation,
+  generateNonce,
+  configureCSP,
+  corsHeaders,
+  securityHeaders,
+} from './middlewares/security.js';
+import { assetProxyHandler } from './services/asset-proxy.js';
 
 // Replace the env-var-based default singleton with the validated serverConfig.
 // This ensures LOG_LEVEL, LOG_TO_FILE, and LOG_FILE are all parsed and clamped
@@ -25,7 +34,7 @@ initLogger(serverConfig);
 
 import aiRoutes from './routes/ai.js';
 import fsRoutes from './routes/fs.js';
-import agentRoutes from './routes/agent.js';
+import agentRoutes, { flushPendingWriters } from './routes/agent.js';
 import agentChatRoutes from './routes/agent-chat.js';
 import { initModels, getModelSyncStatus } from './config/models.js';
 
@@ -106,165 +115,7 @@ const upload = multer({
   },
 });
 
-function createLocalAuthToken() {
-  return crypto.randomBytes(24).toString('hex');
-}
-
-function compareAuthToken(a, b) {
-  if (!a || !b || typeof a !== 'string' || typeof b !== 'string') return false;
-
-  const hashA = crypto.createHash('sha256').update(a).digest();
-  const hashB = crypto.createHash('sha256').update(b).digest();
-
-  return crypto.timingSafeEqual(hashA, hashB);
-}
-
-class ProxySizeLimitError extends Error {
-  constructor(limitBytes) {
-    super(`Asset proxy response exceeds maximum size of ${limitBytes} bytes`);
-    this.name = 'ProxySizeLimitError';
-    this.status = 413;
-    this.code = 'ASSET_PROXY_RESPONSE_TOO_LARGE';
-  }
-}
-
-function buildAssetProxyAbortSignal(timeoutMs) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  return {
-    signal: controller.signal,
-    clear: () => clearTimeout(timeoutId),
-  };
-}
-
-function parseContentLength(value) {
-  if (!value) return null;
-  const n = Number(value);
-  if (!Number.isSafeInteger(n) || n < 0) return null;
-  return n;
-}
-
-function createByteLimitTransform(limitBytes) {
-  let total = 0;
-  return new TransformStream({
-    transform(chunk, controller) {
-      total += chunk?.byteLength ?? chunk?.length ?? 0;
-      if (total > limitBytes) {
-        throw new ProxySizeLimitError(limitBytes);
-      }
-      controller.enqueue(chunk);
-    },
-  });
-}
-
-// QUAL-4: We intentionally parse cookies manually rather than adding the
-// `cookie-parser` package. This server only needs to read one HttpOnly cookie
-// (the BFF auth token) from the raw `Cookie` header. Adding cookie-parser
-// would pull in an extra dependency, expose signed-cookie parsing that we
-// don't need, and run for every request — including static file serving.
-// If signed cookies or complex cookie handling is ever required, switch to
-// cookie-parser at that point.
-function parseCookies(cookieHeader) {
-  const list = {};
-  if (!cookieHeader) return list;
-  cookieHeader.split(`;`).forEach(function (cookie) {
-    let [name, ...rest] = cookie.split(`=`);
-    name = name?.trim();
-    if (!name) return;
-    const value = rest.join(`=`).trim();
-    if (!value) return;
-    try {
-      list[name] = decodeURIComponent(value);
-    } catch {
-      // Malformed percent-encoding in cookie value — store raw and continue
-      list[name] = value;
-    }
-  });
-  return list;
-}
-
-function localBffAuth({ requireToken = true, authToken } = {}) {
-  // L-1: When authentication is not required (e.g. tests), short-circuit
-  // immediately so the rest of the helper does not have to branch.
-  if (!requireToken) {
-    return (_req, _res, next) => next();
-  }
-
-  // B-1: Require explicit authToken to prevent accidental re-evaluation of createLocalAuthToken()
-  if (!authToken) {
-    throw new Error(
-      'localBffAuth: authToken must be provided explicitly when requireToken=true. ' +
-        'Set LOCAL_BFF_AUTH_TOKEN in .env or pass localAuthToken option to createApp().',
-    );
-  }
-
-  return (req, res, next) => {
-    const cookies = parseCookies(req.headers.cookie);
-    const headerToken = req.get('x-local-bff-token');
-    const cookieToken = cookies['__bff_session'];
-
-    // Cookie またはカスタムヘッダーのいずれかが正しいトークンを含んでいれば認証成功とする。
-    // クエリパラメータからの漏洩を防ぐため、req.query.__bff_token は廃止。
-    let tokenOk = false;
-    if (cookieToken) {
-      tokenOk = compareAuthToken(cookieToken, authToken);
-      // 両方存在する場合、ヘッダー側のトークンも一致していることを厳格に検証
-      if (headerToken && !compareAuthToken(headerToken, authToken)) {
-        tokenOk = false;
-      }
-    } else if (headerToken) {
-      // Cookie が存在しない正当なケース：テスト環境、または同一ページ内
-      // のフォーム送信等。Header単独認証を許可するが、Cookie が存在する
-      // 場合は Cookie 値で統一するため、Header パスはフォールバックのみ。
-      tokenOk = compareAuthToken(headerToken, authToken);
-    }
-
-    if (!tokenOk) {
-      const err = new Error('Local BFF authentication required or invalid token');
-      err.status = 403;
-      return next(err);
-    }
-
-    // Require explicit same-origin/request-from-host signal to mitigate CSRF.
-    // We deliberately do NOT trust the Origin header alone; combine it with
-    // either the Host header or the sec-fetch-site marker sent by browsers.
-    const origin = req.get('origin');
-    const host = req.get('host');
-    const secFetchSite = req.get('sec-fetch-site');
-    const referer = req.get('referer');
-
-    // B-1: Sec-Fetch-Site is a browser-enforced header that cannot be
-    // forged by simple fetch() calls. When it is explicitly "cross-site",
-    // reject immediately without falling through to the heuristic checks.
-    if (secFetchSite === 'cross-site') {
-      const err = new Error('Cross-origin requests are not allowed');
-      err.status = 403;
-      return next(err);
-    }
-
-    const isSameOrigin = (() => {
-      if (secFetchSite === 'same-origin') return true;
-      const checkUrl = (urlStr) => {
-        try {
-          return host && new URL(urlStr).host === host;
-        } catch {
-          return false;
-        }
-      };
-      if (origin && checkUrl(origin)) return true;
-      if (referer && checkUrl(referer)) return true;
-      return false;
-    })();
-
-    if (!isSameOrigin) {
-      const err = new Error('Cross-origin requests are not allowed without a valid token');
-      err.status = 403;
-      return next(err);
-    }
-
-    return next();
-  };
-}
+// Authentication and proxy helpers have been modularized to middlewares/auth.js, middlewares/security.js, and services/asset-proxy.js.
 
 /**
  * Map multer/multer-like errors to proper HTTP status codes.
@@ -485,92 +336,18 @@ export function createApp(options = {}) {
   }
 
   // Host header validation to prevent DNS Rebinding
-  app.use((req, res, next) => {
-    const host = req.get('host');
-    if (!host) {
-      return res.status(400).json({ error: 'Host header is required' });
-    }
-    if (!isAllowedHostHeader(host)) {
-      logger.warn('Blocked request with suspicious Host header', { host });
-      return res.status(403).json({ error: 'Access denied: Invalid Host header' });
-    }
-    next();
-  });
+  app.use(hostHeaderValidation);
 
   // Per-request nonce for CSP
-  app.use((_req, res, next) => {
-    res.locals.nonce = crypto.randomBytes(16).toString('base64');
-    next();
-  });
+  app.use(generateNonce);
 
-  app.use(
-    helmet({
-      contentSecurityPolicy: {
-        directives: {
-          'default-src': ["'self'"],
-          'script-src': ["'self'", (_req, res) => `'nonce-${res.locals.nonce}'`, 'blob:'],
-          // style-src intentionally omits the per-request nonce. CSP
-          // forbids mixing 'nonce-...' with 'unsafe-inline' in the same
-          // directive: when both are present the nonce wins and
-          // 'unsafe-inline' is ignored, which broke Monaco's runtime
-          // style assignments. The script-src directive above still
-          // requires a nonce, so genuine XSS surface is unchanged.
-          'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-          // Monaco assigns to element.style.* and setAttribute('style', ...)
-          // internally; mirror the relaxation on style-src-attr.
-          'style-src-attr': ["'unsafe-inline'"],
-          'upgrade-insecure-requests': [],
-          'img-src': ["'self'", 'data:', 'https:', 'blob:'],
-          'connect-src': ["'self'", serverConfig.apiBaseUrl],
-          'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com'],
-          'object-src': ["'none'"],
-          'media-src': ["'self'"],
-          'frame-src': ["'none'"],
-          'worker-src': ["'self'", 'blob:'],
-        },
-      },
-      crossOriginEmbedderPolicy: false,
-    }),
-  );
+  app.use(configureCSP());
 
   // CORS middleware: Restrict access exclusively to allowed origins
-  app.use((req, res, next) => {
-    const origin = req.get('origin');
-    if (origin) {
-      if (isAllowedOriginStr(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-        res.setHeader(
-          'Access-Control-Allow-Headers',
-          'Content-Type, x-local-bff-token, Authorization, Cookie',
-        );
-        res.setHeader('Access-Control-Allow-Credentials', 'true');
-        res.setHeader('Access-Control-Max-Age', '86400');
-      } else {
-        logger.warn('CORS request blocked from origin', { origin });
-        return res.status(403).json({ error: 'CORS request blocked: Origin not allowed' });
-      }
-    }
-    if (req.method === 'OPTIONS') {
-      // B-3: Even for preflight, verify the requested origin is allowed.
-      if (origin && !isAllowedOriginStr(origin)) {
-        logger.warn('CORS preflight blocked from origin', { origin });
-        return res.status(403).json({ error: 'CORS preflight blocked: Origin not allowed' });
-      }
-      return res.sendStatus(204);
-    }
-    next();
-  });
+  app.use(corsHeaders);
 
   // Security headers for all responses
-  app.use((_req, res, next) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
-    next();
-  });
+  app.use(securityHeaders);
 
   // A-6: Register health endpoint before rate-limit middleware so it's always accessible.
   app.use('/api/health', (_req, res) => {
@@ -691,99 +468,7 @@ export function createApp(options = {}) {
   // B-5: Single auth layer at /api level. Sub-routes are mounted inside one protected router
   // to avoid double invocation of protectedApiAuth.
   const protectedRouter = express.Router();
-  protectedRouter.get('/assets/proxy', async (req, res, next) => {
-    try {
-      const { url, key } = req.query;
-      if (!url && !key) {
-        return res.status(400).json({ error: 'url or key is required' });
-      }
-
-      let targetUrl = url;
-      if (!targetUrl && key) {
-        targetUrl = `${serverConfig.assetBaseUrl}/${key.replace(/^\//, '')}`;
-      }
-
-      const parsed = new URL(targetUrl);
-      const apiHost = new URL(serverConfig.apiBaseUrl).hostname;
-      const assetHost = new URL(serverConfig.assetBaseUrl).hostname;
-      const allowedHosts = [assetHost, apiHost];
-
-      const escapedBucket = serverConfig.s3Bucket.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-      const isVirtualHostS3 =
-        new RegExp(`^${escapedBucket}\\.s3(?:\\.[\\w-]+)?\\.amazonaws\\.com$`, 'i').test(parsed.hostname) ||
-        new RegExp(`^${escapedBucket}\\.s3-accelerate\\.amazonaws\\.com$`, 'i').test(parsed.hostname) ||
-        new RegExp(`^${escapedBucket}\\.s3\\.dualstack\\.[\\w-]+\\.amazonaws\\.com$`, 'i').test(
-          parsed.hostname,
-        );
-
-      const isPathStyleS3 =
-        /^s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname) &&
-        parsed.pathname.startsWith(`/${serverConfig.s3Bucket}/`);
-
-      const isAllowedHost =
-        allowedHosts.some((h) => parsed.hostname === h) || isVirtualHostS3 || isPathStyleS3;
-      if (!isAllowedHost) {
-        return res.status(403).json({ error: 'Access denied: Untrusted asset host' });
-      }
-
-      const abort = buildAssetProxyAbortSignal(serverConfig.assetProxyTimeoutMs);
-      let response;
-      try {
-        response = await fetch(targetUrl, { signal: abort.signal });
-      } catch (err) {
-        abort.clear();
-        if (err?.name === 'AbortError') {
-          return res.status(504).json({ error: 'Asset proxy request timed out' });
-        }
-        throw err;
-      }
-
-      if (!response.ok) {
-        abort.clear();
-        return res.status(response.status).json({ error: `Failed to fetch asset: ${response.statusText}` });
-      }
-
-      const contentLength = parseContentLength(response.headers.get('content-length'));
-      if (contentLength !== null && contentLength > serverConfig.assetProxyMaxSize) {
-        abort.clear();
-        return res.status(413).json({ error: 'Asset proxy response too large' });
-      }
-
-      const contentType = response.headers.get('content-type') || 'application/octet-stream';
-      // HTMLおよびスクリプトタイプのレスポンスをブロックしてXSSを防止
-      if (/text\/html|application\/javascript|text\/javascript/i.test(contentType)) {
-        abort.clear();
-        return res.status(403).json({ error: 'Unsupported content type from upstream' });
-      }
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Disposition', 'inline');
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      // Cache-Control は ETag 等との共存を想定し、マイルドなキャッシュに変更
-      res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
-
-      try {
-        if (response.body) {
-          const limitedBody = response.body.pipeThrough(
-            createByteLimitTransform(serverConfig.assetProxyMaxSize),
-          );
-          await pipeline(Readable.fromWeb(limitedBody), res);
-        } else {
-          res.end();
-        }
-      } finally {
-        abort.clear();
-      }
-    } catch (err) {
-      if (err?.name === 'ProxySizeLimitError') {
-        if (!res.headersSent) {
-          return res.status(err.status).json({ error: 'Asset proxy response too large' });
-        }
-        res.destroy(err);
-        return;
-      }
-      next(err);
-    }
-  });
+  protectedRouter.get('/assets/proxy', assetProxyHandler);
 
   protectedRouter.use('/', aiRoutes);
   protectedRouter.use('/fs', fsRoutes);
@@ -797,9 +482,9 @@ export function createApp(options = {}) {
     const isDev = process.env.NODE_ENV === 'development';
     const isLocalHost = isDev || /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.get('host') || '');
     // In production (NODE_ENV=production) or when NODE_ENV is unset, never
-    // expose stack traces or payloads to remote clients — only to requests
-    // coming from localhost/127.0.0.1.
-    const exposeDetails = isLocalHost && isDev;
+    // expose stack traces or payloads to remote clients unless explicitly enabled
+    // and requested from localhost.
+    const exposeDetails = serverConfig.exposeErrorDetails && isLocalHost;
 
     const logLevel = status >= 500 ? 'error' : 'warn';
     logger[logLevel](`API Error: ${status}`, {
@@ -830,6 +515,12 @@ function validateEnvironment() {
   if (missing.length > 0) {
     logger.error('Missing required environment variables', { missing });
     process.exit(1);
+  }
+
+  if (process.env.NODE_ENV === 'production' && serverConfig.exposeErrorDetails) {
+    logger.warn(
+      'EXPOSE_ERROR_DETAILS is set to true in production mode. This may leak sensitive stack traces to localhost clients.',
+    );
   }
 
   if (serverConfig.enableCommandExecution && serverConfig.agentAutoApprove) {
@@ -881,10 +572,18 @@ if (process.env.NODE_ENV !== 'test') {
       // Graceful shutdown handling
       const shutdown = () => {
         logger.info('Shutdown signal received. Closing HTTP server...');
-        server.close(() => {
-          logger.info('HTTP server closed. Exiting process.');
-          process.exit(0);
-        });
+        flushPendingWriters()
+          .catch((err) => {
+            logger.error('Failed to flush pending writers during shutdown', {
+              error: err.message,
+            });
+          })
+          .finally(() => {
+            server.close(() => {
+              logger.info('HTTP server closed. Exiting process.');
+              process.exit(0);
+            });
+          });
         // 強制終了タイムアウトを設定 (10秒)
         setTimeout(() => {
           logger.warn('Forcing shutdown after timeout.');

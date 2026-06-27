@@ -238,6 +238,7 @@ router.post('/chat/stream', async (req, res, next) => {
       raw: true,
       signal: controller.signal,
       idempotent: false,
+      timeout: serverConfig.apiStreamTimeoutMs,
     });
 
     if (response.headers.get('content-type')?.includes('application/json')) {

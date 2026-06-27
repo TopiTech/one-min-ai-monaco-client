@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { callOneMin, extractText, isFailedResponse, extractFailureMessage } from '../utils/api-client.js';
 import { parseWebSearchParams, buildCodePayload } from '../utils/web-search.js';
 import logger from '../utils/logger.js';
+import { serverConfig } from '../config/server.js';
 
 const router = express.Router();
 
@@ -113,7 +114,7 @@ router.post('/chat', async (req, res, next) => {
     const dataRes = await callOneMin('/api/features', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-      timeout: 600000,
+      timeout: serverConfig.agentChatTimeoutMs,
     });
 
     // 6. Handle upstream failure
