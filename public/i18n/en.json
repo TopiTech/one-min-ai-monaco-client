@@ -200,5 +200,14 @@
   "chat_error": "Chat error: {error}",
   "status_communicating": "Communicating...",
   "status_done": "Done",
-  "status_error": "Error"
+  "status_error": "Error",
+  "failed_clear_data": "Failed to delete server sessions",
+  "agent_crash_title": "System Crash",
+  "agent_crash_desc": "An issue occurred during the agent loop: {error}",
+  "agent_stopped": "Stopped",
+  "agent_stopped_by_user": "Stopped by user.",
+  "agent_feedback_label": "Additional instruction",
+  "agent_reset_confirm": "Reset the agent session history?",
+  "agent_reset_success": "Session reset",
+  "agent_instruction_required": "Please enter instructions for the agent"
 }

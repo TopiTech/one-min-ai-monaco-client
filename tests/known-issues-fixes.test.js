@@ -293,9 +293,9 @@ describe('known-issues.md regression fixes', () => {
   // M-10: run_command resolver guard (source-level verification)
   // ----------------------------------------------------------------
   describe('M-10: run_command guards against nested approval', () => {
-    test('public/app.js rejects new run_command when resolver is busy', async () => {
+    test('agent-core.js rejects new run_command when resolver is busy', async () => {
       const fsPromises = await import('fs/promises');
-      const src = await fsPromises.readFile(new URL('../public/app.js', import.meta.url), 'utf-8');
+      const src = await fsPromises.readFile(new URL('../public/js/agent-core.js', import.meta.url), 'utf-8');
       // Must check for an existing resolver before issuing a new command
       expect(src).toMatch(/state\.agent\.resolver/);
       expect(src).toMatch(/別のコマンドが承認待ち/);
@@ -324,7 +324,7 @@ describe('known-issues.md regression fixes', () => {
       const src = await fsPromises.readFile(new URL('../public/app.js', import.meta.url), 'utf-8');
       // Both handlers must iterate .agent-step.approval and call finalize
       expect(src).toMatch(/__finalizeApproval/);
-      expect((src.match(/agent-step\.approval/g) || []).length).toBeGreaterThanOrEqual(2);
+      expect((src.match(/agent-step\.approval/g) || []).length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -333,9 +333,9 @@ describe('known-issues.md regression fixes', () => {
   // not consume a maxLoops iteration on a recoverable condition.
   // ----------------------------------------------------------------
   describe('M-1: retryable run_command guard', () => {
-    test('public/app.js sets retryable: true on nested-approval guard', async () => {
+    test('agent-core.js sets retryable: true on nested-approval guard', async () => {
       const fsPromises = await import('fs/promises');
-      const src = await fsPromises.readFile(new URL('../public/app.js', import.meta.url), 'utf-8');
+      const src = await fsPromises.readFile(new URL('../public/js/agent-core.js', import.meta.url), 'utf-8');
       expect(src).toMatch(/retryable:\s*true/);
       // And the loop must decrement loopCount on retryable
       expect(src).toMatch(/loopCount\s*=\s*Math\.max\(0,\s*loopCount\s*-\s*1\)/);

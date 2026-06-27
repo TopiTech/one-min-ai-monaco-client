@@ -407,6 +407,22 @@ router.post('/create', async (req, res, next) => {
 });
 
 /**
+ * Recursively check that no protected paths exist within a directory.
+ * This prevents accidentally deleting protected files when a parent
+ * directory is removed with recursive: true.
+ */
+async function assertNoProtectedChildren(dirPath) {
+  const entries = await fs.readdir(dirPath, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dirPath, entry.name);
+    assertNotWriteProtectedPath(fullPath);
+    if (entry.isDirectory()) {
+      await assertNoProtectedChildren(fullPath);
+    }
+  }
+}
+
+/**
  * Delete a file or directory.
  */
 router.post('/delete', async (req, res, next) => {
@@ -425,7 +441,9 @@ router.post('/delete', async (req, res, next) => {
 
     const stat = await fs.stat(realPath);
     if (stat.isDirectory()) {
-      await fs.rm(realPath, { recursive: true, force: true });
+      // Recursively verify no protected paths exist within before deleting
+      await assertNoProtectedChildren(realPath);
+      await fs.rm(realPath, { recursive: true });
     } else {
       await fs.unlink(realPath);
     }

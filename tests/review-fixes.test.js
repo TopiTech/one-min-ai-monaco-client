@@ -220,4 +220,75 @@ describe('Review Fixes', () => {
       expect(JSON.stringify(response.body)).not.toContain('secret');
     });
   });
+
+  describe('C-1: scripts/ directory write protection', () => {
+    test('should identify paths in scripts/ as write protected', async () => {
+      const { isWriteProtectedPath } = await import('../utils/fs-guard.js');
+      const pathMod = await import('path');
+      const projectRoot = pathMod.resolve(process.cwd());
+      const scriptPath = pathMod.join(projectRoot, 'scripts', 'copy-monaco.js');
+      expect(isWriteProtectedPath(scriptPath)).toBe(true);
+    });
+  });
+
+  describe('H-1: Zod validation for /diff endpoint', () => {
+    test('should return 400 when path is missing', async () => {
+      const sessionRes = await request(app).post('/api/agent/sessions').send({ cwd: process.cwd() });
+
+      const sessionId = sessionRes.body.session.id;
+
+      const response = await request(app)
+        .post(`/api/agent/sessions/${sessionId}/diff`)
+        .send({ diff: '<<<<<<< SEARCH\n=======\n>>>>>>> REPLACE' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/path is required|Invalid input|expected string/i);
+    });
+
+    test('should return 400 when diff is missing', async () => {
+      const sessionRes = await request(app).post('/api/agent/sessions').send({ cwd: process.cwd() });
+
+      const sessionId = sessionRes.body.session.id;
+
+      const response = await request(app)
+        .post(`/api/agent/sessions/${sessionId}/diff`)
+        .send({ path: 'test.txt' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/diff is required|Invalid input|expected string/i);
+    });
+  });
+
+  describe('H-4: Allowed extra commands dynamic opt-in', () => {
+    let originalExtra;
+
+    beforeAll(async () => {
+      const { serverConfig } = await import('../config/server.js');
+      originalExtra = serverConfig.allowedExtraCommands;
+    });
+
+    afterAll(async () => {
+      const { serverConfig } = await import('../config/server.js');
+      serverConfig.allowedExtraCommands = originalExtra;
+    });
+
+    test('should block npx by default', async () => {
+      const { checkCommandSafety } = await import('../services/command-runner.js');
+      const { serverConfig } = await import('../config/server.js');
+      serverConfig.allowedExtraCommands = new Set();
+
+      const safety = checkCommandSafety('npx prettier .');
+      expect(safety.safe).toBe(false);
+      expect(safety.reason).toContain('Command not in allowlist');
+    });
+
+    test('should allow npx when opt-in is active', async () => {
+      const { checkCommandSafety } = await import('../services/command-runner.js');
+      const { serverConfig } = await import('../config/server.js');
+      serverConfig.allowedExtraCommands = new Set(['npx']);
+
+      const safety = checkCommandSafety('npx prettier .');
+      expect(safety.safe).toBe(true);
+    });
+  });
 });

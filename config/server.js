@@ -152,6 +152,13 @@ export const serverConfig = {
   // local mock servers or staging environments).
   apiBaseUrl: parseApiUrl(process.env.ONE_MIN_AI_API_BASE_URL, 'https://api.1min.ai'),
 
+  // Asset base URL override (1min.ai production by default; useful for
+  // local mock servers or staging environments).
+  assetBaseUrl: parseApiUrl(process.env.ONE_MIN_AI_ASSET_BASE_URL, 'https://asset.1min.ai'),
+
+  // S3 Bucket name for asset proxy host validation
+  s3Bucket: parseString(process.env.ONE_MIN_AI_S3_BUCKET, 'asset.1min.ai', (s) => s.length <= 100),
+
   // Rate limiting
   rateLimitWindowMs: intInRange(
     process.env.RATE_LIMIT_WINDOW_MS,
@@ -199,4 +206,12 @@ export const serverConfig = {
   logLevel: parseLogLevel(process.env.LOG_LEVEL),
   logToFile: parseBoolean(process.env.LOG_TO_FILE, false),
   logFilePath: parseString(process.env.LOG_FILE, undefined, (s) => s.length <= 512),
+
+  // Allowed extra commands (comma-separated list, e.g. "npx,pip")
+  allowedExtraCommands: new Set(
+    (process.env.ALLOWED_EXTRA_COMMANDS || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+  ),
 };

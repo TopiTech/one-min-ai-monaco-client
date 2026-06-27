@@ -4,6 +4,7 @@
  */
 
 import { t } from './i18n.js';
+import { api } from './api.js';
 
 const STORAGE_KEYS = {
   WEB_SEARCH: 'monaco_client_code_web_search',
@@ -142,9 +143,11 @@ function initClearLocalData() {
     if (!confirmed) return;
 
     try {
-      await fetch('/api/agent/sessions/all', { method: 'DELETE' });
+      await api('/api/agent/sessions/all', { method: 'DELETE' });
     } catch (err) {
       console.error('Failed to delete server sessions', err);
+      window.toast?.error?.(t('failed_clear_data') || 'セッションの削除に失敗しました');
+      return;
     }
 
     for (const key of LOCAL_STORAGE_KEYS) {

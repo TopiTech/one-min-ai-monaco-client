@@ -1,6 +1,6 @@
 /**
  * Main application logic for 1min.ai Monaco Client
- * Depends on: js/api.js, js/dom-style.js, js/models.js, js/toast.js, js/utils.js
+ * Depends on: js/api.js, js/dom-style.js, js/model-picker.js, js/toast.js, js/utils.js
  */
 
 import {
@@ -9,7 +9,7 @@ import {
   getAllChatModels,
   getAllCodeModels,
   getAllImageModels,
-} from './js/models.js';
+} from './js/model-picker.js';
 import { api } from './js/api.js';
 import {
   SVG_NS,
@@ -313,6 +313,7 @@ $('createConversation').onclick = async () => {
     const id =
       data?.conversation?.uuid || data?.uuid || data?.aiRecord?.conversationId || data?.conversationId || '';
     dom.conversationId.value = id;
+    window.__saveConvState?.();
     toast.success('会話を作成しました', { duration: 5000 });
   } catch (e) {
     toast.error(t('conversation_create_failed', { error: e.message }));
@@ -466,7 +467,7 @@ function addAgentTimelineStep(type, title, body, resultText = null) {
     const toggleDiv = document.createElement('div');
     toggleDiv.className = 'agent-step-thought-toggle';
     const toggleSpan = document.createElement('span');
-    toggleSpan.textContent = '▶ 思考プロセスを展開';
+    toggleSpan.textContent = t('thought_expand');
     toggleDiv.appendChild(toggleSpan);
 
     const thoughtBox = document.createElement('div');
@@ -476,7 +477,7 @@ function addAgentTimelineStep(type, title, body, resultText = null) {
     toggleDiv.onclick = () => {
       const willBeHidden = !thoughtBox.classList.contains('u-hidden');
       thoughtBox.classList.toggle('u-hidden', willBeHidden);
-      toggleSpan.textContent = willBeHidden ? '▶ 思考プロセスを展開' : '▼ 思考プロセスを折りたたむ';
+      toggleSpan.textContent = willBeHidden ? t('thought_expand') : t('thought_collapse');
     };
 
     card.appendChild(toggleDiv);
@@ -532,7 +533,7 @@ function toggleTimelineResult(stepId) {
   const willBeHidden = !box.classList.contains('u-hidden');
   box.classList.toggle('u-hidden', willBeHidden);
   if (toggleSpan) {
-    toggleSpan.textContent = willBeHidden ? '▶ 実行出力を表示' : '▼ 実行出力を非表示';
+    toggleSpan.textContent = willBeHidden ? t('show_output') : t('hide_output');
   }
 }
 
@@ -548,7 +549,7 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
   step.className = `agent-step approval`;
   step.id = stepId;
   step.setAttribute('role', 'alertdialog');
-  step.setAttribute('aria-label', 'コマンド実行承認');
+  step.setAttribute('aria-label', t('cmd_approval_label'));
 
   const time = new Date().toLocaleTimeString([], {
     hour: '2-digit',
@@ -565,7 +566,7 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
   const iconSpan = document.createElement('span');
   iconSpan.className = 'agent-step-icon';
   appendStepIcon(iconSpan, 'approval');
-  iconSpan.appendChild(document.createTextNode('コマンド実行'));
+  iconSpan.appendChild(document.createTextNode(t('cmd_approval')));
 
   const timeSpan = document.createElement('span');
   timeSpan.className = 'agent-step-time';
@@ -576,18 +577,18 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
 
   const body = document.createElement('div');
   body.className = 'agent-step-body';
-  body.textContent = 'エージェントが以下のコマンドを実行しようとしています。';
+  body.textContent = t('cmd_approval_desc');
 
   const details = document.createElement('div');
   details.className = 'approval-details';
 
   const cmdLabel = document.createElement('strong');
-  cmdLabel.textContent = 'コマンド: ';
+  cmdLabel.textContent = t('cmd_label');
   const cmdCode = document.createElement('code');
   cmdCode.textContent = command;
 
   const dirLabel = document.createElement('strong');
-  dirLabel.textContent = '実行ディレクトリ: ';
+  dirLabel.textContent = t('cmd_dir_label');
   const dirCode = document.createElement('code');
   dirCode.textContent = cwd;
 
@@ -601,7 +602,7 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
   feedbackInput.type = 'text';
   feedbackInput.id = `feedback-${stepId}`;
   feedbackInput.className = 'approval-feedback-input';
-  feedbackInput.placeholder = '却下する場合は理由を入力してください...';
+  feedbackInput.placeholder = t('cmd_reject_reason');
 
   const actions = document.createElement('div');
   actions.className = 'approval-actions';
@@ -610,13 +611,13 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
   approveBtn.type = 'button';
   approveBtn.className = 'approval-btn approve';
   approveBtn.id = `approve-${stepId}`;
-  approveBtn.textContent = '許可';
+  approveBtn.textContent = t('btn_approve');
 
   const rejectBtn = document.createElement('button');
   rejectBtn.type = 'button';
   rejectBtn.className = 'approval-btn reject';
   rejectBtn.id = `reject-${stepId}`;
-  rejectBtn.textContent = '却下';
+  rejectBtn.textContent = t('btn_reject');
 
   actions.appendChild(approveBtn);
   actions.appendChild(rejectBtn);
@@ -657,7 +658,7 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
     approveBtn.disabled = true;
     rejectBtn.disabled = true;
     feedbackInput.disabled = true;
-    approveBtn.textContent = '許可済み';
+    approveBtn.textContent = t('btn_approved');
     approveBtn.classList.add('is-disabled');
     onApprove();
     finalizeStep();
@@ -667,7 +668,7 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
     approveBtn.disabled = true;
     rejectBtn.disabled = true;
     feedbackInput.disabled = true;
-    rejectBtn.textContent = '却下済み';
+    rejectBtn.textContent = t('btn_rejected');
     rejectBtn.classList.add('is-disabled');
     const reason = feedbackInput.value.trim() || 'ユーザーによって却下されました';
     onReject(reason);
@@ -675,679 +676,19 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
   };
 }
 
-let diffEditor = null;
-
-async function showDiffDialog(filePath, oldContent, newContent) {
-  try {
-    const modal = $('diffModal');
-    const container = $('diffEditorContainer');
-    const pathLabel = $('diffFilePath');
-    const inlineToggle = $('diffInlineToggle');
-
-    pathLabel.textContent = `ファイル: ${filePath}`;
-    modal.classList.remove('u-hidden');
-
-    const isInline = localStorage.getItem('diffRenderInline') === 'true';
-    if (inlineToggle) {
-      inlineToggle.checked = isInline;
-      inlineToggle.onchange = (e) => {
-        const inline = e.target.checked;
-        localStorage.setItem('diffRenderInline', inline);
-        if (diffEditor) diffEditor.updateOptions({ renderSideBySide: !inline });
-      };
-    }
-
-    if (!diffEditor) {
-      diffEditor = monaco.editor.createDiffEditor(container, {
-        theme: document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'vs-dark',
-        automaticLayout: true,
-        readOnly: true,
-        renderSideBySide: !isInline,
-      });
-    } else {
-      diffEditor.updateOptions({
-        theme: document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'vs-dark',
-        renderSideBySide: !isInline,
-      });
-    }
-
-    const baseName =
-      filePath
-        .split(/[\\/]/)
-        .pop()
-        .replace(/[^a-zA-Z0-9_.-]/g, '_') || 'file';
-    const safePath = '/' + baseName;
-    const originalUri = monaco.Uri.from({ scheme: 'diff-original', path: safePath });
-    const modifiedUri = monaco.Uri.from({ scheme: 'diff-modified', path: safePath });
-
-    let originalModel = monaco.editor.getModel(originalUri);
-    if (originalModel) originalModel.dispose();
-    let modifiedModel = monaco.editor.getModel(modifiedUri);
-    if (modifiedModel) modifiedModel.dispose();
-
-    originalModel = monaco.editor.createModel(oldContent, undefined, originalUri);
-    modifiedModel = monaco.editor.createModel(newContent, undefined, modifiedUri);
-    diffEditor.setModel({ original: originalModel, modified: modifiedModel });
-
-    // Ensure layout is recalculated after display is un-hidden
-    requestAnimationFrame(() => {
-      if (diffEditor) diffEditor.layout();
-    });
-
-    // Handle animation layout changes (modalIn animation takes 180ms)
-    setTimeout(() => {
-      if (diffEditor) diffEditor.layout();
-    }, 200);
-
-    // Precise layout calculation when modal becomes visible
-    const observer = new ResizeObserver(() => {
-      if (diffEditor && modal.offsetParent !== null) {
-        diffEditor.layout();
-      }
-    });
-    observer.observe(container);
-
-    return new Promise((resolve) => {
-      const cleanup = (val) => {
-        observer.disconnect();
-        modal.classList.add('u-hidden');
-        if (diffEditor) diffEditor.setModel(null);
-        originalModel.dispose();
-        modifiedModel.dispose();
-        document.removeEventListener('keydown', onKey);
-        resolve(val);
-      };
-      $('diffApply').onclick = () => cleanup(true);
-      $('diffCancel').onclick = () => cleanup(false);
-
-      // #19: Close diff dialog on Escape, cleaning up ResizeObserver
-      const onKey = (e) => {
-        if (e.key === 'Escape' && !modal.classList.contains('u-hidden')) {
-          cleanup(false);
-        }
-      };
-      document.addEventListener('keydown', onKey);
-    });
-  } catch (error) {
-    console.error('showDiffDialog error:', error);
-    toast.error('差分表示エラー: ' + error.message);
-    $('diffModal').classList.add('u-hidden');
-    return false;
-  }
-}
-
-function resolvePathRelativeToWorkspace(workspaceRoot, filePath) {
-  if (/^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith('/') || filePath.startsWith('\\')) {
-    return filePath;
-  }
-  const separator = workspaceRoot.includes('\\') ? '\\' : '/';
-  const rootTrimmed = workspaceRoot.replace(/[\\/]+$/, '');
-  const fileTrimmed = filePath.replace(/^[\\/]+/, '');
-  return `${rootTrimmed}${separator}${fileTrimmed}`;
-}
-
-function estimateTokens(text) {
-  if (!text) return 0;
-  // Better heuristic for English vs Japanese:
-  // Latin characters are ~4 per token. Japanese/CJK characters are ~1.2 per token.
-  const latinMatch = text.match(/[a-zA-Z0-9\s!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/g);
-  const latinCount = latinMatch ? latinMatch.length : 0;
-  const multiByteCount = text.length - latinCount;
-  return Math.ceil(latinCount / 4 + multiByteCount * 1.2);
-}
-
-function trimAgentHistory(history, maxTokens) {
-  if (maxTokens === undefined) {
-    maxTokens = state.creditSaving ? 15000 : 45000;
-  }
-  let totalTokens = 0;
-  for (let i = history.length - 1; i >= 0; i--) {
-    totalTokens += estimateTokens(history[i].content);
-    if (totalTokens > maxTokens && i > 0) {
-      const removed = history.splice(0, i);
-      history.unshift({
-        role: 'user',
-        content: `[コンテキスト省略: ${removed.length}件のメッセージを要約]\n前回までの操作を continues してください。`,
-      });
-      return;
-    }
-  }
-}
-
-async function processCommandStream(res, stepId) {
-  let finalResult = null;
-  const resultBox = document.getElementById(`result-${stepId}`);
-  if (resultBox) {
-    const toggle = resultBox.previousElementSibling;
-    if (toggle) {
-      toggle.classList.remove('u-hidden');
-      const span = toggle.querySelector('span');
-      if (span) span.textContent = '▼ 実行出力を非表示';
-    }
-    resultBox.classList.remove('u-hidden');
-    resultBox.textContent = '';
-  }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder('utf-8');
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    let boundary = buffer.indexOf('\n\n');
-    while (boundary !== -1) {
-      const chunk = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-
-      let eventName = 'message';
-      let data = '';
-      for (const line of chunk.split('\n')) {
-        if (line.startsWith('event: ')) {
-          eventName = line.slice(7);
-        } else if (line.startsWith('data: ')) {
-          data += line.slice(6);
-        }
-      }
-
-      if (data) {
-        try {
-          const parsed = JSON.parse(data);
-          if (eventName === 'done') {
-            finalResult = parsed;
-          } else if (eventName === 'stdout' || eventName === 'stderr') {
-            if (resultBox) {
-              resultBox.textContent += parsed.text;
-              resultBox.scrollTop = resultBox.scrollHeight;
-            }
-          }
-        } catch (e) {
-          console.error('Failed to parse SSE data', e);
-        }
-      }
-      boundary = buffer.indexOf('\n\n');
-    }
-  }
-  return finalResult;
-}
-
-const AGENT_TOOL_HANDLERS = {
-  read_file: async ({ sessionId, workspaceRoot, params }) => {
-    const { path: filePath, startLine, endLine } = params;
-    if (!filePath) throw new Error('path パラメータが必要です');
-    const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
-    let url = `/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`;
-    if (startLine !== undefined) url += `&startLine=${startLine}`;
-    if (endLine !== undefined) url += `&endLine=${endLine}`;
-    const data = await api(url);
-    await openFile(fullPath);
-    return { text: data.content, success: true };
-  },
-  write_file: async ({ sessionId, workspaceRoot, params }) => {
-    const { path: filePath, content } = params;
-    if (!filePath) throw new Error('path パラメータが必要です');
-    const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
-    await api(`/api/agent/sessions/${sessionId}/files`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: fullPath, content }),
-    });
-    await openFile(fullPath);
-    return { text: `ファイル ${filePath} の書き込みに成功しました。`, success: true };
-  },
-  apply_diff: async ({ sessionId, workspaceRoot, params }) => {
-    const { path: filePath, diff } = params;
-    if (!filePath) throw new Error('path パラメータが必要です');
-    if (diff === undefined) throw new Error('diff パラメータが必要です');
-    const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
-
-    const current = await api(`/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`);
-    const preview = await api(`/api/agent/sessions/${sessionId}/diff`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: fullPath, diff, dryRun: true }),
-    });
-
-    if (await showDiffDialog(filePath, current.content, preview.newContent || current.content)) {
-      const res = await api(`/api/agent/sessions/${sessionId}/diff`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: fullPath, diff }),
-      });
-      await openFile(fullPath);
-      return { text: res.message || '置換成功', success: true };
-    }
-    return { text: 'ユーザーによって拒否されました', success: false };
-  },
-  list_directory: async ({ sessionId, workspaceRoot, params }) => {
-    const dirPath = params.path || '';
-    const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, dirPath);
-    const data = await api(`/api/agent/sessions/${sessionId}/dir?path=${encodeURIComponent(fullPath)}`);
-    const text = data.items?.length
-      ? data.items.map((i) => `- ${i.isDirectory ? '[Dir] ' : '[File] '}${i.name}`).join('\n')
-      : 'ディレクトリは空または存在しません。';
-    return { text, success: true };
-  },
-  search_files: async ({ sessionId, workspaceRoot, params }) => {
-    const { query } = params;
-    if (!query) throw new Error('query パラメータが必要です');
-    const data = await api(`/api/agent/sessions/${sessionId}/search?query=${encodeURIComponent(query)}`);
-    const text = data.results?.length
-      ? data.results.map((r) => `${r.file}:${r.line}: ${r.content}`).join('\n')
-      : '検索結果なし';
-    return { text, success: true };
-  },
-  run_command: async ({ sessionId, workspaceRoot, params }) => {
-    const { command } = params;
-    if (!command) throw new Error('command パラメータが必要です');
-
-    // M-10: Reject nested approval requests. If a previous command is still
-    // awaiting user approval, the resolver would be overwritten and the prior
-    // Promise would hang forever. Force the agent to wait for the user to
-    // resolve the in-flight approval.
-    // M-1: signal this with a distinct marker so the agent loop can skip
-    // burning an iteration (and an LLM call) on a recoverable condition.
-    if (state.agent.resolver) {
-      return {
-        text: '別のコマンドが承認待ちです。先に承認/却下してください。',
-        success: false,
-        retryable: true,
-      };
-    }
-
-    setAgentStatus('承認待ち...', 'awaiting_approval');
-    const runResRaw = await api(`/api/agent/sessions/${sessionId}/commands?stream=true`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command, cwd: workspaceRoot }),
-      raw: true,
-    });
-
-    let runRes;
-    const contentType = runResRaw.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-      runRes = await runResRaw.json();
-    } else {
-      const stepId = addAgentTimelineStep(
-        'action',
-        `コマンド実行: ${command.split(' ')[0]}`,
-        '自動承認により実行を開始します...',
-        '',
-      );
-      runRes = await processCommandStream(runResRaw, stepId);
-    }
-
-    if (!runRes.requiresApproval) {
-      return {
-        text: `Exit Code: ${runRes.exitCode}\n\nSTDOUT:\n${runRes.stdout}\n\nSTDERR:\n${runRes.stderr}`,
-        success: runRes.exitCode === 0,
-      };
-    }
-
-    const approvalResult = await new Promise((resolve) => {
-      state.agent.resolver = resolve;
-      addAgentApprovalStep(
-        command,
-        workspaceRoot,
-        runRes.approvalToken,
-        async () => {
-          setAgentStatus('実行中...', 'executing');
-          try {
-            const resRaw = await api(`/api/agent/sessions/${sessionId}/approve?stream=true`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ approvalToken: runRes.approvalToken }),
-              raw: true,
-            });
-            let res;
-            const resContentType = resRaw.headers.get('content-type') || '';
-            if (resContentType.includes('application/json')) {
-              res = await resRaw.json();
-            } else {
-              const stepId = addAgentTimelineStep(
-                'action',
-                `コマンド実行: ${command.split(' ')[0]}`,
-                '実行を開始します...',
-                '',
-              );
-              res = await processCommandStream(resRaw, stepId);
-            }
-            resolve({ approved: true, result: res });
-          } catch (e) {
-            resolve({ approved: true, error: e });
-          }
-        },
-        (reason) => resolve({ approved: false, reason }),
-      );
-    });
-
-    state.agent.resolver = null;
-    if (approvalResult.abort) return { text: 'ABORTED', success: false, abort: true };
-    if (!approvalResult.approved) return { text: `拒否されました: ${approvalResult.reason}`, success: false };
-    if (approvalResult.error) return { text: `エラー: ${approvalResult.error.message}`, success: false };
-
-    const { result } = approvalResult;
-    return {
-      text: `Exit Code: ${result.exitCode}\n\nSTDOUT:\n${result.stdout}\n\nSTDERR:\n${result.stderr}`,
-      success: result.exitCode === 0,
-    };
-  },
-};
-
-async function runAgentLoop(initialInstruction) {
-  const workspaceRoot = dom.explorerPath.value || '';
-  setAgentStatus('初期化中...', 'thinking');
-
-  // Show user's initial message as a user chat bubble
-  addAgentTimelineStep('user', '指示', initialInstruction);
-
-  if (!state.agent.sessionId) {
-    try {
-      const sessionData = await api('/api/agent/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cwd: workspaceRoot,
-          task: initialInstruction,
-        }),
-      });
-      state.agent.sessionId = sessionData.session.id;
-      addAgentTimelineStep(
-        'thought',
-        'セッション開始',
-        `エージェントセッションが開始されました。\nワークスペース: ${workspaceRoot}`,
-      );
-    } catch (e) {
-      addAgentTimelineStep('error', 'セッション作成失敗', `セッションの初期化に失敗しました: ${e.message}`);
-      setAgentStatus('エラー', 'error');
-      return;
-    }
-  } else {
-    addAgentTimelineStep('thought', 'セッション再開', `既存のセッションで追加指示を実行します。`);
-  }
-
-  const sessionId = state.agent.sessionId;
-
-  let workspaceFilesText = `ワークスペースパス: ${workspaceRoot}\n`;
-  try {
-    const listRes = await api(`/api/fs/list?dir=${encodeURIComponent(workspaceRoot)}`);
-    const filesList = listRes.items
-      .map((item) => `- ${item.isDirectory ? '[Dir] ' : '[File] '}${item.name}`)
-      .join('\n');
-    workspaceFilesText += filesList;
-  } catch (err) {
-    workspaceFilesText += '(ファイル一覧の取得に失敗しました)';
-  }
-
-  const modelSelected = $('codeModel')?.value || 'qwen3-coder-plus';
-
-  const sysPrompt = `あなたは極めて優秀なソフトウェアエンジニアAIエージェントです。
-あなたの目的は、ユーザーの指示を「正確に」かつ「安全に」達成することです。
-あなたは現在、隔離されたワークスペース内のファイルを直接操作できる特権セッションにいます。
-
-【必須XML出力スキーマ】
-各ターンは必ず以下の形式だけを出力してください。Markdownコードブロック、JSON、自由形式の説明文は禁止です。
-<thought>...</thought><call_tool name="tool名"><parameter name="パラメータ名">値</parameter></call_tool>
-
-1. read_file
-   - パラメータ: { "path": "ファイルパス", "startLine": 行番号(任意/1開始), "endLine": 行番号(任意/1開始) }
-   - 目的: 指定したファイルの内容を読み取る。大きなファイルや特定箇所のみを見たい場合、startLineとendLineで範囲を指定して分割して読み込むことが可能。
-   <call_tool name="read_file"><parameter name="path">utils/helper.js</parameter><parameter name="startLine">10</parameter><parameter name="endLine">30</parameter></call_tool>
-
-2. write_file
-    - 【必須】このツールの <parameter> 値は XML テキストなので、& < > はそれぞれ &amp; &lt; &gt; に、完全なコードは省略せずにエスケープして出力してください。
-   - パラメータ: { "path": "ファイルパス", "content": "完全なコード内容" }
-   - 目的: 新規ファイルを作成するか、既存ファイル全体を上書きする。
-   - **注意点**:
-     - \`content\` パラメータには、絶対にマークダウンのコードブロック（例: \`\`\`js ... \`\`\`）を含めず、**プログラムの生テキストのみ**を直接記述してください。
-     - HTML/XMLの実体参照エスケープ（\`&lt;\`や\`&gt;\`、\`&amp;\`など）は**一切行わず**、そのままの記号（\`<\`, \`>\`, \`&\`）で記述してください。
-     - コードの途中で省略（例: \`// ... 残りのコード ...\`）せず、完全な内容を出力してください。
-   <call_tool name="write_file"><parameter name="path">utils/helper.js</parameter><parameter name="content">export const add = (a, b) => a + b;</parameter></call_tool>
-
-3. apply_diff
-   - パラメータ: { "path": "ファイルパス", "diff": "SEARCH/REPLACEブロック形式の差分" }
-   - 目的: ファイルの特定箇所のみを置換（編集）する。全文を書き換える write_file よりも軽量で安全なため、既存ファイルの編集にはこちらを使用すること。複数の箇所の置換（マルチブロック）も同時に実行可能です。
-   - **注意点**:
-     - \`diff\` パラメータには、絶対にマークダウンのコードブロック（例: \`\`\`diff ... \`\`\`）を含めず、かつ実体参照エスケープを行わずに、**以下のSEARCH/REPLACE形式のみ**を記述してください。
-     - SEARCHブロックの内容は、ファイル内の対象コード（インデント・改行等含む）と完全に一致する必要があります。一意に特定できるように、十分な長さ（前後の行を含む）で指定してください。
-     - 形式見本:
-<<<<<<< SEARCH
-[置換前の元のコード]
-=======
-[置換後の新しいコード]
->>>>>>> REPLACE
-   <call_tool name="apply_diff"><parameter name="path">utils/helper.js</parameter><parameter name="diff"><<<<<<< SEARCH
-export const add = (a, b) => a + b;
-=======
-export const add = (a, b) => {
-  return a + b;
-};
->>>>>>> REPLACE</parameter></call_tool>
-
-4. list_directory
-   - パラメータ: { "path": "ディレクトリパス" }
-   - 目的: 指定したディレクトリの直下にあるファイルやフォルダの一覧を取得する。フォルダ構成や中身を把握する際に最初に使用すること。
-   <call_tool name="list_directory"><parameter name="path">src</parameter></call_tool>
-
-5. search_files
-   - パラメータ: { "query": "検索文字列" }
-   - 目的: プロジェクト全体から特定のシンボルや文字列を検索する。
-   <call_tool name="search_files"><parameter name="query">app.listen</parameter></call_tool>
-
-6. run_command
-   - パラメータ: { "command": "シェルコマンド" }
-   - 目的: テストの実行、依存関係の確認など。破壊的な操作は控え、実行前にユーザーの承認を求めることを想定すること。
-   <call_tool name="run_command"><parameter name="command">npm test</parameter></call_tool>
-
-【完了報告】
-目的を完全に達成した場合は、ツールの代わりに <finish>要約</finish> タグを使い、何を行ったか簡潔に報告してください。
-
-【重要な注意】
-- 出力は必ず <thought> と <call_tool> (または <finish>) のペアのみにしてください。
-- 余計な挨拶、マークダウンのコードブロック、解説文をタグの外側に含めないでください。
-- parameter の値（特に content と diff）は XML テキストなので、& は &amp;、< は &lt;、> は &gt; に必ずエスケープしてください。
-- diff の SEARCH/REPLACE マーカー（<<<<<<<、=======、>>>>>>>）も XML 内では &lt;&lt;&lt;&lt;&lt;&lt;&lt;、&gt;&gt;&gt;&gt;&gt;&gt;&gt; にエスケープしてください。
-- 値の中身に Markdown のコードブロック記号は使わないでください。
-- すでに存在するファイルを変更する場合、まず read_file で現在の内容を確認するか、または search_files や list_directory でファイル構成を把握することが必須です。
-
-現在のワークスペース構造:
-${workspaceFilesText}
-
-現在の Monaco エディタで開いているファイル:
-パス: ${state.editor.activeFilePath || 'なし'}
-`;
-
-  if (state.agent.history.length === 0) {
-    state.agent.history = [{ role: 'user', content: `${sysPrompt}\n\n【指示】\n${initialInstruction}` }];
-  } else {
-    state.agent.history.push({
-      role: 'user',
-      content: `【ユーザーからの追加指示】\n${initialInstruction}`,
-    });
-    trimAgentHistory(state.agent.history);
-  }
-
-  let loopCount = 0;
-  let maxLoops = 20;
-  let consecutiveParseErrors = 0;
-  const MAX_CONSECUTIVE_ERRORS = 3;
-  try {
-    const agentConfig = await api('/api/agent/config');
-    if (agentConfig.maxLoops) maxLoops = agentConfig.maxLoops;
-  } catch {
-    // Use default
-  }
-
-  while (state.agent.active && loopCount < maxLoops) {
-    loopCount++;
-    setAgentStatus('思考中...', 'thinking');
-
-    let chatRes;
-    try {
-      chatRes = await api('/api/agent/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: state.agent.history,
-          model: modelSelected,
-          webSearch: false,
-          conversationId: sessionId,
-        }),
-        timeout: 600000,
-      });
-    } catch (e) {
-      addAgentTimelineStep('error', 'AI通信失敗', `AIとの通信に失敗しました: ${e.message}`);
-      setAgentStatus('エラー', 'error');
-      break;
-    }
-
-    const aiText = chatRes.text || '';
-    if (!aiText) {
-      addAgentTimelineStep('error', '応答空', 'AIからの応答が空でした。');
-      setAgentStatus('エラー', 'error');
-      break;
-    }
-
-    const parsed = parseXMLTags(aiText);
-
-    if (parsed.thought) {
-      addAgentTimelineStep('thought', '思考プロセス', parsed.thought);
-    } else {
-      addAgentTimelineStep('thought', '思考プロセス', aiText);
-    }
-
-    if (parsed.finish) {
-      addAgentTimelineStep(
-        'result',
-        'タスク完了',
-        `エージェントがタスクの完了を報告しました。\n\n要約:\n${parsed.finish}`,
-      );
-      setAgentStatus('完了', 'completed');
-      break;
-    }
-
-    if (parsed.toolCall) {
-      consecutiveParseErrors = 0;
-      const toolName = parsed.toolCall.name;
-      const params = parsed.toolCall.params;
-
-      const paramListStr = Object.entries(params)
-        .map(([k, v]) => `• ${k}: ${v}`)
-        .join('\n');
-      addAgentTimelineStep('action', `ツール呼び出し: ${toolName}`, paramListStr);
-      setAgentStatus('実行中...', 'executing');
-
-      let toolResultText = '';
-      let toolSuccess = false;
-
-      try {
-        const handler = AGENT_TOOL_HANDLERS[toolName];
-        if (!handler) throw new Error(`未知のツール: ${toolName}`);
-
-        const result = await handler({
-          sessionId,
-          workspaceRoot,
-          params,
-        });
-
-        if (result.abort) break;
-
-        // M-1: If the handler signals a retryable condition (e.g. another
-        // command is awaiting approval), don't burn an LLM iteration on it —
-        // requeue the same AI output and continue without incrementing
-        // loopCount. This avoids draining maxLoops while the user is
-        // reviewing approvals.
-        if (result.retryable) {
-          state.agent.history.push({ role: 'assistant', content: aiText });
-          state.agent.history.push({
-            role: 'user',
-            content: `<tool_response>\n${result.text}\n</tool_response>`,
-          });
-          trimAgentHistory(state.agent.history);
-          loopCount = Math.max(0, loopCount - 1);
-          await new Promise((resolve) => setTimeout(resolve, 1500));
-          continue;
-        }
-
-        toolResultText = result.text;
-        toolSuccess = result.success;
-      } catch (err) {
-        toolResultText = `エラー: ${err.message}`;
-        toolSuccess = false;
-      }
-
-      addAgentTimelineStep(
-        toolSuccess ? 'result' : 'error',
-        `ツール結果: ${toolName}`,
-        toolSuccess ? 'ツールの実行が完了しました。' : 'エラーまたはキャンセルが発生しました。',
-        toolResultText,
-      );
-
-      const feedbackMsg = `<tool_response>\n${toolResultText}\n</tool_response>`;
-
-      state.agent.history.push({ role: 'assistant', content: aiText });
-      state.agent.history.push({ role: 'user', content: feedbackMsg });
-      trimAgentHistory(state.agent.history);
-    } else {
-      consecutiveParseErrors++;
-      if (consecutiveParseErrors >= MAX_CONSECUTIVE_ERRORS) {
-        addAgentTimelineStep(
-          'error',
-          'パースエラー',
-          `AIがフォーマットに従わない状態が ${MAX_CONSECUTIVE_ERRORS} 回連続したため、安全のためにエージェントを強制停止します。`,
-        );
-        setAgentStatus('エラー', 'error');
-        break;
-      }
-
-      const errMsg = `エラー: ツール呼び出しまたはタスク完了タグ (<call_tool> または <finish>) が見つかりませんでした。\n指示に従って、思考を <thought>タグで囲み、直後に呼び出すツールを <call_tool> タグで指定してください。`;
-      addAgentTimelineStep(
-        'error',
-        'パース失敗',
-        'AIが定義されたXMLフォーマットに準拠していません。自動修正指示を送信します。',
-      );
-
-      state.agent.history.push({ role: 'assistant', content: aiText });
-      state.agent.history.push({ role: 'user', content: errMsg });
-      trimAgentHistory(state.agent.history);
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 800));
-  }
-
-  if (loopCount >= maxLoops && state.agent.active) {
-    addAgentTimelineStep(
-      'error',
-      '制限到達',
-      `実行ステップ数が上限 (${maxLoops}) に達したため、安全のために停止しました。`,
-    );
-    setAgentStatus('エラー', 'error');
-  }
-
-  state.agent.active = false;
-  dom.startAgentBtn.classList.remove('is-hidden');
-  dom.sendAgentFeedbackBtn.classList.remove('is-shown');
-  dom.stopAgentBtn.classList.remove('is-shown');
-  dom.resetAgentBtn.classList.remove('is-hidden');
-  dom.agentInstruction.placeholder = '指示を入力してエージェントを開始...';
-  if (dom.agentStatus.textContent !== '完了' && dom.agentStatus.textContent !== 'エラー') {
-    setAgentStatus('待機中', 'idle');
-  }
-}
+const showDiffDialog = (...args) => diffDialog.showDiffDialog(...args);
 
 dom.startAgentBtn.onclick = async () => {
   if (state.agent.active) return;
   const instruction = dom.agentInstruction.value.trim();
   if (!instruction) {
-    toast.warning('エージェントへの指示を入力してください');
+    toast.warning(t('agent_instruction_required'));
     return;
   }
 
   // Clear input so user can type feedback immediately
   dom.agentInstruction.value = '';
-  dom.agentInstruction.placeholder = '追加の指示やヒントを入力...';
+  dom.agentInstruction.placeholder = t('agent_instruction_placeholder');
 
   state.agent.active = true;
   dom.startAgentBtn.classList.add('is-hidden');
@@ -1359,19 +700,15 @@ dom.startAgentBtn.onclick = async () => {
     await agentRuntime.runAgentLoop(instruction);
   } catch (err) {
     console.error('Agent loop crashed:', err);
-    setAgentStatus('エラー', 'error');
-    addAgentTimelineStep(
-      'error',
-      'システムクラッシュ',
-      `エージェントのループ処理中に問題が発生しました: ${err.message}`,
-    );
+    setAgentStatus(t('status_error'), 'error');
+    addAgentTimelineStep('error', t('agent_crash_title'), t('agent_crash_desc', { error: err.message }));
   } finally {
     state.agent.active = false;
     dom.startAgentBtn.classList.remove('is-hidden');
     dom.sendAgentFeedbackBtn.classList.remove('is-shown');
     dom.stopAgentBtn.classList.remove('is-shown');
     dom.resetAgentBtn.classList.remove('is-hidden');
-    dom.agentInstruction.placeholder = '指示を入力してエージェントを開始...';
+    dom.agentInstruction.placeholder = t('agent_instruction_placeholder');
   }
 };
 
@@ -1383,12 +720,12 @@ dom.stopAgentBtn.onclick = () => {
   }
   // M-2: pending approvals become orphans once we stop the agent — clean them up.
   document.querySelectorAll('.agent-step.approval').forEach((el) => el.__finalizeApproval?.());
-  setAgentStatus('停止', 'idle');
-  addAgentTimelineStep('thought', '停止', 'ユーザーによって停止されました。');
+  setAgentStatus(t('agent_stopped'), 'idle');
+  addAgentTimelineStep('thought', t('agent_stopped'), t('agent_stopped_by_user'));
 };
 
 dom.resetAgentBtn.onclick = async () => {
-  const accepted = await toast.confirm('エージェントのセッション履歴をリセットしますか？', {
+  const accepted = await toast.confirm(t('agent_reset_confirm'), {
     type: 'warning',
   });
   if (accepted) {
@@ -1406,16 +743,16 @@ dom.resetAgentBtn.onclick = async () => {
       log.textContent = '';
       const placeholder = document.createElement('div');
       placeholder.className = 'timeline-placeholder timeline-placeholder-inline';
-      placeholder.textContent = '指示を入力して、エージェントとのチャットを開始してください。';
+      placeholder.textContent = t('agent_placeholder');
       log.appendChild(placeholder);
     }
     setAgentStatus('待機中', 'idle');
-    dom.agentInstruction.placeholder = '指示を入力してエージェントを開始...';
+    dom.agentInstruction.placeholder = t('agent_instruction_placeholder');
     dom.startAgentBtn.classList.remove('is-hidden');
     dom.sendAgentFeedbackBtn.classList.remove('is-shown');
     dom.stopAgentBtn.classList.remove('is-shown');
     dom.resetAgentBtn.classList.remove('is-hidden');
-    toast.success('セッションをリセットしました');
+    toast.success(t('agent_reset_success'));
   }
 };
 
@@ -1424,7 +761,7 @@ dom.sendAgentFeedbackBtn.onclick = () => {
   if (!feedback) return;
   dom.agentInstruction.value = '';
 
-  addAgentTimelineStep('user', '追加指示', feedback);
+  addAgentTimelineStep('user', t('agent_feedback_label'), feedback);
 
   if (state.agent.resolver) {
     state.agent.resolver({ approved: false, reason: `ユーザー指示: ${feedback}` });
@@ -1955,12 +1292,11 @@ initCreditSavingMode();
     el.addEventListener(type === 'checkbox' ? 'change' : 'input', save);
   }
 
-  // Also save conversationId when the "create conversation" button sets it.
-  const convInput = document.getElementById('conversationId');
-  if (convInput) {
-    const observer = new MutationObserver(() => save());
-    observer.observe(convInput, { attributes: true, attributeFilter: ['value'] });
-  }
+  // Expose save so the createConversation handler can trigger persistence.
+  // MutationObserver cannot detect .value property changes on inputs, so we
+  // rely on callers dispatching an 'input' event or invoking saveConvState()
+  // directly.
+  window.__saveConvState = save;
 })();
 
 // UI-3: Sidebar resize via drag handle (mouse + touch)

@@ -31,6 +31,8 @@ const ENV_KEYS = [
   'SESSION_TTL_MS',
   'LOG_LEVEL',
   'ONE_MIN_AI_API_BASE_URL',
+  'ONE_MIN_AI_ASSET_BASE_URL',
+  'ONE_MIN_AI_S3_BUCKET',
   'ENABLE_COMMAND_EXECUTION',
   'AGENT_AUTO_APPROVE',
   'ENABLE_DRIVES_SHELL_LOOKUP',
@@ -205,5 +207,21 @@ describe('config/server.js env validation', () => {
     const c2 = await loadConfig();
     expect(c2.serverConfig.enableCommandExecution).toBe(true);
     expect(c2.serverConfig.agentAutoApprove).toBe(true);
+  });
+
+  test('ONE_MIN_AI_ASSET_BASE_URL and ONE_MIN_AI_S3_BUCKET validation', async () => {
+    jest.resetModules();
+    process.env.ONE_MIN_AI_ASSET_BASE_URL = 'https://custom-asset.1min.ai';
+    process.env.ONE_MIN_AI_S3_BUCKET = 'custom-bucket';
+    const c = await loadConfig();
+    expect(c.serverConfig.assetBaseUrl).toBe('https://custom-asset.1min.ai');
+    expect(c.serverConfig.s3Bucket).toBe('custom-bucket');
+
+    jest.resetModules();
+    process.env.ONE_MIN_AI_ASSET_BASE_URL = 'invalid-scheme://example.com';
+    process.env.ONE_MIN_AI_S3_BUCKET = 'a'.repeat(200); // too long
+    const c2 = await loadConfig();
+    expect(c2.serverConfig.assetBaseUrl).toBe('https://asset.1min.ai');
+    expect(c2.serverConfig.s3Bucket).toBe('asset.1min.ai');
   });
 });

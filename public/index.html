@@ -1038,7 +1038,7 @@
     </div>
 
     <div id="diffModal" class="folder-picker-modal u-hidden">
-      <div class="folder-picker-dialog folder-picker-dialog--wide">
+      <div class="folder-picker-dialog folder-picker-dialog--wide diff-dialog">
         <div class="diff-header-row">
           <h3 data-i18n="diff_title">AI 提案の差分確認</h3>
           <label class="check diff-inline-toggle-label">
@@ -1048,7 +1048,7 @@
         </div>
         <p id="diffFilePath" class="diff-file-path"></p>
         <div id="diffEditorContainer" class="diff-editor-container"></div>
-        <div class="folder-picker-actions">
+        <div class="folder-picker-actions diff-actions">
           <button id="diffCancel" type="button" class="ghost" data-i18n="btn_discard">破棄</button>
           <button id="diffApply" type="button" data-i18n="btn_apply_changes">変更を適用</button>
         </div>
@@ -1061,7 +1061,7 @@
     <script type="module" src="./js/i18n.js"></script>
     <script type="module" src="./js/api.js"></script>
     <script type="module" src="./js/dom-style.js"></script>
-    <script type="module" src="./js/models.js"></script>
+    <script type="module" src="./js/model-picker.js"></script>
     <script type="module" src="./js/utils.js"></script>
     <script type="module" src="./app.js"></script>
   </body>

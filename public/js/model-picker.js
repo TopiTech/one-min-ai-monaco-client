@@ -26,42 +26,30 @@ export function getAllImageModels() {
 }
 
 const FALLBACK_CHAT_MODELS = [
-  { id: 'gpt-4o-mini', label: 'GPT-4o mini', provider: 'OpenAI', tags: ['fast'] },
-  { id: 'gpt-4o', label: 'GPT-4o', provider: 'OpenAI', tags: ['flagship'] },
-  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', provider: 'Anthropic', tags: ['flagship'] },
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', provider: 'Google', tags: ['fast'] },
-  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', provider: 'Google', tags: ['flagship'] },
-  { id: 'deepseek-chat', label: 'DeepSeek Chat', provider: 'DeepSeek', tags: ['fast'] },
-  { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner', provider: 'DeepSeek', tags: ['reasoning'] },
+  { id: 'gpt-4o-mini', label: 'GPT-4o mini (Fallback)', provider: 'OpenAI', tags: ['fast'] },
+  {
+    id: 'claude-sonnet-4-6',
+    label: 'Claude Sonnet 4.6 (Fallback)',
+    provider: 'Anthropic',
+    tags: ['flagship'],
+  },
 ];
 
 const FALLBACK_CODE_MODELS = [
-  { id: 'qwen3-coder-plus', label: 'Qwen3 Coder Plus', provider: 'Alibaba', tags: ['code', 'flagship'] },
-  { id: 'qwen3-coder-flash', label: 'Qwen3 Coder Flash', provider: 'Alibaba', tags: ['code', 'fast'] },
-  { id: 'claude-sonnet-4-6', label: 'Claude 4.6 Sonnet', provider: 'Anthropic', tags: ['code', 'flagship'] },
-  { id: 'deepseek-chat', label: 'DeepSeek V3.2 Chat', provider: 'DeepSeek', tags: ['code', 'fast'] },
+  {
+    id: 'qwen3-coder-plus',
+    label: 'Qwen3 Coder Plus (Fallback)',
+    provider: 'Alibaba',
+    tags: ['code', 'flagship'],
+  },
 ];
 
 const FALLBACK_IMAGE_MODELS = [
-  { id: 'gpt-image-2', label: 'GPT Image 2', provider: 'OpenAI', tags: ['image', 'flagship', 'editor'] },
   {
-    id: 'gpt-image-1-mini',
-    label: 'GPT Image 1 Mini',
+    id: 'gpt-image-2',
+    label: 'GPT Image 2 (Fallback)',
     provider: 'OpenAI',
-    tags: ['image', 'fast', 'editor'],
-  },
-  { id: 'black-forest-labs/flux-2-max', label: 'Flux 2 Max', provider: 'Flux', tags: ['image', 'flagship'] },
-  {
-    id: 'black-forest-labs/flux-kontext-pro',
-    label: 'Flux Kontext Pro',
-    provider: 'Flux',
     tags: ['image', 'flagship', 'editor'],
-  },
-  {
-    id: 'qwen-image-edit-plus',
-    label: 'Qwen Image Edit Plus',
-    provider: 'Alibaba',
-    tags: ['image', 'editor'],
   },
 ];
 
@@ -322,10 +310,12 @@ function openModelPicker(btn, type) {
   setPickerSelectedItem(currentItem || firstItem);
 
   // Hide before making visible to prevent layout shift
+  // Remove the u-hidden class first; the class applies display:none !important
+  // which overrides any inline style.display we set afterwards.
+  dropdown.classList.remove('u-hidden');
   dropdown.style.visibility = 'hidden';
 
-  dropdown.classList.remove('u-hidden');
-  dropdown.classList.add('u-flex');
+  dropdown.style.display = 'flex';
 
   const rect = btn.getBoundingClientRect();
   const dropH = dropdown.offsetHeight || 480;
@@ -409,8 +399,8 @@ function closeModelPicker() {
   const dropdown = document.getElementById('modelPickerDropdown');
   const search = document.getElementById('modelPickerSearch');
   if (dropdown) {
+    dropdown.style.display = 'none';
     dropdown.classList.add('u-hidden');
-    dropdown.classList.remove('u-flex');
     // Clear inline positioning styles set by openModelPicker
     dropdown.style.top = '';
     dropdown.style.left = '';

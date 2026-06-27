@@ -1360,7 +1360,9 @@ select:focus-visible {
 
 /* Diff Editor specific */
 #diffEditorContainer .monaco-editor .margin,
-#diffEditorContainer .monaco-editor .monaco-editor-background {
+#diffEditorContainer .monaco-editor .monaco-editor-background,
+#diffEditorContainer .monaco-diff-editor .editor,
+#diffEditorContainer .monaco-diff-editor .editor-background {
   background-color: rgba(10, 15, 30, 0.4) !important;
 }
 
@@ -1890,6 +1892,7 @@ select:focus-visible {
   max-height: min(82vh, 760px);
   display: flex;
   flex-direction: column;
+  min-height: 0;
   padding: 24px;
   border: 1px solid rgba(125, 92, 255, 0.25);
   border-radius: 24px;
@@ -2067,6 +2070,13 @@ select:focus-visible {
 
   .folder-picker-actions {
     flex-direction: column-reverse;
+  }
+
+  .folder-picker-dialog--wide.diff-dialog {
+    width: min(100vw - 24px, 100%);
+    height: min(92vh, 92vh);
+    max-height: 92vh;
+    padding: 18px;
   }
 }
 
@@ -2575,7 +2585,9 @@ select:focus-visible {
 }
 
 :root[data-theme='light'] #diffEditorContainer .monaco-editor .margin,
-:root[data-theme='light'] #diffEditorContainer .monaco-editor .monaco-editor-background {
+:root[data-theme='light'] #diffEditorContainer .monaco-editor .monaco-editor-background,
+:root[data-theme='light'] #diffEditorContainer .monaco-diff-editor .editor,
+:root[data-theme='light'] #diffEditorContainer .monaco-diff-editor .editor-background {
   background-color: rgba(248, 250, 252, 0.6) !important;
 }
 
@@ -4031,9 +4043,45 @@ select:focus-visible {
 }
 
 /* Diff modal */
-.folder-picker-dialog--wide {
-  width: 90%;
+.folder-picker-dialog--wide.diff-dialog {
+  width: min(1200px, 96vw);
+  height: min(90vh, 920px);
   max-height: 90vh;
+  overflow: hidden;
+  gap: 12px;
+}
+
+.folder-picker-dialog--wide.diff-dialog .diff-header-row {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+.folder-picker-dialog--wide.diff-dialog .diff-file-path {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-picker-dialog--wide.diff-dialog .diff-editor-container {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.folder-picker-dialog--wide.diff-dialog .diff-editor-container .monaco-diff-editor,
+.folder-picker-dialog--wide.diff-dialog .diff-editor-container .monaco-editor {
+  height: 100%;
+}
+
+.folder-picker-dialog--wide.diff-dialog .diff-actions {
+  flex: 0 0 auto;
+  margin-top: 0;
 }
 
 .diff-header-row {

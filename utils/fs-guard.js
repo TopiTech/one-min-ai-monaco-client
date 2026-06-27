@@ -41,6 +41,7 @@ const PROTECTED_PATH_GLOBS = [
 const WRITE_PROTECTED_PATH_GLOBS = [
   ...PROTECTED_PATH_GLOBS,
   'server.js',
+  'scripts/**',
   'utils/**',
   'routes/**',
   'config/**',

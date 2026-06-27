@@ -4,7 +4,7 @@
 
 import { api, assetUrl, extractImages } from './api.js';
 import { injectStyle } from './dom-style.js';
-import { getAllImageModels } from './models.js';
+import { getAllImageModels } from './model-picker.js';
 import { t } from './i18n.js';
 import { toast } from './toast.js';
 
@@ -265,9 +265,15 @@ export function createImageManager(dom) {
       if (textToImgParams) textToImgParams.classList.remove('is-hidden');
       if (btnText) btnText.textContent = t('img_generate_btn');
 
-      if (modelObj && modelObj.tags && modelObj.tags.includes('editor') && !modelObj.tags.includes('image')) {
+      if (
+        modelObj &&
+        modelObj.tags &&
+        modelObj.tags.includes('editor') &&
+        !modelObj.tags.includes('flagship') &&
+        !modelObj.tags.includes('fast')
+      ) {
         const defaultGen = getAllImageModels().find(
-          (m) => !m.tags || !m.tags.includes('editor') || m.id.startsWith('gpt-image'),
+          (m) => m.tags && (m.tags.includes('flagship') || m.tags.includes('fast')),
         ) || { id: 'gpt-image-2', label: 'GPT Image 2' };
         dom.imageModel.value = defaultGen.id;
         dom.imageModelLabel.textContent = defaultGen.label;

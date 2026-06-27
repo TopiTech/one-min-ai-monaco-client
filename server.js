@@ -521,7 +521,7 @@ export function createApp(options = {}) {
           'style-src-attr': ["'unsafe-inline'"],
           'upgrade-insecure-requests': [],
           'img-src': ["'self'", 'data:', 'https:', 'blob:'],
-          'connect-src': ["'self'", 'https://api.1min.ai'],
+          'connect-src': ["'self'", serverConfig.apiBaseUrl],
           'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com'],
           'object-src': ["'none'"],
           'media-src': ["'self'"],
@@ -608,13 +608,6 @@ export function createApp(options = {}) {
     cachedHtml = fs.readFileSync(htmlPath, 'utf8');
     return cachedHtml;
   };
-
-  // Provide local BFF token to authenticated clients
-  app.get('/api/token', (req, res) => {
-    // BFFトークンをレスポンス平文で返却することを廃止し、XSS攻撃による窃取を防ぎます。
-    // セッション認証は完全に Cookie で完結します。
-    res.json({ token: '' });
-  });
 
   // Serve index.html (before express.json() since this is a GET)
   app.get(['/', '/index.html'], (req, res) => {
@@ -707,19 +700,25 @@ export function createApp(options = {}) {
 
       let targetUrl = url;
       if (!targetUrl && key) {
-        targetUrl = `https://asset.1min.ai/${key.replace(/^\//, '')}`;
+        targetUrl = `${serverConfig.assetBaseUrl}/${key.replace(/^\//, '')}`;
       }
 
       const parsed = new URL(targetUrl);
-      const allowedHosts = ['asset.1min.ai', 'api.1min.ai'];
+      const apiHost = new URL(serverConfig.apiBaseUrl).hostname;
+      const assetHost = new URL(serverConfig.assetBaseUrl).hostname;
+      const allowedHosts = [assetHost, apiHost];
+
+      const escapedBucket = serverConfig.s3Bucket.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
       const isVirtualHostS3 =
-        /^asset\.1min\.ai\.s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname) ||
-        /^asset\.1min\.ai\.s3-accelerate\.amazonaws\.com$/i.test(parsed.hostname) ||
-        /^asset\.1min\.ai\.s3\.dualstack\.[\w-]+\.amazonaws\.com$/i.test(parsed.hostname);
+        new RegExp(`^${escapedBucket}\\.s3(?:\\.[\\w-]+)?\\.amazonaws\\.com$`, 'i').test(parsed.hostname) ||
+        new RegExp(`^${escapedBucket}\\.s3-accelerate\\.amazonaws\\.com$`, 'i').test(parsed.hostname) ||
+        new RegExp(`^${escapedBucket}\\.s3\\.dualstack\\.[\\w-]+\\.amazonaws\\.com$`, 'i').test(
+          parsed.hostname,
+        );
 
       const isPathStyleS3 =
         /^s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname) &&
-        parsed.pathname.startsWith('/asset.1min.ai/');
+        parsed.pathname.startsWith(`/${serverConfig.s3Bucket}/`);
 
       const isAllowedHost =
         allowedHosts.some((h) => parsed.hostname === h) || isVirtualHostS3 || isPathStyleS3;

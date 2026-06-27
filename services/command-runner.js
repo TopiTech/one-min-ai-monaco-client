@@ -13,7 +13,6 @@ const MAX_COMMAND_ARGS = 128;
 
 const ALLOWED_COMMAND_NAMES = new Set([
   'npm',
-  'npx',
   'node',
   'git',
   'jest',
@@ -27,8 +26,6 @@ const ALLOWED_COMMAND_NAMES = new Set([
   'whoami',
   'python',
   'python3',
-  'pip',
-  'pipenv',
   // NOTE: "ping" and "sleep" are included for basic network/timing diagnostics in
   // agent workflows. Both are bounded by COMMAND_TIMEOUT_MS (default 30s) to
   // mitigate denial-of-service via "ping -t" or "sleep 86400". If you do not
@@ -142,7 +139,10 @@ function parseCommand(command) {
 }
 
 function isAllowedCommandName(commandName) {
-  return ALLOWED_COMMAND_NAMES.has(normalizeCommandName(commandName));
+  const name = normalizeCommandName(commandName);
+  if (ALLOWED_COMMAND_NAMES.has(name)) return true;
+  if (serverConfig.allowedExtraCommands && serverConfig.allowedExtraCommands.has(name)) return true;
+  return false;
 }
 
 function isWindowsBuiltInCommand(commandName) {

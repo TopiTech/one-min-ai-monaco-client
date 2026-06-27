@@ -180,6 +180,9 @@ export async function callOneMin(
         const waitTime = retryAfter
           ? Math.min(parseInt(retryAfter, 10) * 1000 + 1000, 60000)
           : Math.round(retryDelay * Math.pow(2, attempt) * (1 + (Math.random() * 0.2 - 0.1)));
+        // Consume the response body to release the connection back to the pool.
+        // Without this, the HTTP connection stays open and may leak.
+        response.body?.cancel?.() ?? response.text?.().catch?.(() => {});
         logger.warn(`Rate limited (429) on ${pathname}. Retrying in ${waitTime}ms...`);
         await delay(waitTime);
         continue;
@@ -304,6 +307,7 @@ export function normalizeAssetResponse(data) {
   const key = asset.key || data?.fileContent?.path || data?.path || '';
   const location = asset.location || '';
   const url =
-    location || (key && !/^https?:\/\//.test(key) ? `https://asset.1min.ai/${key.replace(/^\//, '')}` : key);
+    location ||
+    (key && !/^https?:\/\//.test(key) ? `${serverConfig.assetBaseUrl}/${key.replace(/^\//, '')}` : key);
   return { key, url, raw: data };
 }

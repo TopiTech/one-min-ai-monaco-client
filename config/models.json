@@ -1,0 +1,481 @@
+{
+  "chatModels": [
+    { "id": "gpt-4o-mini", "label": "GPT-4o mini", "provider": "OpenAI", "tags": ["fast"] },
+    { "id": "gpt-4o", "label": "GPT-4o", "provider": "OpenAI", "tags": ["flagship"] },
+    { "id": "gpt-4.1", "label": "GPT-4.1", "provider": "OpenAI", "tags": ["flagship"] },
+    { "id": "gpt-4.1-mini", "label": "GPT-4.1 mini", "provider": "OpenAI", "tags": ["fast"] },
+    { "id": "gpt-4.1-nano", "label": "GPT-4.1 nano", "provider": "OpenAI", "tags": ["fast"] },
+    { "id": "gpt-4-turbo", "label": "GPT-4 Turbo", "provider": "OpenAI" },
+    { "id": "gpt-3.5-turbo", "label": "GPT-3.5 Turbo", "provider": "OpenAI" },
+    { "id": "gpt-5", "label": "GPT-5", "provider": "OpenAI", "tags": ["flagship"] },
+    { "id": "gpt-5-mini", "label": "GPT-5 mini", "provider": "OpenAI", "tags": ["fast"] },
+    { "id": "gpt-5-nano", "label": "GPT-5 nano", "provider": "OpenAI", "tags": ["fast"] },
+    { "id": "gpt-5.1", "label": "GPT-5.1", "provider": "OpenAI" },
+    { "id": "gpt-5.2", "label": "GPT-5.2", "provider": "OpenAI" },
+    { "id": "gpt-5.2-pro", "label": "GPT-5.2 Pro", "provider": "OpenAI", "tags": ["flagship"] },
+    { "id": "gpt-5.4", "label": "GPT-5.4", "provider": "OpenAI" },
+    { "id": "gpt-5.4-mini", "label": "GPT-5.4 mini", "provider": "OpenAI", "tags": ["fast"] },
+    { "id": "gpt-5.4-nano", "label": "GPT-5.4 nano", "provider": "OpenAI", "tags": ["fast"] },
+    { "id": "gpt-5.4-pro", "label": "GPT-5.4 Pro", "provider": "OpenAI", "tags": ["flagship"] },
+    { "id": "gpt-5.5", "label": "GPT-5.5", "provider": "OpenAI", "tags": ["flagship"] },
+    { "id": "gpt-5.5-pro", "label": "GPT-5.5 Pro", "provider": "OpenAI", "tags": ["flagship"] },
+    { "id": "gpt-5.1-codex", "label": "GPT-5.1 Codex", "provider": "OpenAI", "tags": ["flagship"] },
+    { "id": "gpt-5.1-codex-mini", "label": "GPT-5.1 Codex Mini", "provider": "OpenAI", "tags": ["fast"] },
+    { "id": "gpt-5.2-codex", "label": "GPT-5.2 Codex", "provider": "OpenAI" },
+    { "id": "gpt-5.3-codex", "label": "GPT-5.3 Codex", "provider": "OpenAI" },
+    { "id": "o1", "label": "o1", "provider": "OpenAI", "tags": ["flagship", "reasoning"] },
+    { "id": "o3", "label": "o3", "provider": "OpenAI", "tags": ["flagship", "reasoning"] },
+    { "id": "o3-mini", "label": "o3 mini", "provider": "OpenAI", "tags": ["reasoning", "fast"] },
+    { "id": "o3-pro", "label": "o3 Pro", "provider": "OpenAI", "tags": ["flagship", "reasoning"] },
+    {
+      "id": "o3-deep-research",
+      "label": "o3 Deep Research",
+      "provider": "OpenAI",
+      "tags": ["flagship", "reasoning"]
+    },
+    { "id": "o4-mini", "label": "o4 mini", "provider": "OpenAI", "tags": ["reasoning", "fast"] },
+    {
+      "id": "o4-mini-deep-research",
+      "label": "o4 mini Deep Research",
+      "provider": "OpenAI",
+      "tags": ["reasoning", "flagship"]
+    },
+    { "id": "openai/gpt-oss-20b", "label": "GPT OSS 20b", "provider": "OpenAI", "tags": ["fast"] },
+    { "id": "openai/gpt-oss-120b", "label": "GPT OSS 120b", "provider": "OpenAI", "tags": ["flagship"] },
+    {
+      "id": "claude-sonnet-4-6",
+      "label": "Claude Sonnet 4.6",
+      "provider": "Anthropic",
+      "tags": ["flagship"]
+    },
+    {
+      "id": "claude-sonnet-4-5-20250929",
+      "label": "Claude Sonnet 4.5",
+      "provider": "Anthropic",
+      "tags": ["flagship"]
+    },
+    { "id": "claude-opus-4-8", "label": "Claude Opus 4.8", "provider": "Anthropic", "tags": ["flagship"] },
+    { "id": "claude-opus-4-7", "label": "Claude Opus 4.7", "provider": "Anthropic", "tags": ["flagship"] },
+    { "id": "claude-opus-4-6", "label": "Claude Opus 4.6", "provider": "Anthropic", "tags": ["flagship"] },
+    {
+      "id": "claude-opus-4-5-20251101",
+      "label": "Claude Opus 4.5",
+      "provider": "Anthropic",
+      "tags": ["flagship"]
+    },
+    { "id": "claude-opus-4-1-20250805", "label": "Claude Opus 4.1", "provider": "Anthropic" },
+    {
+      "id": "claude-haiku-4-5-20251001",
+      "label": "Claude Haiku 4.5",
+      "provider": "Anthropic",
+      "tags": ["fast"]
+    },
+    { "id": "gemini-2.5-pro", "label": "Gemini 2.5 Pro", "provider": "Google", "tags": ["flagship"] },
+    { "id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash", "provider": "Google", "tags": ["fast"] },
+    {
+      "id": "gemini-3-flash-preview",
+      "label": "Gemini 3 Flash Preview",
+      "provider": "Google",
+      "tags": ["flagship", "fast"]
+    },
+    {
+      "id": "gemini-3.1-pro-preview",
+      "label": "Gemini 3.1 Pro Preview",
+      "provider": "Google",
+      "tags": ["flagship"]
+    },
+    {
+      "id": "gemini-3.1-flash-lite-preview",
+      "label": "Gemini 3.1 Flash Lite",
+      "provider": "Google",
+      "tags": ["fast"]
+    },
+    { "id": "gemini-3.5-flash", "label": "Gemini 3.5 Flash", "provider": "Google", "tags": ["fast"] },
+    { "id": "deepseek-chat", "label": "DeepSeek Chat (V3.2)", "provider": "DeepSeek", "tags": ["fast"] },
+    {
+      "id": "deepseek-reasoner",
+      "label": "DeepSeek Reasoner (R1)",
+      "provider": "DeepSeek",
+      "tags": ["reasoning"]
+    },
+    { "id": "grok-3", "label": "Grok 3", "provider": "xAI", "tags": ["flagship"] },
+    { "id": "grok-3-mini", "label": "Grok 3 mini", "provider": "xAI", "tags": ["fast"] },
+    { "id": "grok-4-0709", "label": "Grok 4", "provider": "xAI", "tags": ["flagship"] },
+    {
+      "id": "grok-4-fast-reasoning",
+      "label": "Grok 4 Fast Reasoning",
+      "provider": "xAI",
+      "tags": ["reasoning"]
+    },
+    {
+      "id": "grok-4-fast-non-reasoning",
+      "label": "Grok 4 Fast Non-Reasoning",
+      "provider": "xAI",
+      "tags": ["fast"]
+    },
+    { "id": "mistral-large-latest", "label": "Mistral Large 2", "provider": "Mistral", "tags": ["flagship"] },
+    { "id": "mistral-medium-latest", "label": "Mistral Medium 3.1", "provider": "Mistral" },
+    { "id": "mistral-small-latest", "label": "Mistral Small", "provider": "Mistral", "tags": ["fast"] },
+    { "id": "magistral-medium-latest", "label": "Magistral Medium 1.2", "provider": "Mistral" },
+    { "id": "magistral-small-latest", "label": "Magistral Small 1.2", "provider": "Mistral" },
+    { "id": "ministral-14b-latest", "label": "Ministral 14B Latest", "provider": "Mistral" },
+    { "id": "open-mistral-nemo", "label": "Mistral Open Nemo", "provider": "Mistral", "tags": ["fast"] },
+    { "id": "qwen-max", "label": "Qwen Max", "provider": "Alibaba", "tags": ["flagship"] },
+    { "id": "qwen-plus", "label": "Qwen Plus", "provider": "Alibaba" },
+    { "id": "qwen-flash", "label": "Qwen Flash", "provider": "Alibaba", "tags": ["fast"] },
+    { "id": "qwen3-max", "label": "Qwen3 Max", "provider": "Alibaba", "tags": ["flagship"] },
+    { "id": "qwen3-8b", "label": "Qwen3 8B", "provider": "Alibaba", "tags": ["fast"] },
+    { "id": "qwen-vl-max", "label": "Qwen VL Max", "provider": "Alibaba", "tags": ["flagship"] },
+    { "id": "qwen-vl-plus", "label": "Qwen VL Plus", "provider": "Alibaba" },
+    { "id": "qwen3-vl-plus", "label": "Qwen3 VL Plus", "provider": "Alibaba", "tags": ["flagship"] },
+    { "id": "qwen3-vl-flash", "label": "Qwen3 VL Flash", "provider": "Alibaba", "tags": ["fast"] },
+    {
+      "id": "qwen3-vl-8b-thinking",
+      "label": "Qwen3 VL 8B Thinking",
+      "provider": "Alibaba",
+      "tags": ["reasoning"]
+    },
+    { "id": "sonar-pro", "label": "Sonar Pro", "provider": "Perplexity", "tags": ["flagship"] },
+    { "id": "sonar", "label": "Sonar", "provider": "Perplexity", "tags": ["fast"] },
+    {
+      "id": "sonar-reasoning-pro",
+      "label": "Sonar Reasoning Pro",
+      "provider": "Perplexity",
+      "tags": ["reasoning"]
+    },
+    {
+      "id": "sonar-deep-research",
+      "label": "Sonar Deep Research",
+      "provider": "Perplexity",
+      "tags": ["flagship"]
+    },
+    { "id": "command-r-08-2024", "label": "Command R", "provider": "Cohere" },
+    {
+      "id": "meta/llama-4-maverick-instruct",
+      "label": "Llama 4 Maverick",
+      "provider": "Meta",
+      "tags": ["flagship"]
+    },
+    {
+      "id": "meta/llama-4-scout-instruct",
+      "label": "Llama 4 Scout",
+      "provider": "Meta",
+      "tags": ["flagship"]
+    },
+    { "id": "meta/meta-llama-3-70b-instruct", "label": "Llama 3 70B", "provider": "Meta" },
+    { "id": "meta/llama-2-70b-chat", "label": "Llama 2 70B", "provider": "Meta" }
+  ],
+  "codeModels": [
+    {
+      "id": "qwen3-coder-plus",
+      "label": "Qwen3 Coder Plus",
+      "provider": "Alibaba",
+      "tags": ["code", "flagship"]
+    },
+    {
+      "id": "qwen3-coder-flash",
+      "label": "Qwen3 Coder Flash",
+      "provider": "Alibaba",
+      "tags": ["code", "fast"]
+    },
+    {
+      "id": "claude-sonnet-4-6",
+      "label": "Claude 4.6 Sonnet",
+      "provider": "Anthropic",
+      "tags": ["code", "flagship"]
+    },
+    {
+      "id": "claude-sonnet-4-5-20250929",
+      "label": "Claude 4.5 Sonnet",
+      "provider": "Anthropic",
+      "tags": ["code", "flagship"]
+    },
+    {
+      "id": "claude-opus-4-8",
+      "label": "Claude 4.8 Opus",
+      "provider": "Anthropic",
+      "tags": ["code", "flagship"]
+    },
+    {
+      "id": "claude-opus-4-7",
+      "label": "Claude 4.7 Opus",
+      "provider": "Anthropic",
+      "tags": ["code", "flagship"]
+    },
+    {
+      "id": "claude-opus-4-6",
+      "label": "Claude 4.6 Opus",
+      "provider": "Anthropic",
+      "tags": ["code", "flagship"]
+    },
+    {
+      "id": "claude-opus-4-5-20251101",
+      "label": "Claude 4.5 Opus",
+      "provider": "Anthropic",
+      "tags": ["code", "flagship"]
+    },
+    {
+      "id": "claude-opus-4-1-20250805",
+      "label": "Claude 4.1 Opus",
+      "provider": "Anthropic",
+      "tags": ["code"]
+    },
+    {
+      "id": "claude-haiku-4-5-20251001",
+      "label": "Claude 4.5 Haiku",
+      "provider": "Anthropic",
+      "tags": ["code", "fast"]
+    },
+    {
+      "id": "deepseek-reasoner",
+      "label": "DeepSeek V3.2 Reasoner",
+      "provider": "DeepSeek",
+      "tags": ["code", "reasoning"]
+    },
+    {
+      "id": "deepseek-chat",
+      "label": "DeepSeek V3.2 Chat",
+      "provider": "DeepSeek",
+      "tags": ["code", "fast"]
+    },
+    { "id": "gemini-3.5-flash", "label": "Gemini 3.5 Flash", "provider": "Google", "tags": ["code", "fast"] },
+    {
+      "id": "gemini-3.1-pro-preview",
+      "label": "Gemini 3.1 Pro",
+      "provider": "Google",
+      "tags": ["code", "flagship"]
+    },
+    {
+      "id": "gemini-3.1-flash-lite-preview",
+      "label": "Gemini 3.1 Flash Lite",
+      "provider": "Google",
+      "tags": ["code", "fast"]
+    },
+    {
+      "id": "gemini-3-flash-preview",
+      "label": "Gemini 3 Flash",
+      "provider": "Google",
+      "tags": ["code", "fast"]
+    },
+    { "id": "gpt-5.3-codex", "label": "GPT-5.3 Codex", "provider": "OpenAI", "tags": ["code", "flagship"] },
+    { "id": "gpt-5.2-codex", "label": "GPT-5.2 Codex", "provider": "OpenAI", "tags": ["code"] },
+    {
+      "id": "gpt-5.1-codex-mini",
+      "label": "GPT-5.1 Codex Mini",
+      "provider": "OpenAI",
+      "tags": ["code", "fast"]
+    },
+    { "id": "gpt-5.1-codex", "label": "GPT-5.1 Codex", "provider": "OpenAI", "tags": ["code", "flagship"] },
+    { "id": "gpt-5.5-pro", "label": "GPT-5.5 Pro", "provider": "OpenAI", "tags": ["code", "flagship"] },
+    { "id": "gpt-5.5", "label": "GPT-5.5", "provider": "OpenAI", "tags": ["code", "flagship"] },
+    { "id": "gpt-5.4-nano", "label": "GPT-5.4 Nano", "provider": "OpenAI", "tags": ["code", "fast"] },
+    { "id": "gpt-5.4-mini", "label": "GPT-5.4 Mini", "provider": "OpenAI", "tags": ["code", "fast"] },
+    { "id": "gpt-5.4", "label": "GPT-5.4", "provider": "OpenAI", "tags": ["code"] },
+    {
+      "id": "gpt-5-chat-latest",
+      "label": "GPT-5 Chat Latest",
+      "provider": "OpenAI",
+      "tags": ["code", "flagship"]
+    },
+    { "id": "gpt-5", "label": "GPT-5", "provider": "OpenAI", "tags": ["code", "flagship"] },
+    { "id": "gpt-4o", "label": "GPT-4o", "provider": "OpenAI", "tags": ["code", "flagship"] },
+    { "id": "o3", "label": "o3", "provider": "OpenAI", "tags": ["code", "reasoning"] },
+    { "id": "grok-code-fast-1", "label": "Grok Code Fast 1", "provider": "xAI", "tags": ["code", "fast"] }
+  ],
+  "imageModels": [
+    {
+      "id": "gpt-image-2",
+      "label": "GPT Image 2",
+      "provider": "OpenAI",
+      "tags": ["image", "flagship", "editor"]
+    },
+    { "id": "gpt-image-1", "label": "GPT Image 1", "provider": "OpenAI", "tags": ["image", "editor"] },
+    {
+      "id": "gpt-image-1-mini",
+      "label": "GPT Image 1 Mini",
+      "provider": "OpenAI",
+      "tags": ["image", "fast", "editor"]
+    },
+    {
+      "id": "black-forest-labs/flux-2-pro",
+      "label": "Flux 2 Pro",
+      "provider": "Flux",
+      "tags": ["image", "flagship"]
+    },
+    {
+      "id": "black-forest-labs/flux-2-dev",
+      "label": "Flux 2 Dev",
+      "provider": "Flux",
+      "tags": ["image", "editor"]
+    },
+    {
+      "id": "black-forest-labs/flux-2-flex",
+      "label": "Flux 2 Flex",
+      "provider": "Flux",
+      "tags": ["image", "editor"]
+    },
+    {
+      "id": "black-forest-labs/flux-2-max",
+      "label": "Flux 2 Max",
+      "provider": "Flux",
+      "tags": ["image", "flagship"]
+    },
+    {
+      "id": "black-forest-labs/flux-2-klein-4b",
+      "label": "Flux 2 Klein 4B",
+      "provider": "Flux",
+      "tags": ["image", "fast"]
+    },
+    {
+      "id": "black-forest-labs/flux-2-klein-9b",
+      "label": "Flux 2 Klein 9B",
+      "provider": "Flux",
+      "tags": ["image"]
+    },
+    {
+      "id": "black-forest-labs/flux-pro-1.1",
+      "label": "Flux Pro 1.1",
+      "provider": "Flux",
+      "tags": ["image"]
+    },
+    {
+      "id": "black-forest-labs/flux-1.1-pro-ultra",
+      "label": "Flux 1.1 Pro Ultra",
+      "provider": "Flux",
+      "tags": ["image"]
+    },
+    { "id": "black-forest-labs/flux-pro", "label": "Flux Pro", "provider": "Flux", "tags": ["image"] },
+    { "id": "black-forest-labs/flux-dev", "label": "Flux Dev", "provider": "Flux", "tags": ["image"] },
+    {
+      "id": "black-forest-labs/flux-schnell",
+      "label": "Flux Schnell",
+      "provider": "Flux",
+      "tags": ["image", "fast"]
+    },
+    {
+      "id": "black-forest-labs/flux-schnell-lora",
+      "label": "Flux Schnell LoRA",
+      "provider": "Flux",
+      "tags": ["image", "fast"]
+    },
+    {
+      "id": "black-forest-labs/flux-dev-lora",
+      "label": "Flux Dev LoRA",
+      "provider": "Flux",
+      "tags": ["image"]
+    },
+    { "id": "flux-pro", "label": "Flux Pro", "provider": "Flux", "tags": ["image"] },
+    { "id": "flux-krea-dev", "label": "Flux Krea Dev", "provider": "Flux", "tags": ["image"] },
+    { "id": "flux-dev", "label": "Flux Dev", "provider": "Flux", "tags": ["image", "editor"] },
+    { "id": "flux-schnell", "label": "Flux Schnell", "provider": "Flux", "tags": ["image", "fast"] },
+    { "id": "flux-pro-1-1", "label": "Flux Pro 1.1", "provider": "Flux", "tags": ["image"] },
+    { "id": "flux-1-1-pro-ultra", "label": "Flux 1.1 Pro Ultra", "provider": "Flux", "tags": ["image"] },
+    { "id": "flux-2-pro", "label": "Flux 2 Pro", "provider": "Flux", "tags": ["image", "flagship"] },
+    { "id": "flux-2-dev", "label": "Flux 2 Dev", "provider": "Flux", "tags": ["image", "editor"] },
+    { "id": "flux-2-flex", "label": "Flux 2 Flex", "provider": "Flux", "tags": ["image", "editor"] },
+    { "id": "flux-2-max", "label": "Flux 2 Max", "provider": "Flux", "tags": ["image", "flagship"] },
+    { "id": "flux-2-klein-4b", "label": "Flux 2 Klein 4B", "provider": "Flux", "tags": ["image", "fast"] },
+    { "id": "flux-2-klein-9b", "label": "Flux 2 Klein 9B", "provider": "Flux", "tags": ["image"] },
+    {
+      "id": "gemini-2.5-flash-image",
+      "label": "Gemini 2.5 Flash Image",
+      "provider": "Google",
+      "tags": ["image", "fast"]
+    },
+    {
+      "id": "gemini-2.5-flash-image-preview",
+      "label": "Gemini 2.5 Flash Image Preview",
+      "provider": "Google",
+      "tags": ["image", "fast", "editor"]
+    },
+    {
+      "id": "gemini-3-pro-image-preview",
+      "label": "Gemini 3 Pro Image Preview",
+      "provider": "Google",
+      "tags": ["image", "flagship"]
+    },
+    {
+      "id": "gemini-3.1-flash-image-preview",
+      "label": "Gemini 3.1 Flash Image Preview",
+      "provider": "Google",
+      "tags": ["image", "fast"]
+    },
+    { "id": "grok-2-image", "label": "Grok-2 Image", "provider": "xAI", "tags": ["image"] },
+    { "id": "qwen-image", "label": "Qwen Image", "provider": "Alibaba", "tags": ["image"] },
+    {
+      "id": "qwen-image-edit-plus",
+      "label": "Qwen Image Edit Plus",
+      "provider": "Alibaba",
+      "tags": ["image", "editor"]
+    },
+    { "id": "recraft", "label": "Recraft", "provider": "Recraft", "tags": ["image"] },
+    { "id": "recraft-v3", "label": "Recraft V3", "provider": "Recraft", "tags": ["image", "flagship"] },
+    {
+      "id": "magic-art-7.0",
+      "label": "Magic Art 7.0",
+      "provider": "Magic Art",
+      "tags": ["image", "flagship"]
+    },
+    { "id": "magic-art-6.1", "label": "Magic Art 6.1", "provider": "Magic Art", "tags": ["image"] },
+    { "id": "magic-art-5.2", "label": "Magic Art 5.2", "provider": "Magic Art", "tags": ["image", "fast"] },
+    {
+      "id": "stable-diffusion-xl-1-0",
+      "label": "Stable Diffusion XL 1.0",
+      "provider": "Stability",
+      "tags": ["image"]
+    },
+    {
+      "id": "stable-diffusion-core",
+      "label": "Stable Image Core",
+      "provider": "Stability",
+      "tags": ["image"]
+    },
+    {
+      "id": "stable-diffusion-ultra",
+      "label": "Stable Image Ultra",
+      "provider": "Stability",
+      "tags": ["image"]
+    },
+    {
+      "id": "stable-diffusion-3-5",
+      "label": "Stable Diffusion 3.5",
+      "provider": "Stability",
+      "tags": ["image"]
+    },
+    {
+      "id": "stable-diffusion-3.5-large",
+      "label": "Stable Diffusion 3.5 Large",
+      "provider": "Stability",
+      "tags": ["image", "flagship"]
+    },
+    { "id": "dzine", "label": "Dzine", "provider": "Dzine", "tags": ["image"] },
+    { "id": "ideogram", "label": "Ideogram", "provider": "Ideogram", "tags": ["image"] },
+    {
+      "id": "leonardo-phoenix",
+      "label": "Leonardo Phoenix",
+      "provider": "Leonardo",
+      "tags": ["image", "flagship"]
+    },
+    {
+      "id": "leonardo-lightning-xl",
+      "label": "Leonardo Lightning XL",
+      "provider": "Leonardo",
+      "tags": ["image", "fast"]
+    },
+    { "id": "leonardo-anime-xl", "label": "Leonardo Anime XL", "provider": "Leonardo", "tags": ["image"] },
+    {
+      "id": "leonardo-diffusion-xl",
+      "label": "Leonardo Diffusion XL",
+      "provider": "Leonardo",
+      "tags": ["image"]
+    },
+    { "id": "leonardo-kino-xl", "label": "Leonardo Kino XL", "provider": "Leonardo", "tags": ["image"] },
+    { "id": "leonardo-vision-xl", "label": "Leonardo Vision XL", "provider": "Leonardo", "tags": ["image"] },
+    {
+      "id": "leonardo-albedo-base-xl",
+      "label": "Leonardo AlbedoBase XL",
+      "provider": "Leonardo",
+      "tags": ["image"]
+    }
+  ]
+}

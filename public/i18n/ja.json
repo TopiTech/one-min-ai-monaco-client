@@ -200,5 +200,14 @@
   "chat_error": "チャットエラー: {error}",
   "status_communicating": "通信中...",
   "status_done": "完了",
-  "status_error": "エラー"
+  "status_error": "エラー",
+  "failed_clear_data": "セッションの削除に失敗しました",
+  "agent_crash_title": "システムクラッシュ",
+  "agent_crash_desc": "エージェントのループ処理中に問題が発生しました: {error}",
+  "agent_stopped": "停止",
+  "agent_stopped_by_user": "ユーザーによって停止されました。",
+  "agent_feedback_label": "追加指示",
+  "agent_reset_confirm": "エージェントのセッション履歴をリセットしますか？",
+  "agent_reset_success": "セッションをリセットしました",
+  "agent_instruction_required": "エージェントへの指示を入力してください"
 }

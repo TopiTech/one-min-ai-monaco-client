@@ -141,7 +141,9 @@ export function createInlineChatManager(editorState, editorManager, dom) {
           );
           const id = { major: 1, minor: 1 };
           const op = { identifier: id, range, text: data.code, forceMoveMarkers: true };
+          editorManager.instance.pushUndoStop();
           editorManager.instance.executeEdits('copilot-inline-chat', [op]);
+          editorManager.instance.pushUndoStop();
           toast.success(t('inline_chat_applied'));
         } else {
           toast.info(t('inline_chat_discarded'));

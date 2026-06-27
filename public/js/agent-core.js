@@ -1,3 +1,21 @@
+// Cache for workspace file lists to avoid redundant API calls during agent loops
+const _fileListCache = new Map();
+const FILE_LIST_CACHE_TTL_MS = 30_000;
+
+async function fetchWorkspaceFiles(apiFn, workspaceRoot) {
+  const cached = _fileListCache.get(workspaceRoot);
+  if (cached && Date.now() - cached.timestamp < FILE_LIST_CACHE_TTL_MS) {
+    return cached.text;
+  }
+  const listRes = await apiFn(`/api/fs/list?dir=${encodeURIComponent(workspaceRoot)}`);
+  const filesList = listRes.items
+    .map((item) => `- ${item.isDirectory ? '[Dir] ' : '[File] '}${item.name}`)
+    .join('\n');
+  const text = `ワークスペースパス: ${workspaceRoot}\n` + filesList;
+  _fileListCache.set(workspaceRoot, { text, timestamp: Date.now() });
+  return text;
+}
+
 function resolvePathRelativeToWorkspace(workspaceRoot, filePath) {
   if (/^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith('/') || filePath.startsWith('\\')) {
     return filePath;
@@ -183,6 +201,23 @@ export function createAgentRuntime({
   addAgentApprovalStep,
 }) {
   const trimHistory = (history, maxTokens) => trimAgentHistory(history, t, state.creditSaving, maxTokens);
+
+  function pruneAgentTimeline(maxSteps = 100) {
+    const log = dom.agentActivityLog;
+    if (!log) return;
+    const isAtBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 80;
+    let previousScrollHeight = 0;
+    if (!isAtBottom) {
+      previousScrollHeight = log.scrollHeight;
+    }
+    while (log.children.length > maxSteps) {
+      log.removeChild(log.firstChild);
+    }
+    if (!isAtBottom) {
+      const heightDelta = previousScrollHeight - log.scrollHeight;
+      log.scrollTop = Math.max(0, log.scrollTop - heightDelta);
+    }
+  }
 
   function cleanupPendingApprovals() {
     document.querySelectorAll('.agent-step.approval').forEach((el) => el.__finalizeApproval?.());
@@ -417,27 +452,11 @@ export function createAgentRuntime({
     }
 
     const sessionId = state.agent.sessionId;
-
-    let workspaceFilesText = `ワークスペースパス: ${workspaceRoot}\n`;
-    try {
-      const listRes = await api(`/api/fs/list?dir=${encodeURIComponent(workspaceRoot)}`);
-      const filesList = listRes.items
-        .map((item) => `- ${item.isDirectory ? '[Dir] ' : '[File] '}${item.name}`)
-        .join('\n');
-      workspaceFilesText += filesList;
-    } catch {
-      workspaceFilesText += '(ファイル一覧の取得に失敗しました)';
-    }
-
     const modelSelected = dom.codeModel?.value || 'qwen3-coder-plus';
-    const sysPrompt = buildSystemPrompt({
-      workspaceRoot,
-      workspaceFilesText,
-      activeFilePath: state.editor.activeFilePath,
-    });
-
     if (state.agent.history.length === 0) {
-      state.agent.history = [{ role: 'user', content: `${sysPrompt}\n\n【指示】\n${initialInstruction}` }];
+      // System prompt is now injected fresh on each loop iteration,
+      // so we only store the user instruction in history.
+      state.agent.history = [{ role: 'user', content: initialInstruction }];
     } else {
       state.agent.history.push({
         role: 'user',
@@ -461,13 +480,31 @@ export function createAgentRuntime({
       loopCount++;
       setAgentStatus('思考中...', 'thinking');
 
+      // Re-inject a fresh system prompt on every iteration so the model
+      // always sees the current workspace state and active file, even
+      // after the conversation history has been trimmed.
+      let workspaceFilesText;
+      try {
+        workspaceFilesText = await fetchWorkspaceFiles(api, workspaceRoot);
+      } catch {
+        workspaceFilesText = `ワークスペースパス: ${workspaceRoot}\n(ファイル一覧の取得に失敗しました)`;
+      }
+      const freshSysPrompt = buildSystemPrompt({
+        workspaceRoot,
+        workspaceFilesText,
+        activeFilePath: state.editor.activeFilePath,
+      });
+
+      // Prepend fresh system prompt before the conversation history
+      const messagesForApi = [{ role: 'system', content: freshSysPrompt }, ...state.agent.history];
+
       let chatRes;
       try {
         chatRes = await api('/api/agent/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            messages: state.agent.history,
+            messages: messagesForApi,
             model: modelSelected,
             webSearch: false,
             conversationId: sessionId,
@@ -613,5 +650,6 @@ export function createAgentRuntime({
   return {
     runAgentLoop,
     cleanupPendingApprovals,
+    pruneAgentTimeline,
   };
 }

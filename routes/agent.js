@@ -9,12 +9,14 @@ import {
   assertNotProtectedPath,
   assertNotWriteProtectedPath,
   getAllowedRoots,
+  getDefaultRoot,
 } from '../utils/fs-guard.js';
 import { serverConfig } from '../config/server.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { z } from 'zod';
 import logger from '../utils/logger.js';
+import { SessionLock } from '../utils/async-lock.js';
 
 const sessionCreateSchema = z.object({
   id: z.string().optional(),
@@ -76,6 +78,12 @@ const searchSchema = z.object({
   ),
 });
 
+const fileDiffSchema = z.object({
+  path: z.string({ required_error: 'path is required' }).min(1, 'path is required'),
+  diff: z.string({ required_error: 'diff is required' }),
+  dryRun: z.boolean().optional().default(false),
+});
+
 const MAX_AGENT_READ_SIZE = 10 * 1024 * 1024;
 const SKIPPED_DIRS = new Set(['node_modules', '.git', '.venv']);
 
@@ -107,50 +115,6 @@ let sessions = new Map();
 const pendingCommands = new Map();
 
 // --- Session Per-Key Lock ---
-
-/**
- * Lightweight per-key async lock. Ensures that concurrent operations
- * targeting the same session key are serialized (non-reentrant).
- * Replaces direct read-modify-write on sessions Map entries.
- */
-class SessionLock {
-  #locks = new Map();
-
-  /**
-   * Run `fn` while holding the lock for `key`. The lock is automatically
-   * released when `fn` settles (resolves or rejects).
-   * @template T
-   * @param {string} key
-   * @param {() => Promise<T>} fn
-   * @returns {Promise<T>}
-   */
-  async acquire(key, fn) {
-    let queue = this.#locks.get(key);
-    if (!queue) {
-      queue = [];
-      this.#locks.set(key, queue);
-    }
-    while (queue.length > 0) {
-      await queue[queue.length - 1];
-    }
-    let release;
-    const holder = new Promise((resolve) => {
-      release = resolve;
-    });
-    queue.push(holder);
-    try {
-      return await fn();
-    } finally {
-      queue.shift();
-      if (queue.length === 0) this.#locks.delete(key);
-      release();
-    }
-  }
-
-  get size() {
-    return this.#locks.size;
-  }
-}
 
 const sessionLock = new SessionLock();
 
@@ -418,7 +382,7 @@ router.post('/sessions', async (req, res, next) => {
         return res.status(400).json({ error: `Invalid working directory: ${err.message}` });
       }
     } else {
-      validatedCwd = process.cwd();
+      validatedCwd = getDefaultRoot();
     }
 
     const session = {
@@ -1072,13 +1036,11 @@ router.post('/sessions/:id/diff', async (req, res, next) => {
     const session = getSession(req, res);
     if (!session) return;
 
-    const { path: filePath, diff, dryRun = false } = req.body;
-    if (!filePath) {
-      return res.status(400).json({ error: 'path is required' });
+    const resultBody = fileDiffSchema.safeParse(req.body);
+    if (!resultBody.success) {
+      return res.status(400).json({ error: resultBody.error.issues[0]?.message || 'Validation error' });
     }
-    if (diff === undefined) {
-      return res.status(400).json({ error: 'diff is required' });
-    }
+    const { path: filePath, diff, dryRun } = resultBody.data;
 
     const agentPath = resolveAgentPath(filePath, session.cwd);
     const resolvedPath = validatePath(agentPath);
@@ -1273,11 +1235,35 @@ router.post('/sessions/:id/diff', async (req, res, next) => {
  */
 router.delete('/sessions/all', (req, res, next) => {
   try {
-    sessions.clear();
-    pendingCommands.clear();
+    // Never clear sessions that are actively executing commands — doing so
+    // would orphan the spawned child processes and confuse the client.
+    let clearedCount = 0;
+    let skippedRunning = 0;
+    for (const [id, session] of sessions) {
+      if (session.status === 'running') {
+        skippedRunning++;
+      } else {
+        sessions.delete(id);
+        clearedCount++;
+      }
+    }
+    // Clear pending commands, but preserve those belonging to running sessions
+    // so their approval tokens remain valid after the session is re-accessed.
+    for (const [token, pending] of pendingCommands) {
+      const relatedSession = sessions.get(pending.sessionId);
+      if (!relatedSession || relatedSession.status !== 'running') {
+        pendingCommands.delete(token);
+      }
+    }
     saveSessions();
     savePendingCommands();
-    res.json({ ok: true, message: 'All sessions and pending commands cleared' });
+    logger.info('All sessions cleared', { cleared: clearedCount, skippedRunning });
+    res.json({
+      ok: true,
+      cleared: clearedCount,
+      skippedRunning,
+      message: 'All idle sessions and pending commands cleared',
+    });
   } catch (err) {
     next(err);
   }

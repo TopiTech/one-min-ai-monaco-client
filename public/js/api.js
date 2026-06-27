@@ -63,11 +63,10 @@ async function parseJsonOrTextResponse(res) {
   if (!text) return {};
 
   const contentType = res.headers.get('content-type') || '';
-  if (
-    !contentType.includes('application/json') &&
-    !text.trim().startsWith('{') &&
-    !text.trim().startsWith('[')
-  ) {
+  const isJsonType = contentType.includes('application/json');
+  const trimmed = text.trim();
+
+  if (!isJsonType && !trimmed.startsWith('{') && !trimmed.startsWith('[')) {
     return { message: text };
   }
 
