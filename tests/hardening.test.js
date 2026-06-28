@@ -79,7 +79,9 @@ describe('Hardening Improvements Tests', () => {
         // Resolve path above project root to guarantee it is outside allowed roots on any platform
         const currentFile = new URL(import.meta.url).pathname;
         const cleanFile =
-          process.platform === 'win32' && currentFile.startsWith('/') ? currentFile.substring(1) : currentFile;
+          process.platform === 'win32' && currentFile.startsWith('/')
+            ? currentFile.substring(1)
+            : currentFile;
         const projectRoot = path.resolve(cleanFile, '../../');
         const outsideFile = path.resolve(projectRoot, '../some-outside-file.py');
 
