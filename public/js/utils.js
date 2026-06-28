@@ -195,27 +195,64 @@ export function parseXMLTags(text) {
   const normalizedText = stripMarkdownCodeBlock(text);
 
   const extractTag = (input, tag) => {
-    const startTag = `<${tag}>`;
-    const endTag = `</${tag}>`;
-    const startIdx = input.indexOf(startTag);
-    if (startIdx === -1) return null;
-    const contentStart = startIdx + startTag.length;
-    const endIdx = input.indexOf(endTag, contentStart);
-    return endIdx !== -1
-      ? input.substring(contentStart, endIdx).trim()
-      : input.substring(contentStart).trim();
+    const startRegex = new RegExp(`<${tag}(?:\\s+[\\s\\S]*?)?>`, 'i');
+    const endRegex = new RegExp(`</${tag}>`, 'i');
+
+    const startMatch = input.match(startRegex);
+    if (!startMatch) return null;
+
+    const contentStart = startMatch.index + startMatch[0].length;
+    const endMatch = input.substring(contentStart).match(endRegex);
+
+    if (endMatch) {
+      return input.substring(contentStart, contentStart + endMatch.index).trim();
+    } else {
+      const nextTagRegex = /<(?:call_tool|parameter|finish|thought)/i;
+      const nextTagMatch = input.substring(contentStart).match(nextTagRegex);
+      if (nextTagMatch) {
+        return input.substring(contentStart, contentStart + nextTagMatch.index).trim();
+      }
+      return input.substring(contentStart).trim();
+    }
   };
 
   let toolCall = null;
   const toolMatch = normalizedText.match(
-    /<call_tool\s+name\s*=\s*["']?([\w-]+)["']?\s*>([\s\S]*?)(?:<\/call_tool>|$)/i,
+    /<call_tool\s+name\s*=\s*["']?([\w-]+)["']?\s*(?:[^>]*?)?>([\s\S]*?)(?:<\/call_tool>|$)/i,
   );
+
   if (toolMatch) {
     const params = {};
-    const paramRegex = /<parameter\s+name\s*=\s*["']?([\w-]+)["']?\s*>([\s\S]*?)(?:<\/parameter>|$)/gi;
-    let pMatch;
-    while ((pMatch = paramRegex.exec(toolMatch[2])) !== null) {
-      params[pMatch[1]] = unescapeXmlText(pMatch[2].trim());
+    const innerText = toolMatch[2];
+    const paramStartRegex = /<parameter\s+name\s*=\s*["']?([\w-]+)["']?\s*(?:[^>]*?)?>/gi;
+    let match;
+    const matches = [];
+
+    while ((match = paramStartRegex.exec(innerText)) !== null) {
+      matches.push({
+        name: match[1],
+        startIndex: match.index,
+        contentStart: match.index + match[0].length,
+      });
+    }
+
+    for (let i = 0; i < matches.length; i++) {
+      const current = matches[i];
+      const next = matches[i + 1];
+      const endTagRegex = /<\/parameter>/i;
+
+      const searchSpace = next
+        ? innerText.substring(current.contentStart, next.startIndex)
+        : innerText.substring(current.contentStart);
+
+      const endMatch = searchSpace.match(endTagRegex);
+      let rawVal;
+      if (endMatch) {
+        rawVal = searchSpace.substring(0, endMatch.index);
+      } else {
+        rawVal = searchSpace;
+      }
+      params[current.name] = unescapeXmlText(rawVal.trim());
     }
     toolCall = { name: toolMatch[1], params };
   }

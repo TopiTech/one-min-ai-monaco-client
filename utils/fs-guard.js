@@ -72,16 +72,22 @@ function globToRegExp(glob) {
   // Normalize excessive stars (e.g. *** -> **)
   const normalizedGlob = glob.replace(/\*{3,}/g, '**');
 
+  // B-3/B-4 Fix: If it ends with '/**' (e.g. scripts/**), we want to match
+  // the parent directory itself ('scripts') as well. Strip the suffix, compile
+  // the base path, and then add an optional trailing segment match.
+  const isDirGlob = normalizedGlob.endsWith('/**');
+  const baseGlob = isDirGlob ? normalizedGlob.slice(0, -3) : normalizedGlob;
+
   let regex = '';
-  for (let i = 0; i < normalizedGlob.length; i++) {
-    const c = normalizedGlob[i];
+  for (let i = 0; i < baseGlob.length; i++) {
+    const c = baseGlob[i];
     if (c === '*') {
-      if (normalizedGlob[i + 1] === '*') {
+      if (baseGlob[i + 1] === '*') {
         regex += '.*';
         i++; // skip the second *
         // Consume an optional trailing `/` so `**/` matches zero or more
         // directory levels.
-        if (normalizedGlob[i + 1] === '/') i++;
+        if (baseGlob[i + 1] === '/') i++;
       } else {
         regex += '[^/]*';
       }
@@ -92,6 +98,10 @@ function globToRegExp(glob) {
     } else {
       regex += c;
     }
+  }
+
+  if (isDirGlob) {
+    return new RegExp('^' + regex + '(?:\\/.*)?$', 'i');
   }
   return new RegExp('^' + regex + '$', 'i');
 }

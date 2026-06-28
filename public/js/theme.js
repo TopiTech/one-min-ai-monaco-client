@@ -67,7 +67,11 @@ export function updateThemeUI() {
 
   if (iconDark) iconDark.classList.toggle('is-hidden', isDark);
   if (iconLight) iconLight.classList.toggle('is-hidden', !isDark);
-  if (label) label.textContent = isDark ? t('theme_light') : t('theme_dark');
+  if (label) {
+    const key = isDark ? 'theme_light' : 'theme_dark';
+    label.setAttribute('data-i18n', key);
+    label.textContent = t(key);
+  }
 
   return isDark;
 }

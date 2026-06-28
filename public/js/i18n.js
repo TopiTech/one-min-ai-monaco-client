@@ -95,6 +95,12 @@ function applyTranslations() {
 
   // Update html lang attribute
   document.documentElement.lang = _currentLang;
+
+  // Update language selector if present
+  const langSelector = document.getElementById('langSelector');
+  if (langSelector) {
+    langSelector.value = _currentLang;
+  }
 }
 
 /**

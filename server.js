@@ -34,7 +34,7 @@ initLogger(serverConfig);
 
 import aiRoutes from './routes/ai.js';
 import fsRoutes from './routes/fs.js';
-import agentRoutes, { flushPendingWriters } from './routes/agent.js';
+import agentRoutes, { flushPendingWriters, initAgentState } from './routes/agent.js';
 import agentChatRoutes from './routes/agent-chat.js';
 import { initModels, getModelSyncStatus } from './config/models.js';
 
@@ -496,8 +496,13 @@ export function createApp(options = {}) {
       stack: exposeDetails ? err.stack : undefined,
     });
 
+    const isProduction = process.env.NODE_ENV === 'production' || !process.env.NODE_ENV;
+    const exposeErrorText = status < 500 || !isProduction || isLocalHost;
+
     res.status(status).json({
-      error: normalizePayloadError(err) || err.message || 'Internal Server Error',
+      error: exposeErrorText
+        ? normalizePayloadError(err) || err.message || 'Internal Server Error'
+        : 'Internal Server Error',
       code: err.code || 'UNKNOWN_ERROR',
       details: exposeDetails ? sanitizePayload(err.payload) || null : null,
       stack: exposeDetails ? err.stack : undefined,
@@ -553,7 +558,7 @@ function validateEnvironment() {
 
 if (process.env.NODE_ENV !== 'test') {
   validateEnvironment();
-  initModels()
+  Promise.all([initModels(), initAgentState()])
     .then(() => {
       const server = createApp().listen(serverConfig.port, '127.0.0.1', () => {
         logger.info(`1min.ai Monaco client running: http://127.0.0.1:${serverConfig.port}`);

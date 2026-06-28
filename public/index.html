@@ -669,7 +669,56 @@
         <section id="coding" class="view">
           <div class="ide">
             <div class="files card">
-              <h2 data-i18n="files_title">Files</h2>
+              <div class="explorer-header-row">
+                <h2 data-i18n="files_title">Files</h2>
+                <div class="explorer-file-actions">
+                  <button
+                    type="button"
+                    id="newFileBtn"
+                    class="ghost small icon-btn"
+                    title="新規ファイル"
+                    data-i18n-title="new_file"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                    >
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="12" y1="11" x2="12" y2="17"></line>
+                      <line x1="9" y1="14" x2="15" y2="14"></line>
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    id="newFolderBtn"
+                    class="ghost small icon-btn"
+                    title="新規フォルダ"
+                    data-i18n-title="new_folder"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                    >
+                      <path
+                        d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+                      ></path>
+                      <line x1="12" y1="11" x2="12" y2="17"></line>
+                      <line x1="9" y1="14" x2="15" y2="14"></line>
+                    </svg>
+                  </button>
+                </div>
+              </div>
               <div class="explorer-toolbar">
                 <button
                   type="button"
@@ -731,6 +780,31 @@
                   </svg>
                 </button>
               </div>
+              <div class="file-search-box">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  class="file-search-icon"
+                >
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input
+                  id="fileSearchInput"
+                  type="text"
+                  placeholder="ファイルを検索..."
+                  data-i18n-placeholder="file_search_placeholder"
+                  autocomplete="off"
+                />
+                <button type="button" id="fileSearchClear" class="file-search-clear u-hidden" title="クリア">
+                  ✕
+                </button>
+              </div>
               <div
                 id="fileTree"
                 class="file-tree"
@@ -762,7 +836,166 @@
                 </button>
               </div>
               <div id="editorTabsBar" class="editor-tabs-bar"></div>
+
+              <!-- Editor Toolbar -->
+              <div class="editor-toolbar" id="editorToolbar">
+                <button
+                  type="button"
+                  id="toolbarRun"
+                  class="toolbar-btn toolbar-btn--run"
+                  title="コードを実行"
+                  data-i18n-title="toolbar_run"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <polygon points="5 3 19 12 5 21 5 3" />
+                  </svg>
+                  <span data-i18n="toolbar_run">実行</span>
+                </button>
+                <div class="toolbar-sep"></div>
+                <button
+                  type="button"
+                  id="toolbarFormat"
+                  class="toolbar-btn"
+                  title="フォーマット"
+                  data-i18n-title="toolbar_format"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <line x1="21" y1="10" x2="7" y2="10"></line>
+                    <line x1="21" y1="6" x2="3" y2="6"></line>
+                    <line x1="21" y1="14" x2="3" y2="14"></line>
+                    <line x1="21" y1="18" x2="7" y2="18"></line>
+                  </svg>
+                  <span data-i18n="toolbar_format">整形</span>
+                </button>
+                <button type="button" id="toolbarWrap" class="toolbar-btn is-active" title="折り返し">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="17 1 21 5 17 9"></polyline>
+                    <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                    <polyline points="7 23 3 19 7 15"></polyline>
+                    <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                  </svg>
+                  <span data-i18n="toolbar_wrap_on">折返</span>
+                </button>
+                <button type="button" id="toolbarMinimap" class="toolbar-btn is-active" title="ミニマップ">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                    <path d="M3 9h18M9 21V9"></path>
+                  </svg>
+                  <span data-i18n="toolbar_minimap_on">地図</span>
+                </button>
+                <button type="button" id="toolbarGotoLine" class="toolbar-btn" title="行へ移動">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <line x1="4" y1="9" x2="20" y2="9"></line>
+                    <line x1="4" y1="15" x2="20" y2="15"></line>
+                    <line x1="10" y1="3" x2="8" y2="21"></line>
+                    <line x1="16" y1="3" x2="14" y2="21"></line>
+                  </svg>
+                  <span data-i18n="toolbar_goto_line">行へ</span>
+                </button>
+                <div class="toolbar-sep"></div>
+                <div class="toolbar-font-ctrl">
+                  <button
+                    type="button"
+                    id="toolbarFontDec"
+                    class="toolbar-btn toolbar-btn--icon"
+                    title="フォント小"
+                  >
+                    A-
+                  </button>
+                  <span id="toolbarFontSize" class="toolbar-font-size">14px</span>
+                  <button
+                    type="button"
+                    id="toolbarFontInc"
+                    class="toolbar-btn toolbar-btn--icon"
+                    title="フォント大"
+                  >
+                    A+
+                  </button>
+                </div>
+                <div class="toolbar-tab-ctrl">
+                  <span class="toolbar-label" data-i18n="toolbar_tab_size">Tab</span>
+                  <button type="button" id="toolbarTab2" class="toolbar-btn toolbar-btn--icon is-active">
+                    2
+                  </button>
+                  <button type="button" id="toolbarTab4" class="toolbar-btn toolbar-btn--icon">4</button>
+                </div>
+                <div class="toolbar-spacer"></div>
+                <button type="button" id="toolbarLangBadge" class="toolbar-lang-badge" title="言語を変更">
+                  txt
+                </button>
+                <span id="toolbarCursorPos" class="toolbar-cursor-pos">1:1</span>
+                <button
+                  type="button"
+                  id="toggleOutputBtn"
+                  class="toolbar-btn toolbar-btn--icon"
+                  title="出力パネル"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="4 17 10 11 4 5"></polyline>
+                    <line x1="12" y1="19" x2="20" y2="19"></line>
+                  </svg>
+                </button>
+              </div>
+
               <div id="editor"></div>
+
+              <!-- Code Output Panel -->
+              <div id="codeOutputPanel" class="code-output-panel">
+                <div class="code-output-header">
+                  <span class="code-output-title" data-i18n="output_panel_title">出力</span>
+                  <span id="codeOutputStatus" class="code-output-status"></span>
+                  <button type="button" id="clearOutputBtn" class="ghost small" data-i18n="btn_clear_output">
+                    クリア
+                  </button>
+                </div>
+                <pre id="codeOutputContent" class="code-output-content"></pre>
+              </div>
             </div>
 
             <div class="assistant card agent-panel">

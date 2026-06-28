@@ -235,8 +235,7 @@ async function ensureDataDir() {
   return _dirReady;
 }
 
-// Load pending commands on startup alongside sessions
-loadPendingCommands();
+// Awaiting explicit initialization via initAgentState()
 
 async function loadSessions() {
   if (isTestMode) return;
@@ -291,8 +290,7 @@ function saveSessions() {
   sessionWriter.save();
 }
 
-// Load sessions on startup
-loadSessions();
+// Awaiting explicit initialization via initAgentState()
 
 const MAX_HISTORY_ENTRIES = 100;
 const MAX_HISTORY_RESULT_SIZE = 10000; // chars
@@ -1294,6 +1292,11 @@ export async function flushPendingWriters() {
     sessionWriter.flush ? sessionWriter.flush() : Promise.resolve(),
     pendingWriter.flush ? pendingWriter.flush() : Promise.resolve(),
   ]);
+}
+
+export async function initAgentState() {
+  logger.info('Initializing agent state from persistence...');
+  await Promise.all([loadSessions(), loadPendingCommands()]);
 }
 
 export default router;

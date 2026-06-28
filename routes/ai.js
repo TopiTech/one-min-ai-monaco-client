@@ -10,6 +10,12 @@ import {
 import { getChatModels, getCodeModels, getImageModels } from '../config/models.js';
 import { parseWebSearchParams, buildCodePayload } from '../utils/web-search.js';
 import logger from '../utils/logger.js';
+import { executeCommand } from '../services/command-runner.js';
+import fsPkg from 'fs/promises';
+import osPkg from 'os';
+import pathPkg from 'path';
+import cryptoPkg from 'crypto';
+import { validatePath, assertNotProtectedPath } from '../utils/fs-guard.js';
 
 const router = express.Router();
 
@@ -971,6 +977,108 @@ ${afterCode}
     codeResult = stripCodeFences(codeResult);
 
     res.json({ code: codeResult });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Run code directly (node/python).
+ * Requires ENABLE_COMMAND_EXECUTION=true in .env
+ */
+const codeRunSchema = z.object({
+  filePath: z
+    .string()
+    .refine((val) => !/[\"\n\r;|`<>&]/.test(val), {
+      message: 'filePath contains invalid shell characters',
+    })
+    .optional(),
+  code: z.string().optional(),
+  language: z.string().optional(),
+  extension: z.string().optional(),
+});
+
+router.post('/code/run', async (req, res, next) => {
+  try {
+    if (!serverConfig.enableCommandExecution) {
+      return res.status(403).json({
+        error: 'Code execution is disabled. Set ENABLE_COMMAND_EXECUTION=true in .env to enable.',
+      });
+    }
+
+    const result = codeRunSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ error: result.error.issues[0]?.message || 'Validation error' });
+    }
+
+    const { filePath, code, language, extension } = result.data;
+    if (filePath) {
+      const resolvedPath = validatePath(filePath);
+      assertNotProtectedPath(resolvedPath);
+    }
+    const ext = extension || (filePath ? pathPkg.extname(filePath).replace('.', '') : '');
+
+    let runner = null;
+    if (ext === 'py' || language === 'python') {
+      runner = process.platform === 'win32' ? 'python' : 'python3';
+    } else if (
+      ext === 'js' ||
+      ext === 'mjs' ||
+      ext === 'cjs' ||
+      language === 'javascript' ||
+      language === 'typescript'
+    ) {
+      runner = 'node';
+    }
+
+    if (!runner) {
+      return res.status(400).json({
+        error: `Unsupported language for execution: ${language || ext || 'unknown'}. Supported: node (js), python (py).`,
+      });
+    }
+
+    let targetPath = filePath;
+
+    // If code was provided (unsaved), write to a temp file
+    if (code && !filePath) {
+      const tmpDir = osPkg.tmpdir();
+      const tmpFile = pathPkg.join(
+        tmpDir,
+        `code_run_${cryptoPkg.randomBytes(6).toString('hex')}.${ext || 'js'}`,
+      );
+      await fsPkg.writeFile(tmpFile, code, 'utf-8');
+      targetPath = tmpFile;
+    } else if (code && filePath) {
+      // Save current content to a temp file (don't modify on-disk file unless it's already saved)
+      const tmpDir = osPkg.tmpdir();
+      const tmpFile = pathPkg.join(
+        tmpDir,
+        `code_run_${cryptoPkg.randomBytes(6).toString('hex')}.${ext || 'js'}`,
+      );
+      await fsPkg.writeFile(tmpFile, code, 'utf-8');
+      targetPath = tmpFile;
+    }
+
+    if (!targetPath) {
+      return res.status(400).json({ error: 'No file path or code provided.' });
+    }
+
+    const cwd = filePath ? pathPkg.dirname(filePath) : process.cwd();
+    const command = `${runner} "${targetPath}"`;
+    const output = await executeCommand(command, { cwd, timeoutMs: 30000 });
+
+    // Cleanup temp file
+    if (targetPath !== filePath) {
+      fsPkg.unlink(targetPath).catch(() => {});
+    }
+
+    res.json({
+      ok: true,
+      stdout: output.stdout || '',
+      stderr: output.stderr || '',
+      output: output.stdout || '',
+      exitCode: output.exitCode ?? 0,
+    });
   } catch (err) {
     next(err);
   }

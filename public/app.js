@@ -33,11 +33,15 @@ import { createEditorTabManager } from './js/editor-tabs.js';
 import { createDiffDialog } from './js/editor-diff.js';
 import { createAgentRuntime } from './js/agent-core.js';
 import { createExplorerManager } from './js/explorer.js';
-import { t, setLanguage } from './js/i18n.js';
+import { initEditorToolbar, syncToolbarTheme } from './js/editor-toolbar.js';
+import { t, initI18n, setLanguage } from './js/i18n.js';
 import { toast } from './js/toast.js';
 
 // Helper to get element by ID
 const $ = (id) => document.getElementById(id);
+
+// Initialize i18n first
+await initI18n();
 
 const langSelector = $('langSelector');
 if (langSelector) {
@@ -365,6 +369,8 @@ const saveFile = () => tabManager.saveFile();
 require.config({ paths: { vs: '/vs' } });
 require(['vs/editor/editor.main'], () => {
   editorManager.init();
+  // Initialize editor toolbar after Monaco is ready
+  initEditorToolbar(editorManager, editorState);
 }, (err) => {
   // #22: Monaco AMD loader failure — show user-visible error
   const msg = err?.message || err || 'Failed to load Monaco Editor from local assets or server';

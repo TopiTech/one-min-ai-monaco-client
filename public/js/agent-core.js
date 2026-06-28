@@ -35,7 +35,9 @@ function estimateTokens(text) {
 }
 
 function trimAgentHistory(history, t, creditSaving, maxTokens) {
-  const limit = maxTokens === undefined ? (creditSaving ? 15000 : 45000) : maxTokens;
+  // Lower default limits (12k/40k) to prevent upstream context window overflow
+  // due to token estimation variance.
+  const limit = maxTokens === undefined ? (creditSaving ? 12000 : 40000) : maxTokens;
   let totalTokens = 0;
   for (let i = history.length - 1; i >= 0; i--) {
     totalTokens += estimateTokens(history[i].content);

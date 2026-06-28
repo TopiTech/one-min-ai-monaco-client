@@ -194,6 +194,38 @@ describe('parseXMLTags', () => {
     expect(out.toolCall).toEqual({ name: 'git_status', params: { repo: '/tmp/my-repo' } });
   });
 
+  test('handles missing parameter closing tags gracefully without merging them', () => {
+    const xml =
+      '<call_tool name="write_file"><parameter name="path">src/app.js<parameter name="content">console.log(1);</parameter></call_tool>';
+    const out = parseXMLTags(xml);
+    expect(out.toolCall).toEqual({
+      name: 'write_file',
+      params: {
+        path: 'src/app.js',
+        content: 'console.log(1);',
+      },
+    });
+  });
+
+  test('handles XML tag casing variations (case-insensitive)', () => {
+    const xml =
+      '<THOUGHT>thinking...</THOUGHT><CALL_TOOL name="read_file"><PARAMETER name="path">a.js</PARAMETER></CALL_TOOL>';
+    const out = parseXMLTags(xml);
+    expect(out.thought).toBe('thinking...');
+    expect(out.toolCall).toEqual({
+      name: 'read_file',
+      params: { path: 'a.js' },
+    });
+  });
+
+  test('handles raw unescaped < and > inside parameter content without breaking next parameter', () => {
+    const xml =
+      '<call_tool name="test"><parameter name="code">if (a < b && c > d) { return; }</parameter><parameter name="opt">yes</parameter></call_tool>';
+    const out = parseXMLTags(xml);
+    expect(out.toolCall.params.code).toBe('if (a < b && c > d) { return; }');
+    expect(out.toolCall.params.opt).toBe('yes');
+  });
+
   // F-14: parseXMLTags must reject oversized input to prevent DoS.
   test('drops inputs larger than the maximum size cap', () => {
     const big = '<thought>' + 'a'.repeat(300 * 1024) + '</thought>';
