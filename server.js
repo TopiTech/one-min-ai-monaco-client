@@ -62,36 +62,40 @@ fs.mkdirSync(UPLOAD_TMP_DIR, { recursive: true });
 
 // E-1: Startup cleanup to remove any orphaned temporary files from previous runs
 // that may have been left behind due to sudden server crashes.
-try {
-  const files = fs.readdirSync(UPLOAD_TMP_DIR);
-  for (const file of files) {
-    fs.unlinkSync(path.join(UPLOAD_TMP_DIR, file));
+if (process.env.NODE_ENV !== 'test') {
+  try {
+    const files = fs.readdirSync(UPLOAD_TMP_DIR);
+    for (const file of files) {
+      fs.unlinkSync(path.join(UPLOAD_TMP_DIR, file));
+    }
+  } catch (err) {
+    // Best-effort cleanup, ignore errors
   }
-} catch (err) {
-  // Best-effort cleanup, ignore errors
 }
 
 // B-6: Periodic cleanup for orphaned temporary files during runtime.
 // Deletes files older than 1 hour, running every 1 hour.
-setInterval(
-  () => {
-    try {
-      const files = fs.readdirSync(UPLOAD_TMP_DIR);
-      const now = Date.now();
-      const ONE_HOUR = 60 * 60 * 1000;
-      for (const file of files) {
-        const filePath = path.join(UPLOAD_TMP_DIR, file);
-        const stat = fs.statSync(filePath);
-        if (now - stat.mtimeMs > ONE_HOUR) {
-          fs.unlinkSync(filePath);
+if (process.env.NODE_ENV !== 'test') {
+  setInterval(
+    () => {
+      try {
+        const files = fs.readdirSync(UPLOAD_TMP_DIR);
+        const now = Date.now();
+        const ONE_HOUR = 60 * 60 * 1000;
+        for (const file of files) {
+          const filePath = path.join(UPLOAD_TMP_DIR, file);
+          const stat = fs.statSync(filePath);
+          if (now - stat.mtimeMs > ONE_HOUR) {
+            fs.unlinkSync(filePath);
+          }
         }
+      } catch (err) {
+        // Best-effort cleanup, ignore errors
       }
-    } catch (err) {
-      // Best-effort cleanup, ignore errors
-    }
-  },
-  60 * 60 * 1000,
-).unref();
+    },
+    60 * 60 * 1000,
+  ).unref();
+}
 
 const upload = multer({
   storage: multer.diskStorage({

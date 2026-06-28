@@ -17,6 +17,7 @@ jest.unstable_mockModule('../utils/api-client.js', () => ({
 
 const { createApp } = await import('../server.js');
 const { isProtectedPath, isWriteProtectedPath } = await import('../utils/fs-guard.js');
+const { serverConfig } = await import('../config/server.js');
 
 describe('Hardening Improvements Tests', () => {
   beforeEach(() => {
@@ -41,41 +42,50 @@ describe('Hardening Improvements Tests', () => {
 
   describe('/api/code/run filePath Validation', () => {
     test('rejects filePath containing shell metacharacters', async () => {
-      const app = createApp({
-        requireLocalAuth: false,
-        enableRateLimit: false,
-      });
+      const prevVal = serverConfig.enableCommandExecution;
+      serverConfig.enableCommandExecution = true;
 
-      const res = await request(app).post('/api/code/run').send({
-        filePath: 'somefile.js" && echo "injected',
-        code: 'console.log("hello")',
-        language: 'javascript',
-      });
+      try {
+        const app = createApp({
+          requireLocalAuth: false,
+          enableRateLimit: false,
+        });
 
-      expect(res.status).toBe(400);
-      expect(res.body.error).toContain('filePath contains invalid shell characters');
+        const res = await request(app).post('/api/code/run').send({
+          filePath: 'somefile.js" && echo "injected',
+          code: 'console.log("hello")',
+          language: 'javascript',
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toContain('filePath contains invalid shell characters');
+      } finally {
+        serverConfig.enableCommandExecution = prevVal;
+      }
     });
 
     test('rejects filePath outside allowed roots', async () => {
-      const prevVal = process.env.ENABLE_COMMAND_EXECUTION;
-      process.env.ENABLE_COMMAND_EXECUTION = 'true';
+      const prevVal = serverConfig.enableCommandExecution;
+      serverConfig.enableCommandExecution = true;
 
-      const app = createApp({
-        requireLocalAuth: false,
-        enableRateLimit: false,
-      });
+      try {
+        const app = createApp({
+          requireLocalAuth: false,
+          enableRateLimit: false,
+        });
 
-      // Target path outside allowed roots (e.g. System32 or other root directories)
-      const res = await request(app).post('/api/code/run').send({
-        filePath: 'C:\\Windows\\System32\\cmd.exe',
-        code: 'print("hello")',
-        language: 'python',
-      });
+        // Target path outside allowed roots (e.g. System32 or other root directories)
+        const res = await request(app).post('/api/code/run').send({
+          filePath: 'C:\\Windows\\System32\\cmd.exe',
+          code: 'print("hello")',
+          language: 'python',
+        });
 
-      expect(res.status).toBe(403);
-      expect(res.body.error).toContain('Access denied');
-
-      process.env.ENABLE_COMMAND_EXECUTION = prevVal;
+        expect(res.status).toBe(403);
+        expect(res.body.error).toContain('Access denied');
+      } finally {
+        serverConfig.enableCommandExecution = prevVal;
+      }
     });
   });
 
