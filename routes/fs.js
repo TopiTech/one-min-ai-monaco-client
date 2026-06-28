@@ -164,32 +164,11 @@ router.get('/drives', async (_req, res) => {
         }
         success = drives.length > 0;
       } catch {
-        // Fallback to next method
-      }
-    }
-
-    // Method 2: wmic (Legacy but often available)
-    if (!success && allowShellLookup) {
-      try {
-        const { stdout } = await execAsync('wmic logicaldisk get name', { timeout: 3000 });
-        const lines = stdout
-          .split('\n')
-          .map((l) => l.trim())
-          .filter((l) => l && l !== 'Name');
-        for (const line of lines) {
-          drives.push({
-            name: line,
-            path: line + '\\',
-            type: 'local',
-          });
-        }
-        success = drives.length > 0;
-      } catch {
         // Fallback to manual check
       }
     }
 
-    // Method 3: Fallback manual check of common drive letters (no shell)
+    // Method 2: Fallback manual check of common drive letters (no shell)
     if (!success) {
       const commonDrives = ['C:', 'D:', 'E:', 'F:', 'G:', 'H:', 'I:', 'Z:'];
       for (const drive of commonDrives) {

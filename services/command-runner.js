@@ -11,6 +11,12 @@ const DEFAULT_TIMEOUT_MS = parseInt(process.env.COMMAND_TIMEOUT_MS || '30000', 1
 const MAX_COMMAND_LENGTH = 4096;
 const MAX_COMMAND_ARGS = 128;
 
+// Dedicated timeout for diagnostic commands that could be used for DoS
+// (e.g. "ping -t localhost", "sleep 86400"). Bounded to 5 seconds to
+// prevent resource exhaustion while still allowing basic diagnostics.
+const DIAGNOSTIC_COMMAND_TIMEOUT_MS = 5_000;
+const DIAGNOSTIC_COMMANDS = new Set(['ping', 'sleep']);
+
 const ALLOWED_COMMAND_NAMES = new Set([
   'npm',
   'node',
@@ -102,11 +108,29 @@ function parseCommand(command) {
   const tokens = [];
   let current = '';
   let quote = null;
+  let escaped = false;
 
   for (let i = 0; i < trimmed.length; i++) {
     const char = trimmed[i];
 
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+
+    // Handle backslash escaping outside quotes
+    if (!quote && char === '\\') {
+      escaped = true;
+      continue;
+    }
+
     if (quote) {
+      // Handle escaped quotes inside quoted strings (e.g., "it's", "say \"hello\"")
+      if (char === '\\' && i + 1 < trimmed.length && trimmed[i + 1] === quote) {
+        escaped = true;
+        continue;
+      }
       if (char === quote) {
         quote = null;
       } else {
@@ -132,6 +156,7 @@ function parseCommand(command) {
   }
 
   if (quote) throw new Error('Command contains unclosed quote');
+  if (escaped) throw new Error('Command contains trailing backslash');
   if (current) tokens.push(current);
   if (tokens.length > MAX_COMMAND_ARGS) throw new Error('Command has too many arguments');
 
@@ -367,19 +392,22 @@ export async function executeCommand(command, options = {}) {
     throw new Error(`Command blocked: ${safety.reason}`);
   }
 
-  // Clamp timeout between 1 second and configured max
-  const rawTimeout = timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const clampedTimeout = Math.max(
-    1000,
-    Math.min(Number(rawTimeout) || DEFAULT_TIMEOUT_MS, serverConfig.commandTimeoutMs || DEFAULT_TIMEOUT_MS),
-  );
-
   let tokens;
   try {
     tokens = parseCommand(command);
   } catch (err) {
     throw new Error(`Command blocked: ${err.message}`);
   }
+
+  // Clamp timeout between 1 second and configured max
+  // Use dedicated timeout for diagnostic commands (ping, sleep) to prevent DoS
+  const commandName = normalizeCommandName(tokens[0]);
+  const isDiagnostic = DIAGNOSTIC_COMMANDS.has(commandName);
+  const maxTimeout = isDiagnostic
+    ? Math.min(DIAGNOSTIC_COMMAND_TIMEOUT_MS, serverConfig.commandTimeoutMs || DEFAULT_TIMEOUT_MS)
+    : serverConfig.commandTimeoutMs || DEFAULT_TIMEOUT_MS;
+  const rawTimeout = timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const clampedTimeout = Math.max(1000, Math.min(Number(rawTimeout) || DEFAULT_TIMEOUT_MS, maxTimeout));
 
   return runProcess(tokens, {
     cwd,

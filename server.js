@@ -322,11 +322,23 @@ export function createApp(options = {}) {
     .map((o) => o.trim())
     .filter(Boolean);
 
+  // Parse custom origins into normalized origin strings for reliable comparison.
+  const normalizedCustomOrigins = customOrigins
+    .map((o) => {
+      try {
+        const u = new URL(o.includes('://') ? o : `http://${o}`);
+        return u.origin;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+
   function isAllowedHostHeader(hostStr) {
     if (/^127\.0\.0\.1(?::\d+)?$/i.test(hostStr) || /^localhost(?::\d+)?$/i.test(hostStr)) return true;
     for (const o of customOrigins) {
       try {
-        if (new URL(o).host === hostStr) return true;
+        if (new URL(o.includes('://') ? o : `http://${o}`).host === hostStr) return true;
       } catch {
         // ignore
       }
@@ -336,6 +348,7 @@ export function createApp(options = {}) {
 
   function isAllowedOriginStr(originStr) {
     if (/^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(originStr)) return true;
+    if (normalizedCustomOrigins.includes(originStr)) return true;
     return customOrigins.includes(originStr);
   }
 

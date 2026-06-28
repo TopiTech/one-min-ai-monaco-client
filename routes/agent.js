@@ -262,16 +262,14 @@ const sessionWriter = createDebouncedFileWriter(
   () => {
     const rawSessions = Object.fromEntries(sessions);
     const apiKey = process.env.ONE_MIN_AI_API_KEY;
-    // SEC-4: Mask sensitive keys if present in the data
+    // SEC-4: Mask sensitive keys if present in the data.
+    // Note: API keys should not normally appear in session data (they are
+    // only sent via HTTP headers in callOneMin), but this is a defense-in-depth
+    // measure to prevent accidental leakage.
     return JSON.stringify(
       rawSessions,
       (key, value) => {
-        if (
-          typeof value === 'string' &&
-          apiKey &&
-          apiKey !== 'your_1min_ai_api_key_here' &&
-          value.includes(apiKey)
-        ) {
+        if (typeof value === 'string' && apiKey && value.includes(apiKey)) {
           return value.split(apiKey).join('***MASKED***');
         }
         return value;
@@ -345,22 +343,28 @@ function cleanupExpiredSessions() {
   }
 
   // Clean up isolated temporary files (.tmp) in DATA_DIR that are older than 30 minutes
-  (async () => {
-    try {
-      const files = await fs.readdir(DATA_DIR);
-      for (const file of files) {
-        if (file.endsWith('.tmp')) {
-          const filePath = path.join(DATA_DIR, file);
-          const stat = await fs.stat(filePath);
-          if (now - stat.mtimeMs > 30 * 60 * 1000) {
-            await fs.unlink(filePath).catch(() => {});
-          }
+  cleanupTmpFiles(now).catch((err) => {
+    logger.warn('Tmp file cleanup failed', { error: err.message });
+  });
+}
+
+async function cleanupTmpFiles(now) {
+  try {
+    const files = await fs.readdir(DATA_DIR);
+    for (const file of files) {
+      if (file.endsWith('.tmp')) {
+        const filePath = path.join(DATA_DIR, file);
+        const stat = await fs.stat(filePath);
+        if (now - stat.mtimeMs > 30 * 60 * 1000) {
+          await fs.unlink(filePath).catch(() => {});
         }
       }
-    } catch (err) {
-      // Best-effort cleanup, ignore errors
     }
-  })().catch(() => {});
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      logger.debug('Tmp file cleanup skipped', { error: err.message });
+    }
+  }
 }
 
 const cleanupTimer = setInterval(cleanupExpiredSessions, CLEANUP_INTERVAL_MS);

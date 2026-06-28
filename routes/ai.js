@@ -16,6 +16,7 @@ import osPkg from 'os';
 import pathPkg from 'path';
 import cryptoPkg from 'crypto';
 import { validatePath, assertNotProtectedPath } from '../utils/fs-guard.js';
+import { extractAssetKey } from '../utils/asset-utils.js';
 
 const router = express.Router();
 
@@ -586,56 +587,6 @@ router.post('/images/generate', async (req, res, next) => {
     next(err);
   }
 });
-
-function extractAssetKey(imageUrl) {
-  if (!imageUrl || typeof imageUrl !== 'string') return imageUrl;
-
-  let decoded = imageUrl;
-
-  // Handle local proxy URLs
-  if (decoded.startsWith('/api/assets/proxy')) {
-    try {
-      const parsedProxy = new URL(decoded, 'http://localhost');
-      const keyParam = parsedProxy.searchParams.get('key');
-      const urlParam = parsedProxy.searchParams.get('url');
-      if (keyParam) {
-        return extractAssetKey(keyParam);
-      }
-      if (urlParam) {
-        return extractAssetKey(urlParam);
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
-
-  // Handle full HTTP/HTTPS URLs
-  if (/^https?:\/\//i.test(decoded)) {
-    try {
-      const parsed = new URL(decoded);
-      // Path-style S3 URL: https://s3.us-east-1.amazonaws.com/asset.1min.ai/images/...
-      if (/^s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname)) {
-        if (parsed.pathname.startsWith('/asset.1min.ai/')) {
-          return parsed.pathname.substring('/asset.1min.ai/'.length);
-        }
-      }
-      // Virtual-host S3 URL or direct domain: https://asset.1min.ai/images/...
-      const isAllowedS3OrDomain =
-        parsed.hostname === 'asset.1min.ai' ||
-        /^asset\.1min\.ai\.s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname) ||
-        /^asset\.1min\.ai\.s3-accelerate\.amazonaws\.com$/i.test(parsed.hostname) ||
-        /^asset\.1min\.ai\.s3\.dualstack\.[\w-]+\.amazonaws\.com$/i.test(parsed.hostname);
-
-      if (isAllowedS3OrDomain) {
-        return parsed.pathname.replace(/^\//, '');
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
-
-  return decoded.replace(/^\//, '');
-}
 
 router.post('/images/text-editor', async (req, res, next) => {
   try {

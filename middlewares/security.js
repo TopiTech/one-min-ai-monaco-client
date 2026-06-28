@@ -8,11 +8,24 @@ const customOrigins = (process.env.ALLOWED_CORS_ORIGINS || '')
   .map((o) => o.trim())
   .filter(Boolean);
 
+// Parse custom origins into normalized origin strings for reliable comparison.
+// Supports both full URLs (http://myapp.local:8080) and bare hosts (myapp.local).
+const normalizedCustomOrigins = customOrigins
+  .map((o) => {
+    try {
+      const u = new URL(o.includes('://') ? o : `http://${o}`);
+      return u.origin;
+    } catch {
+      return null;
+    }
+  })
+  .filter(Boolean);
+
 export function isAllowedHostHeader(hostStr) {
   if (/^127\.0\.0\.1(?::\d+)?$/i.test(hostStr) || /^localhost(?::\d+)?$/i.test(hostStr)) return true;
   for (const o of customOrigins) {
     try {
-      if (new URL(o).host === hostStr) return true;
+      if (new URL(o.includes('://') ? o : `http://${o}`).host === hostStr) return true;
     } catch {
       // ignore
     }
@@ -22,6 +35,8 @@ export function isAllowedHostHeader(hostStr) {
 
 export function isAllowedOriginStr(originStr) {
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(originStr)) return true;
+  if (normalizedCustomOrigins.includes(originStr)) return true;
+  // Fallback: exact match against raw custom origins
   return customOrigins.includes(originStr);
 }
 

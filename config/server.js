@@ -159,7 +159,11 @@ export const serverConfig = {
   assetBaseUrl: parseApiUrl(process.env.ONE_MIN_AI_ASSET_BASE_URL, 'https://asset.1min.ai'),
 
   // S3 Bucket name for asset proxy host validation
-  s3Bucket: parseString(process.env.ONE_MIN_AI_S3_BUCKET, 'asset.1min.ai', (s) => s.length <= 100),
+  s3Bucket: parseString(
+    process.env.ONE_MIN_AI_S3_BUCKET,
+    'asset.1min.ai',
+    (s) => s.length <= 100 && /^[a-z0-9]([a-z0-9.\-]*[a-z0-9])?$/i.test(s),
+  ),
 
   // Rate limiting
   rateLimitWindowMs: intInRange(

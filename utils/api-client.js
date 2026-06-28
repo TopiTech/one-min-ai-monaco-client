@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { serverConfig } from '../config/server.js';
 import logger from './logger.js';
-import { extractTextFromOneMinResponse } from '../public/js/one-min-response.js';
+import { extractTextFromOneMinResponse } from './one-min-response.js';
 
 const API_BASE = serverConfig.apiBaseUrl;
 
@@ -210,8 +210,22 @@ export async function callOneMin(
         safeDefineProperty(lastError, 'status', 502);
         safeDefineProperty(lastError, 'code', 'UPSTREAM_NETWORK_ERROR');
       }
-      if (error && error.status && error.status >= 400 && error.status < 500 && error.status !== 429)
-        throw error;
+      // Classify errors by error.code for better retry decisions:
+      // - Retryable network errors: ECONNRESET, ECONNREFUSED, ENOTFOUND, ETIMEDOUT, EPIPE
+      // - Non-retryable client errors: 4xx (except 429)
+      const retryableNetworkCodes = new Set([
+        'ECONNRESET',
+        'ECONNREFUSED',
+        'ENOTFOUND',
+        'ETIMEDOUT',
+        'EPIPE',
+        'ENETUNREACH',
+        'EAI_AGAIN',
+      ]);
+      const isRetryableNetworkError = error?.code && retryableNetworkCodes.has(error.code);
+      const isNonRetryableHttpError =
+        error?.status && error.status >= 400 && error.status < 500 && error.status !== 429;
+      if (isNonRetryableHttpError && !isRetryableNetworkError) throw error;
       if (attempt < effectiveRetries)
         logger.warn(`Request failed for ${pathname}, will retry: ${error.message}`);
     }
