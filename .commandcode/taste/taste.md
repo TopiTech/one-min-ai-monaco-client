@@ -35,6 +35,7 @@
 # Testing
 
 - When building `new RegExp()` from a template literal with user-controlled strings (e.g. base64 nonces containing `+`, `/`, `=`), escape regex metacharacters first with `String.prototype.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")`. Confidence: 0.75
+- Fix all test failures including pre-existing ones — dismissing an existing test failure as "already broken before changes" is not acceptable; resolve them as part of the review/fix cycle. Confidence: 0.70
 
 # Assumptions
 

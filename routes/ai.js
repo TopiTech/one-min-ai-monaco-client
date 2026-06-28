@@ -950,6 +950,7 @@ const codeRunSchema = z.object({
 });
 
 router.post('/code/run', async (req, res, next) => {
+  let targetPath;
   try {
     if (!serverConfig.enableCommandExecution) {
       return res.status(403).json({
@@ -988,7 +989,7 @@ router.post('/code/run', async (req, res, next) => {
       });
     }
 
-    let targetPath = filePath;
+    targetPath = filePath;
 
     // If code was provided (unsaved), write to a temp file
     if (code && !filePath) {
@@ -1018,11 +1019,6 @@ router.post('/code/run', async (req, res, next) => {
     const command = `${runner} "${targetPath}"`;
     const output = await executeCommand(command, { cwd, timeoutMs: 30000 });
 
-    // Cleanup temp file
-    if (targetPath !== filePath) {
-      fsPkg.unlink(targetPath).catch(() => {});
-    }
-
     res.json({
       ok: true,
       stdout: output.stdout || '',
@@ -1032,6 +1028,10 @@ router.post('/code/run', async (req, res, next) => {
     });
   } catch (err) {
     next(err);
+  } finally {
+    if (targetPath && targetPath !== filePath) {
+      fsPkg.unlink(targetPath).catch(() => {});
+    }
   }
 });
 

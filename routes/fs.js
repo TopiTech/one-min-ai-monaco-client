@@ -1,7 +1,6 @@
 import express from 'express';
 import fs from 'fs/promises';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { spawn } from 'child_process';
 import path from 'path';
 import { z } from 'zod';
 import {
@@ -40,7 +39,6 @@ const BINARY_EXTENSIONS = new Set([
 ]);
 
 const router = express.Router();
-const execAsync = promisify(exec);
 
 const workspaceSelectSchema = z.object({ dir: z.string().min(1, 'dir is required') });
 const listSchema = z.object({ dir: z.string().optional() });
@@ -146,10 +144,23 @@ router.get('/drives', async (_req, res) => {
     // an agent surface, so a separate env gate (defaulting on) is enough.
     if (allowShellLookup) {
       try {
-        const { stdout } = await execAsync(
-          'powershell -NoProfile -Command "[System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady } | Select-Object -ExpandProperty Name"',
-          { timeout: 3000 },
-        );
+        const stdout = await new Promise((resolve, reject) => {
+          const child = spawn(
+            'powershell',
+            [
+              '-NoProfile',
+              '-Command',
+              '[System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady } | Select-Object -ExpandProperty Name',
+            ],
+            { timeout: 3000, windowsHide: true },
+          );
+          let data = '';
+          child.stdout.on('data', (chunk) => {
+            data += chunk;
+          });
+          child.on('close', (code) => (code === 0 ? resolve(data) : reject(new Error(`exit ${code}`))));
+          child.on('error', reject);
+        });
         const lines = stdout
           .split('\n')
           .map((l) => l.trim())

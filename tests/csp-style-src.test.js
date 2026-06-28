@@ -2,14 +2,15 @@
  * Regression tests for the CSP `style-src` directive.
  *
  * The frontend ships Monaco editor which assigns to element.style.* and
- * dynamically creates <style> nodes internally. Those assignments require
- * 'unsafe-inline' in style-src (and the style-src-attr mirror) to work.
- * Mixing a per-request nonce with 'unsafe-inline' in the same directive
- * is forbidden by CSP (the nonce wins, 'unsafe-inline' is ignored), so
- * we deliberately keep style-src nonce-free and pin its shape here so a
- * future refactor cannot quietly weaken the policy. Dynamic styles
- * coming from our own code still go through the nonced <style> block in
- * `public/js/dom-style.js`.
+ * dynamically creates CSS rules via CSSOM (insertRule). Those assignments
+ * require 'unsafe-inline' in style-src-attr for element.style and
+ * 'unsafe-inline' in style-src for CSSOM insertRule operations.
+ * Our own dynamic styles go through the nonced <style> block in
+ * `public/js/dom-style.js`. Note: mixing a per-request nonce with
+ * 'unsafe-inline' in the same directive is forbidden by CSP (the nonce
+ * wins, 'unsafe-inline' is ignored for <style> elements), but we keep
+ * 'unsafe-inline' for Monaco's CSSOM operations that don't go through
+ * <style> elements.
  */
 import { jest } from '@jest/globals';
 import request from 'supertest';
@@ -46,7 +47,7 @@ function getStyleSrc(cspHeader) {
 }
 
 describe('CSP style-src directive', () => {
-  test("GET / sets a style-src that includes 'unsafe-inline' (required by Monaco)", async () => {
+  test("GET / sets a style-src WITH 'unsafe-inline' (required by Monaco CSSOM)", async () => {
     process.env.NODE_ENV = 'test';
     const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
@@ -56,10 +57,12 @@ describe('CSP style-src directive', () => {
     expect(csp).toBeDefined();
     const styleSrc = getStyleSrc(csp);
     expect(styleSrc).not.toBeNull();
+    // style-src must contain 'unsafe-inline' — Monaco's CSSOM insertRule
+    // operations are not covered by nonce or style-src-attr
     expect(styleSrc).toMatch(/'unsafe-inline'/);
   });
 
-  test("GET / sets a style-src-attr mirroring 'unsafe-inline'", async () => {
+  test("GET / sets a style-src-attr with 'unsafe-inline' (required by Monaco)", async () => {
     process.env.NODE_ENV = 'test';
     const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 

@@ -169,7 +169,11 @@ function _bindToolbarButtons(fontSize, wordWrap, minimapOn, tabSize) {
   const gotoLineBtn = document.getElementById('toolbarGotoLine');
   if (gotoLineBtn) {
     gotoLineBtn.onclick = () => {
-      _editorManager?.instance?.getAction('editor.action.gotoLine')?.run();
+      const instance = _editorManager?.instance;
+      if (instance) {
+        instance.focus();
+        instance.getAction('editor.action.gotoLine')?.run();
+      }
     };
   }
 }
@@ -205,6 +209,7 @@ function _bindLanguageBadge() {
   badge.onclick = () => {
     const instance = _editorManager?.instance;
     if (!instance) return;
+    instance.focus();
     instance.getAction('editor.action.changeLanguageMode')?.run();
   };
 }

@@ -182,7 +182,11 @@ export async function callOneMin(
           : Math.round(retryDelay * Math.pow(2, attempt) * (1 + (Math.random() * 0.2 - 0.1)));
         // Consume the response body to release the connection back to the pool.
         // Without this, the HTTP connection stays open and may leak.
-        response.body?.cancel?.() ?? response.text?.().catch?.(() => {});
+        try {
+          response.body?.cancel?.();
+        } catch {
+          /* ignore */
+        }
         logger.warn(`Rate limited (429) on ${pathname}. Retrying in ${waitTime}ms...`);
         await delay(waitTime);
         continue;

@@ -1,13 +1,11 @@
 /**
  * CSP-safe dynamic style injection
  *
- * The server's `style-src` directive intentionally does NOT include a
- * nonce (mixing a nonce with 'unsafe-inline' would make the nonce win
- * and silently disable 'unsafe-inline', breaking Monaco). Our own
- * dynamic styles are still funnelled through a single <style> element
- * on document.head — the optional nonce attribute is harmless when no
- * nonce is required by the policy, and keeps this helper resilient if
- * style-src is later tightened again.
+ * The server's `style-src` directive includes 'unsafe-inline' for
+ * Monaco's CSSOM operations (insertRule). Our own dynamic styles are
+ * funnelled through a single <style> element with the per-request nonce
+ * attribute for defense-in-depth, keeping this helper resilient if
+ * style-src is later tightened.
  *
  * Usage:
  *   injectStyle("#modelPickerDropdown { top: 100px; }");

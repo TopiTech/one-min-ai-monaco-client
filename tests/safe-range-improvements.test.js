@@ -18,14 +18,20 @@ describe('Safe-range Improvements Unit Tests', () => {
   });
 
   test('global error handler respects exposeErrorDetails config', async () => {
-    const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
+    const originalEnv = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = 'test';
+      const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
-    // Trigger error handler via a route that throws an actual Error (status 403)
-    const response = await request(app).get('/api/fs/read?path=.env').set('host', '127.0.0.1');
+      // Trigger error handler via a route that throws an actual Error (status 403)
+      const response = await request(app).get('/api/fs/read?path=.env').set('host', '127.0.0.1');
 
-    expect(response.status).toBe(403);
-    // Since NODE_ENV=test (not development), exposeErrorDetails is false
-    expect(response.body.stack).toBeUndefined();
-    expect(response.body.details).toBeNull();
+      expect(response.status).toBe(403);
+      // Since NODE_ENV=test (not development), exposeErrorDetails is false
+      expect(response.body.stack).toBeUndefined();
+      expect(response.body.details).toBeNull();
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+    }
   });
 });

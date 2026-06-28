@@ -1,6 +1,8 @@
-// Cache for workspace file lists to avoid redundant API calls during agent loops
+// Cache for workspace file lists to avoid redundant API calls during agent loops.
+// Capped at 20 entries to prevent unbounded memory growth when switching workspaces.
 const _fileListCache = new Map();
 const FILE_LIST_CACHE_TTL_MS = 30_000;
+const FILE_LIST_CACHE_MAX = 20;
 
 async function fetchWorkspaceFiles(apiFn, workspaceRoot) {
   const cached = _fileListCache.get(workspaceRoot);
@@ -13,6 +15,11 @@ async function fetchWorkspaceFiles(apiFn, workspaceRoot) {
     .join('\n');
   const text = `ワークスペースパス: ${workspaceRoot}\n` + filesList;
   _fileListCache.set(workspaceRoot, { text, timestamp: Date.now() });
+  // Evict oldest entry when cache exceeds limit
+  if (_fileListCache.size > FILE_LIST_CACHE_MAX) {
+    const oldestKey = _fileListCache.keys().next().value;
+    _fileListCache.delete(oldestKey);
+  }
   return text;
 }
 

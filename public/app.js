@@ -434,7 +434,7 @@ function addAgentTimelineStep(type, title, body, resultText = null) {
   const placeholder = log.querySelector('.timeline-placeholder');
   if (placeholder) placeholder.remove();
 
-  const stepId = 'step-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+  const stepId = 'step-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
 
   const step = document.createElement('div');
   step.className = `agent-step ${type}`;

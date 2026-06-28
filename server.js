@@ -60,43 +60,6 @@ const ALLOWED_MIME_TYPES = [
 const UPLOAD_TMP_DIR = path.join(os.tmpdir(), 'one-min-ai-uploads');
 fs.mkdirSync(UPLOAD_TMP_DIR, { recursive: true });
 
-// E-1: Startup cleanup to remove any orphaned temporary files from previous runs
-// that may have been left behind due to sudden server crashes.
-if (process.env.NODE_ENV !== 'test') {
-  try {
-    const files = fs.readdirSync(UPLOAD_TMP_DIR);
-    for (const file of files) {
-      fs.unlinkSync(path.join(UPLOAD_TMP_DIR, file));
-    }
-  } catch (err) {
-    // Best-effort cleanup, ignore errors
-  }
-}
-
-// B-6: Periodic cleanup for orphaned temporary files during runtime.
-// Deletes files older than 1 hour, running every 1 hour.
-if (process.env.NODE_ENV !== 'test') {
-  setInterval(
-    () => {
-      try {
-        const files = fs.readdirSync(UPLOAD_TMP_DIR);
-        const now = Date.now();
-        const ONE_HOUR = 60 * 60 * 1000;
-        for (const file of files) {
-          const filePath = path.join(UPLOAD_TMP_DIR, file);
-          const stat = fs.statSync(filePath);
-          if (now - stat.mtimeMs > ONE_HOUR) {
-            fs.unlinkSync(filePath);
-          }
-        }
-      } catch (err) {
-        // Best-effort cleanup, ignore errors
-      }
-    },
-    60 * 60 * 1000,
-  ).unref();
-}
-
 const upload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, UPLOAD_TMP_DIR),
@@ -118,6 +81,43 @@ const upload = multer({
     cb(null, true);
   },
 });
+
+// E-1: Startup cleanup to remove any orphaned temporary files from previous runs
+// that may have been left behind due to sudden server crashes.
+if (process.env.NODE_ENV !== 'test') {
+  try {
+    const files = fs.readdirSync(UPLOAD_TMP_DIR);
+    for (const file of files) {
+      fs.unlinkSync(path.join(UPLOAD_TMP_DIR, file));
+    }
+  } catch {
+    // Best-effort cleanup, ignore errors
+  }
+}
+
+// B-6: Periodic cleanup for orphaned temporary files during runtime.
+// Deletes files older than 1 hour, running every 1 hour.
+if (process.env.NODE_ENV !== 'test') {
+  setInterval(
+    () => {
+      try {
+        const files = fs.readdirSync(UPLOAD_TMP_DIR);
+        const now = Date.now();
+        const ONE_HOUR = 60 * 60 * 1000;
+        for (const file of files) {
+          const filePath = path.join(UPLOAD_TMP_DIR, file);
+          const stat = fs.statSync(filePath);
+          if (now - stat.mtimeMs > ONE_HOUR) {
+            fs.unlinkSync(filePath);
+          }
+        }
+      } catch {
+        // Best-effort cleanup, ignore errors
+      }
+    },
+    60 * 60 * 1000,
+  ).unref();
+}
 
 // Authentication and proxy helpers have been modularized to middlewares/auth.js, middlewares/security.js, and services/asset-proxy.js.
 
@@ -245,30 +245,27 @@ async function handleAssetUpload(req, res, next) {
     // A-1: Stream the file directly from disk into FormData using openAsBlob
     // if available (Node 19.8+). This prevents OOM spikes when uploading
     // large files compared to reading the entire buffer into memory.
+    // Falls back to in-memory Blob if openAsBlob fails (e.g. on Windows).
     let assetBlob;
     if (typeof fs.openAsBlob === 'function') {
-      assetBlob = await fs.openAsBlob(tmpFilePath);
-    } else {
-      // Streamable custom Blob-like wrapper for Node.js versions without fs.openAsBlob
-      assetBlob = {
-        size: req.file.size,
-        type: req.file.mimetype || 'application/octet-stream',
-        slice: () => {
-          throw new Error('Not implemented');
-        },
-        arrayBuffer: async () => {
-          const buf = await fsp.readFile(tmpFilePath);
-          return buf.buffer;
-        },
-        text: async () => {
-          return fsp.readFile(tmpFilePath, 'utf-8');
-        },
-        stream: () => {
-          const stream = fs.createReadStream(tmpFilePath);
-          return Readable.toWeb ? Readable.toWeb(stream) : stream;
-        },
-        [Symbol.toStringTag]: 'Blob',
-      };
+      try {
+        assetBlob = await fs.openAsBlob(tmpFilePath);
+      } catch {
+        // openAsBlob may fail on certain OS/filesystem combinations;
+        // fall through to the in-memory fallback below.
+        assetBlob = null;
+      }
+    }
+    if (!assetBlob) {
+      const headFd = await fsp.open(tmpFilePath, 'r');
+      try {
+        const stat = await headFd.stat();
+        const buf = Buffer.alloc(stat.size);
+        await headFd.read(buf, 0, stat.size, 0);
+        assetBlob = new Blob([buf], { type: req.file.mimetype || 'application/octet-stream' });
+      } finally {
+        await headFd.close();
+      }
     }
 
     const formData = new FormData();
@@ -316,41 +313,6 @@ export function createApp(options = {}) {
     localAuthTokenOption ?? authToken ?? process.env.LOCAL_BFF_AUTH_TOKEN ?? createLocalAuthToken();
 
   const app = express();
-
-  const customOrigins = (process.env.ALLOWED_CORS_ORIGINS || '')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
-
-  // Parse custom origins into normalized origin strings for reliable comparison.
-  const normalizedCustomOrigins = customOrigins
-    .map((o) => {
-      try {
-        const u = new URL(o.includes('://') ? o : `http://${o}`);
-        return u.origin;
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean);
-
-  function isAllowedHostHeader(hostStr) {
-    if (/^127\.0\.0\.1(?::\d+)?$/i.test(hostStr) || /^localhost(?::\d+)?$/i.test(hostStr)) return true;
-    for (const o of customOrigins) {
-      try {
-        if (new URL(o.includes('://') ? o : `http://${o}`).host === hostStr) return true;
-      } catch {
-        // ignore
-      }
-    }
-    return false;
-  }
-
-  function isAllowedOriginStr(originStr) {
-    if (/^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(originStr)) return true;
-    if (normalizedCustomOrigins.includes(originStr)) return true;
-    return customOrigins.includes(originStr);
-  }
 
   // Host header validation to prevent DNS Rebinding
   app.use(hostHeaderValidation);
@@ -500,8 +462,14 @@ export function createApp(options = {}) {
     const isLocalHost = isDev || /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.get('host') || '');
     // In production (NODE_ENV=production) or when NODE_ENV is unset, never
     // expose stack traces or payloads to remote clients unless explicitly enabled
-    // and requested from localhost.
-    const exposeDetails = serverConfig.exposeErrorDetails && isLocalHost;
+    // and requested from localhost.  Read NODE_ENV dynamically so test-time
+    // overrides (process.env.NODE_ENV = 'production') take effect immediately
+    // instead of relying on the module-load-time serverConfig snapshot.
+    const dynamicExposeErrorDetails =
+      process.env.EXPOSE_ERROR_DETAILS !== undefined
+        ? String(process.env.EXPOSE_ERROR_DETAILS).toLowerCase() === 'true'
+        : isDev;
+    const exposeDetails = dynamicExposeErrorDetails && isLocalHost;
 
     const logLevel = status >= 500 ? 'error' : 'warn';
     logger[logLevel](`API Error: ${status}`, {
@@ -513,7 +481,9 @@ export function createApp(options = {}) {
       stack: exposeDetails ? err.stack : undefined,
     });
 
-    const isProduction = process.env.NODE_ENV === 'production' || !process.env.NODE_ENV;
+    const isProduction =
+      process.env.NODE_ENV === 'production' ||
+      (!process.env.NODE_ENV && process.env.EXPOSE_ERROR_DETAILS !== 'true');
     const exposeErrorText = status < 500 || !isProduction || isLocalHost;
 
     res.status(status).json({

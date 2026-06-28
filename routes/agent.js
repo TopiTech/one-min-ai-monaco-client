@@ -85,7 +85,17 @@ const fileDiffSchema = z.object({
 });
 
 const MAX_AGENT_READ_SIZE = 10 * 1024 * 1024;
-const SKIPPED_DIRS = new Set(['node_modules', '.git', '.venv']);
+const SKIPPED_DIRS = new Set([
+  'node_modules',
+  '.git',
+  '.venv',
+  'dist',
+  'build',
+  '.next',
+  '.nuxt',
+  '.output',
+  '__pycache__',
+]);
 
 function resolveAgentPath(targetPath, sessionCwd = process.cwd()) {
   return path.isAbsolute(targetPath) ? targetPath : path.join(sessionCwd, targetPath);
