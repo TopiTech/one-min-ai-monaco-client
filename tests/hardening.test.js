@@ -91,22 +91,29 @@ describe('Hardening Improvements Tests', () => {
         enableRateLimit: false,
       });
 
-      // Trigger a network resolution failure through asset proxy.
-      // Set host to example.com to simulate non-localhost access, making isLocalHost=false.
-      const resProxyFail = await request(app)
-        .get('/api/assets/proxy')
-        .query({
-          url: 'https://asset.1min.ai.s3.amazonaws.com/nonexistent_path_dns_should_fail',
-        })
-        .set('host', 'example.com');
+      // Stub fetch to simulate a network resolution failure and avoid real network calls
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockRejectedValue(new TypeError('fetch failed'));
 
-      // Expect a 500 Internal error or similar.
-      // Crucially, the error string should be filtered out to 'Internal Server Error' in production.
-      expect(resProxyFail.status).toBe(500);
-      expect(resProxyFail.body.error).toBe('Internal Server Error');
+      try {
+        // Trigger a network resolution failure through asset proxy.
+        // Set host to example.com to simulate non-localhost access, making isLocalHost=false.
+        const resProxyFail = await request(app)
+          .get('/api/assets/proxy')
+          .query({
+            url: 'https://asset.1min.ai.s3.amazonaws.com/nonexistent_path_dns_should_fail',
+          })
+          .set('host', 'example.com');
 
-      process.env.NODE_ENV = prevEnv;
-      process.env.ALLOWED_CORS_ORIGINS = prevCors;
+        // Expect a 500 Internal error or similar.
+        // Crucially, the error string should be filtered out to 'Internal Server Error' in production.
+        expect(resProxyFail.status).toBe(500);
+        expect(resProxyFail.body.error).toBe('Internal Server Error');
+      } finally {
+        global.fetch = originalFetch;
+        process.env.NODE_ENV = prevEnv;
+        process.env.ALLOWED_CORS_ORIGINS = prevCors;
+      }
     });
   });
 });
