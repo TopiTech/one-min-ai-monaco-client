@@ -67,6 +67,8 @@ describe('Hardening Improvements Tests', () => {
     test('rejects filePath outside allowed roots', async () => {
       const prevVal = serverConfig.enableCommandExecution;
       serverConfig.enableCommandExecution = true;
+      const prevAllowedRoots = process.env.ALLOWED_ROOTS;
+      delete process.env.ALLOWED_ROOTS;
 
       try {
         const app = createApp({
@@ -74,9 +76,16 @@ describe('Hardening Improvements Tests', () => {
           enableRateLimit: false,
         });
 
-        // Target path outside allowed roots (e.g. System32 or other root directories)
+        // Resolve path above project root to guarantee it is outside allowed roots on any platform
+        const currentFile = new URL(import.meta.url).pathname;
+        const cleanFile =
+          process.platform === 'win32' && currentFile.startsWith('/') ? currentFile.substring(1) : currentFile;
+        const projectRoot = path.resolve(cleanFile, '../../');
+        const outsideFile = path.resolve(projectRoot, '../some-outside-file.py');
+
+        // Target path outside allowed roots
         const res = await request(app).post('/api/code/run').send({
-          filePath: 'C:\\Windows\\System32\\cmd.exe',
+          filePath: outsideFile,
           code: 'print("hello")',
           language: 'python',
         });
@@ -85,6 +94,11 @@ describe('Hardening Improvements Tests', () => {
         expect(res.body.error).toContain('Access denied');
       } finally {
         serverConfig.enableCommandExecution = prevVal;
+        if (prevAllowedRoots !== undefined) {
+          process.env.ALLOWED_ROOTS = prevAllowedRoots;
+        } else {
+          delete process.env.ALLOWED_ROOTS;
+        }
       }
     });
   });
