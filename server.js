@@ -394,6 +394,13 @@ export function createApp(options = {}) {
           maxAge: ONE_DAY_MS,
           path: '/api',
         });
+        res.cookie('__bff_csrf', localAuthToken, {
+          httpOnly: false,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'Strict',
+          maxAge: ONE_DAY_MS,
+          path: '/',
+        });
       }
 
       res.send(html);

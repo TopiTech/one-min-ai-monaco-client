@@ -33,21 +33,31 @@ function resolvePathRelativeToWorkspace(workspaceRoot, filePath) {
   return `${rootTrimmed}${separator}${fileTrimmed}`;
 }
 
-function estimateTokens(text) {
+async function estimateTokens(apiFn, text) {
   if (!text) return 0;
-  const latinMatch = text.match(/[a-zA-Z0-9\s!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/g);
-  const latinCount = latinMatch ? latinMatch.length : 0;
-  const multiByteCount = text.length - latinCount;
-  return Math.ceil(latinCount / 4 + multiByteCount * 1.2);
+  try {
+    const res = await apiFn('/api/agent/tokenize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    return res.total || 0;
+  } catch (e) {
+    // fallback heuristic
+    const latinMatch = text.match(/[a-zA-Z0-9\s!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/g);
+    const latinCount = latinMatch ? latinMatch.length : 0;
+    const multiByteCount = text.length - latinCount;
+    return Math.ceil(latinCount / 3.5 + multiByteCount * 1.5);
+  }
 }
 
-function trimAgentHistory(history, t, creditSaving, maxTokens) {
+async function trimAgentHistory(apiFn, history, t, creditSaving, maxTokens) {
   // Lower default limits (12k/40k) to prevent upstream context window overflow
   // due to token estimation variance.
   const limit = maxTokens === undefined ? (creditSaving ? 12000 : 40000) : maxTokens;
   let totalTokens = 0;
   for (let i = history.length - 1; i >= 0; i--) {
-    totalTokens += estimateTokens(history[i].content);
+    totalTokens += await estimateTokens(apiFn, history[i].content);
     if (totalTokens > limit && i > 0) {
       const removed = history.splice(0, i);
       history.unshift({
@@ -209,7 +219,8 @@ export function createAgentRuntime({
   addAgentTimelineStep,
   addAgentApprovalStep,
 }) {
-  const trimHistory = (history, maxTokens) => trimAgentHistory(history, t, state.creditSaving, maxTokens);
+  const trimHistory = async (history, maxTokens) =>
+    await trimAgentHistory(api, history, t, state.creditSaving, maxTokens);
 
   function pruneAgentTimeline(maxSteps = 100) {
     const log = dom.agentActivityLog;
@@ -471,7 +482,7 @@ export function createAgentRuntime({
         role: 'user',
         content: `【ユーザーからの追加指示】\n${initialInstruction}`,
       });
-      trimHistory(state.agent.history);
+      await trimHistory(state.agent.history);
     }
 
     let loopCount = 0;
@@ -583,7 +594,7 @@ export function createAgentRuntime({
               role: 'user',
               content: `<tool_response>\n${result.text}\n</tool_response>`,
             });
-            trimHistory(state.agent.history);
+            await trimHistory(state.agent.history);
             loopCount = Math.max(0, loopCount - 1);
             await new Promise((resolve) => setTimeout(resolve, 1500));
             continue;
@@ -607,7 +618,7 @@ export function createAgentRuntime({
 
         state.agent.history.push({ role: 'assistant', content: aiText });
         state.agent.history.push({ role: 'user', content: feedbackMsg });
-        trimHistory(state.agent.history);
+        await trimHistory(state.agent.history);
       } else {
         consecutiveParseErrors++;
         if (consecutiveParseErrors >= MAX_CONSECUTIVE_ERRORS) {
@@ -630,7 +641,7 @@ export function createAgentRuntime({
 
         state.agent.history.push({ role: 'assistant', content: aiText });
         state.agent.history.push({ role: 'user', content: errMsg });
-        trimHistory(state.agent.history);
+        await trimHistory(state.agent.history);
       }
 
       await new Promise((resolve) => setTimeout(resolve, 800));

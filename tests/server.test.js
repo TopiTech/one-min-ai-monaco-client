@@ -354,6 +354,7 @@ describe('Server Factory', () => {
       const response = await request(protectedApp)
         .post('/api/chat')
         .set('x-local-bff-token', 'secret-token')
+        .set('Cookie', '__bff_session=secret-token')
         .set('sec-fetch-site', 'cross-site')
         .set('host', '127.0.0.1')
         .send({ prompt: 'test' });

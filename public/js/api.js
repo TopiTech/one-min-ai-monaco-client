@@ -26,7 +26,11 @@ async function api(path, options = {}) {
 
   let outcome = 'ok';
   try {
-    const headers = options.headers || {};
+    const headers = { ...options.headers };
+    const csrfToken = getCookie('__bff_csrf');
+    if (csrfToken) {
+      headers['x-local-bff-token'] = csrfToken;
+    }
 
     const res = await fetch(path, { ...fetchOptions, headers, signal: controller.signal });
     clearTimeout(timeoutId);
@@ -135,4 +139,11 @@ function extractImages(data) {
       return null;
     })
     .filter(Boolean);
+}
+
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return decodeURIComponent(parts.pop().split(';').shift());
+  return null;
 }

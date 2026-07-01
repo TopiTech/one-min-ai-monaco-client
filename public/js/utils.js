@@ -217,13 +217,63 @@ export function parseXMLTags(text) {
   };
 
   let toolCall = null;
-  const toolMatch = normalizedText.match(
-    /<call_tool\s+name\s*=\s*["']?([\w-]+)["']?\s*(?:[^>]*?)?>([\s\S]*?)(?:<\/call_tool>|$)/i,
-  );
+
+  // Custom simple parsing to prevent ReDoS on huge unclosed tags
+  const lowerText = normalizedText.toLowerCase();
+  const findTag = (tagStr) => {
+    const startIdx = lowerText.indexOf(`<${tagStr}`);
+    if (startIdx === -1) return null;
+    // Find the end of the start tag
+    let endOfStartIdx = lowerText.indexOf('>', startIdx);
+    if (endOfStartIdx === -1) return null;
+
+    // Check if it's self-closing
+    if (normalizedText[endOfStartIdx - 1] === '/') {
+      return { startIdx, contentStart: endOfStartIdx + 1, content: '', tagEndIdx: endOfStartIdx + 1 };
+    }
+
+    // Check attributes (basic)
+    const startTagContent = normalizedText.substring(startIdx + 1, endOfStartIdx);
+    const tagParts = startTagContent.split(/\s+/);
+    const actualTag = tagParts[0];
+
+    // Find the close tag
+    const closeTag = `</${actualTag.toLowerCase()}>`;
+    let closeIdx = lowerText.indexOf(closeTag, endOfStartIdx);
+    if (closeIdx === -1) {
+      // Fallback: till the next <tag> or end of string
+      const nextTagMatch = lowerText
+        .substring(endOfStartIdx + 1)
+        .search(/<(?:call_tool|parameter|finish|thought)/);
+      if (nextTagMatch !== -1) {
+        closeIdx = endOfStartIdx + 1 + nextTagMatch;
+      } else {
+        closeIdx = normalizedText.length;
+      }
+    }
+
+    const content = normalizedText.substring(endOfStartIdx + 1, closeIdx).trim();
+    return {
+      startIdx,
+      contentStart: endOfStartIdx + 1,
+      content,
+      tagEndIdx:
+        closeIdx +
+        (lowerText.substring(closeIdx, closeIdx + closeTag.length) === closeTag ? closeTag.length : 0),
+      startTagContent,
+    };
+  };
+
+  const toolMatch = findTag('call_tool');
 
   if (toolMatch) {
     const params = {};
-    const innerText = toolMatch[2];
+    const innerText = toolMatch.content;
+
+    // Extract name attribute
+    let nameMatch = toolMatch.startTagContent.match(/name\s*=\s*["']?([\w-]+)["']?/i);
+    const toolName = nameMatch ? nameMatch[1] : '';
+
     const paramStartRegex = /<parameter\s+name\s*=\s*["']?([\w-]+)["']?\s*(?:[^>]*?)?>/gi;
     let match;
     const matches = [];
@@ -254,7 +304,9 @@ export function parseXMLTags(text) {
       }
       params[current.name] = unescapeXmlText(rawVal.trim());
     }
-    toolCall = { name: toolMatch[1], params };
+    if (toolName) {
+      toolCall = { name: toolName, params };
+    }
   }
 
   const thought = extractTag(normalizedText, 'thought');

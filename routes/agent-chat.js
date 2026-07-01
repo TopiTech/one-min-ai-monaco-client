@@ -28,9 +28,9 @@ function flattenMessages(messages) {
   if (!Array.isArray(messages) || messages.length === 0) return null;
   return messages
     .map((m) => {
-      const role = (m.role || 'user').toUpperCase();
+      const role = (m.role || 'user').toLowerCase();
       const content = typeof m.content === 'string' ? m.content : '';
-      return `[${role}]\n${content}`;
+      return `<message role="${role}">\n${content}\n</message>`;
     })
     .join('\n\n');
 }

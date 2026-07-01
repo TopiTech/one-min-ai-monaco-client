@@ -173,8 +173,8 @@ function hasWindowsReservedName(targetPath) {
   if (process.platform !== 'win32') return false;
   const parts = targetPath.split(/[\\/]/);
   for (const part of parts) {
-    // Strip extension (e.g. "CON.txt" → "CON")
-    const base = part.replace(/\.[^.]+$/, '').toUpperCase();
+    // Strip all extensions (e.g. "CON.tar.gz" → "CON")
+    const base = part.split('.')[0].toUpperCase();
     if (WINDOWS_RESERVED_NAMES.has(base)) return true;
   }
   return false;

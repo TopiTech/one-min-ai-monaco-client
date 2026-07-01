@@ -17,6 +17,9 @@ import path from 'path';
 import { z } from 'zod';
 import logger from '../utils/logger.js';
 import { SessionLock } from '../utils/async-lock.js';
+import { getEncoding } from 'js-tiktoken';
+
+let tokenizerCache = null;
 
 const sessionCreateSchema = z.object({
   id: z.string().optional(),
@@ -291,11 +294,11 @@ const sessionWriter = createDebouncedFileWriter(
 );
 
 /**
- * Debounced session persistence. Coalesces rapid calls (e.g. from
- * concurrent addHistoryEntry) into a single write after a short delay.
+ * Atomic session persistence. Awaits the writer flush to ensure state changes
+ * are committed to disk before returning, preventing data loss on crash.
  */
-function saveSessions() {
-  sessionWriter.save();
+async function saveSessions() {
+  await sessionWriter.flush();
 }
 
 // Awaiting explicit initialization via initAgentState()
@@ -325,7 +328,7 @@ async function addHistoryEntry(session, entry) {
       session.history.shift();
     }
   });
-  saveSessions();
+  await saveSessions();
 }
 
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -434,7 +437,7 @@ router.post('/sessions', async (req, res, next) => {
     await sessionLock.acquire(sessionId, async () => {
       sessions.set(sessionId, session);
     });
-    saveSessions();
+    await saveSessions();
     res.json({ session });
   } catch (err) {
     next(err);
@@ -448,6 +451,22 @@ router.get('/sessions/:id', (req, res) => {
   const session = getSession(req, res);
   if (!session) return;
   res.json({ session });
+});
+
+/**
+ * Tokenize text using js-tiktoken for accurate context management.
+ */
+router.post('/tokenize', (req, res) => {
+  try {
+    const texts = Array.isArray(req.body.texts) ? req.body.texts : [req.body.text || ''];
+    if (!tokenizerCache) {
+      tokenizerCache = getEncoding('cl100k_base');
+    }
+    const counts = texts.map((t) => tokenizerCache.encode(String(t)).length);
+    res.json({ counts, total: counts.reduce((a, b) => a + b, 0) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /**
@@ -731,11 +750,23 @@ router.get('/sessions/:id/files', async (req, res, next) => {
       });
     }
 
-    const buffer = await fs.readFile(realPath);
-    if (detectBinaryContent(buffer)) {
+    const fd = await fs.open(realPath, 'r');
+    let isBinary = false;
+    try {
+      const headBuf = Buffer.alloc(8192);
+      const { bytesRead } = await fd.read(headBuf, 0, 8192, 0);
+      if (detectBinaryContent(headBuf.subarray(0, bytesRead))) {
+        isBinary = true;
+      }
+    } finally {
+      await fd.close();
+    }
+
+    if (isBinary) {
       return res.status(400).json({ error: 'Cannot read binary files as text in the agent.' });
     }
 
+    const buffer = await fs.readFile(realPath);
     const content = buffer.toString('utf-8');
     let finalContent = content;
     if (startLine !== undefined || endLine !== undefined) {

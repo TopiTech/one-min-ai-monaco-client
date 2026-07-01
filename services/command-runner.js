@@ -23,9 +23,7 @@ const ALLOWED_COMMAND_NAMES = new Set([
   'git',
   'jest',
   'tsc',
-  'dir',
   'ls',
-  'echo',
   'cat',
   'grep',
   'pwd',
@@ -40,8 +38,6 @@ const ALLOWED_COMMAND_NAMES = new Set([
   'sleep',
   'exit',
 ]);
-
-const WINDOWS_BUILT_IN_COMMANDS = new Set(['dir', 'echo', 'exit']);
 
 // Dangerous patterns that are blocked by default
 const DANGEROUS_PATTERNS = [
@@ -170,10 +166,6 @@ function isAllowedCommandName(commandName) {
   return false;
 }
 
-function isWindowsBuiltInCommand(commandName) {
-  return platform() === 'win32' && WINDOWS_BUILT_IN_COMMANDS.has(normalizeCommandName(commandName));
-}
-
 function isExitCommand(commandName) {
   return normalizeCommandName(commandName) === 'exit';
 }
@@ -203,18 +195,6 @@ function getSafeEnv() {
   return safeEnv;
 }
 
-function buildWindowsCommand(commandParts) {
-  return commandParts
-    .map((part) => {
-      if (/\s/.test(part) || /[&|<>()%!^"']/.test(part) || part.includes('%')) {
-        // Escape inner double quotes and wrap in double quotes
-        return `"${part.replace(/"/g, '""')}"`;
-      }
-      return part;
-    })
-    .join(' ');
-}
-
 function executeExitCommand(commandParts) {
   const exitCode = Number.parseInt(commandParts[1] || '0', 10);
   return {
@@ -231,17 +211,6 @@ function runProcess(commandParts, options = {}) {
 
   if (isExitCommand(commandName)) {
     return executeExitCommand(commandParts);
-  }
-
-  if (isWindowsBuiltInCommand(commandName)) {
-    const shellCommand = buildWindowsCommand(commandParts);
-    const child = spawn('cmd.exe', ['/d', '/s', '/c', shellCommand], {
-      cwd,
-      env: getSafeEnv(),
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
-    return collectProcessOutput(child, timeoutMs, onOutput);
   }
 
   const child = spawn(commandName, commandParts.slice(1), {

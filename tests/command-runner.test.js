@@ -10,7 +10,6 @@ describe('command-runner', () => {
       expect(checkCommandSafety('ls -la').safe).toBe(true);
       expect(checkCommandSafety('npm test').safe).toBe(true);
       expect(checkCommandSafety('git status').safe).toBe(true);
-      expect(checkCommandSafety('echo hello').safe).toBe(true);
       expect(checkCommandSafety('node server.js').safe).toBe(true);
     });
 
@@ -47,7 +46,7 @@ describe('command-runner', () => {
     });
 
     it('should allow quoted arguments without shell metacharacters', () => {
-      const result = checkCommandSafety('echo "hello world"');
+      const result = checkCommandSafety('npm list "some-package"');
       expect(result.safe).toBe(true);
     });
 
@@ -78,21 +77,16 @@ describe('command-runner', () => {
   });
 
   describe('executeCommand', () => {
-    test('should execute simple echo command', async () => {
-      const result = await executeCommand('echo hello', { timeoutMs: 5000 });
+    it('should execute simple node command', async () => {
+      const result = await executeCommand('node --version');
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toBe('hello');
-      expect(result.timedOut).toBe(false);
+      expect(result.stdout.length).toBeGreaterThan(0);
+      expect(result.stderr).toBe('');
     });
 
-    test('should capture stderr via a failing command', async () => {
-      // Commands that write to stderr naturally (e.g. ls on a non-existent path)
-      // Redirect >&2 is blocked as a shell metacharacter - use a command that
-      // inherently writes to stderr instead.
-      const isWindows = process.platform === 'win32';
-      const cmd = isWindows ? 'dir nonexistent_path_xyz' : 'ls nonexistent_path_xyz';
-      const result = await executeCommand(cmd, { timeoutMs: 5000 });
-      // Non-zero exit code and stderr content expected
+    it('should capture stderr via a failing command', async () => {
+      const result = await executeCommand('node non_existent_script_xyz.js');
+      // Depending on OS, exit code will be > 0 and stderr will have error msg
       expect(result.exitCode).not.toBe(0);
       expect(result.stderr.length).toBeGreaterThan(0);
     });

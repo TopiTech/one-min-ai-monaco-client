@@ -376,6 +376,15 @@ require(['vs/editor/editor.main'], () => {
   const msg = err?.message || err || 'Failed to load Monaco Editor from local assets or server';
   toast.error(t('monaco_load_failed', { error: msg }));
   console.error('Monaco AMD load error:', err);
+
+  const container = document.getElementById('editorContainer');
+  if (container) {
+    container.innerHTML = `<div style="padding: 2rem; color: #ff5555; text-align: center; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+      <h3>エディタの読み込みに失敗しました / Editor Load Failed</h3>
+      <p style="margin: 1rem 0;">${escapeHtml(String(msg))}</p>
+      <button onclick="location.reload()" style="padding: 8px 16px; margin-top: 1rem; cursor: pointer; background: var(--bg-surface-hover); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">再読み込み / Reload</button>
+    </div>`;
+  }
 });
 
 // Inline chat (delegated to inlineChatManager)

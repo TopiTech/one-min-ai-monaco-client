@@ -49,15 +49,9 @@ export function localBffAuth({ requireToken = true, authToken } = {}) {
     const headerToken = req.get('x-local-bff-token');
     const cookieToken = cookies['__bff_session'];
 
-    let tokenOk = false;
-    if (cookieToken) {
-      tokenOk = compareAuthToken(cookieToken, authToken);
-      if (headerToken && !compareAuthToken(headerToken, authToken)) {
-        tokenOk = false;
-      }
-    } else if (headerToken) {
-      tokenOk = compareAuthToken(headerToken, authToken);
-    }
+    const isCookieOk = cookieToken && compareAuthToken(cookieToken, authToken);
+    const isHeaderOk = headerToken && compareAuthToken(headerToken, authToken);
+    const tokenOk = isCookieOk && isHeaderOk;
 
     if (!tokenOk) {
       const err = new Error('Local BFF authentication required or invalid token');
@@ -77,7 +71,7 @@ export function localBffAuth({ requireToken = true, authToken } = {}) {
     }
 
     const isSameOrigin = (() => {
-      if (secFetchSite === 'same-origin') return true;
+      if (secFetchSite === 'same-origin' || secFetchSite === 'none') return true;
       const checkUrl = (urlStr) => {
         try {
           return host && new URL(urlStr).host === host;
@@ -87,6 +81,7 @@ export function localBffAuth({ requireToken = true, authToken } = {}) {
       };
       if (origin && checkUrl(origin)) return true;
       if (referer && checkUrl(referer)) return true;
+      if (!secFetchSite && !origin && !referer) return true;
       return false;
     })();
 

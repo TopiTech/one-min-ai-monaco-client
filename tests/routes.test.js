@@ -293,8 +293,8 @@ describe('AI Routes Integration Tests', () => {
       const sentBody = JSON.parse(callOneMin.mock.calls.at(-1)[1].body);
       expect(sentBody.type).toBe('CODE_GENERATOR');
       expect(sentBody).not.toHaveProperty('conversationId');
-      expect(sentBody.promptObject.prompt).toContain('[USER]');
-      expect(sentBody.promptObject.prompt).toContain('[ASSISTANT]');
+      expect(sentBody.promptObject.prompt).toContain('<message role="user">');
+      expect(sentBody.promptObject.prompt).toContain('<message role="assistant">');
       expect(sentBody.promptObject.prompt).toContain('Read the file');
       expect(sentBody.promptObject.prompt).toContain('Add a multiply function');
     });

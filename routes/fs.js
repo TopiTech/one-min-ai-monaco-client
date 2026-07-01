@@ -1,8 +1,11 @@
 import express from 'express';
 import fs from 'fs/promises';
-import { spawn } from 'child_process';
+import { spawn, exec } from 'child_process';
+import { promisify } from 'util';
 import path from 'path';
 import { z } from 'zod';
+
+const execAsync = promisify(exec);
 import {
   validatePath,
   revalidateRealPath,
@@ -138,51 +141,54 @@ router.get('/drives', async (_req, res) => {
 
   if (process.platform === 'win32') {
     let success = false;
-    const allowShellLookup = serverConfig.enableDrivesShellLookup;
-    // Method 1: PowerShell (Modern, reliable if not blocked). Independent
-    // from ENABLE_COMMAND_EXECUTION — drive enumeration is read-only and not
-    // an agent surface, so a separate env gate (defaulting on) is enough.
-    if (allowShellLookup) {
-      try {
-        const stdout = await new Promise((resolve, reject) => {
-          const child = spawn(
-            'powershell',
-            [
-              '-NoProfile',
-              '-Command',
-              '[System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady } | Select-Object -ExpandProperty Name',
-            ],
-            { timeout: 3000, windowsHide: true },
-          );
-          let data = '';
-          child.stdout.on('data', (chunk) => {
-            data += chunk;
-          });
-          child.on('close', (code) => (code === 0 ? resolve(data) : reject(new Error(`exit ${code}`))));
-          child.on('error', reject);
-        });
-        const lines = stdout
-          .split('\n')
-          .map((l) => l.trim())
-          .filter((l) => l);
-        for (const line of lines) {
-          const driveRoot = line.endsWith('\\') ? line : line + '\\';
+    try {
+      // Use fsutil to get active drive list safely and quickly
+      const { stdout } = await execAsync('fsutil fsinfo drives');
+      const matches = stdout.match(/[A-Za-z]:\\/g);
+      if (matches && matches.length > 0) {
+        for (const drive of matches) {
+          const driveLetter = drive.slice(0, 2).toUpperCase();
           drives.push({
-            name: line.replace('\\', ''),
-            path: driveRoot,
+            name: driveLetter,
+            path: driveLetter + '\\',
             type: 'local',
           });
         }
-        success = drives.length > 0;
-      } catch {
-        // Fallback to manual check
+        success = true;
       }
+    } catch {
+      // fsutil failed or permission restricted, fall back
     }
 
-    // Method 2: Fallback manual check of common drive letters (no shell)
     if (!success) {
-      const commonDrives = ['C:', 'D:', 'E:', 'F:', 'G:', 'H:', 'I:', 'Z:'];
-      for (const drive of commonDrives) {
+      // Fallback: Check common drive letters manually (exclude A: and B: to prevent floppy disk hangs)
+      const commonDrives = [
+        'C:',
+        'D:',
+        'E:',
+        'F:',
+        'G:',
+        'H:',
+        'I:',
+        'J:',
+        'K:',
+        'L:',
+        'M:',
+        'N:',
+        'O:',
+        'P:',
+        'Q:',
+        'R:',
+        'S:',
+        'T:',
+        'U:',
+        'V:',
+        'W:',
+        'X:',
+        'Y:',
+        'Z:',
+      ];
+      const checks = commonDrives.map(async (drive) => {
         try {
           await fs.access(drive + '\\');
           drives.push({
@@ -193,8 +199,12 @@ router.get('/drives', async (_req, res) => {
         } catch {
           // Drive not accessible
         }
-      }
+      });
+      await Promise.all(checks);
     }
+
+    // Sort drives alphabetically
+    drives.sort((a, b) => a.name.localeCompare(b.name));
   } else {
     // Unix-like: return root and home
     drives.push({ name: '/', path: '/', type: 'root' });
@@ -334,11 +344,25 @@ router.get('/read', async (req, res, next) => {
     // M-9: Even when the extension is text-like, perform a content-based
     // binary check. Files renamed (e.g. exe.txt) should still be refused
     // from the text editor to avoid corrupting the Monaco buffer.
-    const buffer = await fs.readFile(realPath);
-    if (detectBinaryContent(buffer)) {
+    // Optimization: Only load the first 8KB to check binary status to avoid OOM
+    // on large binaries before reject.
+    const fd = await fs.open(realPath, 'r');
+    let isBinary = false;
+    try {
+      const headBuf = Buffer.alloc(8192);
+      const { bytesRead } = await fd.read(headBuf, 0, 8192, 0);
+      if (detectBinaryContent(headBuf.subarray(0, bytesRead))) {
+        isBinary = true;
+      }
+    } finally {
+      await fd.close();
+    }
+
+    if (isBinary) {
       return res.status(400).json({ error: 'Cannot read binary files as text in the editor.' });
     }
 
+    const buffer = await fs.readFile(realPath);
     let content = buffer.toString('utf-8');
     if (startLine !== undefined || endLine !== undefined) {
       const lines = content.split(/\r?\n/);
