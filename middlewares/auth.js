@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import cookie from 'cookie';
 import logger from '../utils/logger.js';
 
 export function createLocalAuthToken() {
@@ -15,21 +16,12 @@ export function compareAuthToken(a, b) {
 }
 
 export function parseCookies(cookieHeader) {
-  const list = {};
-  if (!cookieHeader) return list;
-  cookieHeader.split(`;`).forEach(function (cookie) {
-    let [name, ...rest] = cookie.split(`=`);
-    name = name?.trim();
-    if (!name) return;
-    const value = rest.join(`=`).trim();
-    if (!value) return;
-    try {
-      list[name] = decodeURIComponent(value);
-    } catch {
-      list[name] = value;
-    }
-  });
-  return list;
+  if (!cookieHeader) return {};
+  try {
+    return cookie.parse(cookieHeader);
+  } catch {
+    return {};
+  }
 }
 
 export function localBffAuth({ requireToken = true, authToken } = {}) {
@@ -47,11 +39,17 @@ export function localBffAuth({ requireToken = true, authToken } = {}) {
   return (req, res, next) => {
     const cookies = parseCookies(req.headers.cookie);
     const headerToken = req.get('x-local-bff-token');
-    const cookieToken = cookies['__bff_session'];
+    const cookieSessionToken = cookies['__bff_session'];
+    const cookieCsrfToken = cookies['__bff_csrf'];
 
-    const isCookieOk = cookieToken && compareAuthToken(cookieToken, authToken);
-    const isHeaderOk = headerToken && compareAuthToken(headerToken, authToken);
-    const tokenOk = isCookieOk && isHeaderOk;
+    const isSessionOk = cookieSessionToken && compareAuthToken(cookieSessionToken, authToken);
+    
+    // GET/HEAD requests are idempotent and do not need CSRF protection.
+    // Standard HTML elements (e.g. <img> tags loading images from the proxy)
+    // cannot attach custom HTTP headers.
+    const isSafeMethod = req.method === 'GET' || req.method === 'HEAD';
+    const isCsrfOk = isSafeMethod || (headerToken && cookieCsrfToken && compareAuthToken(headerToken, cookieCsrfToken));
+    const tokenOk = isSessionOk && isCsrfOk;
 
     if (!tokenOk) {
       const err = new Error('Local BFF authentication required or invalid token');

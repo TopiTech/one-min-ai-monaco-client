@@ -1,11 +1,12 @@
 import express from 'express';
 import fs from 'fs/promises';
-import { spawn, exec } from 'child_process';
+import { spawn, exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import { z } from 'zod';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 import {
   validatePath,
   revalidateRealPath,
@@ -141,12 +142,25 @@ router.get('/drives', async (_req, res) => {
 
   if (process.platform === 'win32') {
     let success = false;
+
+    // 1. Try using PowerShell to get Ready drives quickly and without blocking I/O threads
     try {
-      // Use fsutil to get active drive list safely and quickly
-      const { stdout } = await execAsync('fsutil fsinfo drives');
-      const matches = stdout.match(/[A-Za-z]:\\/g);
-      if (matches && matches.length > 0) {
-        for (const drive of matches) {
+      const { stdout } = await execFileAsync(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-Command',
+          '[System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady } | Select-Object -ExpandProperty Name',
+        ],
+        { timeout: 5000 },
+      );
+
+      const lines = stdout
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      if (lines.length > 0) {
+        for (const drive of lines) {
           const driveLetter = drive.slice(0, 2).toUpperCase();
           drives.push({
             name: driveLetter,
@@ -157,50 +171,29 @@ router.get('/drives', async (_req, res) => {
         success = true;
       }
     } catch {
-      // fsutil failed or permission restricted, fall back
+      // PowerShell failed or timed out, fall through
     }
 
+    // 2. Fallback: Try using fsutil safely with execFile (not exec)
     if (!success) {
-      // Fallback: Check common drive letters manually (exclude A: and B: to prevent floppy disk hangs)
-      const commonDrives = [
-        'C:',
-        'D:',
-        'E:',
-        'F:',
-        'G:',
-        'H:',
-        'I:',
-        'J:',
-        'K:',
-        'L:',
-        'M:',
-        'N:',
-        'O:',
-        'P:',
-        'Q:',
-        'R:',
-        'S:',
-        'T:',
-        'U:',
-        'V:',
-        'W:',
-        'X:',
-        'Y:',
-        'Z:',
-      ];
-      const checks = commonDrives.map(async (drive) => {
-        try {
-          await fs.access(drive + '\\');
-          drives.push({
-            name: drive,
-            path: drive + '\\',
-            type: 'local',
-          });
-        } catch {
-          // Drive not accessible
+      try {
+        const { stdout } = await execFileAsync('fsutil', ['fsinfo', 'drives']);
+        const matches = stdout.match(/[A-Za-z]:\\/g);
+        if (matches && matches.length > 0) {
+          // As a fallback we do NOT check drive readiness via fs.access to prevent thread pool starvation.
+          for (const drive of matches) {
+            const driveLetter = drive.slice(0, 2).toUpperCase();
+            drives.push({
+              name: driveLetter,
+              path: driveLetter + '\\',
+              type: 'local',
+            });
+          }
+          success = true;
         }
-      });
-      await Promise.all(checks);
+      } catch {
+        // fsutil failed, fall through
+      }
     }
 
     // Sort drives alphabetically

@@ -9,16 +9,28 @@
 
 import express from 'express';
 import { z } from 'zod';
-import { callOneMin, extractText, isFailedResponse, extractFailureMessage } from '../utils/api-client.js';
+import {
+  callOneMin,
+  extractText,
+  isFailedResponse,
+  extractFailureMessage,
+  normalizeOneMinRawResponse,
+} from '../utils/api-client.js';
 import { parseWebSearchParams, buildCodePayload } from '../utils/web-search.js';
 import logger from '../utils/logger.js';
 import { serverConfig } from '../config/server.js';
 
 const router = express.Router();
+const CODE_GENERATOR_FEATURE_ENDPOINT = '/api/features?isStreaming=true';
 
 // ---------------------------------------------------------------------------
 // Schema
 // ---------------------------------------------------------------------------
+
+function escapeXmlText(text) {
+  if (typeof text !== 'string') return '';
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
 /**
  * Flatten a messages array into a single prompt string with role labels.
@@ -30,7 +42,8 @@ function flattenMessages(messages) {
     .map((m) => {
       const role = (m.role || 'user').toLowerCase();
       const content = typeof m.content === 'string' ? m.content : '';
-      return `<message role="${role}">\n${content}\n</message>`;
+      const escapedContent = escapeXmlText(content);
+      return `<message role="${role}">\n${escapedContent}\n</message>`;
     })
     .join('\n\n');
 }
@@ -111,23 +124,25 @@ router.post('/chat', async (req, res, next) => {
     });
 
     // 5. Call 1min.ai /api/features (CODE_GENERATOR)
-    const dataRes = await callOneMin('/api/features', {
+    const dataRes = await callOneMin(CODE_GENERATOR_FEATURE_ENDPOINT, {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      raw: true,
       timeout: serverConfig.agentChatTimeoutMs,
     });
+    const normalizedDataRes = await normalizeOneMinRawResponse(dataRes);
 
     // 6. Handle upstream failure
-    if (isFailedResponse(dataRes)) {
-      const err = new Error(`1min.ai agent chat failed: ${extractFailureMessage(dataRes)}`);
+    if (isFailedResponse(normalizedDataRes)) {
+      const err = new Error(`1min.ai agent chat failed: ${extractFailureMessage(normalizedDataRes)}`);
       err.status = 502;
-      err.payload = dataRes;
+      err.payload = normalizedDataRes;
       throw err;
     }
 
     // 7. Extract text and return in agent-friendly format
-    const text = extractText(dataRes);
-    res.json({ text, raw: dataRes });
+    const text = extractText(normalizedDataRes);
+    res.json({ text, raw: normalizedDataRes });
   } catch (err) {
     next(err);
   }

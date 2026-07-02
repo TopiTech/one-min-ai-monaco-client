@@ -1,4 +1,5 @@
 import express from 'express';
+import { spawn } from 'child_process';
 import { z } from 'zod';
 import {
   callOneMin,
@@ -6,6 +7,7 @@ import {
   isFailedResponse,
   extractFailureMessage,
   parseResponsePayload,
+  normalizeOneMinRawResponse,
 } from '../utils/api-client.js';
 import { getChatModels, getCodeModels, getImageModels } from '../config/models.js';
 import { parseWebSearchParams, buildCodePayload } from '../utils/web-search.js';
@@ -21,6 +23,8 @@ import { extractAssetKey } from '../utils/asset-utils.js';
 const router = express.Router();
 
 import { serverConfig } from '../config/server.js';
+
+const CODE_GENERATOR_FEATURE_ENDPOINT = '/api/features?isStreaming=true';
 
 function getDefaultModel(type) {
   if (type === 'CODE_GENERATOR') return serverConfig.defaultCodeModel;
@@ -790,18 +794,20 @@ router.post('/code/generate', async (req, res, next) => {
       parsedNumOfSite,
       parsedMaxWord,
     });
-    const dataRes = await callOneMin('/api/features', {
+    const dataRes = await callOneMin(CODE_GENERATOR_FEATURE_ENDPOINT, {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      raw: true,
       timeout: 600000,
     });
-    if (isFailedResponse(dataRes)) {
-      const err = new Error(`1min.ai code generate failed: ${extractFailureMessage(dataRes)}`);
+    const normalizedDataRes = await normalizeOneMinRawResponse(dataRes);
+    if (isFailedResponse(normalizedDataRes)) {
+      const err = new Error(`1min.ai code generate failed: ${extractFailureMessage(normalizedDataRes)}`);
       err.status = 502;
-      err.payload = dataRes;
+      err.payload = normalizedDataRes;
       throw err;
     }
-    res.json(dataRes);
+    res.json(normalizedDataRes);
   } catch (err) {
     next(err);
   }
@@ -850,18 +856,20 @@ ${afterCode}
       parsedMaxWord,
     });
 
-    const dataRes = await callOneMin('/api/features', {
+    const dataRes = await callOneMin(CODE_GENERATOR_FEATURE_ENDPOINT, {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      raw: true,
     });
-    if (isFailedResponse(dataRes)) {
-      const err = new Error(`1min.ai code autocomplete failed: ${extractFailureMessage(dataRes)}`);
+    const normalizedDataRes = await normalizeOneMinRawResponse(dataRes);
+    if (isFailedResponse(normalizedDataRes)) {
+      const err = new Error(`1min.ai code autocomplete failed: ${extractFailureMessage(normalizedDataRes)}`);
       err.status = 502;
-      err.payload = dataRes;
+      err.payload = normalizedDataRes;
       throw err;
     }
 
-    let suggestion = extractText(dataRes);
+    let suggestion = extractText(normalizedDataRes);
     suggestion = stripCodeFences(suggestion);
 
     res.json({ suggestion });
@@ -913,18 +921,20 @@ ${afterCode}
       parsedMaxWord,
     });
 
-    const dataRes = await callOneMin('/api/features', {
+    const dataRes = await callOneMin(CODE_GENERATOR_FEATURE_ENDPOINT, {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      raw: true,
     });
-    if (isFailedResponse(dataRes)) {
-      const err = new Error(`1min.ai inline chat failed: ${extractFailureMessage(dataRes)}`);
+    const normalizedDataRes = await normalizeOneMinRawResponse(dataRes);
+    if (isFailedResponse(normalizedDataRes)) {
+      const err = new Error(`1min.ai inline chat failed: ${extractFailureMessage(normalizedDataRes)}`);
       err.status = 502;
-      err.payload = dataRes;
+      err.payload = normalizedDataRes;
       throw err;
     }
 
-    let codeResult = extractText(dataRes);
+    let codeResult = extractText(normalizedDataRes);
     codeResult = stripCodeFences(codeResult);
 
     res.json({ code: codeResult });
@@ -1016,8 +1026,86 @@ router.post('/code/run', async (req, res, next) => {
     }
 
     const cwd = filePath ? pathPkg.dirname(filePath) : process.cwd();
-    const command = `${runner} "${targetPath}"`;
-    const output = await executeCommand(command, { cwd, timeoutMs: 30000 });
+
+    // Prepare a safe environment by filtering out sensitive credentials
+    const safeEnv = {};
+    const secretValues = [process.env.ONE_MIN_AI_API_KEY, process.env.LOCAL_BFF_AUTH_TOKEN].filter(
+      (v) => v && typeof v === 'string' && v.length > 5,
+    );
+    const SAFE_ENV_KEYS = new Set([
+      'PATH',
+      'PATHEXT',
+      'COMSPEC',
+      'SystemRoot',
+      'WINDIR',
+      'OS',
+      'PROCESSOR_ARCHITECTURE',
+      'NUMBER_OF_PROCESSORS',
+      'HOMEDRIVE',
+      'HOMEPATH',
+      'HOME',
+      'USER',
+      'USERNAME',
+      'TMP',
+      'TEMP',
+      'TMPDIR',
+      'LANG',
+      'LC_ALL',
+    ]);
+    for (const [key, value] of Object.entries(process.env)) {
+      if (SAFE_ENV_KEYS.has(key) && value) {
+        const containsSecret = secretValues.some((secret) => value.includes(secret));
+        if (!containsSecret) {
+          safeEnv[key] = value;
+        }
+      }
+    }
+
+    // Execute safely using spawn directly without running through shell parser
+    const output = await new Promise((resolve, reject) => {
+      let stdout = '';
+      let stderr = '';
+      let timedOut = false;
+      let killed = false;
+
+      const child = spawn(runner, [targetPath], {
+        cwd,
+        env: safeEnv,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+      });
+
+      const timeoutId = setTimeout(() => {
+        timedOut = true;
+        killed = true;
+        child.kill(process.platform === 'win32' ? 'SIGKILL' : 'SIGTERM');
+      }, 30000);
+
+      child.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+      child.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      child.on('close', (exitCode) => {
+        clearTimeout(timeoutId);
+        if (killed && exitCode === null) {
+          exitCode = timedOut ? 124 : 1;
+        }
+        resolve({
+          exitCode: exitCode ?? 0,
+          stdout: stdout.trim(),
+          stderr: stderr.trim(),
+          timedOut,
+        });
+      });
+
+      child.on('error', (err) => {
+        clearTimeout(timeoutId);
+        reject(err);
+      });
+    });
 
     res.json({
       ok: true,

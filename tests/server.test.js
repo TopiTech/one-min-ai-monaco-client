@@ -12,6 +12,7 @@ jest.unstable_mockModule('../utils/api-client.js', () => ({
   extractText: jest.fn((data) => data?.result || JSON.stringify(data)),
   isFailedResponse: jest.fn(() => false),
   extractFailureMessage: jest.fn(() => 'mocked failure'),
+  normalizeOneMinRawResponse: jest.fn(async (data) => data),
   normalizeAssetResponse: jest.fn((data) => ({ key: data?.asset?.key || '', url: '', raw: data })),
   parseResponsePayload: jest.fn(async (response) => {
     const text = await response.text();
@@ -108,7 +109,7 @@ describe('Server Factory', () => {
       const response = await request(protectedApp)
         .post('/api/chat')
         .set('x-local-bff-token', 'secret-token')
-        .set('Cookie', '__bff_session=secret-token')
+        .set('Cookie', '__bff_session=secret-token; __bff_csrf=secret-token')
         .set('host', '127.0.0.1')
         .set('origin', 'http://127.0.0.1')
         .send({ prompt: 'test' });
@@ -126,7 +127,7 @@ describe('Server Factory', () => {
       const response = await request(protectedApp)
         .get('/api/fs/config')
         .set('x-local-bff-token', 'secret-token')
-        .set('Cookie', '__bff_session=secret-token')
+        .set('Cookie', '__bff_session=secret-token; __bff_csrf=secret-token')
         .set('host', '127.0.0.1')
         .set('origin', 'http://127.0.0.1');
 
@@ -156,7 +157,7 @@ describe('Server Factory', () => {
       const response = await request(protectedApp)
         .get('/api/fs/config')
         .set('x-local-bff-token', 'secret-token')
-        .set('Cookie', '__bff_session=secret-token')
+        .set('Cookie', '__bff_session=secret-token; __bff_csrf=secret-token')
         .set('origin', 'https://evil.example');
 
       expect(response.status).toBe(403);
@@ -172,7 +173,7 @@ describe('Server Factory', () => {
       const response = await request(protectedApp)
         .get('/api/fs/config')
         .set('x-local-bff-token', 'secret-token')
-        .set('Cookie', '__bff_session=secret-token')
+        .set('Cookie', '__bff_session=secret-token; __bff_csrf=secret-token')
         .set('host', '127.0.0.1')
         .set('origin', 'http://127.0.0.1');
 
@@ -354,7 +355,7 @@ describe('Server Factory', () => {
       const response = await request(protectedApp)
         .post('/api/chat')
         .set('x-local-bff-token', 'secret-token')
-        .set('Cookie', '__bff_session=secret-token')
+        .set('Cookie', '__bff_session=secret-token; __bff_csrf=secret-token')
         .set('sec-fetch-site', 'cross-site')
         .set('host', '127.0.0.1')
         .send({ prompt: 'test' });
@@ -376,7 +377,7 @@ describe('Server Factory', () => {
       const response = await request(protectedApp)
         .post('/api/chat')
         .set('x-local-bff-token', 'secret-token')
-        .set('Cookie', '__bff_session=secret-token')
+        .set('Cookie', '__bff_session=secret-token; __bff_csrf=secret-token')
         .set('host', '127.0.0.1')
         .set('sec-fetch-site', 'same-origin')
         .send({ prompt: 'test' });

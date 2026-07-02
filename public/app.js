@@ -232,8 +232,6 @@ const agentRuntime = createAgentRuntime({
   api,
   t: translateUiKey,
   parseXMLTags,
-  openFile: (...args) => openFile(...args),
-  showDiffDialog: (...args) => diffDialog.showDiffDialog(...args),
   setAgentStatus,
   addAgentTimelineStep,
   addAgentApprovalStep,
@@ -379,10 +377,22 @@ require(['vs/editor/editor.main'], () => {
 
   const container = document.getElementById('editorContainer');
   if (container) {
-    container.innerHTML = `<div style="padding: 2rem; color: #ff5555; text-align: center; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-      <h3>エディタの読み込みに失敗しました / Editor Load Failed</h3>
-      <p style="margin: 1rem 0;">${escapeHtml(String(msg))}</p>
-      <button onclick="location.reload()" style="padding: 8px 16px; margin-top: 1rem; cursor: pointer; background: var(--bg-surface-hover); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">再読み込み / Reload</button>
+    container.innerHTML = `<div style="padding: 2rem; color: var(--text-primary); text-align: center; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow-y: auto;">
+      <h3 style="color: #ff5555; margin-bottom: 1rem;">エディタの読み込みに失敗しました / Editor Load Failed</h3>
+      <p style="margin: 0.5rem 0; font-family: monospace; background: var(--bg-surface-hover); padding: 0.5rem 1rem; border-radius: 4px; max-width: 80%; word-break: break-all;">${escapeHtml(String(msg))}</p>
+      
+      <div style="text-align: left; margin: 1.5rem 0; font-size: 0.9rem; max-width: 500px; border: 1px solid var(--border-color); padding: 1rem; border-radius: 6px; background: var(--bg-surface-hover);">
+        <strong style="display: block; margin-bottom: 0.5rem;">🔧 推奨されるチェックリスト / Troubleshooting Checklist:</strong>
+        <ul style="margin: 0; padding-left: 1.2rem; line-height: 1.6;">
+          <li>ローカルの BFF サーバーが正常に起動しているか（<code>npm start</code> 等）</li>
+          <li>ブラウザのネットワーク接続およびセキュリティ設定（Adblockやプロキシなど）に問題がないか</li>
+          <li><code>public/vs</code> ディレクトリが存在し、Monaco Editorアセットが正しく配置されているか</li>
+        </ul>
+      </div>
+
+      <button onclick="location.reload()" style="padding: 8px 16px; cursor: pointer; background: var(--bg-surface-hover); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; transition: background 0.2s;">
+        再読み込み / Reload
+      </button>
     </div>`;
   }
 });
@@ -1248,6 +1258,25 @@ function applyCreditSavingMode() {
 initWorkspace();
 initFolderPicker();
 initCreditSavingMode();
+
+// Listen to custom events from agent-core.js to decoupled editor UI
+document.addEventListener('editor:open-file', (e) => {
+  if (e.detail?.path) {
+    openFile(e.detail.path);
+  }
+});
+
+document.addEventListener('editor:show-diff', async (e) => {
+  if (e.detail) {
+    const { path, oldContent, newContent, resolve } = e.detail;
+    try {
+      const approved = await diffDialog.showDiffDialog(path, oldContent, newContent);
+      if (resolve) resolve(approved);
+    } catch (err) {
+      if (resolve) resolve(false);
+    }
+  }
+});
 
 // Persist conversation state to localStorage across page reloads.
 // Chat form fields (conversationId, webSearch toggle, etc.) are saved

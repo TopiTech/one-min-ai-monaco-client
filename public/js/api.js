@@ -1,6 +1,7 @@
 import { t } from './i18n.js';
 
 const statusEl = document.getElementById('status');
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
 function setStatus(text, cls = '') {
   if (statusEl) {
@@ -15,28 +16,31 @@ async function api(path, options = {}) {
   _activeRequests++;
   setStatus(t('status_communicating'), 'warn');
 
-  const { timeout = 60_000, signal, ...fetchOptions } = options;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-  if (signal) {
-    if (signal.aborted) controller.abort();
-    else signal.addEventListener('abort', () => controller.abort(), { once: true });
-  }
+  const {
+    timeout = DEFAULT_REQUEST_TIMEOUT_MS,
+    signal: callerSignal,
+    raw = false,
+    headers: optionHeaders,
+    ...fetchOptions
+  } = options;
+  const requestSignal = createRequestSignal({ timeout, callerSignal });
 
   let outcome = 'ok';
+  let keepCallerAbortForRawResponse = false;
   try {
-    const headers = { ...options.headers };
+    const headers = { ...optionHeaders };
     const csrfToken = getCookie('__bff_csrf');
     if (csrfToken) {
       headers['x-local-bff-token'] = csrfToken;
     }
 
-    const res = await fetch(path, { ...fetchOptions, headers, signal: controller.signal });
-    clearTimeout(timeoutId);
+    const res = await fetch(path, { ...fetchOptions, headers, signal: requestSignal.signal });
 
-    if (fetchOptions.raw) {
+    if (raw) {
       // Streaming response: caller owns the body. Don't parse here.
+      // Keep caller abort wired after returning so cancelling chat/agent
+      // streams can still abort the in-progress response body read.
+      keepCallerAbortForRawResponse = true;
       return res;
     }
 
@@ -48,10 +52,10 @@ async function api(path, options = {}) {
 
     return data;
   } catch (e) {
-    clearTimeout(timeoutId);
     outcome = 'err';
-    throw e;
+    throw normalizeRequestError(e, requestSignal);
   } finally {
+    requestSignal.dispose({ keepCallerListener: keepCallerAbortForRawResponse });
     // L-6: Always decrement the in-flight counter and reflect terminal
     // status, regardless of which return path we took. Centralising this
     // avoids the prior bug where the streaming branch forgot to clear it.
@@ -60,6 +64,65 @@ async function api(path, options = {}) {
       setStatus(outcome === 'err' ? t('status_error') : t('status_done'), outcome === 'err' ? 'err' : 'ok');
     }
   }
+}
+
+function createRequestSignal({ timeout, callerSignal }) {
+  const controller = new AbortController();
+  const timeoutMs = Number(timeout);
+  let didTimeout = false;
+  let timeoutId = null;
+
+  const abortFromCaller = () => {
+    if (controller.signal.aborted) return;
+    try {
+      controller.abort(callerSignal?.reason);
+    } catch {
+      controller.abort();
+    }
+  };
+
+  const canListenToCaller = callerSignal && typeof callerSignal.addEventListener === 'function';
+  if (callerSignal?.aborted) {
+    abortFromCaller();
+  } else if (canListenToCaller) {
+    callerSignal.addEventListener('abort', abortFromCaller, { once: true });
+  }
+
+  if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+    timeoutId = setTimeout(() => {
+      didTimeout = true;
+      if (!controller.signal.aborted) {
+        controller.abort(createTimeoutError(timeoutMs));
+      }
+    }, timeoutMs);
+  }
+
+  return {
+    signal: controller.signal,
+    didTimeout: () => didTimeout,
+    timeoutMs,
+    dispose({ keepCallerListener = false } = {}) {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (canListenToCaller && !keepCallerListener) {
+        callerSignal.removeEventListener('abort', abortFromCaller);
+      }
+    },
+  };
+}
+
+function normalizeRequestError(error, requestSignal) {
+  if (requestSignal.didTimeout()) {
+    return createTimeoutError(requestSignal.timeoutMs);
+  }
+  return error;
+}
+
+function createTimeoutError(timeoutMs) {
+  const err = new Error(`Request timed out after ${timeoutMs}ms`);
+  err.name = 'TimeoutError';
+  err.status = 408;
+  err.code = 'REQUEST_TIMEOUT';
+  return err;
 }
 
 async function parseJsonOrTextResponse(res) {

@@ -211,13 +211,14 @@ export function createChatManager(dom, state) {
     }
     updateAttachmentPreview();
 
-    const queue = [...pending];
+    const queue = pending.map((att, i) => ({ att, originalIndex: i }));
     const results = new Array(pending.length);
 
     const worker = async () => {
       while (queue.length > 0) {
-        const index = pending.length - queue.length;
-        const att = queue.shift();
+        const item = queue.shift();
+        if (!item) break;
+        const { att, originalIndex } = item;
         dom.chatLog.setAttribute('aria-busy', 'true');
 
         try {
@@ -229,13 +230,13 @@ export function createChatManager(dom, state) {
           att.assetKey = key;
           att.assetUrl = url;
           att.uploading = false;
-          results[index] = {
+          results[originalIndex] = {
             status: 'fulfilled',
             value: { type: att.type || 'image', assetKey: key, url },
           };
         } catch (err) {
           att.uploading = false;
-          results[index] = { status: 'rejected', reason: err };
+          results[originalIndex] = { status: 'rejected', reason: err };
           toast.error(
             t('chat_upload_failed', { name: att.file.name, error: err.message || t('chat_unknown_error') }),
           );

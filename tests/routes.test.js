@@ -12,6 +12,7 @@ jest.unstable_mockModule('../utils/api-client.js', () => ({
   }),
   isFailedResponse: jest.fn(() => false),
   extractFailureMessage: jest.fn(() => 'mocked failure'),
+  normalizeOneMinRawResponse: jest.fn(async (data) => data),
   normalizeAssetResponse: jest.fn((data) => {
     const key = data?.asset?.key || data?.fileContent?.path || '';
     return { key, url: key ? `https://asset.1min.ai/${key}` : '', raw: data };
@@ -98,9 +99,10 @@ describe('AI Routes Integration Tests', () => {
       expect(response.status).toBe(200);
       expect(response.body).toEqual(mockResponses.code);
       expect(callOneMin).toHaveBeenCalledWith(
-        '/api/features',
+        '/api/features?isStreaming=true',
         expect.objectContaining({
           body: expect.stringContaining('"type":"CODE_GENERATOR"'),
+          raw: true,
         }),
       );
 
@@ -154,6 +156,40 @@ describe('AI Routes Integration Tests', () => {
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('suggestion');
       expect(response.body.suggestion).toBe('console.log("world");');
+      expect(callOneMin).toHaveBeenCalledWith(
+        '/api/features?isStreaming=true',
+        expect.objectContaining({
+          body: expect.stringContaining('"type":"CODE_GENERATOR"'),
+          raw: true,
+        }),
+      );
+    });
+  });
+
+  describe('POST /api/code/inline-chat', () => {
+    test('should call CODE_GENERATOR through the streaming feature endpoint', async () => {
+      callOneMin.mockResolvedValue({
+        result: 'return a + b;',
+      });
+
+      const response = await request(app).post('/api/code/inline-chat').send({
+        prompt: 'simplify this return statement',
+        code: 'function add(a, b) {\n  return Number(a) + Number(b);\n}',
+        line: 2,
+        column: 3,
+        fileName: 'math.js',
+        language: 'javascript',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.code).toBe('return a + b;');
+      expect(callOneMin).toHaveBeenCalledWith(
+        '/api/features?isStreaming=true',
+        expect.objectContaining({
+          body: expect.stringContaining('"type":"CODE_GENERATOR"'),
+          raw: true,
+        }),
+      );
     });
   });
 
@@ -256,7 +292,8 @@ describe('AI Routes Integration Tests', () => {
       expect(response.body).toHaveProperty('text');
       expect(response.body.text).toBe('I will fix this bug.');
       expect(response.body).toHaveProperty('raw');
-      expect(callOneMin).toHaveBeenCalledWith('/api/features', expect.any(Object));
+      expect(callOneMin).toHaveBeenCalledWith('/api/features?isStreaming=true', expect.any(Object));
+      expect(callOneMin.mock.calls.at(-1)[1]).toMatchObject({ raw: true });
 
       // Verify payload uses CODE_GENERATOR type
       const sentBody = JSON.parse(callOneMin.mock.calls.at(-1)[1].body);

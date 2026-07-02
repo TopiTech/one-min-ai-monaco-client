@@ -113,6 +113,36 @@ export async function parseResponsePayload(response) {
 }
 
 /**
+ * Normalizes a raw Response returned from callOneMin(..., { raw: true })
+ * into the usual object shape consumed by the route handlers.
+ *
+ * - JSON responses are parsed as-is.
+ * - Non-JSON responses are exposed via `result` and `text` so existing
+ *   extractText()/isFailedResponse() consumers can continue working.
+ */
+export async function normalizeOneMinRawResponse(response) {
+  if (!response || typeof response.text !== 'function') {
+    return response;
+  }
+
+  const contentType = response.headers?.get?.('content-type') || '';
+  const payload = await parseResponsePayload(response);
+
+  if (contentType.includes('application/json')) {
+    return payload;
+  }
+
+  const text = payload?.message ?? payload?.text ?? '';
+  if (!text) return payload;
+
+  return {
+    ...payload,
+    result: text,
+    text,
+  };
+}
+
+/**
  * Calls the 1min.ai API with retry logic for 429 errors and timeout support.
  */
 export async function callOneMin(

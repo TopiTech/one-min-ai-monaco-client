@@ -33,6 +33,7 @@ jest.unstable_mockModule('../utils/api-client.js', () => ({
       'Upstream returned a failure status'
     );
   }),
+  normalizeOneMinRawResponse: jest.fn(async (data) => data),
   normalizeAssetResponse: jest.fn((data) => ({
     key: data?.asset?.key || '',
     url: '',

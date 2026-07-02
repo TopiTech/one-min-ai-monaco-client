@@ -50,8 +50,14 @@ for (const f of files) {
     skipped++;
     continue;
   }
-  cpSync(f.src, f.dest, { recursive: false });
-  copied++;
+  try {
+    cpSync(f.src, f.dest, { recursive: false });
+    copied++;
+  } catch (err) {
+    console.error(`Failed to copy vendor asset from ${f.src} to ${f.dest}:`, err.message);
+    console.error(`Please verify that you have write permissions to ${vendorDir} and that node_modules is properly installed (npm install).`);
+    process.exit(1);
+  }
 }
 
 if (copied > 0) {

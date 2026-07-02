@@ -171,6 +171,7 @@ describe('api-client callOneMin', () => {
       ok: true,
       status: 200,
       headers: new Map([['content-type', 'text/event-stream']]),
+      text: async () => 'data: {"result":"ok"}\n\n',
     };
     mockFetch([() => fakeResponse]);
     const { callOneMin } = await import('../utils/api-client.js');
@@ -180,6 +181,25 @@ describe('api-client callOneMin', () => {
       raw: true,
     });
     expect(result).toBe(fakeResponse);
+  });
+
+  test('normalizes raw Response payload into text/result fields when requested by routes', async () => {
+    const fakeResponse = {
+      ok: true,
+      status: 200,
+      headers: new Map([['content-type', 'text/event-stream']]),
+      text: async () => 'plain text response',
+    };
+    mockFetch([() => fakeResponse]);
+    const { normalizeOneMinRawResponse, extractText } = await import('../utils/api-client.js');
+
+    const normalized = await normalizeOneMinRawResponse(fakeResponse);
+    expect(normalized).toEqual({
+      message: 'plain text response',
+      result: 'plain text response',
+      text: 'plain text response',
+    });
+    expect(extractText(normalized)).toBe('plain text response');
   });
 
   // ----------------------------------------------------------------

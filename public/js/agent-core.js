@@ -1,8 +1,22 @@
+import { parseXMLTags, buildXmlRepairPrompt } from './utils.js';
+
 // Cache for workspace file lists to avoid redundant API calls during agent loops.
 // Capped at 20 entries to prevent unbounded memory growth when switching workspaces.
 const _fileListCache = new Map();
 const FILE_LIST_CACHE_TTL_MS = 30_000;
 const FILE_LIST_CACHE_MAX = 20;
+const MAX_XML_REPAIR_ATTEMPTS = 2;
+
+function buildAgentPromptInstructions() {
+  return [
+    '重要: 返答は必ずXMLのみで出力してください。',
+    '許可されるトップレベルタグは <thought>, <call_tool>, <finish> のみです。',
+    '説明文、Markdown、箇条書き、コードフェンスは出力しないでください。',
+    'XMLの特殊文字 (&, <, >) は必ずエスケープしてください。',
+    'ツールを呼ぶ場合は <call_tool name="..."> と <parameter name="..."> を正しく閉じてください。',
+    '迷った場合は <finish> を使って簡潔に完了を返してください。',
+  ].join('\n');
+}
 
 async function fetchWorkspaceFiles(apiFn, workspaceRoot) {
   const cached = _fileListCache.get(workspaceRoot);
@@ -33,31 +47,104 @@ function resolvePathRelativeToWorkspace(workspaceRoot, filePath) {
   return `${rootTrimmed}${separator}${fileTrimmed}`;
 }
 
+const _tokenCache = new Map();
+const TOKEN_CACHE_MAX = 500;
+
+async function estimateTokensBatch(apiFn, texts) {
+  if (!texts || texts.length === 0) return [];
+  const results = new Array(texts.length).fill(0);
+  const missingIndices = [];
+  const missingTexts = [];
+
+  for (let i = 0; i < texts.length; i++) {
+    const text = texts[i];
+    if (!text) {
+      results[i] = 0;
+      continue;
+    }
+    const cached = _tokenCache.get(text);
+    if (cached !== undefined) {
+      results[i] = cached;
+    } else {
+      missingIndices.push(i);
+      missingTexts.push(text);
+    }
+  }
+
+  if (missingTexts.length > 0) {
+    try {
+      const res = await apiFn('/api/agent/tokenize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texts: missingTexts }),
+      });
+      const counts = res.counts || [];
+      for (let j = 0; j < missingTexts.length; j++) {
+        const text = missingTexts[j];
+        const count = counts[j] || 0;
+        _tokenCache.set(text, count);
+        results[missingIndices[j]] = count;
+      }
+      if (_tokenCache.size > TOKEN_CACHE_MAX) {
+        while (_tokenCache.size > TOKEN_CACHE_MAX) {
+          const oldestKey = _tokenCache.keys().next().value;
+          _tokenCache.delete(oldestKey);
+        }
+      }
+    } catch (e) {
+      // Fallback heuristic for all missing
+      for (let j = 0; j < missingTexts.length; j++) {
+        const text = missingTexts[j];
+        const latinMatch = text.match(/[a-zA-Z0-9\s!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/g);
+        const latinCount = latinMatch ? latinMatch.length : 0;
+        const multiByteCount = text.length - latinCount;
+        const count = Math.ceil(latinCount / 3.5 + multiByteCount * 1.5);
+        results[missingIndices[j]] = count;
+      }
+    }
+  }
+
+  return results;
+}
+
 async function estimateTokens(apiFn, text) {
   if (!text) return 0;
+  const cached = _tokenCache.get(text);
+  if (cached !== undefined) return cached;
+
   try {
     const res = await apiFn('/api/agent/tokenize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     });
-    return res.total || 0;
+    const count = res.total || 0;
+    _tokenCache.set(text, count);
+    if (_tokenCache.size > TOKEN_CACHE_MAX) {
+      const oldestKey = _tokenCache.keys().next().value;
+      _tokenCache.delete(oldestKey);
+    }
+    return count;
   } catch (e) {
     // fallback heuristic
     const latinMatch = text.match(/[a-zA-Z0-9\s!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/g);
     const latinCount = latinMatch ? latinMatch.length : 0;
     const multiByteCount = text.length - latinCount;
-    return Math.ceil(latinCount / 3.5 + multiByteCount * 1.5);
+    const count = Math.ceil(latinCount / 3.5 + multiByteCount * 1.5);
+    return count;
   }
 }
 
 async function trimAgentHistory(apiFn, history, t, creditSaving, maxTokens) {
-  // Lower default limits (12k/40k) to prevent upstream context window overflow
-  // due to token estimation variance.
   const limit = maxTokens === undefined ? (creditSaving ? 12000 : 40000) : maxTokens;
+
+  // Batch estimate all messages in history
+  const contents = history.map((h) => h.content || '');
+  const counts = await estimateTokensBatch(apiFn, contents);
+
   let totalTokens = 0;
   for (let i = history.length - 1; i >= 0; i--) {
-    totalTokens += await estimateTokens(apiFn, history[i].content);
+    totalTokens += counts[i];
     if (totalTokens > limit && i > 0) {
       const removed = history.splice(0, i);
       history.unshift({
@@ -213,12 +300,28 @@ export function createAgentRuntime({
   api,
   t,
   parseXMLTags,
-  openFile,
-  showDiffDialog,
   setAgentStatus,
   addAgentTimelineStep,
   addAgentApprovalStep,
 }) {
+  const openFileEvent = (filePath) => {
+    document.dispatchEvent(new CustomEvent('editor:open-file', { detail: { path: filePath } }));
+  };
+
+  const showDiffDialogEvent = (displayPath, oldContent, content) => {
+    return new Promise((resolve) => {
+      document.dispatchEvent(
+        new CustomEvent('editor:show-diff', {
+          detail: {
+            path: displayPath,
+            oldContent,
+            newContent: content,
+            resolve,
+          },
+        }),
+      );
+    });
+  };
   const trimHistory = async (history, maxTokens) =>
     await trimAgentHistory(api, history, t, state.creditSaving, maxTokens);
 
@@ -258,7 +361,7 @@ export function createAgentRuntime({
       throw new Error(errorData?.error || errorData?.message || `HTTP ${currentRes.status}`);
     }
 
-    const approved = await showDiffDialog(displayPath, oldContent, content);
+    const approved = await showDiffDialogEvent(displayPath, oldContent, content);
     if (!approved) {
       return {
         success: false,
@@ -271,7 +374,7 @@ export function createAgentRuntime({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: fullPath, content }),
     });
-    await openFile(fullPath);
+    await openFileEvent(fullPath);
 
     return {
       success: true,
@@ -290,7 +393,7 @@ export function createAgentRuntime({
       if (startLine !== undefined) url += `&startLine=${startLine}`;
       if (endLine !== undefined) url += `&endLine=${endLine}`;
       const data = await api(url);
-      await openFile(fullPath);
+      await openFileEvent(fullPath);
       return { text: data.content, success: true };
     },
     write_file: async ({ sessionId, workspaceRoot, params }) => {
@@ -320,13 +423,13 @@ export function createAgentRuntime({
         body: JSON.stringify({ path: fullPath, diff, dryRun: true }),
       });
 
-      if (await showDiffDialog(filePath, current.content, preview.newContent || current.content)) {
+      if (await showDiffDialogEvent(filePath, current.content, preview.newContent || current.content)) {
         const res = await api(`/api/agent/sessions/${sessionId}/diff`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path: fullPath, diff }),
         });
-        await openFile(fullPath);
+        await openFileEvent(fullPath);
         return { text: res.message || '置換成功', success: true };
       }
       return { text: 'ユーザーによって拒否されました', success: false };
@@ -516,7 +619,11 @@ export function createAgentRuntime({
       });
 
       // Prepend fresh system prompt before the conversation history
-      const messagesForApi = [{ role: 'system', content: freshSysPrompt }, ...state.agent.history];
+      const messagesForApi = [
+        { role: 'system', content: buildAgentPromptInstructions() },
+        { role: 'system', content: freshSysPrompt },
+        ...state.agent.history,
+      ];
 
       let chatRes;
       try {
@@ -621,6 +728,11 @@ export function createAgentRuntime({
         await trimHistory(state.agent.history);
       } else {
         consecutiveParseErrors++;
+        const repairPrompt = buildXmlRepairPrompt({
+          aiText,
+          errorReason: 'XMLタグが欠落、または閉じタグの不整合があります。',
+        });
+        const shouldRetryRepair = consecutiveParseErrors <= MAX_XML_REPAIR_ATTEMPTS;
         if (consecutiveParseErrors >= MAX_CONSECUTIVE_ERRORS) {
           addAgentTimelineStep(
             'error',
@@ -632,7 +744,7 @@ export function createAgentRuntime({
         }
 
         const errMsg =
-          'エラー: ツール呼び出しまたはタスク完了タグ (<call_tool> または <finish>) が見つかりませんでした。\n指示に従って、思考を <thought>タグで囲み、直後に呼び出すツールを <call_tool> タグで指定してください。';
+          'エラー: XMLフォーマットの解析に失敗しました。<thought>, <call_tool>, <finish> のいずれかで再出力してください。';
         addAgentTimelineStep(
           'error',
           'パース失敗',
@@ -640,8 +752,14 @@ export function createAgentRuntime({
         );
 
         state.agent.history.push({ role: 'assistant', content: aiText });
-        state.agent.history.push({ role: 'user', content: errMsg });
+        state.agent.history.push({ role: 'user', content: shouldRetryRepair ? repairPrompt : errMsg });
         await trimHistory(state.agent.history);
+
+        if (shouldRetryRepair) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          loopCount = Math.max(0, loopCount - 1);
+          continue;
+        }
       }
 
       await new Promise((resolve) => setTimeout(resolve, 800));

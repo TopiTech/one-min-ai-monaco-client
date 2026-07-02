@@ -115,8 +115,8 @@ function parseCommand(command) {
       continue;
     }
 
-    // Handle backslash escaping outside quotes
-    if (!quote && char === '\\') {
+    // Handle backslash escaping outside quotes (except on Windows where it serves as a path separator)
+    if (process.platform !== 'win32' && !quote && char === '\\') {
       escaped = true;
       continue;
     }

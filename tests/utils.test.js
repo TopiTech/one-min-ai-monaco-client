@@ -50,6 +50,8 @@ const {
   stripMarkdownCodeBlock,
   unescapeXmlText,
   parseXMLTags,
+  sanitizeXmlText,
+  buildXmlRepairPrompt,
   createSvgIcon,
   appendStepIcon,
   SVG_NS,
@@ -247,6 +249,22 @@ describe('parseXMLTags', () => {
     expect(out.toolCall).not.toBeNull();
     expect(out.toolCall.name).toMatch(/^t\d+$/);
     expect(Number(out.toolCall.params.i)).toBeLessThan(64);
+  });
+
+  test('sanitizeXmlText escapes XML metacharacters and strips control chars', () => {
+    expect(sanitizeXmlText('a & b < c > d\u0001')).toBe('a &amp; b &lt; c &gt; d');
+  });
+
+  test('buildXmlRepairPrompt embeds safe original output and repair instructions', () => {
+    const prompt = buildXmlRepairPrompt({
+      aiText: '<finish>done</finish>',
+      errorReason: 'missing close tag',
+    });
+
+    expect(prompt).toContain('XMLフォーマット');
+    expect(prompt).toContain('&lt;finish&gt;done&lt;/finish&gt;');
+    expect(prompt).toContain('missing close tag');
+    expect(prompt).toContain('<thought>, <call_tool>, <finish>');
   });
 });
 

@@ -24,6 +24,7 @@ jest.unstable_mockModule('../utils/api-client.js', () => ({
       data?.error ||
       'Upstream returned a failure status',
   ),
+  normalizeOneMinRawResponse: jest.fn(async (data) => data),
   normalizeAssetResponse: jest.fn((data) => ({
     key: data?.asset?.key || '',
     url: '',
@@ -64,7 +65,7 @@ describe('Security fixes regression', () => {
       const res = await request(app)
         .get('/api/fs/config')
         .set('x-local-bff-token', 'secret-token')
-        .set('Cookie', '__bff_session=secret-token')
+        .set('Cookie', '__bff_session=secret-token; __bff_csrf=secret-token')
         .set('host', '127.0.0.1')
         .set('origin', 'http://127.0.0.1');
 
@@ -81,7 +82,7 @@ describe('Security fixes regression', () => {
       const res = await request(app)
         .get('/api/fs/config')
         .set('x-local-bff-token', 'secret-token')
-        .set('Cookie', '__bff_session=secret-token')
+        .set('Cookie', '__bff_session=secret-token; __bff_csrf=secret-token')
         .set('host', '127.0.0.1')
         .set('origin', 'https://evil.example');
 
@@ -96,10 +97,11 @@ describe('Security fixes regression', () => {
       });
 
       const res = await request(app)
-        .get('/api/fs/config')
-        .set('Cookie', '__bff_session=secret-token')
+        .post('/api/chat')
+        .set('Cookie', '__bff_session=secret-token; __bff_csrf=secret-token')
         .set('host', '127.0.0.1')
-        .set('origin', 'http://127.0.0.1');
+        .set('origin', 'http://127.0.0.1')
+        .send({ prompt: 'test' });
 
       expect(res.status).toBe(403);
     });

@@ -337,6 +337,41 @@ export function parseXMLTags(text) {
   return { thought, finish, toolCall };
 }
 
+const XML_CONTROL_CHAR_PATTERN = /[\x00-\x08\x0B\x0C\x0E-\x1F]/g;
+
+export function sanitizeXmlText(text) {
+  if (typeof text !== 'string') return '';
+  return text
+    .replace(XML_CONTROL_CHAR_PATTERN, '')
+    .replace(/&(?!(?:amp|lt|gt|apos|quot);)/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+export function buildXmlRepairPrompt({
+  aiText,
+  errorReason,
+  expectedTags = '<thought>, <call_tool>, <finish>',
+} = {}) {
+  const safeAiText = sanitizeXmlText(typeof aiText === 'string' ? aiText : '');
+  const safeReason = sanitizeXmlText(typeof errorReason === 'string' ? errorReason : 'XML parse failed');
+
+  return [
+    '前回の出力は定義されたXMLフォーマットに準拠していませんでした。',
+    `問題: ${safeReason}`,
+    `必須タグ: ${expectedTags}`,
+    '次のルールを厳守して、同じ内容をXMLとして再出力してください。',
+    '1. 出力はXMLのみ。説明文、箇条書き、コードフェンス、Markdownは禁止。',
+    '2. 最上位は <thought> か <call_tool> か <finish> のいずれかで始める。',
+    '3. タグ内の &, <, > は必ずXMLエスケープする。',
+    '4. <call_tool> を使う場合は <parameter name="..."> を閉じ忘れない。',
+    '5. 迷ったら <finish> に要約だけを返す。',
+    '',
+    '前回の出力（参照用、修正して再送信）:',
+    safeAiText || '(empty)',
+  ].join('\n');
+}
+
 /**
  * Find every top-level {...} span in `text` while honouring string
  * literals and nested braces. Used as a fallback when the agent

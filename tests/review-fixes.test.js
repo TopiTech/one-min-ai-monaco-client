@@ -21,6 +21,7 @@ jest.unstable_mockModule('../utils/api-client.js', () => ({
   }),
   isFailedResponse: jest.fn(() => false),
   extractFailureMessage: jest.fn(() => 'mocked failure'),
+  normalizeOneMinRawResponse: jest.fn(async (data) => data),
   normalizeAssetResponse: jest.fn((data) => {
     const key = data?.asset?.key || data?.fileContent?.path || '';
     return { key, url: key ? `https://asset.1min.ai/${key}` : '', raw: data };

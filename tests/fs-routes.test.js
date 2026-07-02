@@ -15,6 +15,7 @@ jest.unstable_mockModule('../utils/api-client.js', () => ({
   extractText: jest.fn((d) => d?.result || JSON.stringify(d)),
   isFailedResponse: jest.fn(() => false),
   extractFailureMessage: jest.fn(() => 'mocked failure'),
+  normalizeOneMinRawResponse: jest.fn(async (data) => data),
   normalizeAssetResponse: jest.fn((d) => ({
     key: d?.asset?.key || '',
     url: '',

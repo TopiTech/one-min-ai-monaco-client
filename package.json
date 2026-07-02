@@ -14,6 +14,7 @@
     "format": "prettier --write \"server.js\" \"{public,routes,utils,config,services,tests}/**/*.{js,css,html}\""
   },
   "dependencies": {
+    "cookie": "^1.0.2",
     "dompurify": "^3.4.11",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",

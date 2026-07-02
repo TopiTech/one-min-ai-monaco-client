@@ -387,6 +387,7 @@ export function createApp(options = {}) {
       // Restrict scope to /api using path parameter.
       if (requireLocalAuth) {
         const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+        const csrfToken = crypto.randomBytes(24).toString('hex');
         res.cookie('__bff_session', localAuthToken, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
@@ -394,7 +395,7 @@ export function createApp(options = {}) {
           maxAge: ONE_DAY_MS,
           path: '/api',
         });
-        res.cookie('__bff_csrf', localAuthToken, {
+        res.cookie('__bff_csrf', csrfToken, {
           httpOnly: false,
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'Strict',
