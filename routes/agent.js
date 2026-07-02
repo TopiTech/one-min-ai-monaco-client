@@ -585,6 +585,14 @@ router.post('/sessions/:id/commands', async (req, res, next) => {
         timeoutMs: timeoutMs || serverConfig.commandTimeoutMs,
         onOutput,
       });
+    } catch (err) {
+      if (isStream && res.headersSent) {
+        res.write(`event: error\n`);
+        res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+        res.end();
+        return;
+      }
+      throw err;
     } finally {
       session.status = 'idle';
     }
@@ -685,6 +693,14 @@ router.post('/sessions/:id/approve', async (req, res, next) => {
         timeoutMs: timeoutMs || serverConfig.commandTimeoutMs,
         onOutput,
       });
+    } catch (err) {
+      if (isStream && res.headersSent) {
+        res.write(`event: error\n`);
+        res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+        res.end();
+        return;
+      }
+      throw err;
     } finally {
       session.status = 'idle';
     }
