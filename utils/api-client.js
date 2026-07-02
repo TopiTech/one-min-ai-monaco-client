@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { serverConfig } from '../config/server.js';
 import logger from './logger.js';
 import { extractTextFromOneMinResponse } from './one-min-response.js';
+import { sanitizePayload } from './sanitize.js';
 
 const API_BASE = serverConfig.apiBaseUrl;
 
@@ -196,7 +197,7 @@ export async function callOneMin(
         const payload = await parseResponsePayload(response);
         const err = new Error(`1min.ai request failed: ${response.status}`);
         err.status = response.status;
-        err.payload = payload;
+        err.payload = sanitizePayload(payload);
         throw err;
       }
 

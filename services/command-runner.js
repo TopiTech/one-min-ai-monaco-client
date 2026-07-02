@@ -182,14 +182,27 @@ function getSafeEnv() {
     'NUMBER_OF_PROCESSORS',
     'HOMEDRIVE',
     'HOMEPATH',
+    'HOME',
+    'USER',
+    'USERNAME',
     'TMP',
     'TEMP',
+    'TMPDIR',
+    'LANG',
+    'LC_ALL',
   ]);
 
   const safeEnv = {};
+  const secretValues = [process.env.ONE_MIN_AI_API_KEY, process.env.LOCAL_BFF_AUTH_TOKEN].filter(
+    (v) => v && typeof v === 'string' && v.length > 5,
+  );
+
   for (const [key, value] of Object.entries(process.env)) {
-    if (SAFE_ENV_KEYS.has(key)) {
-      safeEnv[key] = value;
+    if (SAFE_ENV_KEYS.has(key) && value) {
+      const containsSecret = secretValues.some((secret) => value.includes(secret));
+      if (!containsSecret) {
+        safeEnv[key] = value;
+      }
     }
   }
   return safeEnv;

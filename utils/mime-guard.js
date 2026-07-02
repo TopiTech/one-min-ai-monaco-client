@@ -20,6 +20,16 @@ export function validateBufferMimeType(buffer, declaredMimeType) {
     return Boolean(declaredMimeType);
   }
 
+  const hex = buffer.toString('hex', 0, 8).toUpperCase();
+
+  // S-4 Fix: Regardless of the declared MIME type, block dangerous binary executable signatures
+  // (MZ for PE/COFF, ELF) to prevent executing malicious binaries disguised as allowed formats.
+  const isPE = hex.startsWith('4D5A'); // MZ header (Windows executable)
+  const isELF = hex.startsWith('7F454C46'); // ELF header (Linux executable)
+  if (isPE || isELF) {
+    return false;
+  }
+
   const mime = String(declaredMimeType).toLowerCase();
 
   // Text types: Validate the buffer decodes as UTF-8 (or 7-bit ASCII)
@@ -42,8 +52,6 @@ export function validateBufferMimeType(buffer, declaredMimeType) {
       return false;
     }
   }
-
-  const hex = buffer.toString('hex', 0, 8).toUpperCase();
 
   // PNG: 89 50 4E 47 0D 0A 1A 0A
   if (mime === 'image/png') {

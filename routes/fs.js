@@ -91,8 +91,8 @@ const renameSchema = z.object({
 async function getSafeRealPath(resolvedPath) {
   let realPath = resolvedPath;
   try {
-    const stat = await fs.stat(resolvedPath);
-    if (stat.isFile() || stat.isDirectory()) {
+    const stat = await fs.lstat(resolvedPath);
+    if (stat.isFile() || stat.isDirectory() || stat.isSymbolicLink()) {
       realPath = revalidateRealPath(resolvedPath);
       assertNotWriteProtectedPath(realPath);
     }

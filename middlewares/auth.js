@@ -81,7 +81,13 @@ export function localBffAuth({ requireToken = true, authToken } = {}) {
       };
       if (origin && checkUrl(origin)) return true;
       if (referer && checkUrl(referer)) return true;
-      if (!secFetchSite && !origin && !referer) return true;
+
+      // S-3 Fix: If there is no sec-fetch-site and no same-origin header (Origin/Referer),
+      // allow it ONLY in development/test environment to avoid CSRF on production where headers
+      // might have been stripped.
+      if (!secFetchSite && !origin && !referer) {
+        return process.env.NODE_ENV !== 'production';
+      }
       return false;
     })();
 
