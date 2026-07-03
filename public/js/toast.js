@@ -281,6 +281,102 @@ function toastInfo(message, options = {}) {
 }
 
 /**
+ * Prompt dialog replacement (returns Promise resolving to string or null)
+ */
+function toastPrompt(message, defaultValue = '', options = {}) {
+  return new Promise((resolve) => {
+    const { confirmText = t('toast_confirm'), cancelText = t('btn_cancel'), type = 'info' } = options;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type} toast--prompt`;
+
+    const content = document.createElement('div');
+    content.className = 'toast-content';
+
+    const msgEl = document.createElement('div');
+    msgEl.textContent = message;
+    msgEl.style.marginBottom = '8px';
+
+    const inputEl = document.createElement('input');
+    inputEl.type = 'text';
+    inputEl.value = defaultValue;
+    inputEl.className = 'toast-input';
+    inputEl.style.width = '100%';
+    inputEl.style.padding = '6px 8px';
+    inputEl.style.borderRadius = '4px';
+    inputEl.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+    inputEl.style.background = 'rgba(0, 0, 0, 0.2)';
+    inputEl.style.color = '#fff';
+    // ensure text doesn't flow out of toast
+    inputEl.style.boxSizing = 'border-box';
+
+    content.appendChild(msgEl);
+    content.appendChild(inputEl);
+
+    const actions = document.createElement('div');
+    actions.className = 'toast-actions';
+    actions.style.display = 'flex';
+    actions.style.gap = '8px';
+    actions.style.marginTop = '12px';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'toast-btn toast-btn--cancel';
+    cancelBtn.textContent = cancelText;
+    cancelBtn.style.padding = '4px 8px';
+    cancelBtn.style.borderRadius = '4px';
+    cancelBtn.style.border = '1px solid rgba(255,255,255,0.2)';
+    cancelBtn.style.background = 'transparent';
+    cancelBtn.style.color = '#fff';
+    cancelBtn.style.cursor = 'pointer';
+    cancelBtn.onclick = () => {
+      removeToast(toast);
+      resolve(null);
+    };
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'toast-btn toast-btn--confirm';
+    confirmBtn.textContent = confirmText;
+    confirmBtn.style.padding = '4px 8px';
+    confirmBtn.style.borderRadius = '4px';
+    confirmBtn.style.border = 'none';
+    confirmBtn.style.background = 'rgba(255,255,255,0.1)';
+    confirmBtn.style.color = '#fff';
+    confirmBtn.style.cursor = 'pointer';
+    confirmBtn.onclick = () => {
+      removeToast(toast);
+      resolve(inputEl.value);
+    };
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(confirmBtn);
+
+    toast.appendChild(content);
+    toast.appendChild(actions);
+    toast.style.flexDirection = 'column';
+
+    toastContainer.appendChild(toast);
+
+    inputEl.focus();
+    inputEl.select();
+
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        document.removeEventListener('keydown', onKey);
+        removeToast(toast);
+        resolve(null);
+      } else if (e.key === 'Enter') {
+        document.removeEventListener('keydown', onKey);
+        removeToast(toast);
+        resolve(inputEl.value);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+  });
+}
+
+/**
  * Confirm dialog replacement (returns Promise)
  */
 function toastConfirm(message, options = {}) {
@@ -343,5 +439,6 @@ export const toast = {
   warning: toastWarning,
   info: toastInfo,
   confirm: toastConfirm,
+  prompt: toastPrompt,
 };
 window.toast = toast;

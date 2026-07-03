@@ -13,10 +13,9 @@ import { getChatModels, getCodeModels, getImageModels } from '../config/models.j
 import { parseWebSearchParams, buildCodePayload } from '../utils/web-search.js';
 import logger from '../utils/logger.js';
 import fsPkg from 'fs/promises';
-import osPkg from 'os';
 import pathPkg from 'path';
 import cryptoPkg from 'crypto';
-import { validatePath, assertNotProtectedPath } from '../utils/fs-guard.js';
+import { validatePath, assertNotProtectedPath, PROJECT_ROOT } from '../utils/fs-guard.js';
 import { extractAssetKey } from '../utils/asset-utils.js';
 
 const router = express.Router();
@@ -285,6 +284,7 @@ router.post('/chat/stream', async (req, res, next) => {
     const heartbeatInterval = setInterval(() => {
       if (!res.writableEnded) {
         res.write(':\n\n');
+        if (typeof res.flush === 'function') res.flush();
       }
     }, 15_000);
 
@@ -298,6 +298,7 @@ router.post('/chat/stream', async (req, res, next) => {
         // chunk shape (choices[0].delta.content / choices[0].finish_reason)
         // reaches the client intact.
         res.write(chunk);
+        if (typeof res.flush === 'function') res.flush();
       }
     } catch (streamErr) {
       if (controller.signal.aborted || streamErr.name === 'AbortError') {
@@ -1004,18 +1005,10 @@ router.post('/code/run', async (req, res, next) => {
 
     targetPath = filePath;
 
-    // If code was provided (unsaved), write to a temp file
-    if (code && !filePath) {
-      const tmpDir = osPkg.tmpdir();
-      const tmpFile = pathPkg.join(
-        tmpDir,
-        `code_run_${cryptoPkg.randomBytes(6).toString('hex')}.${ext || 'js'}`,
-      );
-      await fsPkg.writeFile(tmpFile, code, 'utf-8');
-      targetPath = tmpFile;
-    } else if (code && filePath) {
-      // Save current content to a temp file (don't modify on-disk file unless it's already saved)
-      const tmpDir = osPkg.tmpdir();
+    // If code was provided (unsaved or modified), write to a temp file
+    if (code) {
+      const tmpDir = pathPkg.join(PROJECT_ROOT, '.mimocode', 'tmp');
+      await fsPkg.mkdir(tmpDir, { recursive: true });
       const tmpFile = pathPkg.join(
         tmpDir,
         `code_run_${cryptoPkg.randomBytes(6).toString('hex')}.${ext || 'js'}`,

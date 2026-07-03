@@ -108,7 +108,7 @@ export function createExplorerManager(dom, openFileCallback) {
 
     const label = type === 'directory' ? t('new_folder_prompt') : t('new_file_prompt');
     const defaultName = type === 'directory' ? 'new-folder' : 'new-file.js';
-    const name = window.prompt(label, defaultName);
+    const name = await toast.prompt(label, defaultName);
     if (!name || !name.trim()) return;
 
     const sep = basePath.includes('\\') ? '\\' : '/';
@@ -135,7 +135,7 @@ export function createExplorerManager(dom, openFileCallback) {
   // ─── Rename ───────────────────────────────────────────────
   async function renameItem(filePath) {
     const currentName = filePath.replace(/\\/g, '/').split('/').pop();
-    const newName = window.prompt(t('rename_prompt'), currentName);
+    const newName = await toast.prompt(t('rename_prompt'), currentName);
     if (!newName || !newName.trim() || newName.trim() === currentName) return;
 
     const parts = filePath.replace(/\\/g, '/').split('/');
@@ -203,6 +203,7 @@ export function createExplorerManager(dom, openFileCallback) {
       _allNodes = [];
       await renderTreeNodes(data.items, tree, 0);
     } catch (e) {
+      if (dom.fileTree) dom.fileTree.textContent = '';
       toast.error(t('workspace_load_failed', { error: e.message }));
     }
   }

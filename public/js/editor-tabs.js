@@ -72,7 +72,8 @@ export function createEditorTabManager(editorState, editorManager, dom) {
 
   async function switchToTab(filePath) {
     try {
-      const model = editorManager.getOrCreateModel(filePath);
+      const fileUri = monaco.Uri.file(filePath);
+      const model = monaco.editor.getModel(fileUri);
 
       if (model) {
         if (editorManager.instance) {

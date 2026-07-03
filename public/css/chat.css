@@ -1,0 +1,262 @@
+/* Chat Log & Message Bubbles */
+.log {
+  flex-grow: 1;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  padding: 20px;
+  margin-bottom: 18px;
+  height: 50vh;
+}
+
+.msg {
+  margin-bottom: 16px;
+  padding: 16px 20px;
+  border-radius: 20px;
+  line-height: 1.6;
+  max-width: 85%;
+  position: relative;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.msg.user {
+  background: rgba(79, 70, 229, 0.15);
+  border-color: rgba(79, 70, 229, 0.2);
+  margin-left: auto;
+  border-bottom-right-radius: 4px;
+}
+
+.msg.ai {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.05);
+  margin-right: auto;
+  border-bottom-left-radius: 4px;
+}
+
+.msg .role {
+  display: block;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.msg.user .role {
+  color: hsl(250, 100%, 80%);
+}
+
+.msg p {
+  font-size: 0.95rem;
+}
+
+.msg pre {
+  margin-top: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+  padding: 12px;
+  overflow-x: auto;
+}
+
+.msg code {
+  font-family:
+    SFMono-Regular,
+    Consolas,
+    Courier New,
+    monospace;
+  font-size: 0.85rem;
+}
+
+/* Prevent markdown tables from overflowing the message bubble */
+.msg table {
+  max-width: 100%;
+  overflow-x: auto;
+  display: block;
+  margin: 8px 0;
+  border-collapse: collapse;
+}
+
+.msg th,
+.msg td {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.msg th {
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 600;
+}
+
+/* Copilot inline chat widget */
+.inline-chat-widget {
+  background: rgba(15, 23, 42, 0.95) !important;
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 8px 12px;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.5),
+    0 0 15px var(--accent-glow);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--font-sans);
+  max-width: 90vw;
+}
+
+.inline-chat-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.inline-chat-input-row input {
+  flex-grow: 1;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  outline: none;
+  min-width: 0;
+}
+
+.inline-chat-input-row input:focus {
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.inline-chat-input-row button {
+  padding: 8px 14px;
+  font-size: 0.8rem;
+  border-radius: 8px;
+  background: var(--accent-gradient);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.inline-chat-status {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.inline-chat-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.inline-chat-status.loading::before {
+  background: var(--warn);
+  box-shadow: 0 0 6px var(--warn);
+  animation: pulse 1s infinite alternate;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 0.4;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+/* ============================================================
+   Model Picker Button
+   ============================================================ */
+.agent-step-result-box {
+  margin-top: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 12px;
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: #e2e8f0;
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Inline chat status */
+.inline-chat-status {
+  display: none;
+}
+
+.inline-chat-status.is-shown {
+  display: block;
+}
+
+/* Inline chat widget size (was inline style.maxWidth/width) */
+.inline-chat-widget {
+  max-width: 90vw;
+  width: 350px;
+}
+
+/* Streaming cursor animation */
+.streaming-cursor {
+  display: inline-block;
+  animation: blink 0.8s step-end infinite;
+  color: var(--accent);
+  font-weight: bold;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Streaming indicator dots */
+.streaming-indicator {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.streaming-indicator::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: streaming-dot 1.4s infinite ease-in-out both;
+}
+
+.streaming-indicator::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: streaming-dot 1.4s infinite ease-in-out 0.16s both;
+}
+
+@keyframes streaming-dot {
+  0%,
+  80%,
+  100% {
+    transform: scale(0.4);
+    opacity: 0.4;
+  }
+
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

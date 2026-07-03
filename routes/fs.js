@@ -129,86 +129,99 @@ router.get('/roots', (_req, res) => {
 let cachedDrives = null;
 let lastDrivesLookupTime = 0;
 const DRIVES_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+let drivesLookupPromise = null;
 
-router.get('/drives', async (_req, res) => {
+router.get('/drives', async (_req, res, next) => {
   const now = Date.now();
   if (cachedDrives && now - lastDrivesLookupTime < DRIVES_CACHE_TTL_MS) {
     return res.json({ drives: cachedDrives });
   }
 
-  const drives = [];
+  if (!drivesLookupPromise) {
+    drivesLookupPromise = (async () => {
+      const drives = [];
 
-  if (process.platform === 'win32') {
-    let success = false;
+      if (process.platform === 'win32') {
+        let success = false;
 
-    // 1. Try using PowerShell to get Ready drives quickly and without blocking I/O threads
-    try {
-      const { stdout } = await execFileAsync(
-        'powershell.exe',
-        [
-          '-NoProfile',
-          '-Command',
-          '[System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady } | Select-Object -ExpandProperty Name',
-        ],
-        { timeout: 5000 },
-      );
+        // 1. Try using PowerShell to get Ready drives quickly and without blocking I/O threads
+        try {
+          const { stdout } = await execFileAsync(
+            'powershell.exe',
+            [
+              '-NoProfile',
+              '-Command',
+              '[System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady } | Select-Object -ExpandProperty Name',
+            ],
+            { timeout: 5000 },
+          );
 
-      const lines = stdout
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter(Boolean);
-      if (lines.length > 0) {
-        for (const drive of lines) {
-          const driveLetter = drive.slice(0, 2).toUpperCase();
-          drives.push({
-            name: driveLetter,
-            path: driveLetter + '\\',
-            type: 'local',
-          });
-        }
-        success = true;
-      }
-    } catch {
-      // PowerShell failed or timed out, fall through
-    }
-
-    // 2. Fallback: Try using fsutil safely with execFile (not exec)
-    if (!success) {
-      try {
-        const { stdout } = await execFileAsync('fsutil', ['fsinfo', 'drives']);
-        const matches = stdout.match(/[A-Za-z]:\\/g);
-        if (matches && matches.length > 0) {
-          // As a fallback we do NOT check drive readiness via fs.access to prevent thread pool starvation.
-          for (const drive of matches) {
-            const driveLetter = drive.slice(0, 2).toUpperCase();
-            drives.push({
-              name: driveLetter,
-              path: driveLetter + '\\',
-              type: 'local',
-            });
+          const lines = stdout
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter(Boolean);
+          if (lines.length > 0) {
+            for (const drive of lines) {
+              const driveLetter = drive.slice(0, 2).toUpperCase();
+              drives.push({
+                name: driveLetter,
+                path: driveLetter + '\\',
+                type: 'local',
+              });
+            }
+            success = true;
           }
-          success = true;
+        } catch {
+          // PowerShell failed or timed out, fall through
         }
-      } catch {
-        // fsutil failed, fall through
-      }
-    }
 
-    // Sort drives alphabetically
-    drives.sort((a, b) => a.name.localeCompare(b.name));
-  } else {
-    // Unix-like: return root and home
-    drives.push({ name: '/', path: '/', type: 'root' });
-    const homeDir = process.env.HOME || process.env.USERPROFILE;
-    if (homeDir) {
-      drives.push({ name: 'Home', path: homeDir, type: 'home' });
-    }
+        // 2. Fallback: Try using fsutil safely with execFile (not exec)
+        if (!success) {
+          try {
+            const { stdout } = await execFileAsync('fsutil', ['fsinfo', 'drives']);
+            const matches = stdout.match(/[A-Za-z]:\\/g);
+            if (matches && matches.length > 0) {
+              // As a fallback we do NOT check drive readiness via fs.access to prevent thread pool starvation.
+              for (const drive of matches) {
+                const driveLetter = drive.slice(0, 2).toUpperCase();
+                drives.push({
+                  name: driveLetter,
+                  path: driveLetter + '\\',
+                  type: 'local',
+                });
+              }
+              success = true;
+            }
+          } catch {
+            // fsutil failed, fall through
+          }
+        }
+
+        // Sort drives alphabetically
+        drives.sort((a, b) => a.name.localeCompare(b.name));
+      } else {
+        // Unix-like: return root and home
+        drives.push({ name: '/', path: '/', type: 'root' });
+        const homeDir = process.env.HOME || process.env.USERPROFILE;
+        if (homeDir) {
+          drives.push({ name: 'Home', path: homeDir, type: 'home' });
+        }
+      }
+
+      cachedDrives = drives;
+      lastDrivesLookupTime = Date.now();
+      return drives;
+    })().finally(() => {
+      drivesLookupPromise = null;
+    });
   }
 
-  cachedDrives = drives;
-  lastDrivesLookupTime = now;
-
-  res.json({ drives });
+  try {
+    const drives = await drivesLookupPromise;
+    res.json({ drives });
+  } catch (err) {
+    next(err);
+  }
 });
 
 /**

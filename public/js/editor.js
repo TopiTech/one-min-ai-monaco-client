@@ -36,7 +36,7 @@ export function createEditorManager(state) {
       value: `/* \u2b05 \u5de6\u306e\u30c4\u30ea\u30fc\u304b\u3089\u30d5\u30a1\u30a4\u30eb\u3092\u9078\u629e\u3059\u308b\u304b\u3001\u30d1\u30b9\u3092\u5165\u529b\u3057\u3066\u8aad\u307f\u8fbc\u3093\u3067\u304f\u3060\u3055\u3044 */\n`,
       language: 'plaintext',
       theme,
-      automaticLayout: true,
+      automaticLayout: false,
       minimap: { enabled: true },
       fontSize: 14,
       wordWrap: 'on',

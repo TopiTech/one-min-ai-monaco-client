@@ -1,0 +1,379 @@
+/* Result Blocks */
+.json,
+.result:not(.agent-step) {
+  white-space: pre-wrap;
+  overflow-y: auto;
+  max-height: 40vh;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  padding: 16px;
+  color: #e2e8f0;
+  font-family: monospace;
+  font-size: 0.85rem;
+  margin-top: 14px;
+}
+
+/* Redefining agent timeline to look like a modern Chat log */
+.agent-timeline {
+  border-left: none !important;
+  margin-left: 0 !important;
+  padding: 8px 0 !important;
+}
+
+.agent-step {
+  padding-left: 0 !important;
+  margin-bottom: 12px !important;
+  max-width: 90% !important;
+  animation: agent-msg-appear 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  display: flex !important;
+  flex-direction: column;
+}
+
+.agent-step::before {
+  display: none !important;
+}
+
+.agent-step-card {
+  border-radius: 16px 16px 16px 4px !important;
+  /* AI bubble */
+  border-left: 1px solid rgba(255, 255, 255, 0.05) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  width: 100% !important;
+}
+
+/* Different states for AI bubbles */
+.agent-step.thought .agent-step-card {
+  border-left: 3px solid var(--accent) !important;
+  background: rgba(124, 156, 255, 0.02) !important;
+}
+
+.agent-step.action .agent-step-card {
+  border-left: 3px solid #a855f7 !important;
+  background: rgba(168, 85, 247, 0.02) !important;
+}
+
+.agent-step.approval .agent-step-card {
+  border-left: 3px solid #eab308 !important;
+  background: rgba(234, 179, 8, 0.03) !important;
+}
+
+.agent-step.error .agent-step-card {
+  border-left: 3px solid #ef4444 !important;
+  background: rgba(239, 68, 68, 0.02) !important;
+}
+
+.agent-step.result .agent-step-card {
+  border-left: 3px solid #10b981 !important;
+}
+
+/* User Bubble (Right Aligned) */
+.agent-step.user {
+  margin-left: auto !important;
+  max-width: 85% !important;
+  align-items: flex-end !important;
+}
+
+.agent-step.user .agent-step-card {
+  border-radius: 16px 16px 4px 16px !important;
+  /* User bubble */
+  background: rgba(168, 85, 247, 0.12) !important;
+  border: 1px solid rgba(168, 85, 247, 0.2) !important;
+  border-left: 1px solid rgba(168, 85, 247, 0.2) !important;
+}
+
+.agent-step.user .agent-step-header {
+  justify-content: flex-end !important;
+}
+
+.agent-step.user .agent-step-icon {
+  color: #c084fc !important;
+}
+
+.agent-step.user .agent-step-body {
+  text-align: left;
+}
+
+@keyframes agent-msg-appear {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Collapsible thought process styling */
+.agent-step-thought-toggle {
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--accent);
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(124, 156, 255, 0.04);
+  border: 1px solid rgba(124, 156, 255, 0.1);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  user-select: none;
+  transition: all 0.2s ease;
+  width: fit-content;
+}
+
+.agent-step-thought-toggle:hover {
+  background: rgba(124, 156, 255, 0.12);
+  border-color: rgba(124, 156, 255, 0.25);
+  color: #fff;
+}
+
+.agent-step-thought-box {
+  margin-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.05);
+  padding-top: 8px;
+}
+
+/* ============================================================
+   Utility Classes
+   ============================================================ */
+.u-hidden {
+  display: none !important;
+}
+
+.is-error-hidden {
+  display: none !important;
+}
+
+.img-error-placeholder {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--danger);
+  background: var(--danger-glow);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  padding: 6px 12px;
+  border-radius: 8px;
+  margin-top: 4px;
+}
+
+.u-flex-1 {
+  flex: 1 !important;
+}
+
+.u-flex-2 {
+  flex: 2 !important;
+}
+
+.u-w-full {
+  width: 100% !important;
+}
+
+.u-mb-10 {
+  margin-bottom: 10px !important;
+}
+
+.u-mb-12 {
+  margin-bottom: 12px !important;
+}
+
+.u-mb-16 {
+  margin-bottom: 16px !important;
+}
+
+.u-mt-12 {
+  margin-top: 12px !important;
+}
+
+.u-text-xs {
+  font-size: 0.75rem !important;
+}
+
+/* ============================================================
+   CSP-safe utility & component classes
+   (replacements for inline style="..." attributes and .style.X mutations
+   to comply with style-src 'nonce-...' without 'unsafe-inline')
+   ============================================================ */
+
+/* Agent panel */
+.agent-model-tip {
+  font-size: 0.72rem;
+  color: #facc15;
+  background: rgba(250, 204, 21, 0.08);
+  border: 1px solid rgba(250, 204, 21, 0.2);
+  padding: 8px 12px;
+  border-radius: 8px;
+  line-height: 1.4;
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.agent-model-tip svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.agent-activity-log {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 250px;
+  max-height: var(--agent-log-max-h);
+  padding-right: 4px;
+  margin-top: 8px;
+}
+
+.agent-settings-details {
+  margin-top: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.agent-settings-details > summary {
+  font-size: 0.78rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-weight: 600;
+  user-select: none;
+}
+
+.agent-settings-body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.model-picker-btn.is-small {
+  width: 100%;
+  font-size: 0.8rem;
+  height: 36px;
+  padding: 0 8px;
+}
+
+.agent-chat-input-box {
+  margin-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 10px;
+}
+
+.agent-instruction-textarea {
+  width: 100%;
+  border-radius: 10px;
+  resize: none;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 8px 10px;
+  color: #fff;
+  font-size: 0.85rem;
+}
+
+.agent-action-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.agent-btn {
+  height: 36px;
+  font-size: 0.85rem;
+  border-radius: 8px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.agent-btn.is-hidden {
+  display: none !important;
+}
+
+.agent-btn--primary {
+  flex: 2;
+  background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
+  color: #fff;
+}
+
+.agent-btn--primary-alt {
+  flex: 2;
+  background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
+  color: #fff;
+  display: none;
+}
+
+.agent-btn--primary-alt.is-shown {
+  display: flex;
+}
+
+.agent-btn--danger {
+  flex: 1;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  display: none;
+}
+
+.agent-btn--danger.is-shown {
+  display: flex;
+}
+
+.agent-btn--ghost {
+  flex: 1;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+/* Agent step fade animation (was inline transition + opacity + maxHeight) */
+.agent-step.is-fading {
+  transition:
+    opacity 0.4s ease,
+    max-height 0.4s ease,
+    margin 0.4s ease,
+    padding 0.4s ease;
+  opacity: 0;
+  max-height: 0;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  overflow: hidden;
+}
+
+/* Approval icon color (was inline style on iconSpan) */
+.agent-step.approval .agent-step-icon {
+  color: #facc15;
+}
+
+/* Approval/reject button disabled state */
+.approval-btn.is-disabled {
+  opacity: 0.7;
+}
+
+/* Agent timeline empty placeholder (was inline cssText) */
+.timeline-placeholder-inline {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 24px 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.01);
+}
+
+/* Step icon SVG (was inline style.verticalAlign/marginRight) */
+.agent-step-icon-svg {
+  vertical-align: middle;
+  margin-right: 4px;
+}

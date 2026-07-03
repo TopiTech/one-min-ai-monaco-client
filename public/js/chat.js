@@ -251,6 +251,11 @@ export function createChatManager(dom, state) {
 
     await Promise.all(workers);
 
+    const failed = results.filter((r) => r && r.status === 'rejected');
+    if (failed.length > 0) {
+      throw new Error(t('chat_upload_failed_some') || 'Some attachments failed to upload.');
+    }
+
     return attachments
       .filter((att) => att.assetKey)
       .map((att) => ({ type: att.type || 'image', assetKey: att.assetKey, url: att.assetUrl }));
@@ -515,10 +520,17 @@ export function createChatManager(dom, state) {
       sendBtn.classList.remove('u-hidden');
       abortBtn.classList.remove('is-shown');
       setStatus(t('status_ready'));
+
+      const remaining = [];
       state.chat.attachments.forEach((att) => {
-        if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
+        if (att.assetKey && fullText && fullText !== t('chat_empty_response')) {
+          if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
+        } else {
+          remaining.push(att);
+        }
       });
       state.chat.attachments.length = 0;
+      state.chat.attachments.push(...remaining);
       updateAttachmentPreview();
     }
   }
