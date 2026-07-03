@@ -46,6 +46,7 @@ describe('tmp-cleanup service', () => {
   describe('startPeriodicCleanup', () => {
     beforeEach(() => {
       jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-07-03T12:00:00Z'));
     });
 
     afterEach(() => {
@@ -62,6 +63,9 @@ describe('tmp-cleanup service', () => {
       const now = Date.now();
       const twoHoursAgo = new Date(now - 2 * 60 * 60 * 1000);
       fs.utimesSync(oldFile, twoHoursAgo, twoHoursAgo);
+
+      const freshMtime = new Date(now + 10 * 60 * 1000); // Set to future to prevent truncation/precision drift deletion
+      fs.utimesSync(freshFile, freshMtime, freshMtime);
 
       expect(fs.readdirSync(tmpDir).length).toBe(2);
 
