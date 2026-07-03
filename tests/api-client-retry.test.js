@@ -21,7 +21,7 @@ afterEach(() => {
 // Mock fetch to control responses
 function mockFetch(responses) {
   let callIndex = 0;
-  globalThis.fetch = jest.fn(async (_url, _opts) => {
+  globalThis.fetch = jest.fn(async () => {
     const handler = responses[Math.min(callIndex, responses.length - 1)];
     callIndex++;
     return handler();
@@ -50,20 +50,22 @@ function textResponse(text, status = 200) {
   });
 }
 
-function rateLimitedResponse(retryAfter) {
-  return () => ({
-    ok: false,
-    status: 429,
-    headers: new Map([
-      ['content-type', 'application/json'],
-      ['retry-after', String(retryAfter)],
-    ]),
-    json: async () => ({ error: 'rate limited' }),
-    text: async () => JSON.stringify({ error: 'rate limited' }),
-  });
-}
-
 describe('api-client callOneMin', () => {
+  test('sends only API-KEY auth header to upstream', async () => {
+    mockFetch([jsonResponse({ result: 'ok' })]);
+    const { callOneMin } = await import('../utils/api-client.js');
+
+    await callOneMin('/api/chat-with-ai', {
+      method: 'POST',
+      body: '{}',
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    const [, options] = globalThis.fetch.mock.calls[0];
+    expect(options.headers['API-KEY']).toBe('test-api-key');
+    expect(options.headers.Authorization).toBeUndefined();
+  });
+
   // ----------------------------------------------------------------
   // Non-idempotent calls should not retry
   // ----------------------------------------------------------------

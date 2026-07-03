@@ -1,4 +1,4 @@
-import { parseXMLTags, buildXmlRepairPrompt } from './utils.js';
+import { buildXmlRepairPrompt } from './utils.js';
 
 // Cache for workspace file lists to avoid redundant API calls during agent loops.
 // Capped at 20 entries to prevent unbounded memory growth when switching workspaces.
@@ -91,7 +91,7 @@ async function estimateTokensBatch(apiFn, texts) {
           _tokenCache.delete(oldestKey);
         }
       }
-    } catch (e) {
+    } catch {
       // Fallback heuristic for all missing
       for (let j = 0; j < missingTexts.length; j++) {
         const text = missingTexts[j];
@@ -105,34 +105,6 @@ async function estimateTokensBatch(apiFn, texts) {
   }
 
   return results;
-}
-
-async function estimateTokens(apiFn, text) {
-  if (!text) return 0;
-  const cached = _tokenCache.get(text);
-  if (cached !== undefined) return cached;
-
-  try {
-    const res = await apiFn('/api/agent/tokenize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    });
-    const count = res.total || 0;
-    _tokenCache.set(text, count);
-    if (_tokenCache.size > TOKEN_CACHE_MAX) {
-      const oldestKey = _tokenCache.keys().next().value;
-      _tokenCache.delete(oldestKey);
-    }
-    return count;
-  } catch (e) {
-    // fallback heuristic
-    const latinMatch = text.match(/[a-zA-Z0-9\s!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/g);
-    const latinCount = latinMatch ? latinMatch.length : 0;
-    const multiByteCount = text.length - latinCount;
-    const count = Math.ceil(latinCount / 3.5 + multiByteCount * 1.5);
-    return count;
-  }
 }
 
 async function trimAgentHistory(apiFn, history, t, creditSaving, maxTokens) {
@@ -215,7 +187,7 @@ async function processCommandStream(res, stepId, t) {
   return finalResult;
 }
 
-function buildSystemPrompt({ workspaceRoot, workspaceFilesText, activeFilePath }) {
+function buildSystemPrompt({ workspaceFilesText, activeFilePath }) {
   return `あなたは極めて優秀なソフトウェアエンジニアAIエージェントです。
 あなたの目的は、ユーザーの指示を「正確に」かつ「安全に」達成することです。
 あなたは現在、隔離されたワークスペース内のファイルを直接操作できる特権セッションにいます。
@@ -680,8 +652,8 @@ export function createAgentRuntime({
         addAgentTimelineStep('action', `ツール呼び出し: ${toolName}`, paramListStr);
         setAgentStatus('実行中...', 'executing');
 
-        let toolResultText = '';
-        let toolSuccess = false;
+        let toolResultText;
+        let toolSuccess;
 
         try {
           const handler = agentToolHandlers[toolName];

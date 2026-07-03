@@ -11,7 +11,10 @@
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
     "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
-    "format": "prettier --write \"server.js\" \"{public,routes,utils,config,services,tests}/**/*.{js,css,html}\""
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"server.js\" \"{public,routes,utils,config,services,tests}/**/*.{js,css,html}\"",
+    "format:check": "prettier --check \"server.js\" \"{public,routes,utils,config,services,tests}/**/*.{js,css,html}\""
   },
   "dependencies": {
     "cookie": "^1.0.2",
@@ -27,6 +30,11 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@eslint/css": "^1.4.0",
+    "@eslint/js": "^10.0.1",
+    "@eslint/markdown": "^8.0.3",
+    "eslint": "^10.6.0",
+    "globals": "^17.7.0",
     "jest": "^30.4.2",
     "prettier": "^3.9.1",
     "supertest": "^7.0.0"
@@ -39,6 +47,14 @@
     "transform": {},
     "moduleNameMapper": {
       "^(\\.{1,2}/.*)\\.js$": "$1"
+    },
+    "coverageThreshold": {
+      "global": {
+        "branches": 60,
+        "functions": 70,
+        "lines": 70,
+        "statements": 70
+      }
     }
   }
 }

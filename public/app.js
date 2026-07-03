@@ -11,19 +11,8 @@ import {
   getAllImageModels,
 } from './js/model-picker.js';
 import { api } from './js/api.js';
-import {
-  SVG_NS,
-  escapeHtml,
-  renderMarkdownSafely,
-  formatMarkdownLike,
-  createSvgIcon,
-  appendStepIcon,
-  stripMarkdownCodeBlock,
-  unescapeXmlText,
-  parseXMLTags,
-  extractText,
-} from './js/utils.js';
-import { initTheme, toggleTheme as toggleThemeFn, updateThemeUI, isDarkTheme } from './js/theme.js';
+import { renderMarkdownSafely, appendStepIcon, parseXMLTags } from './js/utils.js';
+import { initTheme, toggleTheme as toggleThemeFn } from './js/theme.js';
 import { bootstrapSettings } from './js/settings.js';
 import { createChatManager, createChatState } from './js/chat.js';
 import { createImageManager, createImageState } from './js/image.js';
@@ -33,7 +22,7 @@ import { createEditorTabManager } from './js/editor-tabs.js';
 import { createDiffDialog } from './js/editor-diff.js';
 import { createAgentRuntime } from './js/agent-core.js';
 import { createExplorerManager } from './js/explorer.js';
-import { initEditorToolbar, syncToolbarTheme } from './js/editor-toolbar.js';
+import { initEditorToolbar } from './js/editor-toolbar.js';
 import { t, initI18n, setLanguage } from './js/i18n.js';
 import { toast } from './js/toast.js';
 
@@ -356,10 +345,6 @@ dom.editorImageUrl.oninput = () => imageManager.updateEditorImagePreview();
 dom.clearImageBtn.onclick = () => imageManager.clearImage();
 
 // Editor tab management (delegated to tabManager)
-const renderTabs = () => tabManager.renderTabs();
-const switchToTab = (filePath) => tabManager.switchToTab(filePath);
-const closeTab = (filePath) => tabManager.closeTab(filePath);
-const closeTabInternal = (filePath) => tabManager.closeTabInternal(filePath);
 const openFile = (filePath) => tabManager.openFile(filePath);
 const saveFile = () => tabManager.saveFile();
 
@@ -377,29 +362,57 @@ require(['vs/editor/editor.main'], () => {
 
   const container = document.getElementById('editorContainer');
   if (container) {
-    container.innerHTML = `<div style="padding: 2rem; color: var(--text-primary); text-align: center; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow-y: auto;">
-      <h3 style="color: #ff5555; margin-bottom: 1rem;">エディタの読み込みに失敗しました / Editor Load Failed</h3>
-      <p style="margin: 0.5rem 0; font-family: monospace; background: var(--bg-surface-hover); padding: 0.5rem 1rem; border-radius: 4px; max-width: 80%; word-break: break-all;">${escapeHtml(String(msg))}</p>
-      
-      <div style="text-align: left; margin: 1.5rem 0; font-size: 0.9rem; max-width: 500px; border: 1px solid var(--border-color); padding: 1rem; border-radius: 6px; background: var(--bg-surface-hover);">
-        <strong style="display: block; margin-bottom: 0.5rem;">🔧 推奨されるチェックリスト / Troubleshooting Checklist:</strong>
-        <ul style="margin: 0; padding-left: 1.2rem; line-height: 1.6;">
-          <li>ローカルの BFF サーバーが正常に起動しているか（<code>npm start</code> 等）</li>
-          <li>ブラウザのネットワーク接続およびセキュリティ設定（Adblockやプロキシなど）に問題がないか</li>
-          <li><code>public/vs</code> ディレクトリが存在し、Monaco Editorアセットが正しく配置されているか</li>
-        </ul>
-      </div>
+    container.textContent = '';
 
-      <button onclick="location.reload()" style="padding: 8px 16px; cursor: pointer; background: var(--bg-surface-hover); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; transition: background 0.2s;">
-        再読み込み / Reload
-      </button>
-    </div>`;
+    const errorView = document.createElement('div');
+    errorView.className = 'editor-load-error';
+
+    const title = document.createElement('h3');
+    title.className = 'editor-load-error__title';
+    title.textContent = 'エディタの読み込みに失敗しました / Editor Load Failed';
+
+    const message = document.createElement('p');
+    message.className = 'editor-load-error__message';
+    message.textContent = String(msg);
+
+    const checklist = document.createElement('div');
+    checklist.className = 'editor-load-error__checklist';
+
+    const checklistTitle = document.createElement('strong');
+    checklistTitle.className = 'editor-load-error__checklist-title';
+    checklistTitle.textContent = '🔧 推奨されるチェックリスト / Troubleshooting Checklist:';
+
+    const checklistItems = document.createElement('ul');
+    checklistItems.className = 'editor-load-error__list';
+
+    const checklistTexts = [
+      'ローカルの BFF サーバーが正常に起動しているか（npm start 等）',
+      'ブラウザのネットワーク接続およびセキュリティ設定（Adblockやプロキシなど）に問題がないか',
+      'public/vs ディレクトリが存在し、Monaco Editorアセットが正しく配置されているか',
+    ];
+    for (const text of checklistTexts) {
+      const item = document.createElement('li');
+      item.textContent = text;
+      checklistItems.appendChild(item);
+    }
+
+    checklist.appendChild(checklistTitle);
+    checklist.appendChild(checklistItems);
+
+    const reloadButton = document.createElement('button');
+    reloadButton.type = 'button';
+    reloadButton.className = 'editor-load-error__reload';
+    reloadButton.textContent = '再読み込み / Reload';
+    reloadButton.addEventListener('click', () => window.location.reload());
+
+    errorView.appendChild(title);
+    errorView.appendChild(message);
+    errorView.appendChild(checklist);
+    errorView.appendChild(reloadButton);
+    container.appendChild(errorView);
   }
 });
 
-// Inline chat (delegated to inlineChatManager)
-const inlineChatWidget = inlineChatManager.widget;
-const submitInlineChat = inlineChatManager.submitInlineChat;
 // toggleInlineChat and closeInlineChat are set on window above via inlineChatManager
 
 function loadWorkspace(dirPath = null) {
@@ -701,8 +714,6 @@ function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) 
   };
 }
 
-const showDiffDialog = (...args) => diffDialog.showDiffDialog(...args);
-
 dom.startAgentBtn.onclick = async () => {
   if (state.agent.active) return;
   const instruction = dom.agentInstruction.value.trim();
@@ -932,7 +943,7 @@ function initFolderPicker() {
         drives.appendChild(button);
       });
       updateDriveSelection();
-    } catch (err) {
+    } catch {
       drives.textContent = '';
     }
   };
@@ -1272,7 +1283,7 @@ document.addEventListener('editor:show-diff', async (e) => {
     try {
       const approved = await diffDialog.showDiffDialog(path, oldContent, newContent);
       if (resolve) resolve(approved);
-    } catch (err) {
+    } catch {
       if (resolve) resolve(false);
     }
   }
@@ -1433,7 +1444,7 @@ document.addEventListener('editor:show-diff', async (e) => {
   handle.addEventListener('keydown', (e) => {
     const { minW, maxW, current } = getResizeMetrics();
     const step = e.shiftKey ? 20 : 5;
-    let nextWidth = current;
+    let nextWidth;
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
       nextWidth = Math.max(minW, current - step);

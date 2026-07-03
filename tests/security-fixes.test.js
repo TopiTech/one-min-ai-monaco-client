@@ -339,7 +339,7 @@ describe('Security fixes regression', () => {
       const linkFile = path.join(tmpDir, 'link.txt');
       try {
         await fs.symlink(outsideFile, linkFile);
-      } catch (e) {
+      } catch {
         // On Windows, symlink creation might fail if not running with developer mode or admin.
         // If it fails, skip the assertion.
         return;
@@ -411,7 +411,7 @@ describe('Security fixes regression', () => {
       const linkFile = path.join(tmpDir, 'link.txt');
       try {
         await fs.symlink(outsideFile, linkFile);
-      } catch (e) {
+      } catch {
         return;
       }
 

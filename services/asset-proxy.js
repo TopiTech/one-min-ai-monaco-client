@@ -57,7 +57,7 @@ export async function assetProxyHandler(req, res, next) {
     const assetHost = new URL(serverConfig.assetBaseUrl).hostname;
     const allowedHosts = [assetHost, apiHost];
 
-    const escapedBucket = serverConfig.s3Bucket.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const escapedBucket = serverConfig.s3Bucket.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
     const isVirtualHostS3 =
       new RegExp(`^${escapedBucket}\\.s3(?:\\.[\\w-]+)?\\.amazonaws\\.com$`, 'i').test(parsed.hostname) ||
       new RegExp(`^${escapedBucket}\\.s3-accelerate\\.amazonaws\\.com$`, 'i').test(parsed.hostname) ||

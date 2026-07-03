@@ -3,6 +3,8 @@
  * All configurable values are centralized here.
  */
 
+import 'dotenv/config';
+
 const FALLBACK = {
   port: 3000,
   maxFileSize: 25 * 1024 * 1024,
@@ -59,7 +61,14 @@ function intInRange(raw, min, max, fallback) {
 
 function parseBoolean(raw, fallback) {
   if (raw === undefined || raw === null || raw === '') return fallback;
-  return String(raw).toLowerCase() === 'true';
+  const normalized = String(raw).toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  // SEC: Warn on unrecognized boolean values to prevent silent misconfiguration
+  console.warn(
+    `Warning: Unrecognized boolean value "${String(raw)}" (expected "true" or "false"). Falling back to ${fallback}.`,
+  );
+  return fallback;
 }
 
 function parseString(raw, fallback, validator = null) {
@@ -162,7 +171,7 @@ export const serverConfig = {
   s3Bucket: parseString(
     process.env.ONE_MIN_AI_S3_BUCKET,
     'asset.1min.ai',
-    (s) => s.length <= 100 && /^[a-z0-9]([a-z0-9.\-]*[a-z0-9])?$/i.test(s),
+    (s) => s.length <= 100 && /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(s),
   ),
 
   // Rate limiting

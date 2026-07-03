@@ -378,7 +378,7 @@ export async function executeCommand(command, options = {}) {
   try {
     tokens = parseCommand(command);
   } catch (err) {
-    throw new Error(`Command blocked: ${err.message}`);
+    throw new Error(`Command blocked: ${err.message}`, { cause: err });
   }
 
   // Clamp timeout between 1 second and configured max

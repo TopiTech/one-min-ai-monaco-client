@@ -12,7 +12,6 @@ import {
 import { getChatModels, getCodeModels, getImageModels } from '../config/models.js';
 import { parseWebSearchParams, buildCodePayload } from '../utils/web-search.js';
 import logger from '../utils/logger.js';
-import { executeCommand } from '../services/command-runner.js';
 import fsPkg from 'fs/promises';
 import osPkg from 'os';
 import pathPkg from 'path';
@@ -310,7 +309,7 @@ router.post('/chat/stream', async (req, res, next) => {
       clearInterval(heartbeatInterval);
       try {
         reader.releaseLock();
-      } catch (lockErr) {
+      } catch {
         // ignore
       }
       res.end();
@@ -640,9 +639,6 @@ router.post('/images/text-editor', async (req, res, next) => {
   }
 });
 
-const MAX_CODE_LENGTH = 100_000;
-const MAX_PROMPT_LENGTH = 50_000;
-
 const codeGenerateSchema = z.object({
   instruction: z.preprocess(
     (val) => (val === undefined || val === null ? '' : String(val)),
@@ -758,11 +754,14 @@ function buildCodeContext(code, line, column, contextLines = 100) {
  */
 function sanitizeForPrompt(value, maxLen = 256) {
   if (typeof value !== 'string') return '';
-  return value
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '') // strip control chars, keep HT(\x09) LF(\x0a) CR(\x0d)
-    .replace(/`{3}/g, "'''") // neutralize markdown code fence markers
-    .slice(0, maxLen)
-    .trim();
+  return (
+    value
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, '') // strip control chars, keep HT LF CR
+      .replace(/`{3}/g, "'''") // neutralize markdown code fence markers
+      .slice(0, maxLen)
+      .trim()
+  );
 }
 
 function stripCodeFences(text) {
@@ -950,7 +949,7 @@ ${afterCode}
 const codeRunSchema = z.object({
   filePath: z
     .string()
-    .refine((val) => !/[\"\n\r;|`<>&]/.test(val), {
+    .refine((val) => /^[^"\n\r;|`<>&]*$/.test(val), {
       message: 'filePath contains invalid shell characters',
     })
     .optional(),
@@ -961,6 +960,10 @@ const codeRunSchema = z.object({
 
 router.post('/code/run', async (req, res, next) => {
   let targetPath;
+  let filePath;
+  let code;
+  let language;
+  let extension;
   try {
     if (!serverConfig.enableCommandExecution) {
       return res.status(403).json({
@@ -973,7 +976,7 @@ router.post('/code/run', async (req, res, next) => {
       return res.status(400).json({ error: result.error.issues[0]?.message || 'Validation error' });
     }
 
-    const { filePath, code, language, extension } = result.data;
+    ({ filePath, code, language, extension } = result.data);
     if (filePath) {
       const resolvedPath = validatePath(filePath);
       assertNotProtectedPath(resolvedPath);

@@ -51,7 +51,7 @@
 
 ## Directory Layout
 
-```
+```text
 ├── server.js              # Express BFF entry point
 ├── config/
 │   ├── models.js          # Model definitions (chat/code/image)
@@ -101,6 +101,23 @@
     └── screenshots/        # Screenshots for README
 ```
 
+## Code Comment Prefixes
+
+The codebase uses structured comment prefixes to track change types in commit history:
+
+| Prefix | Meaning | Example |
+|--------|---------|---------|
+| `B-` | Blocker / critical security fix | `// B-3: Replace brittle prefix list with glob patterns` |
+| `S-` | Security improvement | `// S-1: Switched to diskStorage to avoid OOM` |
+| `M-` | Medium priority fix | `// M-5: Handle output_compression NaN` |
+| `L-` | Low priority / cosmetic | `// L-3: Cap meta serialization at 8KB` |
+| `D-` | Defense in depth | `// D-1: Sanitize log metadata` |
+| `E-` | Enhancement / new feature | `// E-1: Startup cleanup for orphaned files` |
+| `Q-` | Quality / code cleanup | `// Q-9: Register asset route before express.json()` |
+| `SEC-` | Security-specific new fix | `// SEC-NEW: When sec-fetch-site is missing` |
+| `A-` | Architecture / refactoring | `// A-1: Stream file using openAsBlob` |
+| `F-` | Fix / bug fix | `// F-6: Suppress auto-scroll on history review` |
+
 ## Key Design Decisions
 
 ### 1. BFF (Backend-for-Frontend) Pattern
@@ -136,7 +153,7 @@ All API endpoints are rate-limited per 1min.ai's official limits (180 req/min de
 
 ### Chat
 
-```
+```text
 User Input → chat.js → api("/api/chat") → server.js → ai.js → api-client.js → 1min.ai API
                                                                                      │
 User ← chat.js (SSE) ← server.js (streaming) ← ai.js ← api-client.js ←──────────────┘
@@ -144,7 +161,7 @@ User ← chat.js (SSE) ← server.js (streaming) ← ai.js ← api-client.js ←
 
 ### File Operations
 
-```
+```text
 Editor Tab → app.js → api("/api/fs/*") → server.js → fs.js → fs-guard.js (validation)
                                                                       │
 Editor Tab ← app.js ← server.js ← fs.js ←─────────────────────────────┘
@@ -152,7 +169,7 @@ Editor Tab ← app.js ← server.js ← fs.js ←──────────�
 
 ### Agent Session
 
-```
+```text
 Agent UI → app.js → api("/api/agent/*") → server.js → agent.js → api-client.js → 1min.ai
                                                                       │
 Agent UI ← app.js (streaming) ← server.js ← agent.js ←───────────────┘

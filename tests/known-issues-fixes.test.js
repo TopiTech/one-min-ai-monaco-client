@@ -221,7 +221,6 @@ describe('known-issues.md regression fixes', () => {
       // Avoid hitting the mocked version (which is loaded above): re-import
       // a fresh copy from the source path.
       const fsPromises = await import('fs/promises');
-      const path = await import('path');
       const src = await fsPromises.readFile(new URL('../utils/api-client.js', import.meta.url), 'utf-8');
       // The fallback chain must not include data.message
       expect(src).not.toMatch(/data\?\.message\s*\|\|/);

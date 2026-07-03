@@ -337,7 +337,8 @@ export function parseXMLTags(text) {
   return { thought, finish, toolCall };
 }
 
-const XML_CONTROL_CHAR_PATTERN = /[\x00-\x08\x0B\x0C\x0E-\x1F]/g;
+// eslint-disable-next-line no-control-regex
+const XML_CONTROL_CHAR_PATTERN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/gu;
 
 export function sanitizeXmlText(text) {
   if (typeof text !== 'string') return '';

@@ -24,7 +24,7 @@ export function extractAssetKey(imageUrl) {
       if (urlParam) {
         return extractAssetKey(urlParam);
       }
-    } catch (e) {
+    } catch {
       // ignore
     }
   }
@@ -41,7 +41,7 @@ export function extractAssetKey(imageUrl) {
         }
       }
       // Virtual-host S3 URL or direct domain
-      const escapedBucket = s3Bucket.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      const escapedBucket = s3Bucket.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
       const isAllowedS3OrDomain =
         parsed.hostname === s3Bucket ||
         new RegExp(`^${escapedBucket}\\.s3(?:\\.[\\w-]+)?\\.amazonaws\\.com$`, 'i').test(parsed.hostname) ||
@@ -53,7 +53,7 @@ export function extractAssetKey(imageUrl) {
       if (isAllowedS3OrDomain) {
         return parsed.pathname.replace(/^\//, '');
       }
-    } catch (e) {
+    } catch {
       // ignore
     }
   }

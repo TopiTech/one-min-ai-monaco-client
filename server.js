@@ -1,10 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
-import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import multer from 'multer';
 import path from 'path';
-import os from 'os';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { callOneMin, normalizeAssetResponse } from './utils/api-client.js';
@@ -13,8 +10,6 @@ import logger, { initLogger, sanitizeUrlForLogging } from './utils/logger.js';
 import { validateBufferMimeType, getExtensionFromMimeType } from './utils/mime-guard.js';
 import fs from 'fs';
 import fsp from 'fs/promises';
-import { Readable } from 'stream';
-import { pipeline } from 'stream/promises';
 import { sanitizePayload } from './utils/sanitize.js';
 import { createLocalAuthToken, localBffAuth } from './middlewares/auth.js';
 import {
@@ -25,6 +20,8 @@ import {
   securityHeaders,
 } from './middlewares/security.js';
 import { assetProxyHandler } from './services/asset-proxy.js';
+import { upload, mapMulterError, UPLOAD_TMP_DIR } from './middlewares/upload.js';
+import { startupCleanup, startPeriodicCleanup } from './services/tmp-cleanup.js';
 
 // Replace the env-var-based default singleton with the validated serverConfig.
 // This ensures LOG_LEVEL, LOG_TO_FILE, and LOG_FILE are all parsed and clamped
@@ -41,122 +38,7 @@ import { initModels, getModelSyncStatus } from './config/models.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const ALLOWED_MIME_TYPES = [
-  'image/',
-  'video/',
-  'audio/',
-  'application/pdf',
-  'text/',
-  'application/json',
-  'application/xml',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument',
-];
-
-// S-1: Switched from multer.memoryStorage() to diskStorage to avoid OOM
-// when several large uploads arrive concurrently. Each file lands in
-// os.tmpdir() with a random suffix and is unlinked after the upstream
-// request finishes (success or failure).
-const UPLOAD_TMP_DIR = path.join(os.tmpdir(), 'one-min-ai-uploads');
-fs.mkdirSync(UPLOAD_TMP_DIR, { recursive: true });
-
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, UPLOAD_TMP_DIR),
-    filename: (_req, file, cb) => {
-      const suffix = crypto.randomBytes(8).toString('hex');
-      cb(null, `${Date.now()}-${suffix}-${file.fieldname}`);
-    },
-  }),
-  limits: { fileSize: serverConfig.maxFileSize },
-  fileFilter: (_req, file, cb) => {
-    const allowed = ALLOWED_MIME_TYPES.some((t) => file.mimetype.startsWith(t));
-    if (!allowed) {
-      const err = new Error(
-        `Unsupported file type: ${file.mimetype}. Allowed types: ${ALLOWED_MIME_TYPES.join(', ')}`,
-      );
-      err.status = 415;
-      return cb(err, false);
-    }
-    cb(null, true);
-  },
-});
-
-// E-1: Startup cleanup to remove any orphaned temporary files from previous runs
-// that may have been left behind due to sudden server crashes.
-if (process.env.NODE_ENV !== 'test') {
-  try {
-    const files = fs.readdirSync(UPLOAD_TMP_DIR);
-    for (const file of files) {
-      fs.unlinkSync(path.join(UPLOAD_TMP_DIR, file));
-    }
-  } catch {
-    // Best-effort cleanup, ignore errors
-  }
-}
-
-// B-6: Periodic cleanup for orphaned temporary files during runtime.
-// Deletes files older than 1 hour, running every 1 hour.
-if (process.env.NODE_ENV !== 'test') {
-  setInterval(
-    () => {
-      try {
-        const files = fs.readdirSync(UPLOAD_TMP_DIR);
-        const now = Date.now();
-        const ONE_HOUR = 60 * 60 * 1000;
-        for (const file of files) {
-          const filePath = path.join(UPLOAD_TMP_DIR, file);
-          const stat = fs.statSync(filePath);
-          if (now - stat.mtimeMs > ONE_HOUR) {
-            fs.unlinkSync(filePath);
-          }
-        }
-      } catch {
-        // Best-effort cleanup, ignore errors
-      }
-    },
-    60 * 60 * 1000,
-  ).unref();
-}
-
 // Authentication and proxy helpers have been modularized to middlewares/auth.js, middlewares/security.js, and services/asset-proxy.js.
-
-/**
- * Map multer/multer-like errors to proper HTTP status codes.
- * - LIMIT_FILE_SIZE       -> 413 Payload Too Large
- * - LIMIT_UNEXPECTED_FILE -> 400 Bad Request
- * - LIMIT_FIELD_COUNT     -> 400 Bad Request
- * - other 4xx             -> pass through
- * - everything else       -> 500 (handled by global error handler)
- */
-function mapMulterError(err) {
-  if (!err) return err;
-  const code = err.code;
-  if (code === 'LIMIT_FILE_SIZE') {
-    const e = new Error(err.message || 'File too large');
-    e.status = 413;
-    e.code = code;
-    e.field = err.field;
-    return e;
-  }
-  const badRequestCodes = [
-    'LIMIT_UNEXPECTED_FILE',
-    'LIMIT_FIELD_COUNT',
-    'LIMIT_FIELD_KEY',
-    'LIMIT_FIELD_VALUE',
-    'LIMIT_PART_COUNT',
-    'LIMIT_FILE_COUNT',
-  ];
-
-  if (badRequestCodes.includes(code)) {
-    const e = new Error(err.message || 'Invalid multipart payload');
-    e.status = 400;
-    e.code = code;
-    e.field = err.field;
-    return e;
-  }
-  return err;
-}
 
 // QUAL-1: Renamed parameter from "config" to "overrides" to avoid confusion
 // with the module-level `serverConfig` object. This parameter carries per-route
@@ -276,7 +158,8 @@ async function handleAssetUpload(req, res, next) {
       body: formData,
       idempotent: false,
     });
-    const { raw: _raw, ...normalized } = normalizeAssetResponse(data);
+    const normalized = normalizeAssetResponse(data);
+    delete normalized.raw;
     if (!normalized.key) {
       logger.warn('Asset upload completed without a usable asset key', {
         filename: req.file.originalname,
@@ -405,7 +288,7 @@ export function createApp(options = {}) {
       }
 
       res.send(html);
-    } catch (e) {
+    } catch {
       res.status(500).send('Error loading index.html');
     }
   });
@@ -464,6 +347,7 @@ export function createApp(options = {}) {
   protectedRouter.use('/agent', agentChatRoutes);
   app.use('/api', protectedApiAuth, protectedRouter);
 
+  // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, _next) => {
     const status = err.status || 500;
     const isDev = process.env.NODE_ENV === 'development';
@@ -553,6 +437,11 @@ function validateEnvironment() {
 
 if (process.env.NODE_ENV !== 'test') {
   validateEnvironment();
+  // E-1: Startup cleanup to remove orphaned temporary files from previous runs
+  startupCleanup(UPLOAD_TMP_DIR);
+  // B-6: Periodic cleanup for orphaned temporary files during runtime
+  const cleanupInterval = startPeriodicCleanup(UPLOAD_TMP_DIR);
+  cleanupInterval.unref();
   Promise.all([initModels(), initAgentState()])
     .then(() => {
       const server = createApp().listen(serverConfig.port, '127.0.0.1', () => {

@@ -13,10 +13,9 @@
 
 ### 認証ヘッダー (Authentication)
 
-全てのAPIリクエストには、認証用として以下のいずれかのヘッダーを付与する必要があります。
+全てのAPIリクエストには、認証用として以下のヘッダーを付与する必要があります。
 
-- **パターンA**: `API-KEY: <YOUR_API_KEY>`
-- **パターンB**: `Authorization: Bearer <YOUR_API_KEY>`
+- **必須**: `API-KEY: <YOUR_API_KEY>`
 
 > [!NOTE]
 > 本アプリケーションのバックエンド（[api-client.js](../utils/api-client.js)）では、環境変数 `ONE_MIN_AI_API_KEY` を用いて、自動的にリクエストヘッダーを設定するよう実装されています。

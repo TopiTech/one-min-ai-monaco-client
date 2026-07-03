@@ -94,12 +94,12 @@ export function createDiffDialog({ t, getThemeName }) {
   async function showDiffDialog(filePath, oldContent, newContent) {
     let modal = null;
     let container = null;
-    let pathLabel = null;
+    let pathLabel;
     let inlineToggle = null;
     let applyButton = null;
     let cancelButton = null;
-    let originalModel = null;
-    let modifiedModel = null;
+    let originalModel;
+    let modifiedModel;
     let fallbackLayoutTimer = null;
     let onKeyDown = null;
     let onBackdropClick = null;

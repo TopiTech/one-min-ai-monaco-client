@@ -303,23 +303,76 @@ body {
   box-shadow: 0 0 10px var(--accent);
 }
 
-.hint {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  line-height: 1.6;
-  margin-top: auto;
-  padding: 16px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-}
-
 .hint code {
   color: var(--accent);
   background: rgba(255, 255, 255, 0.05);
   padding: 2px 4px;
   border-radius: 4px;
   font-family: monospace;
+}
+
+.editor-load-error {
+  padding: 2rem;
+  color: var(--text-primary);
+  text-align: center;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+}
+
+.editor-load-error__title {
+  color: #ff5555;
+  margin-bottom: 1rem;
+}
+
+.editor-load-error__message {
+  margin: 0.5rem 0;
+  font-family: monospace;
+  background: var(--bg-surface-hover);
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  max-width: 80%;
+  word-break: break-all;
+}
+
+.editor-load-error__checklist {
+  text-align: left;
+  margin: 1.5rem 0;
+  font-size: 0.9rem;
+  max-width: 500px;
+  border: 1px solid var(--border-color);
+  padding: 1rem;
+  border-radius: 6px;
+  background: var(--bg-surface-hover);
+}
+
+.editor-load-error__checklist-title {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.editor-load-error__list {
+  margin: 0;
+  padding-left: 1.2rem;
+  line-height: 1.6;
+}
+
+.editor-load-error__reload {
+  padding: 8px 16px;
+  cursor: pointer;
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.editor-load-error__reload:hover,
+.editor-load-error__reload:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* Main Dashboard Area */

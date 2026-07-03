@@ -17,7 +17,7 @@ jest.unstable_mockModule('../utils/api-client.js', () => ({
 }));
 
 const { createApp } = await import('../server.js');
-const { isProtectedPath, isWriteProtectedPath } = await import('../utils/fs-guard.js');
+const { isWriteProtectedPath } = await import('../utils/fs-guard.js');
 const { serverConfig } = await import('../config/server.js');
 
 describe('Hardening Improvements Tests', () => {

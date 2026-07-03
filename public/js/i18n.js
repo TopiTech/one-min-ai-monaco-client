@@ -41,7 +41,7 @@ async function loadTranslations(lang) {
         const resp = await fetch(`./i18n/${DEFAULT_LANG}.json`);
         _translations = await resp.json();
         _currentLang = DEFAULT_LANG;
-      } catch (_) {
+      } catch {
         _translations = {};
       }
     }

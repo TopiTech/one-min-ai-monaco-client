@@ -114,13 +114,13 @@ describe('Review Fixes', () => {
     });
   });
 
-  describe('CSP includes api.1min.ai', () => {
-    test('should include api.1min.ai in Content-Security-Policy connect-src', async () => {
+  describe('CSP connect-src stays BFF-scoped', () => {
+    test("should keep Content-Security-Policy connect-src narrowed to 'self'", async () => {
       const response = await request(app).get('/');
 
       const csp = response.headers['content-security-policy'];
       if (csp) {
-        expect(csp).toContain('api.1min.ai');
+        expect(csp).toContain("connect-src 'self'");
       }
     });
   });

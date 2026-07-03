@@ -173,7 +173,7 @@ Monaco Editor, marked, and DOMPurify are automatically copied from `node_modules
 This app uses the following 1min.ai APIs:
 
 - Base URL: `https://api.1min.ai`
-- Authentication: Uses `API-KEY` header (per official documentation). Client also sends `Authorization: Bearer` header for compatibility.
+- Authentication: Uses the `API-KEY` header (per the official documentation).
 - Chat with AI API: `POST /api/chat-with-ai`
 - AI Feature API: `POST /api/features`
 - Asset API: `POST /api/assets`

@@ -5,7 +5,7 @@
  * Only the marked.min.js and DOMPurify purify.min.js bundles are vendored;
  * Monaco is handled separately by copy-monaco.js.
  */
-import { cpSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 

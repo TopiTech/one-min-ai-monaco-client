@@ -1,11 +1,10 @@
 import express from 'express';
 import fs from 'fs/promises';
-import { spawn, exec, execFile } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import { z } from 'zod';
 
-const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 import {
   validatePath,
@@ -17,7 +16,6 @@ import {
   assertNotWriteProtectedPath,
   isProtectedPathForListing,
 } from '../utils/fs-guard.js';
-import { serverConfig } from '../config/server.js';
 import { detectBinaryContent } from '../utils/mime-guard.js';
 
 const MAX_READ_SIZE = 10 * 1024 * 1024; // 10MB

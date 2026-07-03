@@ -1,12 +1,14 @@
 import helmet from 'helmet';
 import crypto from 'crypto';
 import logger from '../utils/logger.js';
-import { serverConfig } from '../config/server.js';
 
 const customOrigins = (process.env.ALLOWED_CORS_ORIGINS || '')
   .split(',')
   .map((o) => o.trim())
   .filter(Boolean);
+
+const ALLOWED_CORS_METHODS = 'GET, POST, PUT, DELETE, OPTIONS';
+const ALLOWED_CORS_HEADERS = 'Content-Type, x-local-bff-token';
 
 // Parse custom origins into normalized origin strings for reliable comparison.
 // Supports both full URLs (http://myapp.local:8080) and bare hosts (myapp.local).
@@ -70,15 +72,17 @@ export function configureCSP() {
         'style-src-attr': ["'unsafe-inline'"],
         'upgrade-insecure-requests': [],
         'img-src': ["'self'", 'data:', 'https:', 'blob:'],
-        'connect-src': ["'self'", serverConfig.apiBaseUrl],
+        'connect-src': ["'self'"],
         'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com'],
         'object-src': ["'none'"],
         'media-src': ["'self'"],
         'frame-src': ["'none'"],
+        'frame-ancestors': ["'none'"],
         'worker-src': ["'self'", 'blob:'],
       },
     },
     crossOriginEmbedderPolicy: false,
+    xFrameOptions: { action: 'deny' },
   });
 }
 
@@ -88,8 +92,8 @@ export function corsHeaders(req, res, next) {
   if (origin) {
     if (isAllowedOriginStr(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-local-bff-token, Authorization, Cookie');
+      res.setHeader('Access-Control-Allow-Methods', ALLOWED_CORS_METHODS);
+      res.setHeader('Access-Control-Allow-Headers', ALLOWED_CORS_HEADERS);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Max-Age', '86400');
     } else {
@@ -110,11 +114,9 @@ export function corsHeaders(req, res, next) {
 // Security headers middleware (Additional headers)
 export function securityHeaders(req, res, next) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
 
   // Apply Strict-Transport-Security (HSTS) only in non-development/test environments

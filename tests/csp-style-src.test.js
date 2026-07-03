@@ -47,6 +47,16 @@ function getStyleSrc(cspHeader) {
   return null;
 }
 
+function getDirective(cspHeader, directiveName) {
+  if (!cspHeader) return null;
+  return (
+    cspHeader
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${directiveName} `) || part === directiveName) || null
+  );
+}
+
 describe('CSP style-src directive', () => {
   test("GET / sets a style-src WITH 'unsafe-inline' (required by Monaco CSSOM)", async () => {
     process.env.NODE_ENV = 'test';
@@ -116,5 +126,16 @@ describe('CSP style-src directive', () => {
     const csp = res.headers['content-security-policy'];
     expect(csp).toBeDefined();
     expect(csp).not.toMatch(/cdn\.jsdelivr\.net/);
+  });
+
+  test("GET / keeps connect-src scoped to 'self' for BFF-only browser traffic", async () => {
+    process.env.NODE_ENV = 'test';
+    const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
+
+    const res = await request(app).get('/');
+    expect(res.status).toBe(200);
+    const csp = res.headers['content-security-policy'];
+    const connectSrc = getDirective(csp, 'connect-src');
+    expect(connectSrc).toBe("connect-src 'self'");
   });
 });

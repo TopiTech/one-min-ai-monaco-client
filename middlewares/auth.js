@@ -1,6 +1,5 @@
 import crypto from 'crypto';
 import cookie from 'cookie';
-import logger from '../utils/logger.js';
 
 export function createLocalAuthToken() {
   return crypto.randomBytes(24).toString('hex');
@@ -81,11 +80,24 @@ export function localBffAuth({ requireToken = true, authToken } = {}) {
       if (referer && checkUrl(referer)) return true;
 
       // S-3 Fix: If there is no sec-fetch-site and no same-origin header (Origin/Referer),
-      // allow it ONLY in development/test environment to avoid CSRF on production where headers
-      // might have been stripped.
+      // block in production to prevent CSRF. In development/test environments, allow it
+      // to simplify local development (browsers may strip these headers in some configs).
       if (!secFetchSite && !origin && !referer) {
-        return process.env.NODE_ENV !== 'production';
+        if (process.env.NODE_ENV === 'production') {
+          return false;
+        }
+        return true;
       }
+
+      // SEC-NEW: When sec-fetch-site is missing but Origin/Referer exist,
+      // validate them. This catches older browsers or custom clients that
+      // send Origin without sec-fetch-site.
+      if (!secFetchSite && (origin || referer)) {
+        if (origin && checkUrl(origin)) return true;
+        if (referer && checkUrl(referer)) return true;
+        return false;
+      }
+
       return false;
     })();
 

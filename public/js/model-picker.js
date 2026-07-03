@@ -1,4 +1,3 @@
-import { injectStyle } from './dom-style.js';
 import { api } from './api.js';
 import { t } from './i18n.js';
 import { toast } from './toast.js';
@@ -78,28 +77,6 @@ export async function loadModels() {
     _allImageModels = FALLBACK_IMAGE_MODELS;
     toast.warning(t('model_fetch_warning'));
   }
-}
-
-function getProviderColor(provider) {
-  const map = {
-    OpenAI: '#10a37f',
-    Anthropic: '#d4793c',
-    Google: '#4285f4',
-    DeepSeek: '#5b6cf9',
-    xAI: '#e7e7e7',
-    Mistral: '#ff7000',
-    Alibaba: '#ff6a00',
-    Perplexity: '#20b2aa',
-    Cohere: '#39d3aa',
-    Meta: '#0866ff',
-    Flux: '#a855f7',
-    'Magic Art': '#ec4899',
-    Stability: '#7c3aed',
-    Leonardo: '#f59e0b',
-    Ideogram: '#06b6d4',
-    Recraft: '#84cc16',
-  };
-  return map[provider] || 'var(--accent)';
 }
 
 function providerToSlug(provider) {
@@ -252,12 +229,6 @@ function selectModel(m) {
   if (hiddenInput) hiddenInput.value = m.id;
   if (labelSpan) labelSpan.textContent = m.label;
   closeModelPicker();
-}
-
-function selectActivePickerItem() {
-  const list = document.getElementById('modelPickerList');
-  const active = list?.querySelector('.model-picker-item.selected');
-  if (active) active.click();
 }
 
 function openModelPicker(btn, type) {

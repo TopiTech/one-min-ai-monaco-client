@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { serverConfig } from '../config/server.js';
 import logger from './logger.js';
 import { extractTextFromOneMinResponse } from './one-min-response.js';
@@ -166,17 +165,15 @@ export async function callOneMin(
   // effect (conversations, asset uploads) on transient network errors.
   const effectiveRetries = idempotent ? maxRetries : 0;
 
-  // 1min.ai documents both `API-KEY` (used in endpoint examples) and
-  // `Authorization: Bearer` (shown on the intro page). Send both so the
-  // client works regardless of which header the API chooses to enforce.
-  // Callers can still override via the `headers` argument.
+  // 1min.ai's current endpoint documentation uses the `API-KEY` header.
+  // Keep the upstream auth surface minimal and avoid duplicating secrets in
+  // multiple header names that may be logged differently by proxies.
   const baseHeaders = {
     'API-KEY': apiKey,
-    Authorization: `Bearer ${apiKey}`,
   };
-  // Don't let caller-provided headers clobber our auth headers unless explicit
+  // Don't let caller-provided headers clobber our auth header.
   for (const k of Object.keys(headers)) {
-    if (k.toLowerCase() === 'api-key' || k.toLowerCase() === 'authorization') continue;
+    if (k.toLowerCase() === 'api-key') continue;
     baseHeaders[k] = headers[k];
   }
 

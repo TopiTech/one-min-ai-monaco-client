@@ -51,7 +51,7 @@ export function sanitizePayload(payload) {
       return result;
     };
     return walk(payload);
-  } catch (e) {
+  } catch {
     return '[Unable to sanitize details]';
   }
 }

@@ -78,7 +78,9 @@ describe('Agent Directory and Patch Routes', () => {
     afterEach(async () => {
       try {
         await fs.unlink(testFile);
-      } catch {}
+      } catch {
+        // ignore
+      }
     });
 
     test('should write and read back a file in session context', async () => {
@@ -165,7 +167,9 @@ describe('Agent Directory and Patch Routes', () => {
     afterEach(async () => {
       try {
         await fs.unlink(testFile);
-      } catch {}
+      } catch {
+        // ignore
+      }
     });
 
     test('should apply diff with search-and-replace block', async () => {
@@ -301,7 +305,9 @@ replaced
     afterEach(async () => {
       try {
         await fs.unlink(testSearchFile);
-      } catch {}
+      } catch {
+        // ignore
+      }
     });
 
     test('should find query in test file', async () => {

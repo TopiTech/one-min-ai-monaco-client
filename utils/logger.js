@@ -40,7 +40,7 @@ const MAX_LOG_PATH_LENGTH = 240;
 function sanitizeUrlForLogging(urlLike) {
   if (!urlLike) return '/';
   const raw = String(urlLike);
-  let pathOnly = raw;
+  let pathOnly;
   try {
     pathOnly = new URL(raw, 'http://localhost').pathname || '/';
   } catch {

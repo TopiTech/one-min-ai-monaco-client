@@ -92,7 +92,7 @@ describe('config/models.js', () => {
         ],
       });
 
-      const { initModels, getChatModels } = await import('../config/models.js');
+      const { initModels } = await import('../config/models.js');
       await initModels();
 
       const status = await import('../config/models.js').then((m) => m.getModelSyncStatus());
