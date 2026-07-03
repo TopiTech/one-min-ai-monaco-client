@@ -256,6 +256,15 @@ async function _runCurrentFile() {
     return;
   }
 
+  const confirmed = await toast.confirm(
+    t('run_confirm_warning') ||
+      'Warning: This code will execute directly on your local host machine. Executing untrusted code can harm your system. Do you want to proceed?',
+    { type: 'warning' },
+  );
+  if (!confirmed) {
+    return;
+  }
+
   const outputPanel = document.getElementById('codeOutputPanel');
   const outputContent = document.getElementById('codeOutputContent');
   const outputStatus = document.getElementById('codeOutputStatus');

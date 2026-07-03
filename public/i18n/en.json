@@ -209,5 +209,6 @@
   "agent_feedback_label": "Additional instruction",
   "agent_reset_confirm": "Reset the agent session history?",
   "agent_reset_success": "Session reset",
-  "agent_instruction_required": "Please enter instructions for the agent"
+  "agent_instruction_required": "Please enter instructions for the agent",
+  "run_confirm_warning": "Warning: This code will execute directly on your local host machine. Executing untrusted code can harm your system. Do you want to proceed?"
 }

@@ -437,11 +437,17 @@ function validateEnvironment() {
 
 if (process.env.NODE_ENV !== 'test') {
   validateEnvironment();
+  const CODE_RUN_TMP_DIR = path.join(__dirname, '.mimocode', 'tmp');
+  fs.mkdirSync(CODE_RUN_TMP_DIR, { recursive: true });
+
   // E-1: Startup cleanup to remove orphaned temporary files from previous runs
   startupCleanup(UPLOAD_TMP_DIR);
+  startupCleanup(CODE_RUN_TMP_DIR);
   // B-6: Periodic cleanup for orphaned temporary files during runtime
   const cleanupInterval = startPeriodicCleanup(UPLOAD_TMP_DIR);
+  const codeRunCleanupInterval = startPeriodicCleanup(CODE_RUN_TMP_DIR);
   cleanupInterval.unref();
+  codeRunCleanupInterval.unref();
   Promise.all([initModels(), initAgentState()])
     .then(() => {
       const server = createApp().listen(serverConfig.port, '127.0.0.1', () => {

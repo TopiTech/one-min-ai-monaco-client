@@ -17,6 +17,7 @@ import pathPkg from 'path';
 import cryptoPkg from 'crypto';
 import { validatePath, assertNotProtectedPath, PROJECT_ROOT } from '../utils/fs-guard.js';
 import { extractAssetKey } from '../utils/asset-utils.js';
+import { getSafeEnv } from '../utils/env-guard.js';
 
 const router = express.Router();
 
@@ -1023,39 +1024,7 @@ router.post('/code/run', async (req, res, next) => {
 
     const cwd = filePath ? pathPkg.dirname(filePath) : process.cwd();
 
-    // Prepare a safe environment by filtering out sensitive credentials
-    const safeEnv = {};
-    const secretValues = [process.env.ONE_MIN_AI_API_KEY, process.env.LOCAL_BFF_AUTH_TOKEN].filter(
-      (v) => v && typeof v === 'string' && v.length > 5,
-    );
-    const SAFE_ENV_KEYS = new Set([
-      'PATH',
-      'PATHEXT',
-      'COMSPEC',
-      'SystemRoot',
-      'WINDIR',
-      'OS',
-      'PROCESSOR_ARCHITECTURE',
-      'NUMBER_OF_PROCESSORS',
-      'HOMEDRIVE',
-      'HOMEPATH',
-      'HOME',
-      'USER',
-      'USERNAME',
-      'TMP',
-      'TEMP',
-      'TMPDIR',
-      'LANG',
-      'LC_ALL',
-    ]);
-    for (const [key, value] of Object.entries(process.env)) {
-      if (SAFE_ENV_KEYS.has(key) && value) {
-        const containsSecret = secretValues.some((secret) => value.includes(secret));
-        if (!containsSecret) {
-          safeEnv[key] = value;
-        }
-      }
-    }
+    const safeEnv = getSafeEnv();
 
     // Execute safely using spawn directly without running through shell parser
     const output = await new Promise((resolve, reject) => {

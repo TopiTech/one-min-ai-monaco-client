@@ -247,6 +247,6 @@
   "ctx_delete": "削除",
   "ctx_new_file_here": "ここに新規ファイル",
   "ctx_new_folder_here": "ここに新規フォルダ",
-  "explorer_no_folder": "フォルダを開いてから操作してください",
-  "file_search_placeholder": "ファイルを検索..."
+  "file_search_placeholder": "ファイルを検索...",
+  "run_confirm_warning": "警告: このコードはローカルのホスト環境で直接実行されます。信頼できないコードを実行するとシステムに危害を及ぼす可能性があります。実行しますか？"
 }
