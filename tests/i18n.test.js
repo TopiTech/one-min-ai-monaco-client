@@ -4,7 +4,9 @@ function createMockElement(attributes = {}) {
   const el = {
     attributes,
     getAttribute: (name) => attributes[name] || null,
-    setAttribute: jest.fn((name, value) => { attributes[name] = value; }),
+    setAttribute: jest.fn((name, value) => {
+      attributes[name] = value;
+    }),
     textContent: '',
     innerHTML: '',
     placeholder: '',
@@ -31,7 +33,9 @@ async function loadI18nModule({
   }
   global.localStorage = {
     getItem: jest.fn((key) => store[key] || null),
-    setItem: jest.fn((key, value) => { store[key] = value; }),
+    setItem: jest.fn((key, value) => {
+      store[key] = value;
+    }),
   };
 
   const elements = {
@@ -142,17 +146,15 @@ describe('i18n utility module', () => {
     const { initI18n } = await loadI18nModule({ readyState: 'loading' });
     await initI18n();
 
-    expect(global.document.addEventListener).toHaveBeenCalledWith(
-      'DOMContentLoaded',
-      expect.any(Function),
-      { once: true }
-    );
+    expect(global.document.addEventListener).toHaveBeenCalledWith('DOMContentLoaded', expect.any(Function), {
+      once: true,
+    });
   });
 
   test('setLanguage switches language, updates localStorage and dispatches window event', async () => {
     const { initI18n, setLanguage, getLanguage, langSelector } = await loadI18nModule();
     await initI18n();
-    
+
     // Ignore unsupported language
     const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     await setLanguage('fr');
@@ -167,7 +169,7 @@ describe('i18n utility module', () => {
       expect.objectContaining({
         type: 'language-changed',
         detail: { lang: 'en' },
-      })
+      }),
     );
     expect(langSelector.value).toBe('en');
   });
@@ -182,7 +184,7 @@ describe('i18n utility module', () => {
 
   test('applyTranslations maps data-i18n attributes onto elements', async () => {
     const { initI18n, elements, documentElement } = await loadI18nModule();
-    
+
     const elText = createMockElement({ 'data-i18n': 'status_done' });
     const elHtml = createMockElement({ 'data-i18n-html': 'nested.val' });
     const elPlaceholder = createMockElement({ 'data-i18n-placeholder': 'status_done' });

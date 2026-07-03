@@ -1,4 +1,8 @@
-import { validateBufferMimeType, detectBinaryContent, getExtensionFromMimeType } from '../utils/mime-guard.js';
+import {
+  validateBufferMimeType,
+  detectBinaryContent,
+  getExtensionFromMimeType,
+} from '../utils/mime-guard.js';
 
 describe('mime-guard utility', () => {
   describe('validateBufferMimeType', () => {

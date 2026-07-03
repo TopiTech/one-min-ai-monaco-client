@@ -141,33 +141,47 @@ describe('public api wrapper', () => {
 
   test('assetUrl proxies http/https paths and encodes key for local paths', async () => {
     const { assetUrl } = await loadApiModule();
-    expect(assetUrl('http://example.com/pic.png')).toBe('/api/assets/proxy?url=http%3A%2F%2Fexample.com%2Fpic.png');
-    expect(assetUrl('https://example.com/pic.png')).toBe('/api/assets/proxy?url=https%3A%2F%2Fexample.com%2Fpic.png');
+    expect(assetUrl('http://example.com/pic.png')).toBe(
+      '/api/assets/proxy?url=http%3A%2F%2Fexample.com%2Fpic.png',
+    );
+    expect(assetUrl('https://example.com/pic.png')).toBe(
+      '/api/assets/proxy?url=https%3A%2F%2Fexample.com%2Fpic.png',
+    );
     expect(assetUrl('folder/file.png')).toBe('/api/assets/proxy?key=folder%2Ffile.png');
   });
 
   test('extractImages extracts image URLs from various response shapes', async () => {
     const { extractImages } = await loadApiModule();
 
-    expect(extractImages({
-      aiRecord: { aiRecordDetail: { resultObject: 'url1' } }
-    })).toEqual(['url1']);
+    expect(
+      extractImages({
+        aiRecord: { aiRecordDetail: { resultObject: 'url1' } },
+      }),
+    ).toEqual(['url1']);
 
-    expect(extractImages({
-      aiRecord: { output: ['url2'] }
-    })).toEqual(['url2']);
+    expect(
+      extractImages({
+        aiRecord: { output: ['url2'] },
+      }),
+    ).toEqual(['url2']);
 
-    expect(extractImages({
-      aiRecord: { resultObject: { images: ['url3'] } }
-    })).toEqual(['url3']);
+    expect(
+      extractImages({
+        aiRecord: { resultObject: { images: ['url3'] } },
+      }),
+    ).toEqual(['url3']);
 
-    expect(extractImages({
-      aiRecord: { resultObject: { output: ['url4'] } }
-    })).toEqual(['url4']);
+    expect(
+      extractImages({
+        aiRecord: { resultObject: { output: ['url4'] } },
+      }),
+    ).toEqual(['url4']);
 
-    expect(extractImages({
-      aiRecord: { resultObject: { urls: ['url5'] } }
-    })).toEqual(['url5']);
+    expect(
+      extractImages({
+        aiRecord: { resultObject: { urls: ['url5'] } },
+      }),
+    ).toEqual(['url5']);
 
     expect(extractImages({ resultObject: ['url6'] })).toEqual(['url6']);
 
@@ -175,15 +189,17 @@ describe('public api wrapper', () => {
 
     expect(extractImages({ images: ['url8'] })).toEqual(['url8']);
 
-    expect(extractImages({
-      images: [
-        { url: 'url9' },
-        { path: 'path10' },
-        { key: 'key11' },
-        { location: 'loc12' },
-        { other: 'ignored' }
-      ]
-    })).toEqual(['url9', 'path10', 'key11', 'loc12']);
+    expect(
+      extractImages({
+        images: [
+          { url: 'url9' },
+          { path: 'path10' },
+          { key: 'key11' },
+          { location: 'loc12' },
+          { other: 'ignored' },
+        ],
+      }),
+    ).toEqual(['url9', 'path10', 'key11', 'loc12']);
 
     expect(extractImages(null)).toEqual([]);
     expect(extractImages({})).toEqual([]);
@@ -194,15 +210,23 @@ describe('public api wrapper', () => {
 
     const { api: apiNoCookie } = await loadApiModule({ cookie: 'other_cookie=123' });
     await apiNoCookie('/api/test');
-    expect(global.fetch).toHaveBeenCalledWith('/api/test', expect.objectContaining({
-      headers: expect.not.objectContaining({ 'x-local-bff-token': expect.any(String) })
-    }));
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/test',
+      expect.objectContaining({
+        headers: expect.not.objectContaining({ 'x-local-bff-token': expect.any(String) }),
+      }),
+    );
 
-    const { api: apiMultiCookie } = await loadApiModule({ cookie: '__bff_csrf=csrf-token; __bff_csrf=other-token' });
+    const { api: apiMultiCookie } = await loadApiModule({
+      cookie: '__bff_csrf=csrf-token; __bff_csrf=other-token',
+    });
     await apiMultiCookie('/api/test');
-    expect(global.fetch).toHaveBeenCalledWith('/api/test', expect.objectContaining({
-      headers: expect.not.objectContaining({ 'x-local-bff-token': expect.any(String) })
-    }));
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/test',
+      expect.objectContaining({
+        headers: expect.not.objectContaining({ 'x-local-bff-token': expect.any(String) }),
+      }),
+    );
   });
 
   test('throws formatted error on server non-ok response with JSON error', async () => {
@@ -220,43 +244,50 @@ describe('public api wrapper', () => {
   });
 
   test('throws fallback HTTP status error on server non-ok response with plain text', async () => {
-    global.fetch.mockResolvedValue(new Response('Internal Server Error Text', {
-      status: 500,
-      headers: { 'content-type': 'text/plain' }
-    }));
+    global.fetch.mockResolvedValue(
+      new Response('Internal Server Error Text', {
+        status: 500,
+        headers: { 'content-type': 'text/plain' },
+      }),
+    );
     const { api } = await loadApiModule({ cookie: '' });
 
     await expect(api('/api/bad')).rejects.toThrow('Internal Server Error Text');
   });
 
   test('returns message string if server returns non-JSON text starting with other than { or [', async () => {
-    global.fetch.mockResolvedValue(new Response('Plain text response', {
-      status: 200,
-      headers: { 'content-type': 'text/plain' }
-    }));
+    global.fetch.mockResolvedValue(
+      new Response('Plain text response', {
+        status: 200,
+        headers: { 'content-type': 'text/plain' },
+      }),
+    );
     const { api } = await loadApiModule({ cookie: '' });
 
     await expect(api('/api/text')).resolves.toEqual({ message: 'Plain text response' });
   });
 
   test('returns message string if server returns invalid JSON text starting with {', async () => {
-    global.fetch.mockResolvedValue(new Response('{invalid-json', {
-      status: 200,
-      headers: { 'content-type': 'application/json' }
-    }));
+    global.fetch.mockResolvedValue(
+      new Response('{invalid-json', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
     const { api } = await loadApiModule({ cookie: '' });
 
     await expect(api('/api/bad-json')).resolves.toEqual({ message: '{invalid-json' });
   });
 
   test('returns empty object if server returns empty response body', async () => {
-    global.fetch.mockResolvedValue(new Response('', {
-      status: 200,
-      headers: { 'content-type': 'application/json' }
-    }));
+    global.fetch.mockResolvedValue(
+      new Response('', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
     const { api } = await loadApiModule({ cookie: '' });
 
     await expect(api('/api/empty')).resolves.toEqual({});
   });
 });
-
