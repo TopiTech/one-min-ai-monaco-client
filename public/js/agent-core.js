@@ -64,6 +64,8 @@ async function estimateTokensBatch(apiFn, texts) {
     }
     const cached = _tokenCache.get(text);
     if (cached !== undefined) {
+      _tokenCache.delete(text);
+      _tokenCache.set(text, cached);
       results[i] = cached;
     } else {
       missingIndices.push(i);

@@ -46,7 +46,6 @@ if (typeof global.TextEncoder === 'undefined') {
 
 const {
   escapeHtml,
-  formatMarkdownLike,
   stripMarkdownCodeBlock,
   unescapeXmlText,
   parseXMLTags,
@@ -67,19 +66,6 @@ describe('escapeHtml', () => {
     expect(escapeHtml(null)).toBe('');
     expect(escapeHtml(undefined)).toBe('');
     expect(escapeHtml(42)).toBe('');
-  });
-});
-
-describe('formatMarkdownLike', () => {
-  test('wraps inline code and bold', () => {
-    const out = formatMarkdownLike('use `foo` then **bar**');
-    expect(out).toContain('<code>foo</code>');
-    expect(out).toContain('<strong>bar</strong>');
-  });
-  test('html-escapes raw markup so it cannot inject', () => {
-    const out = formatMarkdownLike('<img src=x onerror=alert(1)>');
-    expect(out).not.toContain('<img');
-    expect(out).toContain('&lt;img');
   });
 });
 

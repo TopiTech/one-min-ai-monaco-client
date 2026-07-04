@@ -23,6 +23,8 @@ import { assetProxyHandler } from './services/asset-proxy.js';
 import { upload, mapMulterError, UPLOAD_TMP_DIR } from './middlewares/upload.js';
 import { startupCleanup, startPeriodicCleanup } from './services/tmp-cleanup.js';
 
+const MAX_IN_MEMORY_ASSET_FALLBACK_SIZE = 8 * 1024 * 1024;
+
 // Replace the env-var-based default singleton with the validated serverConfig.
 // This ensures LOG_LEVEL, LOG_TO_FILE, and LOG_FILE are all parsed and clamped
 // consistently (e.g. LOG_LEVEL "info" → parseLogLevel, LOG_TO_FILE "true" →
@@ -127,7 +129,8 @@ async function handleAssetUpload(req, res, next) {
     // A-1: Stream the file directly from disk into FormData using openAsBlob
     // if available (Node 19.8+). This prevents OOM spikes when uploading
     // large files compared to reading the entire buffer into memory.
-    // Falls back to in-memory Blob if openAsBlob fails (e.g. on Windows).
+    // If openAsBlob is unavailable, keep the in-memory fallback intentionally
+    // small instead of reading a 25-50MB upload into RAM per concurrent request.
     let assetBlob;
     if (typeof fs.openAsBlob === 'function') {
       try {
@@ -142,6 +145,15 @@ async function handleAssetUpload(req, res, next) {
       const headFd = await fsp.open(tmpFilePath, 'r');
       try {
         const stat = await headFd.stat();
+        if (stat.size > MAX_IN_MEMORY_ASSET_FALLBACK_SIZE) {
+          const err = new Error(
+            'Large asset uploads require a Node.js runtime with fs.openAsBlob support. ' +
+              'Please use Node.js 20+ or reduce the file size.',
+          );
+          err.status = 500;
+          err.code = 'ASSET_STREAMING_UNAVAILABLE';
+          throw err;
+        }
         const buf = Buffer.alloc(stat.size);
         await headFd.read(buf, 0, stat.size, 0);
         assetBlob = new Blob([buf], { type: req.file.mimetype || 'application/octet-stream' });

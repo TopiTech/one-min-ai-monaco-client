@@ -88,19 +88,6 @@ export function renderMarkdownSafely(element, markdown) {
 }
 
 /**
- * Minimal inline-only Markdown formatter. Useful when we want bold/inline
- * code styling without spinning up a full Markdown parser. Output must
- * still be inserted with textContent semantics.
- */
-export function formatMarkdownLike(text) {
-  if (typeof text !== 'string') return '';
-  let html = escapeHtml(text);
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  return html;
-}
-
-/**
  * Build a 12x12 inline SVG icon with a single <path> element. Returns
  * the SVG element so callers can appendChild it into any container.
  */

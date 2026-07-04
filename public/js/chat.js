@@ -19,6 +19,18 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function readErrorMessage(response) {
+  const fallback = `HTTP ${response.status}`;
+  const text = await response.text().catch(() => '');
+  if (!text) return fallback;
+  try {
+    const data = JSON.parse(text);
+    return data?.error || data?.message || data?.details || fallback;
+  } catch {
+    return text.slice(0, 500) || fallback;
+  }
+}
+
 export function createChatState() {
   return {
     attachments: [],
@@ -347,13 +359,14 @@ export function createChatManager(dom, state) {
           });
 
           if (!response.ok) {
+            const serverMessage = await readErrorMessage(response);
             let error;
             if (response.status === 422) {
-              error = new Error(t('chat_invalid_request'));
+              error = new Error(`${t('chat_invalid_request')}: ${serverMessage}`);
             } else if (response.status >= 500) {
-              error = new Error(t('chat_server_error'));
+              error = new Error(`${t('chat_server_error')}: ${serverMessage}`);
             } else {
-              error = new Error(`HTTP ${response.status}`);
+              error = new Error(serverMessage);
             }
             error.status = response.status;
             throw error;

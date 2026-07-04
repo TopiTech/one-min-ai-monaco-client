@@ -5,7 +5,7 @@
  * Only the marked.min.js and DOMPurify purify.min.js bundles are vendored;
  * Monaco is handled separately by copy-monaco.js.
  */
-import { cpSync, existsSync, mkdirSync, statSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -28,28 +28,14 @@ const files = [
   },
 ];
 
-function fileExists(p) {
-  try {
-    return statSync(p).isFile();
-  } catch {
-    return false;
-  }
-}
-
 let copied = 0;
-let skipped = 0;
 for (const f of files) {
   if (!existsSync(f.src)) {
     console.error(`Vendor source missing: ${f.src}`);
     process.exit(1);
   }
-  // Skip the copy when the destination file is already present. This
-  // mirrors copy-monaco.js so repeated `npm start` invocations stay
-  // cheap and don't rewrite mtimes unnecessarily.
-  if (fileExists(f.dest)) {
-    skipped++;
-    continue;
-  }
+  // Always overwrite vendored files so dependency updates (especially
+  // security fixes in DOMPurify/marked) are reflected on the next start.
   try {
     cpSync(f.src, f.dest, { recursive: false });
     copied++;
@@ -62,6 +48,4 @@ for (const f of files) {
 
 if (copied > 0) {
   console.log(`Vendored ${copied} file(s) into ${vendorDir}`);
-} else if (skipped === files.length) {
-  console.log(`Vendor assets already present at ${vendorDir}, skipping copy.`);
 }

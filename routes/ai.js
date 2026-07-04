@@ -1,5 +1,6 @@
 import express from 'express';
 import { spawn } from 'child_process';
+import { killProcessTree } from '../services/command-runner.js';
 import { z } from 'zod';
 import {
   callOneMin,
@@ -214,6 +215,7 @@ router.post('/chat', async (req, res, next) => {
     const data = await callOneMin('/api/chat-with-ai', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      idempotent: false,
     });
     if (isFailedResponse(data)) {
       const err = new Error(`1min.ai chat failed: ${extractFailureMessage(data)}`);
@@ -580,6 +582,7 @@ router.post('/images/generate', async (req, res, next) => {
     const dataRes = await callOneMin('/api/features', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      idempotent: false,
     });
     if (isFailedResponse(dataRes)) {
       const err = new Error(`1min.ai image generation failed: ${extractFailureMessage(dataRes)}`);
@@ -628,6 +631,7 @@ router.post('/images/text-editor', async (req, res, next) => {
     const dataRes = await callOneMin('/api/features', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      idempotent: false,
     });
     if (isFailedResponse(dataRes)) {
       const err = new Error(`1min.ai image edit failed: ${extractFailureMessage(dataRes)}`);
@@ -1038,12 +1042,13 @@ router.post('/code/run', async (req, res, next) => {
         env: safeEnv,
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
+        detached: process.platform !== 'win32',
       });
 
       const timeoutId = setTimeout(() => {
         timedOut = true;
         killed = true;
-        child.kill(process.platform === 'win32' ? 'SIGKILL' : 'SIGTERM');
+        killProcessTree(child, true);
       }, 30000);
 
       child.stdout.on('data', (data) => {

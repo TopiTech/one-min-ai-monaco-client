@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, exec } from 'child_process';
 import { platform } from 'os';
 import { serverConfig } from '../config/server.js';
 import { getSafeEnv } from '../utils/env-guard.js';
@@ -194,6 +194,7 @@ function runProcess(commandParts, options = {}) {
     env: getSafeEnv(),
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
+    detached: platform() !== 'win32',
   });
 
   return collectProcessOutput(child, timeoutMs, onOutput);
@@ -227,12 +228,12 @@ function collectProcessOutput(child, timeoutMs, onOutput) {
     const timeoutId = setTimeout(() => {
       timedOut = true;
       killed = true;
-      child.kill(platform() === 'win32' ? 'SIGKILL' : 'SIGTERM');
+      killProcessTree(child, false);
 
       // Force kill after grace period
       forceKillTimeoutId = setTimeout(() => {
-        if (!child.killed) {
-          child.kill('SIGKILL');
+        if (child.exitCode === null) {
+          killProcessTree(child, true);
         }
       }, 5000);
     }, timeoutMs);
@@ -362,21 +363,28 @@ export async function executeCommand(command, options = {}) {
 }
 
 /**
- * Kill a running command process.
+ * Kill a running process tree.
  * @param {import('child_process').ChildProcess} childProcess The process to kill.
  * @param {boolean} force Whether to force kill (SIGKILL).
  */
-export function killProcess(childProcess, force = false) {
-  if (childProcess && !childProcess.killed) {
-    try {
-      childProcess.kill(force ? 'SIGKILL' : 'SIGTERM');
-    } catch (err) {
-      if (err.code === 'ESRCH') {
-        return;
-      }
-      throw err;
+export function killProcessTree(childProcess, force = false) {
+  if (!childProcess || childProcess.exitCode !== null) return;
+  const pid = childProcess.pid;
+  try {
+    if (platform() === 'win32') {
+      exec(`taskkill /PID ${pid} /T /F`, () => {});
+    } else {
+      process.kill(-pid, force ? 'SIGKILL' : 'SIGTERM');
+    }
+  } catch (err) {
+    if (err.code !== 'ESRCH') {
+      console.error('Failed to kill process tree:', err);
     }
   }
+}
+
+export function killProcess(childProcess, force = false) {
+  killProcessTree(childProcess, force);
 }
 
 export { DEFAULT_TIMEOUT_MS };

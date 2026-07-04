@@ -313,6 +313,19 @@ async function saveSessions() {
 
 const MAX_HISTORY_ENTRIES = 100;
 const MAX_HISTORY_RESULT_SIZE = 10000; // chars
+
+async function atomicWriteTextFile(filePath, content) {
+  const dir = path.dirname(filePath);
+  const tmpPath = path.join(dir, `.${path.basename(filePath)}.${crypto.randomUUID()}.tmp`);
+  try {
+    await fs.writeFile(tmpPath, content, { encoding: 'utf-8', mode: 0o600 });
+    await fs.rename(tmpPath, filePath);
+  } catch (err) {
+    await fs.unlink(tmpPath).catch(() => {});
+    throw err;
+  }
+}
+
 const MAX_PENDING_COMMANDS = 100;
 
 async function addHistoryEntry(session, entry) {
@@ -839,7 +852,7 @@ router.post('/sessions/:id/files', async (req, res, next) => {
 
     const dir = path.dirname(realPath);
     await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(realPath, content || '', 'utf-8');
+    await atomicWriteTextFile(realPath, content || '');
 
     await addHistoryEntry(session, {
       type: 'write',
@@ -1149,6 +1162,8 @@ router.post('/sessions/:id/diff', async (req, res, next) => {
     const eol = hasCarriageReturn ? '\r\n' : '\n';
     let fileLines = content.split(/\r?\n/);
 
+    const processedBlocks = [];
+
     for (const block of blocks) {
       // Split search and replace blocks by line
       const searchLines = block.search.split(/\r?\n/);
@@ -1228,12 +1243,6 @@ router.post('/sessions/:id/diff', async (req, res, next) => {
         return res.status(400).json({ error: errorMsg });
       }
 
-      // H-2: Multiple matches always require explicit disambiguation by the
-      // caller. Indentation-insensitive matching in particular frequently
-      // produces false positives (a lone `}` or empty line), so silently
-      // picking the first hit risks replacing the wrong section. The user
-      // (or upstream agent) is expected to add surrounding context lines
-      // until the match becomes unique.
       if (matchCount > 1) {
         logger.warn(`SEARCH block matched ${matchCount} times in ${resolvedPath}; requiring disambiguation`, {
           searchLines: searchLines.length,
@@ -1274,14 +1283,38 @@ router.post('/sessions/:id/diff', async (req, res, next) => {
         return line;
       });
 
-      // Apply replacement directly to the line array slice
-      fileLines.splice(matchedIndex, searchLines.length, ...adjustedReplaceLines);
+      processedBlocks.push({
+        matchedIndex,
+        length: searchLines.length,
+        lines: adjustedReplaceLines,
+        searchBlock: block.search,
+      });
+    }
+
+    // Sort blocks descending by their starting line index
+    processedBlocks.sort((a, b) => b.matchedIndex - a.matchedIndex);
+
+    // Check for overlapping blocks
+    for (let i = 0; i < processedBlocks.length - 1; i++) {
+      const current = processedBlocks[i];
+      const next = processedBlocks[i + 1]; // next is visually ABOVE current in the file
+      if (next.matchedIndex + next.length > current.matchedIndex) {
+        return res.status(400).json({
+          error:
+            '複数の SEARCH ブロックの対象範囲が重複しています。競合を避けるため別々の箇所を指定するか、1つの大きなブロックにまとめてください。',
+        });
+      }
+    }
+
+    // Apply replacements bottom-up
+    for (const pb of processedBlocks) {
+      fileLines.splice(pb.matchedIndex, pb.length, ...pb.lines);
     }
 
     const newContent = fileLines.join(eol);
 
     if (!dryRun) {
-      await fs.writeFile(realPath, newContent, 'utf-8');
+      await atomicWriteTextFile(realPath, newContent);
 
       await addHistoryEntry(session, {
         type: 'diff',

@@ -160,11 +160,24 @@ for (const btn of navBtns) {
 }
 
 $('healthBtn').onclick = async () => {
+  const btn = $('healthBtn');
+  const originalText = btn.textContent;
+  btn.textContent = 'Checking...';
+  btn.disabled = true;
   try {
     const data = await api('/api/health');
-    toast.success(JSON.stringify(data, null, 2), { duration: 8000 });
+    const details = [
+      `Status: ${data.ok ? 'OK 🟢' : 'Error 🔴'}`,
+      `Version: ${data.version || 'N/A'}`,
+      `Uptime: ${data.uptime ? Math.round(data.uptime) + 's' : 'N/A'}`,
+      `Models: ${data.models?.ok ? 'Synced 🟢' : 'Error 🔴'}`,
+    ].join('\n');
+    toast.success(`システム状態:\n${details}`, { duration: 8000 });
   } catch (e) {
     toast.error(t('health_check_failed', { error: e.message }));
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
   }
 };
 

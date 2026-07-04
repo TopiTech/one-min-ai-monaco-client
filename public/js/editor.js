@@ -6,6 +6,26 @@ import { api } from './api.js';
 import { isDarkTheme } from './theme.js';
 
 const MAX_OPEN_MODELS = 20;
+const AUTOCOMPLETE_CONTEXT_BEFORE_LINES = 80;
+const AUTOCOMPLETE_CONTEXT_AFTER_LINES = 40;
+
+function getAutocompleteContext(model, position) {
+  const lineCount = model.getLineCount();
+  const startLine = Math.max(1, position.lineNumber - AUTOCOMPLETE_CONTEXT_BEFORE_LINES);
+  const endLine = Math.min(lineCount, position.lineNumber + AUTOCOMPLETE_CONTEXT_AFTER_LINES);
+  const context = model.getValueInRange({
+    startLineNumber: startLine,
+    startColumn: 1,
+    endLineNumber: endLine,
+    endColumn: model.getLineMaxColumn(endLine),
+  });
+
+  return {
+    code: context,
+    line: position.lineNumber - startLine + 1,
+    column: position.column,
+  };
+}
 
 export function createEditorState() {
   return {
@@ -89,13 +109,14 @@ export function createEditorManager(state) {
           if (token.isCancellationRequested) return;
 
           try {
+            const autocompleteContext = getAutocompleteContext(model, position);
             const data = await api('/api/code/autocomplete', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                code: model.getValue(),
-                line: position.lineNumber,
-                column: position.column,
+                code: autocompleteContext.code,
+                line: autocompleteContext.line,
+                column: autocompleteContext.column,
                 fileName: state.activeFilePath ? state.activeFilePath.split(/[\\/]/).pop() : 'untitled',
                 language: model.getLanguageId(),
                 model: document.getElementById('codeModel')?.value,

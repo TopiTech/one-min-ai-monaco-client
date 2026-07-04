@@ -1,11 +1,8 @@
 import express from 'express';
 import fs from 'fs/promises';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import path from 'path';
+import crypto from 'crypto';
 import { z } from 'zod';
-
-const execFileAsync = promisify(execFile);
 import {
   validatePath,
   revalidateRealPath,
@@ -41,6 +38,18 @@ const BINARY_EXTENSIONS = new Set([
 ]);
 
 const router = express.Router();
+
+async function atomicWriteTextFile(filePath, content) {
+  const dir = path.dirname(filePath);
+  const tmpPath = path.join(dir, `.${path.basename(filePath)}.${crypto.randomUUID()}.tmp`);
+  try {
+    await fs.writeFile(tmpPath, content, { encoding: 'utf-8', mode: 0o600 });
+    await fs.rename(tmpPath, filePath);
+  } catch (err) {
+    await fs.unlink(tmpPath).catch(() => {});
+    throw err;
+  }
+}
 
 const workspaceSelectSchema = z.object({ dir: z.string().min(1, 'dir is required') });
 const listSchema = z.object({ dir: z.string().optional() });
@@ -142,63 +151,28 @@ router.get('/drives', async (_req, res, next) => {
       const drives = [];
 
       if (process.platform === 'win32') {
-        let success = false;
-
-        // 1. Try using PowerShell to get Ready drives quickly and without blocking I/O threads
-        try {
-          const { stdout } = await execFileAsync(
-            'powershell.exe',
-            [
-              '-NoProfile',
-              '-Command',
-              '[System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady } | Select-Object -ExpandProperty Name',
-            ],
-            { timeout: 5000 },
+        const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        const checks = [];
+        for (let i = 0; i < letters.length; i++) {
+          const driveLetter = letters[i];
+          const drivePath = driveLetter + ':\\';
+          checks.push(
+            fs
+              .access(drivePath, fs.constants.F_OK)
+              .then(() => driveLetter + ':')
+              .catch(() => null),
           );
-
-          const lines = stdout
-            .split(/\r?\n/)
-            .map((l) => l.trim())
-            .filter(Boolean);
-          if (lines.length > 0) {
-            for (const drive of lines) {
-              const driveLetter = drive.slice(0, 2).toUpperCase();
-              drives.push({
-                name: driveLetter,
-                path: driveLetter + '\\',
-                type: 'local',
-              });
-            }
-            success = true;
-          }
-        } catch {
-          // PowerShell failed or timed out, fall through
         }
-
-        // 2. Fallback: Try using fsutil safely with execFile (not exec)
-        if (!success) {
-          try {
-            const { stdout } = await execFileAsync('fsutil', ['fsinfo', 'drives']);
-            const matches = stdout.match(/[A-Za-z]:\\/g);
-            if (matches && matches.length > 0) {
-              // As a fallback we do NOT check drive readiness via fs.access to prevent thread pool starvation.
-              for (const drive of matches) {
-                const driveLetter = drive.slice(0, 2).toUpperCase();
-                drives.push({
-                  name: driveLetter,
-                  path: driveLetter + '\\',
-                  type: 'local',
-                });
-              }
-              success = true;
-            }
-          } catch {
-            // fsutil failed, fall through
+        const availableDrives = await Promise.all(checks);
+        for (const drive of availableDrives) {
+          if (drive) {
+            drives.push({
+              name: drive,
+              path: drive + '\\',
+              type: 'local',
+            });
           }
         }
-
-        // Sort drives alphabetically
-        drives.sort((a, b) => a.name.localeCompare(b.name));
       } else {
         // Unix-like: return root and home
         drives.push({ name: '/', path: '/', type: 'root' });
@@ -399,7 +373,7 @@ router.post('/write', async (req, res, next) => {
     const dir = path.dirname(realPath);
     await fs.mkdir(dir, { recursive: true });
 
-    await fs.writeFile(realPath, content, 'utf-8');
+    await atomicWriteTextFile(realPath, content);
     res.json({ ok: true, path: realPath });
   } catch (err) {
     next(err);
@@ -427,7 +401,7 @@ router.post('/create', async (req, res, next) => {
     } else {
       const dir = path.dirname(realPath);
       await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(realPath, content, 'utf-8');
+      await atomicWriteTextFile(realPath, content);
     }
 
     res.json({ ok: true, path: realPath, type });
