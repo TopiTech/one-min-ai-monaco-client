@@ -339,6 +339,7 @@ export function createChatManager(dom, state) {
 
     setStatus(t('chat_receiving'), 'warn');
     let fullText = '';
+    let followStreamScroll = wasNearBottom;
 
     try {
       const uploadedAttachments = await uploadAttachments();
@@ -424,7 +425,9 @@ export function createChatManager(dom, state) {
               renderScheduled = false;
               if (fullText) {
                 renderMarkdownSafely(aiContentDiv, fullText);
-                dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
+                if (followStreamScroll) {
+                  dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
+                }
               }
             };
             if (typeof requestAnimationFrame === 'function') {
@@ -513,6 +516,9 @@ export function createChatManager(dom, state) {
                   data?.text ||
                   findTextCandidate(data?.aiRecord || data);
                 if (content) {
+                  followStreamScroll =
+                    followStreamScroll &&
+                    dom.chatLog.scrollTop + dom.chatLog.clientHeight >= dom.chatLog.scrollHeight - 120;
                   fullText += content;
                   scheduleRender();
                 }

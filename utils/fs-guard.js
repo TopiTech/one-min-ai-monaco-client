@@ -328,6 +328,10 @@ export function isWriteProtectedPath(resolvedPath) {
   );
 }
 
+export function canWritePath(resolvedPath) {
+  return !isWriteProtectedPath(resolvedPath);
+}
+
 /**
  * Checks whether a validated path is protected from listing operations.
  * Allowed roots themselves are listable; protected prefixes inside them are not.

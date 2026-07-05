@@ -11,6 +11,7 @@ import {
   getDefaultRoot,
   assertNotProtectedPath,
   assertNotWriteProtectedPath,
+  canWritePath,
   isProtectedPathForListing,
 } from '../utils/fs-guard.js';
 import { detectBinaryContent } from '../utils/mime-guard.js';
@@ -349,7 +350,7 @@ router.get('/read', async (req, res, next) => {
       const end = endLine !== undefined ? endLine : lines.length;
       content = lines.slice(start, end).join('\n');
     }
-    res.json({ path: realPath, content });
+    res.json({ path: realPath, content, writable: canWritePath(realPath) });
   } catch (err) {
     next(err);
   }

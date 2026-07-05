@@ -327,48 +327,82 @@ router.post('/chat/stream', async (req, res, next) => {
     // This prevents the client from receiving the full result payload while
     // incremental content deltas are still in-flight, which can cause text
     // duplication or premature display of incomplete responses.
-    let resultBuffer = '';
-    let capturingResult = false;
+    let resultBlocks = [];
+    let carry = '';
+
+    const normalizeResultBlock = (block) => {
+      const lines = block.split('\n');
+      let replaced = false;
+      return lines
+        .map((line) => {
+          if (!replaced && line.startsWith('event:')) {
+            replaced = true;
+            return 'event: final-result';
+          }
+          return line;
+        })
+        .join('\n');
+    };
+
+    const classifySseBlock = (block) => {
+      const trimmedBlock = block.trim();
+      if (!trimmedBlock) return { type: 'ignore', block: '' };
+
+      let eventName = 'message';
+      for (const line of trimmedBlock.split(/\r?\n/)) {
+        if (line.startsWith('event:')) {
+          eventName = line.slice(6).trim() || 'message';
+          break;
+        }
+      }
+
+      return {
+        type: eventName === 'result' ? 'result' : 'forward',
+        block: trimmedBlock,
+      };
+    };
 
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
+        carry += decoder.decode(value, { stream: true });
 
-        // Parse the chunk line-by-line to detect event types.
-        // Lines that belong to `event: result` are buffered; everything else
-        // is forwarded immediately so content deltas reach the client without delay.
-        const lines = chunk.split('\n');
-        let nonResultChunk = '';
-        for (const line of lines) {
-          if (line.startsWith('event:')) {
-            const evt = line.slice(6).trim();
-            if (evt === 'result') {
-              capturingResult = true;
-              resultBuffer += line + '\n';
-            } else {
-              capturingResult = false;
-              nonResultChunk += line + '\n';
-            }
-          } else if (capturingResult) {
-            resultBuffer += line + '\n';
-          } else {
-            nonResultChunk += line + '\n';
+        const blocks = carry.split(/\r?\n\r?\n/);
+        carry = blocks.pop() || '';
+
+        for (const block of blocks) {
+          const classified = classifySseBlock(block);
+          if (classified.type === 'result') {
+            resultBlocks.push(classified.block);
+            continue;
+          }
+          if (classified.type === 'forward') {
+            res.write(classified.block + '\n\n');
+            if (typeof res.flush === 'function') res.flush();
           }
         }
+      }
 
-        if (nonResultChunk) {
-          res.write(nonResultChunk);
+      const tail = decoder.decode();
+      if (tail) carry += tail;
+
+      if (carry.trim()) {
+        const classified = classifySseBlock(carry);
+        if (classified.type === 'result') {
+          resultBlocks.push(classified.block);
+        } else if (classified.type === 'forward') {
+          res.write(classified.block + '\n\n');
           if (typeof res.flush === 'function') res.flush();
         }
       }
 
       // After upstream stream ends, forward the buffered result as
       // `event: final-result` so the client can definitively adopt it.
-      if (resultBuffer) {
-        const normalizedResult = resultBuffer.replace(/^event:.*$/m, 'event: final-result');
-        res.write(normalizedResult);
+      if (resultBlocks.length > 0) {
+        for (const resultBlock of resultBlocks) {
+          res.write(normalizeResultBlock(resultBlock) + '\n\n');
+        }
         if (typeof res.flush === 'function') res.flush();
       }
     } catch (streamErr) {

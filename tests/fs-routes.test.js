@@ -111,6 +111,7 @@ describe('FS Routes', () => {
       const readRes = await request(app).get('/api/fs/read').query({ path: filePath });
       expect(readRes.status).toBe(200);
       expect(readRes.body.content).toBe(content);
+      expect(readRes.body.writable).toBe(true);
     });
 
     test('reads a specific slice of lines when startLine and/or endLine are provided', async () => {
@@ -269,6 +270,12 @@ describe('FS Routes', () => {
     test('write blocks protected server.js path', async () => {
       const res = await request(app).post('/api/fs/write').send({ path: 'server.js', content: 'bad' });
       expect(res.status).toBe(403);
+    });
+
+    test('read marks protected write paths as read-only', async () => {
+      const res = await request(app).get('/api/fs/read').query({ path: 'server.js' });
+      expect(res.status).toBe(200);
+      expect(res.body.writable).toBe(false);
     });
 
     test('delete blocks protected package.json path', async () => {

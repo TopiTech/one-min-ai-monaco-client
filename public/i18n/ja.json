@@ -185,6 +185,8 @@
   "save_complete": "保存完了",
   "file_saved": "ファイルを保存しました",
   "file_save_failed": "ファイルの保存に失敗しました: {error}",
+  "file_read_only": "読み取り専用",
+  "file_read_only_save_blocked": "このファイルは読み取り専用のため保存できません",
   "chat_image_load_failed": "⚠️ 画像の読み込みに失敗しました",
   "chat_image_error": "⚠️ 画像ロードエラー",
   "chat_upload_failed": "アップロード失敗 ({name}): {error}",

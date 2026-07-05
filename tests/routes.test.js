@@ -86,6 +86,38 @@ describe('AI Routes Integration Tests', () => {
       // instead of the generic "Upstream API Error" placeholder.
       expect(response.body.details).toBe('Invalid prompt object');
     });
+
+    test('stream endpoint should buffer fragmented SSE result events and emit final-result once complete', async () => {
+      const encoder = new TextEncoder();
+      const chunks = [
+        'event: content\n',
+        'data: {"content":"Hel"}\n\n',
+        'event: result\n',
+        'data: {"aiRecord":{"aiRecordDetail":{"resultObject":"Hello"}}}',
+        '\n\n',
+        'data: [DONE]\n\n',
+      ];
+      callOneMin.mockResolvedValue({
+        ok: true,
+        headers: new Headers({ 'content-type': 'text/event-stream' }),
+        body: new ReadableStream({
+          start(controller) {
+            for (const chunk of chunks) {
+              controller.enqueue(encoder.encode(chunk));
+            }
+            controller.close();
+          },
+        }),
+      });
+
+      const response = await request(app).post('/api/chat/stream').send(testPayloads.chat);
+
+      expect(response.status).toBe(200);
+      expect(response.text).toContain('event: content');
+      expect(response.text).toContain('event: final-result');
+      expect(response.text).not.toContain('event: result\n');
+      expect(response.text).toContain('resultObject":"Hello"');
+    });
   });
 
   describe('POST /api/images/generate', () => {

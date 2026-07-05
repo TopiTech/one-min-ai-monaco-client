@@ -7,6 +7,7 @@
 
 import { api } from './api.js';
 import { t } from './i18n.js';
+import { toast } from './toast.js';
 
 /**
  * Create the editor tab manager.
@@ -25,6 +26,21 @@ import { t } from './i18n.js';
  */
 export function createEditorTabManager(editorState, editorManager, dom) {
   let _saveStatusTimer = null;
+
+  function isReadOnly(filePath) {
+    return Boolean(editorState.readOnlyFiles?.[filePath]);
+  }
+
+  function updateActiveFileUi(filePath) {
+    const isFileReadOnly = isReadOnly(filePath);
+    const fileName = filePath.replace(/\\/g, '/').split('/').pop();
+    dom.currentFileName.textContent = isFileReadOnly ? `${fileName} (${t('file_read_only')})` : fileName;
+    dom.currentFileName.title = isFileReadOnly ? `${filePath} (${t('file_read_only')})` : filePath;
+    dom.saveFileBtn.disabled = isFileReadOnly;
+    if (editorManager.instance) {
+      editorManager.instance.updateOptions({ readOnly: isFileReadOnly });
+    }
+  }
 
   function renderTabs() {
     const container = dom.editorTabsBar;
@@ -62,6 +78,7 @@ export function createEditorTabManager(editorState, editorManager, dom) {
   function resetEditorToBlank() {
     editorState.activeFilePath = null;
     if (editorManager.instance) {
+      editorManager.instance.updateOptions({ readOnly: false });
       editorManager.instance.setModel(monaco.editor.createModel('', 'plaintext'));
     }
     dom.currentFileName.textContent = t('no_file_selected');
@@ -79,9 +96,7 @@ export function createEditorTabManager(editorState, editorManager, dom) {
         if (editorManager.instance) {
           editorManager.instance.setModel(model);
           editorState.activeFilePath = filePath;
-          dom.currentFileName.textContent = filePath.replace(/\\/g, '/').split('/').pop();
-          dom.currentFileName.title = filePath;
-          dom.saveFileBtn.disabled = false;
+          updateActiveFileUi(filePath);
 
           document.querySelectorAll('.tree-node.file').forEach((x) => {
             x.classList.toggle('active', x.dataset.path === filePath);
@@ -164,6 +179,7 @@ export function createEditorTabManager(editorState, editorManager, dom) {
         const model = editorManager.getOrCreateModel(filePath, data.content);
         editorManager.instance.setModel(model);
         editorManager.markClean(filePath);
+        editorState.readOnlyFiles[filePath] = data.writable === false;
 
         if (!editorState.openTabs.includes(filePath)) {
           editorState.openTabs.push(filePath);
@@ -172,9 +188,7 @@ export function createEditorTabManager(editorState, editorManager, dom) {
         editorManager.disposeUnusedModels();
 
         editorState.activeFilePath = filePath;
-        dom.currentFileName.textContent = filePath.replace(/\\/g, '/').split('/').pop();
-        dom.currentFileName.title = filePath;
-        dom.saveFileBtn.disabled = false;
+        updateActiveFileUi(filePath);
 
         document.querySelectorAll('.tree-node.file').forEach((x) => {
           x.classList.toggle('active', x.dataset.path === filePath);
@@ -188,6 +202,10 @@ export function createEditorTabManager(editorState, editorManager, dom) {
 
   async function saveFile() {
     if (!editorState.activeFilePath || !editorManager.instance) return;
+    if (isReadOnly(editorState.activeFilePath)) {
+      toast.warning(t('file_read_only_save_blocked'));
+      return;
+    }
     const content = editorManager.instance.getValue();
     const setStatus = window.__bootstrapSetStatus;
     try {

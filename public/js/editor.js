@@ -34,6 +34,7 @@ export function createEditorState() {
     isInlineChatOpen: false,
     inlineChatDom: null,
     originalVersions: {},
+    readOnlyFiles: {},
   };
 }
 
@@ -182,7 +183,7 @@ export function createEditorManager(state) {
 
   function updateTheme() {
     if (_instance) {
-      _instance.updateOptions({ theme: getTheme() });
+      monaco.editor.setTheme(getTheme());
     }
   }
 
