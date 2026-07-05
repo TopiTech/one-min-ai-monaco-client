@@ -10,7 +10,7 @@ import {
   parseResponsePayload,
   normalizeOneMinRawResponse,
 } from '../utils/api-client.js';
-import { getChatModels, getCodeModels, getImageModels } from '../config/models.js';
+import { getChatModels, getCodeModels, getImageModels, fetchModels } from '../config/models.js';
 import { parseWebSearchParams, buildCodePayload } from '../utils/web-search.js';
 import logger from '../utils/logger.js';
 import fsPkg from 'fs/promises';
@@ -207,6 +207,32 @@ router.get('/models', (_req, res) => {
   res.json({ chatModels: getChatModels(), codeModels: getCodeModels(), imageModels: getImageModels() });
 });
 
+// H-7: Manual model refresh endpoint. Useful when the user wants to pick
+// up newly added 1min.ai models without waiting for the 30-minute timer.
+// We block concurrent refreshes with an in-process latch to avoid
+// hammering the upstream when several clients click at the same time.
+let _modelRefreshInFlight = null;
+router.post('/models/refresh', async (_req, res, next) => {
+  try {
+    if (_modelRefreshInFlight) {
+      await _modelRefreshInFlight;
+    } else {
+      _modelRefreshInFlight = fetchModels();
+      try {
+        await _modelRefreshInFlight;
+      } finally {
+        _modelRefreshInFlight = null;
+      }
+    }
+    res.json({
+      ok: true,
+      models: { chatModels: getChatModels(), codeModels: getCodeModels(), imageModels: getImageModels() },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/chat', async (req, res, next) => {
   try {
     const { error, payload } = parseChatRequest(req.body);
@@ -253,18 +279,6 @@ router.post('/chat/stream', async (req, res, next) => {
       timeout: serverConfig.apiStreamTimeoutMs,
     });
 
-    if (response.headers.get('content-type')?.includes('application/json')) {
-      // Non-streaming fallback (server didn't honor isStreaming).
-      const data = await response.json().catch(() => null);
-      if (isFailedResponse(data)) {
-        const err = new Error(`1min.ai chat failed: ${extractFailureMessage(data)}`);
-        err.status = 502;
-        err.payload = data;
-        throw err;
-      }
-      return res.json(data);
-    }
-
     if (!response.ok) {
       const errorPayload = await parseResponsePayload(response);
       const isDev = process.env.NODE_ENV === 'development';
@@ -274,6 +288,23 @@ router.post('/chat/stream', async (req, res, next) => {
           ? errorPayload?.error?.message || errorPayload?.message || 'Upstream API Error'
           : 'Upstream API Error',
       });
+    }
+
+    if (response.headers.get('content-type')?.includes('application/json')) {
+      // Non-streaming fallback (server didn't honor isStreaming).
+      const data = await response.json().catch(() => null);
+      if (isFailedResponse(data)) {
+        const err = new Error(`1min.ai chat failed: ${extractFailureMessage(data)}`);
+        err.status = 502;
+        err.payload = data;
+        throw err;
+      }
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.write(`event: result\ndata: ${JSON.stringify(data)}\n\n`);
+      res.write('data: [DONE]\n\n');
+      return res.end();
     }
 
     res.setHeader('Content-Type', 'text/event-stream');

@@ -134,11 +134,82 @@ export async function normalizeOneMinRawResponse(response) {
   const text = payload?.message ?? payload?.text ?? '';
   if (!text) return payload;
 
+  const sse = parseSseResponseText(text);
+  if (sse) return sse;
+
   return {
     ...payload,
     result: text,
     text,
   };
+}
+
+function parseSseResponseText(text) {
+  if (typeof text !== 'string' || !/^\s*(event:|data:)/m.test(text)) return null;
+
+  const chunks = [];
+  const resultPayloads = [];
+  let currentEvent = 'content';
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trimEnd();
+    if (!line) {
+      currentEvent = 'content';
+      continue;
+    }
+    if (line.startsWith(':')) continue;
+    if (line.startsWith('event:')) {
+      currentEvent = line.slice(6).trim() || 'content';
+      continue;
+    }
+    if (!line.startsWith('data:')) continue;
+
+    const dataStr = line.replace(/^data:\s*/, '').trim();
+    if (!dataStr || dataStr === '[DONE]') continue;
+
+    let data;
+    try {
+      data = JSON.parse(dataStr);
+    } catch {
+      chunks.push(dataStr);
+      continue;
+    }
+
+    if (currentEvent === 'error') {
+      const streamError = data?.error ?? data?.message ?? 'Stream error';
+      return { ...data, status: 'FAILED', error: streamError };
+    }
+
+    if (currentEvent === 'result') {
+      resultPayloads.push(data);
+      continue;
+    }
+
+    const content =
+      data?.content ||
+      data?.choices?.[0]?.delta?.content ||
+      data?.choices?.[0]?.message?.content ||
+      data?.message?.content ||
+      data?.delta?.content ||
+      data?.text;
+    if (content) chunks.push(content);
+  }
+
+  const resultPayload = resultPayloads.at(-1);
+  if (resultPayload) {
+    const extracted = extractTextFromOneMinResponse(resultPayload?.aiRecord || resultPayload);
+    return {
+      ...resultPayload,
+      ...(extracted ? { result: extracted, text: extracted } : {}),
+    };
+  }
+
+  if (chunks.length > 0) {
+    const result = chunks.join('');
+    return { result, text: result };
+  }
+
+  return null;
 }
 
 /**
@@ -165,15 +236,19 @@ export async function callOneMin(
   // effect (conversations, asset uploads) on transient network errors.
   const effectiveRetries = idempotent ? maxRetries : 0;
 
-  // 1min.ai's current endpoint documentation uses the `API-KEY` header.
-  // Keep the upstream auth surface minimal and avoid duplicating secrets in
-  // multiple header names that may be logged differently by proxies.
+  // 1min.ai's documentation lists the `API-KEY` header for some endpoints
+  // and `Authorization: Bearer <key>` at the top-level API intro. To remain
+  // resilient against documentation drift, we send BOTH headers when the
+  // caller does not explicitly provide either. The duplicated value is
+  // identical, so any proxy that inspects both will see the same auth.
   const baseHeaders = {
     'API-KEY': apiKey,
+    Authorization: `Bearer ${apiKey}`,
   };
-  // Don't let caller-provided headers clobber our auth header.
+  // Caller-provided headers take precedence over our defaults so that
+  // tests and other internal callers can override the auth surface
+  // (e.g. for staging environments or mock servers).
   for (const k of Object.keys(headers)) {
-    if (k.toLowerCase() === 'api-key') continue;
     baseHeaders[k] = headers[k];
   }
 

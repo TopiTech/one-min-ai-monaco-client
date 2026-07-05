@@ -69,6 +69,21 @@ describe('AI Routes Integration Tests', () => {
       expect(response.status).toBe(400);
       expect(response.body.error).toBe('prompt is required');
     });
+
+    test('stream endpoint should preserve upstream JSON error status instead of returning SSE 200', async () => {
+      callOneMin.mockResolvedValue({
+        ok: false,
+        status: 422,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: async () => JSON.stringify({ error: { message: 'Invalid prompt object' } }),
+      });
+
+      const response = await request(app).post('/api/chat/stream').send(testPayloads.chat);
+
+      expect(response.status).toBe(422);
+      expect(response.body.error).toBe('1min.ai API error: 422');
+      expect(response.body.details).toBe('Upstream API Error');
+    });
   });
 
   describe('POST /api/images/generate', () => {

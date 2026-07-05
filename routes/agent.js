@@ -1,6 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import { spawn } from 'child_process';
+import { StringDecoder } from 'string_decoder';
 import { executeCommand, checkCommandSafety } from '../services/command-runner.js';
 import { detectBinaryContent } from '../utils/mime-guard.js';
 import {
@@ -911,66 +912,76 @@ async function searchWithRg(dir, query, maxResults) {
     ];
 
     const child = spawn('rg', args);
-    let stdout = '';
-    let resultCount = 0;
-    child.stdout.on('data', (data) => {
-      stdout += data.toString();
-      // Early exit: count lines to avoid buffering large outputs in memory.
-      // rg outputs one result per line; stop accumulating once we have
-      // roughly enough lines (with a safety margin of 2x).
-      if (!resultCount) {
-        resultCount = (stdout.match(/\r?\n/g) || []).length;
+    // M-5: Parse lines as they arrive so we can stop early without
+    // buffering the full output. Each `data` chunk can contain multiple
+    // lines — we keep a small carry-over buffer for the trailing partial
+    // line. As soon as we collect `maxResults` accepted matches we kill
+    // the child process to free CPU and IO on large codebases.
+    const results = [];
+    let carry = '';
+    let stopped = false;
+    let sawError = false;
+    const decoder = new StringDecoder('utf-8');
+
+    function processLine(rawLine) {
+      if (results.length >= maxResults) return false;
+      if (!rawLine.trim()) return true;
+      const parts = rawLine.split(':');
+      if (parts.length < 3) return true;
+
+      let file;
+      let lineNumStr;
+      let content;
+
+      if (process.platform === 'win32' && parts[0].length === 1 && /^[a-zA-Z]$/.test(parts[0])) {
+        file = parts[0] + ':' + parts[1];
+        lineNumStr = parts[2];
+        content = parts.slice(3).join(':');
       } else {
-        resultCount += (data.toString().match(/\r?\n/g) || []).length;
+        file = parts[0];
+        lineNumStr = parts[1];
+        content = parts.slice(2).join(':');
       }
-      if (resultCount >= maxResults * 2) {
-        child.kill();
+
+      const lineNum = parseInt(lineNumStr, 10);
+      if (isNaN(lineNum)) return true;
+      try {
+        const resolvedFile = validatePath(file);
+        assertNotProtectedPath(resolvedFile);
+        results.push({ file: resolvedFile, line: lineNum, content: content.trim() });
+      } catch {
+        // Ignore matches in files outside allowed roots or protected paths
+      }
+      return results.length < maxResults;
+    }
+
+    child.stdout.on('data', (data) => {
+      if (stopped) return;
+      const text = carry + decoder.write(data);
+      const lines = text.split(/\r?\n/);
+      carry = lines.pop() || '';
+      for (const line of lines) {
+        const keepGoing = processLine(line);
+        if (!keepGoing) {
+          stopped = true;
+          child.kill();
+          return;
+        }
       }
     });
 
+    child.stdout.on('end', () => {
+      if (carry) processLine(carry);
+    });
+
     child.on('close', (code) => {
-      if (code !== 0 && code !== 1) {
+      // code 1 means "no matches" in ripgrep, which is a successful result.
+      if (code !== 0 && code !== 1 && !stopped) {
+        sawError = true;
+      }
+      if (sawError) {
         resolve(null);
         return;
-      }
-
-      const results = [];
-      const lines = stdout.split(/\r?\n/);
-      for (const line of lines) {
-        if (results.length >= maxResults) break;
-        if (!line.trim()) continue;
-
-        const parts = line.split(':');
-        if (parts.length >= 3) {
-          let file;
-          let lineNumStr;
-          let content;
-
-          if (process.platform === 'win32' && parts[0].length === 1 && /^[a-zA-Z]$/.test(parts[0])) {
-            file = parts[0] + ':' + parts[1];
-            lineNumStr = parts[2];
-            content = parts.slice(3).join(':');
-          } else {
-            file = parts[0];
-            lineNumStr = parts[1];
-            content = parts.slice(2).join(':');
-          }
-
-          const lineNum = parseInt(lineNumStr, 10);
-          if (!isNaN(lineNum)) {
-            try {
-              const resolvedFile = validatePath(file);
-              assertNotProtectedPath(resolvedFile);
-              results.push({
-                file: resolvedFile,
-                line: lineNum,
-                content: content.trim(),
-              });
-            } catch {
-              // Ignore matches in files outside allowed roots or protected paths
-            }
-          }
-        }
       }
       resolve(results);
     });

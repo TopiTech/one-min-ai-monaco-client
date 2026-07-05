@@ -100,7 +100,7 @@ button {
   gap: 8px;
 }
 
-button:hover {
+button:hover:not(:disabled):not(.is-disabled) {
   transform: translateY(-2px);
   box-shadow:
     0 12px 24px var(--accent-glow),
@@ -108,8 +108,18 @@ button:hover {
   filter: brightness(1.1);
 }
 
-button:active {
+button:active:not(:disabled):not(.is-disabled) {
   transform: translateY(0);
+}
+
+button:disabled,
+button.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+  filter: grayscale(0.5) brightness(0.8) !important;
+  pointer-events: none;
 }
 
 button.ghost {
@@ -222,24 +232,38 @@ button.ghost:hover {
 /* Skeleton loading animations */
 @keyframes skeleton-shimmer {
   0% {
-    background-position: -200% 0;
-  }
-
-  100% {
     background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
   }
 }
 
 .skeleton {
   background: linear-gradient(
-    90deg,
-    var(--glass-bg, rgba(255, 255, 255, 0.1)) 25%,
+    110deg,
+    rgba(255, 255, 255, 0.04) 30%,
+    rgba(255, 255, 255, 0.12) 45%,
     rgba(255, 255, 255, 0.2) 50%,
-    var(--glass-bg, rgba(255, 255, 255, 0.1)) 75%
+    rgba(255, 255, 255, 0.12) 55%,
+    rgba(255, 255, 255, 0.04) 70%
   );
   background-size: 200% 100%;
-  animation: skeleton-shimmer 1.5s ease-in-out infinite;
-  border-radius: 6px;
+  animation: skeleton-shimmer 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+:root[data-theme='light'] .skeleton {
+  background: linear-gradient(
+    110deg,
+    rgba(0, 0, 0, 0.03) 30%,
+    rgba(0, 0, 0, 0.06) 45%,
+    rgba(0, 0, 0, 0.1) 50%,
+    rgba(0, 0, 0, 0.06) 55%,
+    rgba(0, 0, 0, 0.03) 70%
+  );
+  border: 1px solid rgba(0, 0, 0, 0.02);
 }
 
 .skeleton-line {

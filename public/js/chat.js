@@ -6,7 +6,7 @@
 import { api, assetUrl } from './api.js';
 import { renderMarkdownSafely } from './utils.js';
 import { t } from './i18n.js';
-import { extractTextFromOneMinResponse } from './one-min-response.js';
+import { findTextCandidate } from './one-min-response.js';
 import { toast } from './toast.js';
 
 const MAX_MESSAGES = 200;
@@ -41,16 +41,38 @@ export function createChatState() {
 export function createChatManager(dom, state) {
   const MAX_CHAT_LENGTH = 50000;
 
+  function updateSendButton() {
+    const prompt = dom.chatPrompt ? dom.chatPrompt.value.trim() : '';
+    const hasAttachments = state.chat && state.chat.attachments && state.chat.attachments.length > 0;
+    if (dom.sendChatBtn) {
+      dom.sendChatBtn.disabled = !prompt && !hasAttachments;
+    }
+  }
+
   function initCharCounter() {
     const textarea = dom.chatPrompt;
     const counter = document.getElementById('chatCharCounter');
-    if (!textarea || !counter) return;
+    if (!textarea) return;
+
+    const adjustHeight = () => {
+      textarea.style.height = 'auto';
+      const minHeight = 90;
+      const maxHeight = 240;
+      const scrollHeight = textarea.scrollHeight;
+      const newHeight = Math.min(Math.max(scrollHeight, minHeight), maxHeight);
+      textarea.style.height = `${newHeight}px`;
+      textarea.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden';
+    };
 
     const update = () => {
       const len = textarea.value.length;
-      counter.textContent = `${len.toLocaleString()} / ${MAX_CHAT_LENGTH.toLocaleString()}`;
-      counter.classList.toggle('warn', len > MAX_CHAT_LENGTH * 0.9);
-      counter.classList.toggle('danger', len > MAX_CHAT_LENGTH * 0.95);
+      if (counter) {
+        counter.textContent = `${len.toLocaleString()} / ${MAX_CHAT_LENGTH.toLocaleString()}`;
+        counter.classList.toggle('warn', len > MAX_CHAT_LENGTH * 0.9);
+        counter.classList.toggle('danger', len > MAX_CHAT_LENGTH * 0.95);
+      }
+      adjustHeight();
+      updateSendButton();
     };
 
     textarea.addEventListener('input', update);
@@ -204,6 +226,8 @@ export function createChatManager(dom, state) {
         updateAttachmentPreview();
       };
     });
+
+    updateSendButton();
   }
 
   async function uploadAttachments() {
@@ -289,6 +313,10 @@ export function createChatManager(dom, state) {
     const imagePreviews = attachments.map((att) => ({ url: att.previewUrl }));
     addMsg('user', prompt || t('chat_image_only'), imagePreviews);
     dom.chatPrompt.value = '';
+    dom.chatPrompt.style.height = '';
+    if (typeof dom.chatPrompt.dispatchEvent === 'function') {
+      dom.chatPrompt.dispatchEvent(new Event('input'));
+    }
 
     const aiMsgDiv = document.createElement('div');
     aiMsgDiv.className = 'msg ai streaming';
@@ -415,6 +443,11 @@ export function createChatManager(dom, state) {
             buffer = lines.pop();
 
             for (const line of lines) {
+              if (!line.trim()) {
+                currentEvent = 'content';
+                continue;
+              }
+
               if (line.startsWith('event: ')) {
                 currentEvent = line.slice(7).trim();
                 continue;
@@ -444,8 +477,13 @@ export function createChatManager(dom, state) {
                 }
 
                 if (currentEvent === 'result') {
-                  const text = extractTextFromOneMinResponse(data?.aiRecord || data);
-                  if (text && !fullText) {
+                  // The `result` event can arrive before, during, or after
+                  // incremental `content` chunks. If we've already accumulated
+                  // text from content events, only adopt the result if it
+                  // would extend what we have — otherwise leave fullText
+                  // untouched to avoid duplicate rendering.
+                  const text = findTextCandidate(data?.aiRecord || data);
+                  if (text && text.length > fullText.length) {
                     fullText = text;
                     renderMarkdownSafely(aiContentDiv, fullText);
                   }
@@ -458,7 +496,8 @@ export function createChatManager(dom, state) {
                   data?.choices?.[0]?.message?.content ||
                   data?.message?.content ||
                   data?.delta?.content ||
-                  data?.text;
+                  data?.text ||
+                  findTextCandidate(data?.aiRecord || data);
                 if (content) {
                   fullText += content;
                   scheduleRender();

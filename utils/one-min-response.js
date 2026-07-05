@@ -1,3 +1,14 @@
+const PRIMARY_TEXT_CANDIDATES = [
+  (data) => data?.aiRecord?.aiRecordDetail?.resultObject,
+  (data) => data?.aiRecord?.aiRecordDetail?.result,
+  (data) => data?.aiRecord?.resultObject,
+  (data) => data?.aiRecord?.output,
+  (data) => data?.aiRecord?.result,
+  (data) => data?.aiRecordDetail?.resultObject,
+  (data) => data?.aiRecordDetail?.result,
+  (data) => data?.resultObject,
+];
+
 const DIRECT_TEXT_CANDIDATES = [
   (data) => (typeof data === 'string' ? data : undefined),
   (data) => data?.content,
@@ -6,9 +17,11 @@ const DIRECT_TEXT_CANDIDATES = [
   (data) => data?.choices?.[0]?.delta?.content,
   (data) => data?.choices?.[0]?.message?.content,
   (data) => data?.message?.content,
-  (data) => data?.aiRecord?.aiRecordDetail?.result,
-  (data) => data?.aiRecord?.result,
   (data) => data?.result,
+  (data) => data?.answer,
+  (data) => data?.output,
+  (data) => data?.completion,
+  (data) => data?.response,
   (data) => data?.message,
 ];
 
@@ -19,7 +32,11 @@ const STRUCTURED_TEXT_CANDIDATES = [
   (data) => data?.resultObject,
 ];
 
-function normalizeTextValue(value, seen = new WeakSet()) {
+function isEmptyPlainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0;
+}
+
+function normalizeTextValue(value, seen = new WeakSet(), { stringifyObjects = false } = {}) {
   if (value === undefined) return undefined;
   if (value === null) return 'null';
   if (typeof value === 'string') {
@@ -29,14 +46,16 @@ function normalizeTextValue(value, seen = new WeakSet()) {
     return String(value);
   }
   if (Array.isArray(value)) {
-    const parts = value.map((item) => normalizeTextValue(item, seen)).filter(Boolean);
+    const parts = value.map((item) => normalizeTextValue(item, seen, { stringifyObjects })).filter(Boolean);
     return parts.length > 0 ? parts.join('\n') : undefined;
   }
   if (typeof value === 'object') {
+    if (isEmptyPlainObject(value)) return undefined;
     if (seen.has(value)) return undefined;
     seen.add(value);
     const nested = findTextCandidate(value, seen);
     if (nested) return nested;
+    if (!stringifyObjects) return undefined;
     try {
       return JSON.stringify(value, null, 2);
     } catch {
@@ -47,6 +66,11 @@ function normalizeTextValue(value, seen = new WeakSet()) {
 }
 
 export function findTextCandidate(data, seen = new WeakSet()) {
+  for (const getter of PRIMARY_TEXT_CANDIDATES) {
+    const text = normalizeTextValue(getter(data), seen, { stringifyObjects: true });
+    if (text) return text;
+  }
+
   for (const getter of DIRECT_TEXT_CANDIDATES) {
     const text = normalizeTextValue(getter(data), seen);
     if (text) return text;

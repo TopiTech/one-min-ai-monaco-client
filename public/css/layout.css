@@ -723,3 +723,21 @@
   align-items: center;
   justify-content: center;
 }
+
+/* Mobile-only settings box visibility */
+.mobile-only-settings-box {
+  display: none !important;
+}
+
+@media (max-width: 1200px) {
+  .mobile-only-settings-box {
+    display: block !important;
+  }
+
+  .mobile-settings-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
+  }
+}

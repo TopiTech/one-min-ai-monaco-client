@@ -4,6 +4,31 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#030712" />
+    <meta
+      name="description"
+      content="1min.ai Monaco Client — Monaco Editor + custom UI + 1min.ai API を組み合わせた、ローカル専用AIクライアント。"
+    />
+    <meta name="application-name" content="1min.ai Monaco Client" />
+    <meta name="generator" content="1min.ai Monaco Client" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%233b82f6'/%3E%3Cpath d='M7 8h10M7 12h7M7 16h4' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
+    <link
+      rel="alternate icon"
+      href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+    />
+    <!-- Open Graph / Twitter Card: localhost専用なので外部共有は限定的だが、
+       devtoolsやプレビュー時のメタ漏れを防ぐため明示的に設定する。 -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="1min.ai Monaco Client" />
+    <meta property="og:description" content="Monaco Editorベースのローカル専用AIクライアント" />
+    <meta property="og:locale" content="ja_JP" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="1min.ai Monaco Client" />
+    <meta name="twitter:description" content="Monaco Editorベースのローカル専用AIクライアント" />
     <title>1min.ai Monaco Client</title>
     <!-- L-12: preconnect to Google Fonts to reduce FOUC and
        shorten the waterfall when loading the Plus Jakarta Sans webfont.
@@ -1191,6 +1216,60 @@
                 ASSET_PROXY_TIMEOUT_MS: <code>30000</code><br />
                 ASSET_PROXY_MAX_SIZE: <code>50mb</code>
               </p>
+            </div>
+            <!-- Mobile settings replicas (visible only on mobile/tablet viewports) -->
+            <div class="env-defaults-box mobile-only-settings-box">
+              <h3 class="h3-white" data-i18n="mobile_settings_title">クイック設定 (モバイル用)</h3>
+              <div class="mobile-settings-grid">
+                <button type="button" id="mobileThemeToggle" class="theme-toggle u-w-full">
+                  <svg
+                    id="mobileThemeIconDark"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                  </svg>
+                  <svg
+                    id="mobileThemeIconLight"
+                    class="theme-icon is-hidden"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                  </svg>
+                  <span id="mobileThemeLabel" data-i18n="theme_dark">ダークモード</span>
+                </button>
+
+                <div class="credit-save-box">
+                  <label class="check check--boxed">
+                    <input type="checkbox" id="mobileCreditSavingToggle" />
+                    <span class="credit-save-label" data-i18n="credit_save_mode">クレジット節約モード</span>
+                  </label>
+                </div>
+
+                <div class="perf-mode-box">
+                  <label class="check check--boxed">
+                    <input type="checkbox" id="mobilePerfModeToggle" />
+                    <span class="perf-mode-label" data-i18n="perf_mode"
+                      >パフォーマンスモード (アニメーションOFF)</span
+                    >
+                  </label>
+                </div>
+              </div>
             </div>
             <div class="settings-danger-zone" aria-labelledby="localDataHeading">
               <h3 id="localDataHeading" class="h3-white" data-i18n="local_data_title">ローカル保存データ</h3>

@@ -336,13 +336,6 @@ export function createApp(options = {}) {
     authToken: localAuthToken,
   });
 
-  app.post('/api/assets/upload', protectedApiAuth, (req, res, next) => {
-    upload.single('asset')(req, res, (err) => {
-      if (err) return next(mapMulterError(err));
-      handleAssetUpload(req, res, next);
-    });
-  });
-
   // Apply express.json() after the asset upload route (which uses multer)
   // so it never consumes multipart body streams (Q-9).
   app.use(express.json({ limit: serverConfig.maxJsonBodySize }));
@@ -350,6 +343,18 @@ export function createApp(options = {}) {
   // B-5: Single auth layer at /api level. Sub-routes are mounted inside one protected router
   // to avoid double invocation of protectedApiAuth.
   const protectedRouter = express.Router();
+
+  // Multer-based asset upload lives inside the protected router so it goes
+  // through the single auth layer below (avoids double-invocation of
+  // protectedApiAuth and the duplicated timing-attack surface that came
+  // with it).
+  protectedRouter.post('/assets/upload', (req, res, next) => {
+    upload.single('asset')(req, res, (err) => {
+      if (err) return next(mapMulterError(err));
+      handleAssetUpload(req, res, next);
+    });
+  });
+
   protectedRouter.get('/assets/proxy', assetProxyHandler);
 
   protectedRouter.use('/', aiRoutes);
@@ -460,6 +465,17 @@ if (process.env.NODE_ENV !== 'test') {
   const codeRunCleanupInterval = startPeriodicCleanup(CODE_RUN_TMP_DIR);
   cleanupInterval.unref();
   codeRunCleanupInterval.unref();
+  // L-2: Periodic log pruning to prevent unbounded log directory growth.
+  // Runs once a day and unrefs the timer so it never blocks process exit.
+  const logPruneInterval = setInterval(
+    () => {
+      logger.pruneOldLogs(30).then((deleted) => {
+        if (deleted > 0) logger.info(`Pruned ${deleted} old log file(s)`);
+      });
+    },
+    24 * 60 * 60 * 1000,
+  );
+  logPruneInterval.unref();
   Promise.all([initModels(), initAgentState()])
     .then(() => {
       const server = createApp().listen(serverConfig.port, '127.0.0.1', () => {

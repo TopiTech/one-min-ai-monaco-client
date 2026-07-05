@@ -104,7 +104,7 @@ function initChatSettings() {
 
 function initPerformanceModeSettings() {
   const perfToggle = document.getElementById('perfModeToggle');
-  if (!perfToggle) return;
+  const mobilePerfToggle = document.getElementById('mobilePerfModeToggle');
 
   const updatePerfMode = (isEnabled) => {
     document.documentElement.classList.toggle('perf-mode', isEnabled);
@@ -120,13 +120,19 @@ function initPerformanceModeSettings() {
     }
   }
 
-  perfToggle.checked = isEnabled;
+  if (perfToggle) perfToggle.checked = isEnabled;
+  if (mobilePerfToggle) mobilePerfToggle.checked = isEnabled;
   updatePerfMode(isEnabled);
 
-  perfToggle.addEventListener('change', () => {
-    localStorage.setItem('monaco_client_perf_mode', perfToggle.checked);
-    updatePerfMode(perfToggle.checked);
-  });
+  const handleChange = (checked) => {
+    localStorage.setItem('monaco_client_perf_mode', checked);
+    if (perfToggle) perfToggle.checked = checked;
+    if (mobilePerfToggle) mobilePerfToggle.checked = checked;
+    updatePerfMode(checked);
+  };
+
+  perfToggle?.addEventListener('change', () => handleChange(perfToggle.checked));
+  mobilePerfToggle?.addEventListener('change', () => handleChange(mobilePerfToggle.checked));
 }
 
 function initClearLocalData() {

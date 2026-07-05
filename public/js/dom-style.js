@@ -92,3 +92,28 @@ export function clearInjectedStyles() {
     styleEl.textContent = '';
   }
 }
+
+/**
+ * Inject a static block of CSS exactly once, bypassing the per-second
+ * rate limit that protects `injectStyle`. Use this for module-load-time
+ * styles (e.g. toast notifications) that need to be present on every
+ * page render and are not subject to user-triggered rate amplification.
+ *
+ * The block is keyed by `id` so subsequent calls with the same id are
+ * a no-op. The id should be unique to your component.
+ *
+ * @param {string} id - Stable identifier (e.g. "toast-styles").
+ * @param {string} css - The full CSS text to inject.
+ */
+export function injectStaticStyles(id, css) {
+  if (typeof id !== 'string' || !id || typeof css !== 'string' || !css.trim()) return;
+  if (css.length > MAX_STYLE_CONTENT_LENGTH) return;
+
+  const el = ensureStyleElement();
+  if (el.__staticIds && el.__staticIds.has(id)) return;
+
+  // Append the static block after dynamic rules so rule order is preserved.
+  el.textContent = (el.textContent || '') + '\n' + css;
+  if (!el.__staticIds) el.__staticIds = new Set();
+  el.__staticIds.add(id);
+}

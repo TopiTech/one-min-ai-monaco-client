@@ -10,6 +10,43 @@ import { toast } from './toast.js';
 
 const MAX_CARDS = 50;
 
+// M-3: Lazily hydrate <img> elements as they scroll into view. We set
+// `data-src` when building the card and let the observer promote it to
+// `src` only when the card is within ~200px of the viewport. The observer
+// auto-disconnects after hydration so we don't pay a per-frame cost on
+// long-lived galleries.
+let _lazyImageObserver = null;
+function getLazyImageObserver() {
+  if (_lazyImageObserver) return _lazyImageObserver;
+  if (typeof IntersectionObserver === 'undefined') {
+    // Fallback: no-op observer that immediately hydrates every image.
+    return {
+      observe: (el) => {
+        if (el.dataset.src) {
+          el.src = el.dataset.src;
+          delete el.dataset.src;
+        }
+      },
+    };
+  }
+  _lazyImageObserver = new IntersectionObserver(
+    (entries, obs) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const el = entry.target;
+        if (el.dataset && el.dataset.src) {
+          el.src = el.dataset.src;
+          delete el.dataset.src;
+        }
+        obs.unobserve(el);
+      }
+    },
+    { rootMargin: '200px 0px', threshold: 0.01 },
+  );
+  return _lazyImageObserver;
+}
+const lazyImageObserver = getLazyImageObserver();
+
 export function createImageState() {
   return {};
 }
@@ -120,8 +157,16 @@ export function createImageManager(dom) {
         card.appendChild(slider);
       } else {
         const imgEl = document.createElement('img');
-        imgEl.src = url;
+        // M-3: Defer the actual fetch until the card scrolls near the
+        // viewport. We store the URL on data-src and let the
+        // IntersectionObserver below swap it onto .src. Saves bandwidth
+        // and decode time when a single generate call returns 10+ URLs
+        // but the user only looks at the first one.
+        imgEl.dataset.src = url;
         imgEl.alt = t('img_generated');
+        imgEl.loading = 'lazy';
+        imgEl.decoding = 'async';
+        imgEl.classList.add('lazy-image');
         imgEl.onerror = function () {
           this.classList.add('is-error-hidden');
           const errorSpan = document.createElement('span');
@@ -129,6 +174,7 @@ export function createImageManager(dom) {
           errorSpan.textContent = t('img_load_failed');
           this.after(errorSpan);
         };
+        lazyImageObserver.observe(imgEl);
         card.appendChild(imgEl);
       }
 

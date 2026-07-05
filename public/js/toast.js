@@ -4,16 +4,14 @@
  */
 
 import { t } from './i18n.js';
+import { injectStaticStyles } from './dom-style.js';
 
 const toastContainer = document.createElement('div');
 toastContainer.id = 'toast-container';
 toastContainer.setAttribute('role', 'alert');
 document.body.appendChild(toastContainer);
 
-const toastStyles = document.createElement('style');
-const cspNonce = document.querySelector('meta[name="csp-nonce"]')?.content;
-if (cspNonce) toastStyles.nonce = cspNonce;
-toastStyles.textContent = `
+const TOAST_CSS = `
   #toast-container {
     position: fixed;
     top: 20px;
@@ -148,7 +146,10 @@ toastStyles.textContent = `
     }
   }
 `;
-document.head.appendChild(toastStyles);
+
+// Inject the stylesheet via dom-style so it picks up the per-request CSP
+// nonce and we get a single source of truth for dynamic CSS in the app.
+injectStaticStyles('toast-styles', TOAST_CSS);
 
 const ICONS = {
   success: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`,

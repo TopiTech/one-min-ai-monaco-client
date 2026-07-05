@@ -52,6 +52,29 @@ body {
   position: relative;
 }
 
+/* Theme transitions */
+body,
+.sidebar,
+.topbar,
+.status,
+.log,
+.msg,
+.tree-node,
+.model-picker-dropdown {
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease,
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.card {
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
 .liquid-bg-container {
   position: absolute;
   top: 0;
@@ -65,6 +88,13 @@ body {
 
 :root.perf-mode .liquid-bg-container {
   display: none !important;
+}
+
+/* Performance Mode: Disable all transitions and animations */
+:root.perf-mode,
+:root.perf-mode * {
+  transition: none !important;
+  animation: none !important;
 }
 
 .perf-mode-box {

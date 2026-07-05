@@ -51,6 +51,7 @@
     "moduleNameMapper": {
       "^(\\.{1,2}/.*)\\.js$": "$1"
     },
+    "maxWorkers": 2,
     "coverageThreshold": {
       "global": {
         "branches": 60,

@@ -83,6 +83,31 @@ describe('api-client', () => {
       expect(extractText(data)).toBe(JSON.stringify({ key: 'value' }, null, 2));
     });
 
+    test('should prefer chat resultObject over generic lifecycle message', () => {
+      const data = {
+        message: 'Stream completed',
+        aiRecord: {
+          aiRecordDetail: {
+            responseObject: {},
+            resultObject: ['It looks like you are testing the system.'],
+          },
+        },
+      };
+      expect(extractText(data)).toBe('It looks like you are testing the system.');
+    });
+
+    test('should ignore empty responseObject and extract nested chat output', () => {
+      const data = {
+        uuid: 'record-id',
+        responseObject: {},
+        aiRecordDetail: {
+          responseObject: {},
+          resultObject: ['Assistant answer'],
+        },
+      };
+      expect(extractText(data)).toBe('Assistant answer');
+    });
+
     test('should return JSON stringified data when no candidates match', () => {
       const data = { unknown: 'structure' };
       expect(extractText(data)).toBe(JSON.stringify(data, null, 2));

@@ -51,7 +51,7 @@ function textResponse(text, status = 200) {
 }
 
 describe('api-client callOneMin', () => {
-  test('sends only API-KEY auth header to upstream', async () => {
+  test('sends API-KEY and Authorization Bearer auth headers to upstream', async () => {
     mockFetch([jsonResponse({ result: 'ok' })]);
     const { callOneMin } = await import('../utils/api-client.js');
 
@@ -63,7 +63,25 @@ describe('api-client callOneMin', () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     const [, options] = globalThis.fetch.mock.calls[0];
     expect(options.headers['API-KEY']).toBe('test-api-key');
-    expect(options.headers.Authorization).toBeUndefined();
+    // The 1min.ai top-level intro documents Authorization: Bearer, while
+    // individual endpoint docs use API-KEY. We send both for resilience.
+    expect(options.headers.Authorization).toBe('Bearer test-api-key');
+  });
+
+  test('caller-supplied Authorization header overrides default', async () => {
+    mockFetch([jsonResponse({ result: 'ok' })]);
+    const { callOneMin } = await import('../utils/api-client.js');
+
+    await callOneMin('/api/chat-with-ai', {
+      method: 'POST',
+      body: '{}',
+      headers: { Authorization: 'Bearer custom-token' },
+    });
+
+    const [, options] = globalThis.fetch.mock.calls[0];
+    expect(options.headers.Authorization).toBe('Bearer custom-token');
+    // API-KEY still defaults to the configured env var.
+    expect(options.headers['API-KEY']).toBe('test-api-key');
   });
 
   // ----------------------------------------------------------------
@@ -202,6 +220,41 @@ describe('api-client callOneMin', () => {
       text: 'plain text response',
     });
     expect(extractText(normalized)).toBe('plain text response');
+  });
+
+  test('normalizes OpenAI-compatible SSE chunks into concatenated text', async () => {
+    const fakeResponse = {
+      ok: true,
+      status: 200,
+      headers: new Map([['content-type', 'text/event-stream']]),
+      text: async () =>
+        'data: {"choices":[{"delta":{"content":"hello "}}]}\n\n' +
+        'data: {"choices":[{"delta":{"content":"world"}}]}\n\n' +
+        'data: [DONE]\n\n',
+    };
+    const { normalizeOneMinRawResponse, extractText } = await import('../utils/api-client.js');
+
+    const normalized = await normalizeOneMinRawResponse(fakeResponse);
+    expect(normalized).toEqual({ result: 'hello world', text: 'hello world' });
+    expect(extractText(normalized)).toBe('hello world');
+  });
+
+  test('normalizes structured SSE result event using 1min.ai resultObject', async () => {
+    const fakeResponse = {
+      ok: true,
+      status: 200,
+      headers: new Map([['content-type', 'text/event-stream']]),
+      text: async () =>
+        'event: result\n' +
+        'data: {"message":"Stream completed","aiRecord":{"aiRecordDetail":{"responseObject":{},"resultObject":["final answer"]}}}\n\n' +
+        'data: [DONE]\n\n',
+    };
+    const { normalizeOneMinRawResponse, extractText } = await import('../utils/api-client.js');
+
+    const normalized = await normalizeOneMinRawResponse(fakeResponse);
+    expect(normalized.text).toBe('final answer');
+    expect(normalized.result).toBe('final answer');
+    expect(extractText(normalized)).toBe('final answer');
   });
 
   // ----------------------------------------------------------------

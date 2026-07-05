@@ -137,6 +137,40 @@ class Logger {
     });
   }
 
+  /**
+   * L-2: Remove log files older than `maxAgeDays` from the log directory.
+   * Only files matching the configured prefix and `.log` extension are
+   * considered; any other files are left untouched. Returns the count of
+   * deleted files. Safe to call periodically (e.g. once per day).
+   */
+  async pruneOldLogs(maxAgeDays = 30) {
+    if (!this.logToFile || !Number.isFinite(maxAgeDays) || maxAgeDays < 1) return 0;
+    try {
+      const files = await fs.promises.readdir(this.logDir);
+      const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+      let deleted = 0;
+      for (const name of files) {
+        if (!name.startsWith(this.logFilePrefix) || !name.endsWith('.log')) continue;
+        const fullPath = path.join(this.logDir, name);
+        try {
+          const stat = await fs.promises.stat(fullPath);
+          if (stat.mtimeMs < cutoff) {
+            await fs.promises.unlink(fullPath);
+            deleted++;
+          }
+        } catch {
+          // Ignore stat/unlink errors for individual files.
+        }
+      }
+      return deleted;
+    } catch (err) {
+      if (err.code !== 'ENOENT') {
+        console.error(`Failed to prune old log files: ${err.message}`);
+      }
+      return 0;
+    }
+  }
+
   _log(level, message, meta = {}) {
     if (LOG_LEVELS[level] > this.level) return;
 

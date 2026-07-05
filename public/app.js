@@ -122,10 +122,30 @@ const state = {
 };
 
 // Theme toggle handler
+function syncMobileThemeUI() {
+  const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+  const mobileLabel = $('mobileThemeLabel');
+  const darkIcon = $('mobileThemeIconDark');
+  const lightIcon = $('mobileThemeIconLight');
+  if (mobileLabel) {
+    mobileLabel.textContent = currentTheme === 'light' ? t('theme_light') : t('theme_dark');
+  }
+  if (darkIcon && lightIcon) {
+    if (currentTheme === 'light') {
+      darkIcon.classList.add('is-hidden');
+      lightIcon.classList.remove('is-hidden');
+    } else {
+      darkIcon.classList.remove('is-hidden');
+      lightIcon.classList.add('is-hidden');
+    }
+  }
+}
+
 function toggleTheme() {
   toggleThemeFn();
   editorManager.updateTheme();
   diffDialog.syncTheme();
+  syncMobileThemeUI();
 }
 
 // Initialize theme and settings on DOM ready
@@ -135,6 +155,8 @@ if (document.readyState === 'loading') {
     () => {
       initTheme();
       $('themeToggle')?.addEventListener('click', toggleTheme);
+      $('mobileThemeToggle')?.addEventListener('click', toggleTheme);
+      syncMobileThemeUI();
       bootstrapSettings();
     },
     { once: true },
@@ -142,6 +164,8 @@ if (document.readyState === 'loading') {
 } else {
   initTheme();
   $('themeToggle')?.addEventListener('click', toggleTheme);
+  $('mobileThemeToggle')?.addEventListener('click', toggleTheme);
+  syncMobileThemeUI();
   bootstrapSettings();
 }
 
@@ -738,6 +762,8 @@ dom.startAgentBtn.onclick = async () => {
   // Clear input so user can type feedback immediately
   dom.agentInstruction.value = '';
   dom.agentInstruction.placeholder = t('agent_instruction_placeholder');
+  dom.agentInstruction.style.height = '';
+  dom.agentInstruction.dispatchEvent(new Event('input'));
 
   state.agent.active = true;
   dom.startAgentBtn.classList.add('is-hidden');
@@ -809,6 +835,8 @@ dom.sendAgentFeedbackBtn.onclick = () => {
   const feedback = dom.agentInstruction.value.trim();
   if (!feedback) return;
   dom.agentInstruction.value = '';
+  dom.agentInstruction.style.height = '';
+  dom.agentInstruction.dispatchEvent(new Event('input'));
 
   addAgentTimelineStep('user', t('agent_feedback_label'), feedback);
 
@@ -1171,17 +1199,24 @@ const STORAGE_KEY_CREDIT_SAVING = 'monaco_client_credit_saving';
 
 function initCreditSavingMode() {
   const toggle = $('creditSavingToggle');
-  if (!toggle) return;
+  const mobileToggle = $('mobileCreditSavingToggle');
 
   const saved = localStorage.getItem(STORAGE_KEY_CREDIT_SAVING);
   state.creditSaving = saved === 'true';
-  toggle.checked = state.creditSaving;
 
-  toggle.onchange = (e) => {
+  if (toggle) toggle.checked = state.creditSaving;
+  if (mobileToggle) mobileToggle.checked = state.creditSaving;
+
+  const handleChange = (e) => {
     state.creditSaving = e.target.checked;
     localStorage.setItem(STORAGE_KEY_CREDIT_SAVING, state.creditSaving);
+    if (toggle) toggle.checked = state.creditSaving;
+    if (mobileToggle) mobileToggle.checked = state.creditSaving;
     applyCreditSavingMode();
   };
+
+  if (toggle) toggle.onchange = handleChange;
+  if (mobileToggle) mobileToggle.onchange = handleChange;
 
   applyCreditSavingMode();
 }
@@ -1279,9 +1314,42 @@ function applyCreditSavingMode() {
   }
 }
 
+function initAgentInstructionControl() {
+  const textarea = dom.agentInstruction;
+  const startBtn = dom.startAgentBtn;
+  const feedbackBtn = dom.sendAgentFeedbackBtn;
+  if (!textarea) return;
+
+  const adjustHeight = () => {
+    textarea.style.height = 'auto';
+    const minHeight = 60;
+    const maxHeight = 160;
+    const scrollHeight = textarea.scrollHeight;
+    const newHeight = Math.min(Math.max(scrollHeight, minHeight), maxHeight);
+    textarea.style.height = `${newHeight}px`;
+    textarea.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden';
+  };
+
+  const updateButtons = () => {
+    const text = textarea.value.trim();
+    const disabled = !text;
+    if (startBtn) startBtn.disabled = disabled;
+    if (feedbackBtn) feedbackBtn.disabled = disabled;
+  };
+
+  textarea.addEventListener('input', () => {
+    adjustHeight();
+    updateButtons();
+  });
+
+  adjustHeight();
+  updateButtons();
+}
+
 initWorkspace();
 initFolderPicker();
 initCreditSavingMode();
+initAgentInstructionControl();
 
 // Listen to custom events from agent-core.js to decoupled editor UI
 document.addEventListener('editor:open-file', (e) => {

@@ -33,6 +33,8 @@ export async function initModels() {
   setInterval(fetchModels, 30 * 60 * 1000).unref();
 }
 
+export { fetchModels };
+
 async function fetchModels() {
   try {
     const data = await callOneMin('/api/models');

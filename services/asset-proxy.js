@@ -67,7 +67,12 @@ export async function assetProxyHandler(req, res, next) {
 
     const isPathStyleS3 =
       /^s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname) &&
-      parsed.pathname.startsWith(`/${serverConfig.s3Bucket}/`);
+      // The previous startsWith('/${bucket}/') form would accept e.g.
+      // bucket="foo" matching path "/foobar/x" because the trailing slash
+      // anchor was implicit. Require an exact path or a path with a
+      // directory boundary so we only match the bucket name in full.
+      (parsed.pathname === `/${serverConfig.s3Bucket}` ||
+        parsed.pathname.startsWith(`/${serverConfig.s3Bucket}/`));
 
     const isAllowedHost = allowedHosts.some((h) => parsed.hostname === h) || isVirtualHostS3 || isPathStyleS3;
     if (!isAllowedHost) {
