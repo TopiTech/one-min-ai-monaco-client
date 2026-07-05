@@ -355,14 +355,28 @@ async function addHistoryEntry(session, entry) {
 
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
+const ZOMBIE_GRACE_MS = 60_000; // 1 minute beyond command timeout
+
 function cleanupExpiredSessions() {
   const now = Date.now();
   let changed = false;
   for (const [id, session] of sessions) {
-    // M-5: Never reap a session that is actively executing a command —
-    // doing so would orphan the spawned child process and confuse the
-    // client waiting on the response.
-    if (session.status === 'running') continue;
+    if (session.status === 'running') {
+      // M-5: Never reap a session that is actively executing a command.
+      // However, detect zombie sessions stuck in "running" beyond the
+      // command timeout + grace period and force-reset them to idle.
+      // This handles cases where the client crashed or disconnected
+      // without cleanly stopping the agent.
+      const runningSince = session.runningSince || session.lastAccessedAt;
+      const maxRunningMs = (serverConfig.commandTimeoutMs || 30_000) + ZOMBIE_GRACE_MS;
+      if (now - runningSince > maxRunningMs) {
+        logger.warn('Zombie running session detected, force-resetting to idle', { sessionId: id });
+        session.status = 'idle';
+        changed = true;
+      } else {
+        continue;
+      }
+    }
     if (now - session.lastAccessedAt > serverConfig.sessionTtlMs) {
       sessions.delete(id);
       changed = true;
@@ -582,6 +596,7 @@ router.post('/sessions/:id/commands', async (req, res, next) => {
     }
 
     session.status = 'running';
+    session.runningSince = Date.now();
     logger.info(`Executing command (auto-approved or bypass-auth)`, {
       sessionId: req.params.id,
       command: command.split(/\s+/)[0],
@@ -690,6 +705,7 @@ router.post('/sessions/:id/approve', async (req, res, next) => {
     assertNotProtectedPath(workingDir);
 
     session.status = 'running';
+    session.runningSince = Date.now();
     logger.info(`Executing approved command`, {
       sessionId: req.params.id,
       command: pending.command.split(/\s+/)[0],
@@ -1395,16 +1411,24 @@ router.get('/config', (_req, res) => {
     commandTimeoutMs: serverConfig.commandTimeoutMs,
     agentAutoApprove: serverConfig.agentAutoApprove,
     maxLoops: serverConfig.agentMaxLoops,
+    maxParseFailures: serverConfig.agentMaxParseFailures,
+    maxContextTokens: serverConfig.agentMaxContextTokens,
+    maxContextTokensCreditSaving: serverConfig.agentMaxContextTokensCreditSaving,
     allowedRoots: getAllowedRoots(),
   });
 });
 
 export async function flushPendingWriters() {
   logger.info('Flushing pending agent sessions and commands writers...');
-  await Promise.all([
+  const results = await Promise.allSettled([
     sessionWriter.flush ? sessionWriter.flush() : Promise.resolve(),
     pendingWriter.flush ? pendingWriter.flush() : Promise.resolve(),
   ]);
+  for (const r of results) {
+    if (r.status === 'rejected') {
+      logger.error('Failed to flush pending writer', { error: r.reason?.message });
+    }
+  }
 }
 
 export async function initAgentState() {

@@ -322,16 +322,53 @@ router.post('/chat/stream', async (req, res, next) => {
       }
     }, 15_000);
 
+    // SSE normalization: Buffer `event: result` data from 1min.ai and send it
+    // as `event: final-result` after all content deltas have been forwarded.
+    // This prevents the client from receiving the full result payload while
+    // incremental content deltas are still in-flight, which can cause text
+    // duplication or premature display of incomplete responses.
+    let resultBuffer = '';
+    let capturingResult = false;
+
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
-        // H-3: 1min.ai streams as plain SSE `data: {...}\n\n` chunks without
-        // an explicit `event:` line. We forward as-is so the OpenAI-compatible
-        // chunk shape (choices[0].delta.content / choices[0].finish_reason)
-        // reaches the client intact.
-        res.write(chunk);
+
+        // Parse the chunk line-by-line to detect event types.
+        // Lines that belong to `event: result` are buffered; everything else
+        // is forwarded immediately so content deltas reach the client without delay.
+        const lines = chunk.split('\n');
+        let nonResultChunk = '';
+        for (const line of lines) {
+          if (line.startsWith('event:')) {
+            const evt = line.slice(6).trim();
+            if (evt === 'result') {
+              capturingResult = true;
+              resultBuffer += line + '\n';
+            } else {
+              capturingResult = false;
+              nonResultChunk += line + '\n';
+            }
+          } else if (capturingResult) {
+            resultBuffer += line + '\n';
+          } else {
+            nonResultChunk += line + '\n';
+          }
+        }
+
+        if (nonResultChunk) {
+          res.write(nonResultChunk);
+          if (typeof res.flush === 'function') res.flush();
+        }
+      }
+
+      // After upstream stream ends, forward the buffered result as
+      // `event: final-result` so the client can definitively adopt it.
+      if (resultBuffer) {
+        const normalizedResult = resultBuffer.replace(/^event:.*$/m, 'event: final-result');
+        res.write(normalizedResult);
         if (typeof res.flush === 'function') res.flush();
       }
     } catch (streamErr) {

@@ -5,7 +5,6 @@ import { buildXmlRepairPrompt } from './utils.js';
 const _fileListCache = new Map();
 const FILE_LIST_CACHE_TTL_MS = 30_000;
 const FILE_LIST_CACHE_MAX = 20;
-const MAX_XML_REPAIR_ATTEMPTS = 2;
 
 function buildAgentPromptInstructions() {
   return [
@@ -296,8 +295,15 @@ export function createAgentRuntime({
       );
     });
   };
-  const trimHistory = async (history, maxTokens) =>
-    await trimAgentHistory(api, history, t, state.creditSaving, maxTokens);
+  // Agent context token limits — updated from server config at start of each loop
+  let agentMaxContextTokens = undefined;
+  let agentMaxContextTokensCreditSaving = undefined;
+
+  const trimHistory = async (history, maxTokensOverride) => {
+    const limit =
+      maxTokensOverride ?? (state.creditSaving ? agentMaxContextTokensCreditSaving : agentMaxContextTokens);
+    return await trimAgentHistory(api, history, t, state.creditSaving, limit);
+  };
 
   function pruneAgentTimeline(maxSteps = 100) {
     const log = dom.agentActivityLog;
@@ -565,10 +571,15 @@ export function createAgentRuntime({
     let loopCount = 0;
     let maxLoops = 20;
     let consecutiveParseErrors = 0;
-    const MAX_CONSECUTIVE_ERRORS = 3;
+    let maxParseFailures = 3;
     try {
       const agentConfig = await api('/api/agent/config');
       if (agentConfig.maxLoops) maxLoops = agentConfig.maxLoops;
+      if (agentConfig.maxParseFailures) maxParseFailures = agentConfig.maxParseFailures;
+      if (agentConfig.maxContextTokens) agentMaxContextTokens = agentConfig.maxContextTokens;
+      if (agentConfig.maxContextTokensCreditSaving) {
+        agentMaxContextTokensCreditSaving = agentConfig.maxContextTokensCreditSaving;
+      }
     } catch {
       // Use default
     }
@@ -706,12 +717,12 @@ export function createAgentRuntime({
           aiText,
           errorReason: 'XMLタグが欠落、または閉じタグの不整合があります。',
         });
-        const shouldRetryRepair = consecutiveParseErrors <= MAX_XML_REPAIR_ATTEMPTS;
-        if (consecutiveParseErrors >= MAX_CONSECUTIVE_ERRORS) {
+        const shouldRetryRepair = consecutiveParseErrors <= Math.floor(maxParseFailures / 2);
+        if (consecutiveParseErrors >= maxParseFailures) {
           addAgentTimelineStep(
             'error',
             'パースエラー',
-            `AIがフォーマットに従わない状態が ${MAX_CONSECUTIVE_ERRORS} 回連続したため、安全のためにエージェントを強制停止します。`,
+            `AIがフォーマットに従わない状態が ${maxParseFailures} 回連続したため、安全のためにエージェントを強制停止します。`,
           );
           setAgentStatus('エラー', 'error');
           break;

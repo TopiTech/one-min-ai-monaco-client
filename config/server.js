@@ -22,6 +22,9 @@ const FALLBACK = {
   rateLimitChatMax: 300,
   commandTimeoutMs: 30_000,
   agentMaxLoops: 20,
+  agentMaxParseFailures: 3,
+  agentMaxContextTokens: 40000,
+  agentMaxContextTokensCreditSaving: 12000,
   sessionTtlMs: 30 * 60 * 1000,
 };
 
@@ -208,6 +211,26 @@ export const serverConfig = {
 
   // Agent max loops
   agentMaxLoops: intInRange(process.env.AGENT_MAX_LOOPS, MIN_LOOPS, MAX_LOOPS, FALLBACK.agentMaxLoops),
+
+  // Agent parse failure threshold and context token limits
+  agentMaxParseFailures: intInRange(
+    process.env.AGENT_MAX_PARSE_FAILURES,
+    1,
+    20,
+    FALLBACK.agentMaxParseFailures,
+  ),
+  agentMaxContextTokens: intInRange(
+    process.env.AGENT_MAX_CONTEXT_TOKENS,
+    1000,
+    200_000,
+    FALLBACK.agentMaxContextTokens,
+  ),
+  agentMaxContextTokensCreditSaving: intInRange(
+    process.env.AGENT_MAX_CONTEXT_TOKENS_CREDIT_SAVING,
+    1000,
+    100_000,
+    FALLBACK.agentMaxContextTokensCreditSaving,
+  ),
 
   // Session
   sessionTtlMs: intInRange(

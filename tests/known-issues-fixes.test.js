@@ -306,9 +306,12 @@ describe('known-issues.md regression fixes', () => {
   // M-9: approval step fades out after resolution (source-level)
   // ----------------------------------------------------------------
   describe('M-9: approval step fade-out', () => {
-    test('public/app.js removes approval step after decision', async () => {
+    test('agent-timeline.js removes approval step after decision', async () => {
       const fsPromises = await import('fs/promises');
-      const src = await fsPromises.readFile(new URL('../public/app.js', import.meta.url), 'utf-8');
+      const src = await fsPromises.readFile(
+        new URL('../public/js/agent-timeline.js', import.meta.url),
+        'utf-8',
+      );
       // finalizeStep helper must fade and remove the step element
       expect(src).toMatch(/finalizeStep/);
       expect(src).toMatch(/step\.remove\(\)/);

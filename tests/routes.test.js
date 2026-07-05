@@ -82,7 +82,9 @@ describe('AI Routes Integration Tests', () => {
 
       expect(response.status).toBe(422);
       expect(response.body.error).toBe('1min.ai API error: 422');
-      expect(response.body.details).toBe('Upstream API Error');
+      // SSE-2: The server now exposes the actual upstream error message
+      // instead of the generic "Upstream API Error" placeholder.
+      expect(response.body.details).toBe('Invalid prompt object');
     });
   });
 

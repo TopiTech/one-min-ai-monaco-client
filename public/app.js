@@ -11,7 +11,7 @@ import {
   getAllImageModels,
 } from './js/model-picker.js';
 import { api } from './js/api.js';
-import { renderMarkdownSafely, appendStepIcon, parseXMLTags } from './js/utils.js';
+import { parseXMLTags } from './js/utils.js';
 import { initTheme, toggleTheme as toggleThemeFn } from './js/theme.js';
 import { bootstrapSettings } from './js/settings.js';
 import { createChatManager, createChatState } from './js/chat.js';
@@ -25,6 +25,7 @@ import { createExplorerManager } from './js/explorer.js';
 import { initEditorToolbar } from './js/editor-toolbar.js';
 import { t, initI18n, setLanguage } from './js/i18n.js';
 import { toast } from './js/toast.js';
+import { createAgentTimeline } from './js/agent-timeline.js';
 
 // Helper to get element by ID
 const $ = (id) => document.getElementById(id);
@@ -252,6 +253,8 @@ const diffDialog = createDiffDialog({
   getThemeName: getMonacoThemeName,
 });
 
+const agentTimeline = createAgentTimeline(dom);
+
 const agentRuntime = createAgentRuntime({
   dom,
   state,
@@ -259,8 +262,8 @@ const agentRuntime = createAgentRuntime({
   t: translateUiKey,
   parseXMLTags,
   setAgentStatus,
-  addAgentTimelineStep,
-  addAgentApprovalStep,
+  addAgentTimelineStep: agentTimeline.addStep,
+  addAgentApprovalStep: agentTimeline.addApprovalStep,
 });
 
 // Use chat manager for sending and aborting
@@ -492,264 +495,11 @@ function setStatus(text, cls) {
 }
 
 // Pure helper functions (escapeHtml, renderMarkdownSafely, formatMarkdownLike,
-// createSvgIcon, appendStepIcon, stripMarkdownCodeBlock, unescapeXmlText,
-// parseXMLTags) and SVG_NS are imported from js/utils.js.
+// stripMarkdownCodeBlock, unescapeXmlText, parseXMLTags) and SVG_NS
+// are imported from js/utils.js.
 
-function addAgentTimelineStep(type, title, body, resultText = null) {
-  const log = dom.agentActivityLog;
-  if (!log) return;
-
-  // Remove placeholder if present
-  const placeholder = log.querySelector('.timeline-placeholder');
-  if (placeholder) placeholder.remove();
-
-  const stepId = 'step-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
-
-  const step = document.createElement('div');
-  step.className = `agent-step ${type}`;
-  step.id = stepId;
-
-  const time = new Date().toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-
-  const card = document.createElement('div');
-  card.className = 'agent-step-card';
-
-  const header = document.createElement('div');
-  header.className = 'agent-step-header';
-
-  const iconSpan = document.createElement('span');
-  iconSpan.className = 'agent-step-icon';
-  appendStepIcon(iconSpan, type);
-  iconSpan.appendChild(document.createTextNode(title));
-  header.appendChild(iconSpan);
-
-  const timeSpan = document.createElement('span');
-  timeSpan.className = 'agent-step-time';
-  timeSpan.textContent = time;
-  header.appendChild(timeSpan);
-
-  card.appendChild(header);
-
-  const bodyEl = document.createElement('div');
-  bodyEl.className = 'agent-step-body';
-
-  const isLongThought = type === 'thought' && body && body.length > 100;
-  if (isLongThought) {
-    const toggleDiv = document.createElement('div');
-    toggleDiv.className = 'agent-step-thought-toggle';
-    const toggleSpan = document.createElement('span');
-    toggleSpan.textContent = t('thought_expand');
-    toggleDiv.appendChild(toggleSpan);
-
-    const thoughtBox = document.createElement('div');
-    thoughtBox.className = 'agent-step-thought-box u-hidden';
-    thoughtBox.appendChild(bodyEl);
-
-    toggleDiv.onclick = () => {
-      const willBeHidden = !thoughtBox.classList.contains('u-hidden');
-      thoughtBox.classList.toggle('u-hidden', willBeHidden);
-      toggleSpan.textContent = willBeHidden ? t('thought_expand') : t('thought_collapse');
-    };
-
-    card.appendChild(toggleDiv);
-    card.appendChild(thoughtBox);
-  } else {
-    card.appendChild(bodyEl);
-  }
-
-  if (resultText !== null) {
-    const MAX_RESULT_VISIBLE = 10000;
-    const isTruncated = resultText.length > MAX_RESULT_VISIBLE;
-    const displayText = isTruncated
-      ? resultText.slice(0, MAX_RESULT_VISIBLE) +
-        `\n\n... [出力が ${(resultText.length - MAX_RESULT_VISIBLE).toLocaleString()} 文字を超過したため切り詰められました]`
-      : resultText;
-
-    const toggleDiv = document.createElement('div');
-    toggleDiv.className = 'agent-step-result-toggle';
-    const toggleSpan = document.createElement('span');
-    toggleSpan.textContent = '▶ 実行出力を表示';
-    toggleDiv.appendChild(toggleSpan);
-    if (isTruncated) {
-      const warnSpan = document.createElement('span');
-      warnSpan.className = 'result-truncated-badge';
-      warnSpan.textContent = '切詰';
-      toggleDiv.appendChild(warnSpan);
-    }
-    toggleDiv.onclick = () => toggleTimelineResult(stepId);
-    card.appendChild(toggleDiv);
-
-    const resultPre = document.createElement('pre');
-    resultPre.id = 'result-' + stepId;
-    resultPre.className = 'agent-step-result-box u-hidden';
-    resultPre.textContent = displayText;
-    card.appendChild(resultPre);
-  }
-
-  step.appendChild(card);
-  if (bodyEl) {
-    renderMarkdownSafely(bodyEl, body);
-  }
-
-  log.appendChild(step);
-  log.scrollTop = log.scrollHeight;
-  return stepId;
-}
-
-function toggleTimelineResult(stepId) {
-  const box = document.getElementById(`result-${stepId}`);
-  if (!box) return;
-  const toggle = box.previousElementSibling;
-  const toggleSpan = toggle.querySelector('span');
-  const willBeHidden = !box.classList.contains('u-hidden');
-  box.classList.toggle('u-hidden', willBeHidden);
-  if (toggleSpan) {
-    toggleSpan.textContent = willBeHidden ? t('show_output') : t('hide_output');
-  }
-}
-
-function addAgentApprovalStep(command, cwd, approvalToken, onApprove, onReject) {
-  const log = dom.agentActivityLog;
-  if (!log) return;
-  const placeholder = log.querySelector('.timeline-placeholder');
-  if (placeholder) placeholder.remove();
-
-  const stepId = 'step-approval-' + Date.now();
-
-  const step = document.createElement('div');
-  step.className = `agent-step approval`;
-  step.id = stepId;
-  step.setAttribute('role', 'alertdialog');
-  step.setAttribute('aria-label', t('cmd_approval_label'));
-
-  const time = new Date().toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-
-  const card = document.createElement('div');
-  card.className = 'agent-step-card';
-
-  const header = document.createElement('div');
-  header.className = 'agent-step-header';
-
-  const iconSpan = document.createElement('span');
-  iconSpan.className = 'agent-step-icon';
-  appendStepIcon(iconSpan, 'approval');
-  iconSpan.appendChild(document.createTextNode(t('cmd_approval')));
-
-  const timeSpan = document.createElement('span');
-  timeSpan.className = 'agent-step-time';
-  timeSpan.textContent = time;
-
-  header.appendChild(iconSpan);
-  header.appendChild(timeSpan);
-
-  const body = document.createElement('div');
-  body.className = 'agent-step-body';
-  body.textContent = t('cmd_approval_desc');
-
-  const details = document.createElement('div');
-  details.className = 'approval-details';
-
-  const cmdLabel = document.createElement('strong');
-  cmdLabel.textContent = t('cmd_label');
-  const cmdCode = document.createElement('code');
-  cmdCode.textContent = command;
-
-  const dirLabel = document.createElement('strong');
-  dirLabel.textContent = t('cmd_dir_label');
-  const dirCode = document.createElement('code');
-  dirCode.textContent = cwd;
-
-  details.appendChild(cmdLabel);
-  details.appendChild(cmdCode);
-  details.appendChild(document.createElement('br'));
-  details.appendChild(dirLabel);
-  details.appendChild(dirCode);
-
-  const feedbackInput = document.createElement('input');
-  feedbackInput.type = 'text';
-  feedbackInput.id = `feedback-${stepId}`;
-  feedbackInput.className = 'approval-feedback-input';
-  feedbackInput.placeholder = t('cmd_reject_reason');
-
-  const actions = document.createElement('div');
-  actions.className = 'approval-actions';
-
-  const approveBtn = document.createElement('button');
-  approveBtn.type = 'button';
-  approveBtn.className = 'approval-btn approve';
-  approveBtn.id = `approve-${stepId}`;
-  approveBtn.textContent = t('btn_approve');
-
-  const rejectBtn = document.createElement('button');
-  rejectBtn.type = 'button';
-  rejectBtn.className = 'approval-btn reject';
-  rejectBtn.id = `reject-${stepId}`;
-  rejectBtn.textContent = t('btn_reject');
-
-  actions.appendChild(approveBtn);
-  actions.appendChild(rejectBtn);
-
-  body.appendChild(details);
-  body.appendChild(feedbackInput);
-  body.appendChild(actions);
-
-  card.appendChild(header);
-  card.appendChild(body);
-
-  step.textContent = '';
-  step.appendChild(card);
-
-  log.appendChild(step);
-  log.scrollTop = log.scrollHeight;
-
-  // M-9: Fade out the approval step once it has been resolved (after a short
-  // delay so the user can still read the final state). This avoids leaving
-  // stale approval cards on screen that may confuse the user about whether
-  // an action is still pending.
-  let finalized = false;
-  const finalizeStep = () => {
-    if (finalized) return;
-    finalized = true;
-    setTimeout(() => {
-      step.classList.add('is-fading');
-      setTimeout(() => {
-        step.remove();
-      }, 450);
-    }, 1500);
-  };
-  // M-2: Expose finalizeStep on the step element so external flows (reset,
-  // stop) can clean up pending approval cards without leaving orphan UI.
-  step.__finalizeApproval = finalizeStep;
-
-  approveBtn.onclick = () => {
-    approveBtn.disabled = true;
-    rejectBtn.disabled = true;
-    feedbackInput.disabled = true;
-    approveBtn.textContent = t('btn_approved');
-    approveBtn.classList.add('is-disabled');
-    onApprove();
-    finalizeStep();
-  };
-
-  rejectBtn.onclick = () => {
-    approveBtn.disabled = true;
-    rejectBtn.disabled = true;
-    feedbackInput.disabled = true;
-    rejectBtn.textContent = t('btn_rejected');
-    rejectBtn.classList.add('is-disabled');
-    const reason = feedbackInput.value.trim() || 'ユーザーによって却下されました';
-    onReject(reason);
-    finalizeStep();
-  };
-}
+// Agent timeline rendering is delegated to the agentTimeline module.
+// The agentTimeline instance is created above (after dom is available).
 
 dom.startAgentBtn.onclick = async () => {
   if (state.agent.active) return;
@@ -776,7 +526,7 @@ dom.startAgentBtn.onclick = async () => {
   } catch (err) {
     console.error('Agent loop crashed:', err);
     setAgentStatus(t('status_error'), 'error');
-    addAgentTimelineStep('error', t('agent_crash_title'), t('agent_crash_desc', { error: err.message }));
+    agentTimeline.addStep('error', t('agent_crash_title'), t('agent_crash_desc', { error: err.message }));
   } finally {
     state.agent.active = false;
     dom.startAgentBtn.classList.remove('is-hidden');
@@ -796,7 +546,7 @@ dom.stopAgentBtn.onclick = () => {
   // M-2: pending approvals become orphans once we stop the agent — clean them up.
   document.querySelectorAll('.agent-step.approval').forEach((el) => el.__finalizeApproval?.());
   setAgentStatus(t('agent_stopped'), 'idle');
-  addAgentTimelineStep('thought', t('agent_stopped'), t('agent_stopped_by_user'));
+  agentTimeline.addStep('thought', t('agent_stopped'), t('agent_stopped_by_user'));
 };
 
 dom.resetAgentBtn.onclick = async () => {
@@ -838,7 +588,7 @@ dom.sendAgentFeedbackBtn.onclick = () => {
   dom.agentInstruction.style.height = '';
   dom.agentInstruction.dispatchEvent(new Event('input'));
 
-  addAgentTimelineStep('user', t('agent_feedback_label'), feedback);
+  agentTimeline.addStep('user', t('agent_feedback_label'), feedback);
 
   if (state.agent.resolver) {
     state.agent.resolver({ approved: false, reason: `ユーザー指示: ${feedback}` });

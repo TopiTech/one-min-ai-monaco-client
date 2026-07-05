@@ -77,7 +77,8 @@ export function createImageManager(dom) {
     gallery.querySelectorAll('.imageCard').forEach((card) => {
       const imgEl = card.querySelector('img:not(.image-before)');
       const link = card.querySelector('a');
-      const key = (imgEl && imgEl.src) || (link && link.href) || '';
+      // M-3: Check data-src for lazy-loaded images that haven't hydrated yet
+      const key = (imgEl && (imgEl.src || imgEl.dataset?.src)) || (link && link.href) || '';
       if (key) existingCards.set(key, card);
     });
 

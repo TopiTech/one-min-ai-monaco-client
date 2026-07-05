@@ -490,6 +490,20 @@ export function createChatManager(dom, state) {
                   continue;
                 }
 
+                // SSE-2: `final-result` is the server-normalized definitive
+                // result from 1min.ai. The server buffers the upstream
+                // `event: result` and sends it as `event: final-result`
+                // after all content deltas. Adopt it unconditionally.
+                if (currentEvent === 'final-result') {
+                  const text = findTextCandidate(data?.aiRecord || data);
+                  if (text) {
+                    fullText = text;
+                    renderMarkdownSafely(aiContentDiv, fullText);
+                  }
+                  streamDone = true;
+                  break;
+                }
+
                 const content =
                   data?.content ||
                   data?.choices?.[0]?.delta?.content ||

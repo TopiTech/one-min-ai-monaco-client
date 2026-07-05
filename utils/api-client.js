@@ -180,7 +180,9 @@ function parseSseResponseText(text) {
       return { ...data, status: 'FAILED', error: streamError };
     }
 
-    if (currentEvent === 'result') {
+    // SSE-2: The server normalizes upstream `result` to `final-result`.
+    // Treat it identically to `result` — buffer for final extraction.
+    if (currentEvent === 'result' || currentEvent === 'final-result') {
       resultPayloads.push(data);
       continue;
     }
