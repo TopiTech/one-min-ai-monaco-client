@@ -27,11 +27,6 @@ const CODE_GENERATOR_FEATURE_ENDPOINT = '/api/features?isStreaming=true';
 // Schema
 // ---------------------------------------------------------------------------
 
-function escapeXmlText(text) {
-  if (typeof text !== 'string') return '';
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
 /**
  * Flatten a messages array into a single prompt string with role labels.
  * This preserves the conversation flow so the LLM can infer context.
@@ -42,8 +37,10 @@ function flattenMessages(messages) {
     .map((m) => {
       const role = (m.role || 'user').toLowerCase();
       const content = typeof m.content === 'string' ? m.content : '';
-      const escapedContent = escapeXmlText(content);
-      return `<message role="${role}">\n${escapedContent}\n</message>`;
+      // Avoid double-escaping by wrapping content inside CDATA block.
+      // Safely escape any existing ']]>' sequence by breaking the CDATA block and restarting.
+      const safeContent = content.replace(/\]\]>/g, ']]]]><![CDATA[>');
+      return `<message role="${role}"><![CDATA[\n${safeContent}\n]]></message>`;
     })
     .join('\n\n');
 }

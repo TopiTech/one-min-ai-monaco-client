@@ -49,11 +49,22 @@ function resolvePathRelativeToWorkspace(workspaceRoot, filePath) {
 const _tokenCache = new Map();
 const TOKEN_CACHE_MAX = 500;
 
+async function computeHash(text) {
+  if (!text) return '';
+  const msgBuffer = new TextEncoder().encode(text);
+  const hashBuffer = await window.crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 async function estimateTokensBatch(apiFn, texts) {
   if (!texts || texts.length === 0) return [];
   const results = new Array(texts.length).fill(0);
   const missingIndices = [];
   const missingTexts = [];
+  const missingHashes = [];
+
+  const hashes = await Promise.all(texts.map((t) => (t ? computeHash(t) : Promise.resolve(''))));
 
   for (let i = 0; i < texts.length; i++) {
     const text = texts[i];
@@ -61,14 +72,16 @@ async function estimateTokensBatch(apiFn, texts) {
       results[i] = 0;
       continue;
     }
-    const cached = _tokenCache.get(text);
+    const hash = hashes[i];
+    const cached = _tokenCache.get(hash);
     if (cached !== undefined) {
-      _tokenCache.delete(text);
-      _tokenCache.set(text, cached);
+      _tokenCache.delete(hash);
+      _tokenCache.set(hash, cached);
       results[i] = cached;
     } else {
       missingIndices.push(i);
       missingTexts.push(text);
+      missingHashes.push(hash);
     }
   }
 
@@ -81,9 +94,9 @@ async function estimateTokensBatch(apiFn, texts) {
       });
       const counts = res.counts || [];
       for (let j = 0; j < missingTexts.length; j++) {
-        const text = missingTexts[j];
+        const hash = missingHashes[j];
         const count = counts[j] || 0;
-        _tokenCache.set(text, count);
+        _tokenCache.set(hash, count);
         results[missingIndices[j]] = count;
       }
       if (_tokenCache.size > TOKEN_CACHE_MAX) {
@@ -95,11 +108,13 @@ async function estimateTokensBatch(apiFn, texts) {
     } catch {
       // Fallback heuristic for all missing
       for (let j = 0; j < missingTexts.length; j++) {
+        const hash = missingHashes[j];
         const text = missingTexts[j];
         const latinMatch = text.match(/[a-zA-Z0-9\s!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/g);
         const latinCount = latinMatch ? latinMatch.length : 0;
         const multiByteCount = text.length - latinCount;
         const count = Math.ceil(latinCount / 3.5 + multiByteCount * 1.5);
+        _tokenCache.set(hash, count);
         results[missingIndices[j]] = count;
       }
     }
@@ -128,7 +143,6 @@ async function trimAgentHistory(apiFn, history, t, creditSaving, maxTokens) {
     }
   }
 }
-
 async function processCommandStream(res, stepId, t) {
   let finalResult = null;
   const resultBox = document.getElementById(`result-${stepId}`);
@@ -145,44 +159,54 @@ async function processCommandStream(res, stepId, t) {
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder('utf-8');
-  let buffer = '';
+  let carry = '';
+
+  const processBlock = (block) => {
+    let eventName = 'message';
+    let data = '';
+    for (const line of block.split('\n')) {
+      const trimmedLine = line.trim();
+      if (trimmedLine.startsWith('event: ')) {
+        eventName = trimmedLine.slice(7).trim();
+      } else if (trimmedLine.startsWith('data: ')) {
+        data += trimmedLine.slice(6);
+      }
+    }
+
+    if (data) {
+      try {
+        const parsed = JSON.parse(data);
+        if (eventName === 'done') {
+          finalResult = parsed;
+        } else if (eventName === 'stdout' || eventName === 'stderr') {
+          if (resultBox) {
+            resultBox.textContent += parsed.text;
+            resultBox.scrollTop = resultBox.scrollHeight;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse SSE data', e);
+      }
+    }
+  };
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    let boundary = buffer.indexOf('\n\n');
-    while (boundary !== -1) {
-      const chunk = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-
-      let eventName = 'message';
-      let data = '';
-      for (const line of chunk.split('\n')) {
-        if (line.startsWith('event: ')) {
-          eventName = line.slice(7);
-        } else if (line.startsWith('data: ')) {
-          data += line.slice(6);
-        }
+    if (done) {
+      const remaining = carry.trim();
+      if (remaining) {
+        processBlock(remaining);
       }
+      break;
+    }
+    const chunk = decoder.decode(value, { stream: true });
+    const rawBlocks = (carry + chunk).split(/\r?\n\r?\n/);
+    carry = rawBlocks.pop() || '';
 
-      if (data) {
-        try {
-          const parsed = JSON.parse(data);
-          if (eventName === 'done') {
-            finalResult = parsed;
-          } else if (eventName === 'stdout' || eventName === 'stderr') {
-            if (resultBox) {
-              resultBox.textContent += parsed.text;
-              resultBox.scrollTop = resultBox.scrollHeight;
-            }
-          }
-        } catch (e) {
-          console.error('Failed to parse SSE data', e);
-        }
+    for (const block of rawBlocks) {
+      if (block.trim()) {
+        processBlock(block);
       }
-      boundary = buffer.indexOf('\n\n');
     }
   }
   return finalResult;

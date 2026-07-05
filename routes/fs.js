@@ -137,12 +137,13 @@ router.get('/roots', (_req, res) => {
  */
 let cachedDrives = null;
 let lastDrivesLookupTime = 0;
-const DRIVES_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const DRIVES_CACHE_TTL_MS = 60 * 1000; // 1 minute
 let drivesLookupPromise = null;
 
-router.get('/drives', async (_req, res, next) => {
+router.get('/drives', async (req, res, next) => {
   const now = Date.now();
-  if (cachedDrives && now - lastDrivesLookupTime < DRIVES_CACHE_TTL_MS) {
+  const forceScan = req.query.force === 'true' || req.query.refresh === 'true';
+  if (!forceScan && cachedDrives && now - lastDrivesLookupTime < DRIVES_CACHE_TTL_MS) {
     return res.json({ drives: cachedDrives });
   }
 

@@ -281,7 +281,7 @@ router.post('/chat/stream', async (req, res, next) => {
 
     if (!response.ok) {
       const errorPayload = await parseResponsePayload(response);
-      const isDev = process.env.NODE_ENV === 'development';
+      const isDev = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
       return res.status(response.status).json({
         error: `1min.ai API error: ${response.status}`,
         details: isDev
