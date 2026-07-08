@@ -60,9 +60,9 @@ const autocompleteRateLimit = buildRateLimit({ max: serverConfig.rateLimitAutoco
 const aiChatRateLimit = buildRateLimit({ max: serverConfig.rateLimitChatMax });
 
 function normalizePayloadError(err) {
-  if (!err?.payload) return null;
+  if (!err || !err.payload) return null;
   if (typeof err.payload === 'string') return err.payload;
-  if (typeof err.payload === 'object') {
+  if (typeof err.payload === 'object' && err.payload !== null && !Array.isArray(err.payload)) {
     // Extract a safe, short error description from known upstream error shapes.
     // This avoids leaking raw payload data while still giving the client a
     // human-readable failure reason.

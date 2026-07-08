@@ -55,54 +55,37 @@ const rawAttachmentsSchema = z
           s.length <= 1024 &&
           (/^https?:\/\//i.test(s) || /^[A-Za-z0-9._/-]+$/.test(s));
 
-        if (val.images !== undefined) {
-          if (
-            !Array.isArray(val.images) ||
-            val.images.some((x) => typeof x !== 'string' || !looksLikeAssetRef(x))
-          ) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: 'attachments.images must be an array of URLs or 1min.ai asset keys',
-            });
-          } else if (val.images.length > 16) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: 'attachments.images exceeds 16 entries',
-            });
+        const validateList = (list, name) => {
+          if (list !== undefined) {
+            if (!Array.isArray(list) || list.some((x) => typeof x !== 'string' || !looksLikeAssetRef(x))) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `attachments.${name} must be an array of URLs or 1min.ai asset keys`,
+              });
+            } else if (list.length > 16) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `attachments.${name} exceeds 16 entries`,
+              });
+            }
           }
-        }
-        if (val.files !== undefined) {
-          if (
-            !Array.isArray(val.files) ||
-            val.files.some((x) => typeof x !== 'string' || !looksLikeAssetRef(x))
-          ) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: 'attachments.files must be an array of URLs or 1min.ai asset keys',
-            });
-          } else if (val.files.length > 16) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: 'attachments.files exceeds 16 entries',
-            });
-          }
-        }
+        };
+
+        validateList(val.images, 'images');
+        validateList(val.files, 'files');
       })
       .transform((val) => {
         if (val === undefined || typeof val !== 'object' || Array.isArray(val)) return undefined;
         const out = {};
-        if (val.images !== undefined && Array.isArray(val.images)) {
-          const cleaned = val.images
-            .map((x) => (typeof x === 'string' ? x.slice(0, 1024) : ''))
-            .filter(Boolean);
-          if (cleaned.length) out.images = cleaned;
-        }
-        if (val.files !== undefined && Array.isArray(val.files)) {
-          const cleaned = val.files
-            .map((x) => (typeof x === 'string' ? x.slice(0, 1024) : ''))
-            .filter(Boolean);
-          if (cleaned.length) out.files = cleaned;
-        }
+        const cleanList = (list) => {
+          if (list === undefined || !Array.isArray(list)) return undefined;
+          const cleaned = list.map((x) => (typeof x === 'string' ? x.slice(0, 1024) : '')).filter(Boolean);
+          return cleaned.length ? cleaned : undefined;
+        };
+        const images = cleanList(val.images);
+        const files = cleanList(val.files);
+        if (images) out.images = images;
+        if (files) out.files = files;
         return Object.keys(out).length ? out : undefined;
       }),
   )

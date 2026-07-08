@@ -49,6 +49,16 @@ function resolvePathRelativeToWorkspace(workspaceRoot, filePath) {
 const _tokenCache = new Map();
 const TOKEN_CACHE_MAX = 500;
 
+function setTokenCache(hash, count) {
+  _tokenCache.set(hash, count);
+  if (_tokenCache.size > TOKEN_CACHE_MAX) {
+    while (_tokenCache.size > TOKEN_CACHE_MAX) {
+      const oldestKey = _tokenCache.keys().next().value;
+      _tokenCache.delete(oldestKey);
+    }
+  }
+}
+
 async function computeHash(text) {
   if (!text) return '';
   const msgBuffer = new TextEncoder().encode(text);
@@ -96,14 +106,8 @@ async function estimateTokensBatch(apiFn, texts) {
       for (let j = 0; j < missingTexts.length; j++) {
         const hash = missingHashes[j];
         const count = counts[j] || 0;
-        _tokenCache.set(hash, count);
+        setTokenCache(hash, count);
         results[missingIndices[j]] = count;
-      }
-      if (_tokenCache.size > TOKEN_CACHE_MAX) {
-        while (_tokenCache.size > TOKEN_CACHE_MAX) {
-          const oldestKey = _tokenCache.keys().next().value;
-          _tokenCache.delete(oldestKey);
-        }
       }
     } catch {
       // Fallback heuristic for all missing
@@ -114,7 +118,7 @@ async function estimateTokensBatch(apiFn, texts) {
         const latinCount = latinMatch ? latinMatch.length : 0;
         const multiByteCount = text.length - latinCount;
         const count = Math.ceil(latinCount / 3.5 + multiByteCount * 1.5);
-        _tokenCache.set(hash, count);
+        setTokenCache(hash, count);
         results[missingIndices[j]] = count;
       }
     }

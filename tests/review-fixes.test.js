@@ -220,6 +220,20 @@ describe('Review Fixes', () => {
       expect(response.body.error).toBe('Upstream request failed (see details for sanitized payload)');
       expect(JSON.stringify(response.body)).not.toContain('secret');
     });
+
+    test('should handle array error payload gracefully and fallback to message', async () => {
+      process.env.NODE_ENV = 'development';
+
+      const errorWithArrayPayload = new Error('1min.ai request failed: 400');
+      errorWithArrayPayload.status = 400;
+      errorWithArrayPayload.payload = ['error1', 'error2'];
+      callOneMin.mockRejectedValue(errorWithArrayPayload);
+
+      const response = await request(app).post('/api/chat').send({ prompt: 'test' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('1min.ai request failed: 400');
+    });
   });
 
   describe('C-1: scripts/ directory write protection', () => {
