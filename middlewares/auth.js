@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import cookie from 'cookie';
+import { parse } from 'cookie';
 
 export function createLocalAuthToken() {
   return crypto.randomBytes(24).toString('hex');
@@ -17,7 +17,7 @@ export function compareAuthToken(a, b) {
 export function parseCookies(cookieHeader) {
   if (!cookieHeader) return {};
   try {
-    return cookie.parse(cookieHeader);
+    return parse(cookieHeader);
   } catch {
     return {};
   }
