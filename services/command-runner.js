@@ -323,10 +323,10 @@ export function checkCommandSafety(command) {
 /**
  * Execute a command with timeout and output collection.
  * @param {string} command The command to execute.
- * @param {object} options Execution options.
- * @param {string} options.cwd Working directory.
- * @param {number} options.timeoutMs Timeout in milliseconds.
- * @param {function} options.onOutput Callback for streaming output.
+ * @param {object} [options] Execution options.
+ * @param {string} [options.cwd] Working directory.
+ * @param {number} [options.timeoutMs] Timeout in milliseconds.
+ * @param {function} [options.onOutput] Callback for streaming output.
  * @returns {Promise<{ exitCode: number, stdout: string, stderr: string, timedOut: boolean }>}
  */
 export async function executeCommand(command, options = {}) {

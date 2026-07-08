@@ -26,9 +26,9 @@ export class SessionLock {
     while (queue.length > 0) {
       await queue[queue.length - 1];
     }
-    let release;
+    let release = () => {};
     const holder = new Promise((resolve) => {
-      release = resolve;
+      release = /** @type {any} */ (resolve);
     });
     queue.push(holder);
     try {

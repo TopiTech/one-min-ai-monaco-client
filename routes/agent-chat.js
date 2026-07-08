@@ -9,6 +9,7 @@
 
 import express from 'express';
 import { z } from 'zod';
+import { HttpError } from '../utils/errors.js';
 import {
   callOneMin,
   extractText,
@@ -131,10 +132,12 @@ router.post('/chat', async (req, res, next) => {
 
     // 6. Handle upstream failure
     if (isFailedResponse(normalizedDataRes)) {
-      const err = new Error(`1min.ai agent chat failed: ${extractFailureMessage(normalizedDataRes)}`);
-      err.status = 502;
-      err.payload = normalizedDataRes;
-      throw err;
+      throw new HttpError(
+        502,
+        `1min.ai agent chat failed: ${extractFailureMessage(normalizedDataRes)}`,
+        'UPSTREAM_API_ERROR',
+        normalizedDataRes,
+      );
     }
 
     // 7. Extract text and return in agent-friendly format

@@ -2,17 +2,17 @@ import { serverConfig } from '../config/server.js';
 import logger from './logger.js';
 import { extractTextFromOneMinResponse } from './one-min-response.js';
 import { sanitizePayload } from './sanitize.js';
+import { HttpError } from './errors.js';
 
 const API_BASE = serverConfig.apiBaseUrl;
 
 function requireApiKey() {
   const apiKey = process.env.ONE_MIN_AI_API_KEY;
   if (!apiKey || apiKey.includes('your_1min_ai_api_key_here')) {
-    const err = new Error(
+    throw new HttpError(
+      500,
       'ONE_MIN_AI_API_KEY is not configured. Copy .env.example to .env and set your key.',
     );
-    err.status = 500;
-    throw err;
   }
   return apiKey;
 }
@@ -40,14 +40,11 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = serverConfig.apiT
   } catch (error) {
     if (error.name === 'AbortError' || error.code === 'ABORT_ERR') {
       if (callerSignal && callerSignal.aborted) {
-        const err = new Error('Request aborted by client');
-        err.name = 'AbortError';
-        err.status = 499;
-        throw err;
-      }
-      const err = new Error(`Request timeout after ${timeoutMs}ms`);
-      err.status = 408;
+      const err = new HttpError(499, 'Request aborted by client');
+      err.name = 'AbortError';
       throw err;
+    }
+    throw new HttpError(408, `Request timeout after ${timeoutMs}ms`);
     }
     throw error;
   }
@@ -216,6 +213,15 @@ function parseSseResponseText(text) {
 
 /**
  * Calls the 1min.ai API with retry logic for 429 errors and timeout support.
+ * @param {string} pathname
+ * @param {object} [options]
+ * @param {string} [options.method]
+ * @param {any} [options.body]
+ * @param {object} [options.headers]
+ * @param {boolean} [options.raw]
+ * @param {AbortSignal} [options.signal]
+ * @param {boolean} [options.idempotent]
+ * @param {number} [options.timeout]
  */
 export async function callOneMin(
   pathname,
@@ -299,10 +305,12 @@ export async function callOneMin(
 
       if (!response.ok) {
         const payload = await parseResponsePayload(response);
-        const err = new Error(`1min.ai request failed: ${response.status}`);
-        err.status = response.status;
-        err.payload = sanitizePayload(payload);
-        throw err;
+        throw new HttpError(
+          response.status,
+          `1min.ai request failed: ${response.status}`,
+          'UPSTREAM_API_ERROR',
+          sanitizePayload(payload),
+        );
       }
 
       if (raw) return response;
@@ -310,14 +318,15 @@ export async function callOneMin(
       return contentType.includes('application/json') ? response.json() : { text: await response.text() };
     } catch (error) {
       lastError = error;
+      const err = /** @type {any} */ (lastError);
       if (
-        lastError &&
-        typeof lastError === 'object' &&
-        !lastError.status &&
-        lastError.name !== 'AbortError'
+        err &&
+        typeof err === 'object' &&
+        !err.status &&
+        err.name !== 'AbortError'
       ) {
-        safeDefineProperty(lastError, 'status', 502);
-        safeDefineProperty(lastError, 'code', 'UPSTREAM_NETWORK_ERROR');
+        safeDefineProperty(err, 'status', 502);
+        safeDefineProperty(err, 'code', 'UPSTREAM_NETWORK_ERROR');
       }
       // Classify errors by error.code for better retry decisions:
       // - Retryable network errors: ECONNRESET, ECONNREFUSED, ENOTFOUND, ETIMEDOUT, EPIPE

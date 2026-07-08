@@ -1,9 +1,10 @@
 import { serverConfig } from '../config/server.js';
+import { BadRequestError } from './errors.js';
 
 /**
  * Validates and parses web search parameters.
- * @param {object} params - The parameters to validate.
- * @param {boolean} params.webSearch - Whether web search is enabled.
+ * @param {object} [params] - The parameters to validate.
+ * @param {boolean} [params.webSearch] - Whether web search is enabled.
  * @param {number|string} [params.numOfSite] - Number of sites to search.
  * @param {number|string} [params.maxWord] - Maximum words per site.
  * @returns {{ parsedWebSearch: boolean, parsedNumOfSite?: number, parsedMaxWord?: number }}
@@ -15,7 +16,7 @@ export function parseWebSearchParams({ webSearch = false, numOfSite, maxWord } =
   if (numOfSite !== undefined && numOfSite !== '') {
     parsedNumOfSite = Number(numOfSite);
     if (isNaN(parsedNumOfSite) || parsedNumOfSite < 1 || parsedNumOfSite > 10) {
-      throw Object.assign(new Error('numOfSite must be a number between 1 and 10'), { status: 400 });
+      throw new BadRequestError('numOfSite must be a number between 1 and 10');
     }
   }
 
@@ -23,7 +24,7 @@ export function parseWebSearchParams({ webSearch = false, numOfSite, maxWord } =
   if (maxWord !== undefined && maxWord !== '') {
     parsedMaxWord = Number(maxWord);
     if (isNaN(parsedMaxWord) || parsedMaxWord < 100 || parsedMaxWord > 10000) {
-      throw Object.assign(new Error('maxWord must be a number between 100 and 10000'), { status: 400 });
+      throw new BadRequestError('maxWord must be a number between 100 and 10000');
     }
   }
 

@@ -4,6 +4,7 @@ import os from 'os';
 import crypto from 'crypto';
 import fs from 'fs';
 import { serverConfig } from '../config/server.js';
+import { UnsupportedMediaTypeError, PayloadTooLargeError, BadRequestError } from '../utils/errors.js';
 
 const ALLOWED_MIME_TYPES = [
   'image/',
@@ -36,10 +37,9 @@ export const upload = multer({
   fileFilter: (_req, file, cb) => {
     const allowed = ALLOWED_MIME_TYPES.some((t) => file.mimetype.startsWith(t));
     if (!allowed) {
-      const err = new Error(
+      const err = new UnsupportedMediaTypeError(
         `Unsupported file type: ${file.mimetype}. Allowed types: ${ALLOWED_MIME_TYPES.join(', ')}`,
       );
-      err.status = 415;
       return cb(err, false);
     }
     cb(null, true);
@@ -53,9 +53,7 @@ export function mapMulterError(err) {
   if (!err) return err;
   const code = err.code;
   if (code === 'LIMIT_FILE_SIZE') {
-    const e = new Error(err.message || 'File too large');
-    e.status = 413;
-    e.code = code;
+    const e = new PayloadTooLargeError(err.message || 'File too large', code);
     e.field = err.field;
     return e;
   }
@@ -69,10 +67,7 @@ export function mapMulterError(err) {
   ];
 
   if (badRequestCodes.includes(code)) {
-    const e = new Error(err.message || 'Invalid multipart payload');
-    e.status = 400;
-    e.code = code;
-    return e;
+    return new BadRequestError(err.message || 'Invalid multipart payload', code);
   }
   return err;
 }

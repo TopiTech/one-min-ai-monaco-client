@@ -195,7 +195,7 @@ describe('Agent Approval Flow', () => {
 
       expect([400, 403]).toContain(response.status);
       expect(response.body.error).toMatch(
-        /Invalid input|Invalid or expired approval token|Validation error|auth/i,
+        /Invalid input|Invalid or expired approval token|approvalToken is required|Validation error|auth/i,
       );
       expect(mockExecuteCommand).not.toHaveBeenCalled();
     });

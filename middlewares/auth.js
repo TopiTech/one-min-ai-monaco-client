@@ -1,5 +1,6 @@
 import crypto from 'crypto';
-import { parse } from 'cookie';
+import { parseCookie } from 'cookie';
+import { ForbiddenError } from '../utils/errors.js';
 
 export function createLocalAuthToken() {
   return crypto.randomBytes(24).toString('hex');
@@ -17,12 +18,18 @@ export function compareAuthToken(a, b) {
 export function parseCookies(cookieHeader) {
   if (!cookieHeader) return {};
   try {
-    return parse(cookieHeader);
+    return parseCookie(cookieHeader);
   } catch {
     return {};
   }
 }
 
+/**
+ * Local BFF authentication middleware creator.
+ * @param {object} [options]
+ * @param {boolean} [options.requireToken]
+ * @param {string} [options.authToken]
+ */
 export function localBffAuth({ requireToken = true, authToken } = {}) {
   if (!requireToken) {
     return (_req, _res, next) => next();
@@ -49,11 +56,8 @@ export function localBffAuth({ requireToken = true, authToken } = {}) {
     const isSafeMethod = req.method === 'GET' || req.method === 'HEAD';
     const isCsrfOk = isSafeMethod || (headerToken && cookieCsrfToken && compareAuthToken(headerToken, cookieCsrfToken));
     const tokenOk = isSessionOk && isCsrfOk;
-
     if (!tokenOk) {
-      const err = new Error('Local BFF authentication required or invalid token');
-      err.status = 403;
-      return next(err);
+      return next(new ForbiddenError('Local BFF authentication required or invalid token'));
     }
 
     const origin = req.get('origin');
@@ -62,9 +66,7 @@ export function localBffAuth({ requireToken = true, authToken } = {}) {
     const referer = req.get('referer');
 
     if (secFetchSite === 'cross-site') {
-      const err = new Error('Cross-origin requests are not allowed');
-      err.status = 403;
-      return next(err);
+      return next(new ForbiddenError('Cross-origin requests are not allowed'));
     }
 
     const isSameOrigin = (() => {
@@ -102,9 +104,7 @@ export function localBffAuth({ requireToken = true, authToken } = {}) {
     })();
 
     if (!isSameOrigin) {
-      const err = new Error('Cross-origin requests are not allowed without a valid token');
-      err.status = 403;
-      return next(err);
+      return next(new ForbiddenError('Cross-origin requests are not allowed without a valid token'));
     }
 
     return next();

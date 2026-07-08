@@ -80,7 +80,7 @@ const readSchema = z
   );
 const writeSchema = z.object({
   path: z.string().min(1, 'path is required'),
-  content: z.string({ required_error: 'content is required' }),
+  content: z.string({ message: 'content is required' }),
 });
 const createSchema = z.object({
   path: z.string().min(1, 'path is required'),

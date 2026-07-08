@@ -2,6 +2,7 @@ import express from 'express';
 import { spawn } from 'child_process';
 import { killProcessTree } from '../services/command-runner.js';
 import { z } from 'zod';
+import { HttpError } from '../utils/errors.js';
 import {
   callOneMin,
   extractText,
@@ -227,10 +228,12 @@ router.post('/chat', async (req, res, next) => {
       idempotent: false,
     });
     if (isFailedResponse(data)) {
-      const err = new Error(`1min.ai chat failed: ${extractFailureMessage(data)}`);
-      err.status = 502;
-      err.payload = data;
-      throw err;
+      throw new HttpError(
+        502,
+        `1min.ai chat failed: ${extractFailureMessage(data)}`,
+        'UPSTREAM_API_ERROR',
+        data,
+      );
     }
     res.json(data);
   } catch (err) {
@@ -277,10 +280,12 @@ router.post('/chat/stream', async (req, res, next) => {
       // Non-streaming fallback (server didn't honor isStreaming).
       const data = await response.json().catch(() => null);
       if (isFailedResponse(data)) {
-        const err = new Error(`1min.ai chat failed: ${extractFailureMessage(data)}`);
-        err.status = 502;
-        err.payload = data;
-        throw err;
+        throw new HttpError(
+          502,
+          `1min.ai conversation failed: ${extractFailureMessage(data)}`,
+          'UPSTREAM_API_ERROR',
+          data,
+        );
       }
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
@@ -462,10 +467,12 @@ router.post('/conversations', async (req, res, next) => {
       idempotent: false,
     });
     if (isFailedResponse(data)) {
-      const err = new Error(`1min.ai conversation creation failed: ${extractFailureMessage(data)}`);
-      err.status = 502;
-      err.payload = data;
-      throw err;
+      throw new HttpError(
+        502,
+        `1min.ai conversation failed: ${extractFailureMessage(data)}`,
+        'UPSTREAM_API_ERROR',
+        data,
+      );
     }
     res.json(data);
   } catch (err) {
@@ -516,7 +523,7 @@ const imageGenerateSchema = z
   .object({
     prompt: z.preprocess(
       (val) => (val === undefined || val === null ? '' : String(val)),
-      z.string().refine((val) => val.trim().length > 0, { message: 'prompt is required' }),
+      z.string({ message: 'prompt is required' }).refine((val) => val.trim().length > 0, { message: 'prompt is required' }),
     ),
     model: z.string().optional(),
     num_outputs: z.preprocess(
@@ -555,11 +562,11 @@ const imageEditorSchema = z
   .object({
     imageUrl: z.preprocess(
       (val) => (val === undefined || val === null ? '' : String(val)),
-      z.string().refine((val) => val.trim().length > 0, { message: 'imageUrl or asset key is required' }),
+      z.string({ message: 'imageUrl or asset key is required' }).refine((val) => val.trim().length > 0, { message: 'imageUrl or asset key is required' }),
     ),
     prompt: z.preprocess(
       (val) => (val === undefined || val === null ? '' : String(val)),
-      z.string().refine((val) => val.trim().length > 0, { message: 'prompt is required' }),
+      z.string({ message: 'prompt is required' }).refine((val) => val.trim().length > 0, { message: 'prompt is required' }),
     ),
     model: z.string().optional(),
     size: z.string().default('1024x1024'),
@@ -670,10 +677,12 @@ router.post('/images/generate', async (req, res, next) => {
       idempotent: false,
     });
     if (isFailedResponse(dataRes)) {
-      const err = new Error(`1min.ai image generation failed: ${extractFailureMessage(dataRes)}`);
-      err.status = 502;
-      err.payload = dataRes;
-      throw err;
+      throw new HttpError(
+        502,
+        `1min.ai image generate failed: ${extractFailureMessage(dataRes)}`,
+        'UPSTREAM_API_ERROR',
+        dataRes,
+      );
     }
     res.json(dataRes);
   } catch (err) {
@@ -719,10 +728,12 @@ router.post('/images/text-editor', async (req, res, next) => {
       idempotent: false,
     });
     if (isFailedResponse(dataRes)) {
-      const err = new Error(`1min.ai image edit failed: ${extractFailureMessage(dataRes)}`);
-      err.status = 502;
-      err.payload = dataRes;
-      throw err;
+      throw new HttpError(
+        502,
+        `1min.ai image edit failed: ${extractFailureMessage(dataRes)}`,
+        'UPSTREAM_API_ERROR',
+        dataRes,
+      );
     }
     res.json(dataRes);
   } catch (err) {
@@ -776,10 +787,10 @@ function validateLineColumn(data, ctx) {
 const codeAutocompleteSchema = z
   .object({
     code: z
-      .string({ required_error: 'code, line, and column are required' })
+      .string({ message: 'code, line, and column are required' })
       .refine((val) => val.length <= 100000, { message: 'code exceeds 100000 characters' }),
-    line: z.any({ required_error: 'code, line, and column are required' }),
-    column: z.any({ required_error: 'code, line, and column are required' }),
+    line: z.any(),
+    column: z.any(),
     fileName: z.string().optional(),
     language: z.string().optional(),
     model: z.string().optional(),
@@ -798,14 +809,14 @@ const codeAutocompleteSchema = z
 const codeInlineChatSchema = z
   .object({
     prompt: z
-      .string({ required_error: 'prompt, code, line, and column are required' })
+      .string({ message: 'prompt, code, line, and column are required' })
       .refine((val) => val.trim().length > 0, { message: 'prompt, code, line, and column are required' })
       .refine((val) => val.length <= 50000, { message: 'prompt exceeds 50000 characters' }),
     code: z
-      .string({ required_error: 'prompt, code, line, and column are required' })
+      .string({ message: 'prompt, code, line, and column are required' })
       .refine((val) => val.length <= 100000, { message: 'code exceeds 100000 characters' }),
-    line: z.any({ required_error: 'prompt, code, line, and column are required' }),
-    column: z.any({ required_error: 'prompt, code, line, and column are required' }),
+    line: z.any(),
+    column: z.any(),
     fileName: z.string().optional(),
     language: z.string().optional(),
     model: z.string().optional(),
@@ -892,10 +903,12 @@ router.post('/code/generate', async (req, res, next) => {
     });
     const normalizedDataRes = await normalizeOneMinRawResponse(dataRes);
     if (isFailedResponse(normalizedDataRes)) {
-      const err = new Error(`1min.ai code generate failed: ${extractFailureMessage(normalizedDataRes)}`);
-      err.status = 502;
-      err.payload = normalizedDataRes;
-      throw err;
+      throw new HttpError(
+        502,
+        `1min.ai code generate failed: ${extractFailureMessage(normalizedDataRes)}`,
+        'UPSTREAM_API_ERROR',
+        normalizedDataRes,
+      );
     }
     res.json(normalizedDataRes);
   } catch (err) {
@@ -953,10 +966,12 @@ ${afterCode}
     });
     const normalizedDataRes = await normalizeOneMinRawResponse(dataRes);
     if (isFailedResponse(normalizedDataRes)) {
-      const err = new Error(`1min.ai code autocomplete failed: ${extractFailureMessage(normalizedDataRes)}`);
-      err.status = 502;
-      err.payload = normalizedDataRes;
-      throw err;
+      throw new HttpError(
+        502,
+        `1min.ai code autocomplete failed: ${extractFailureMessage(normalizedDataRes)}`,
+        'UPSTREAM_API_ERROR',
+        normalizedDataRes,
+      );
     }
 
     let suggestion = extractText(normalizedDataRes);
@@ -1018,10 +1033,12 @@ ${afterCode}
     });
     const normalizedDataRes = await normalizeOneMinRawResponse(dataRes);
     if (isFailedResponse(normalizedDataRes)) {
-      const err = new Error(`1min.ai inline chat failed: ${extractFailureMessage(normalizedDataRes)}`);
-      err.status = 502;
-      err.payload = normalizedDataRes;
-      throw err;
+      throw new HttpError(
+        502,
+        `1min.ai inline chat failed: ${extractFailureMessage(normalizedDataRes)}`,
+        'UPSTREAM_API_ERROR',
+        normalizedDataRes,
+      );
     }
 
     let codeResult = extractText(normalizedDataRes);
@@ -1136,12 +1153,16 @@ router.post('/code/run', async (req, res, next) => {
         killProcessTree(child, true);
       }, 30000);
 
-      child.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-      child.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
+      if (child.stdout) {
+        child.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
+      }
+      if (child.stderr) {
+        child.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+      }
 
       child.on('close', (exitCode) => {
         clearTimeout(timeoutId);

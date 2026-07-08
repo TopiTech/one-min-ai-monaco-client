@@ -2,8 +2,8 @@
  * Environment variable guard utility.
  * Centralizes environmental filtering to protect credentials like ONE_MIN_AI_API_KEY
  * and LOCAL_BFF_AUTH_TOKEN when executing sub-processes.
+ * @returns {NodeJS.ProcessEnv}
  */
-
 export function getSafeEnv() {
   const SAFE_ENV_KEYS = new Set([
     'PATH',
@@ -26,6 +26,7 @@ export function getSafeEnv() {
     'LC_ALL',
   ]);
 
+  /** @type {NodeJS.ProcessEnv} */
   const safeEnv = {};
   const secretValues = [process.env.ONE_MIN_AI_API_KEY, process.env.LOCAL_BFF_AUTH_TOKEN].filter(
     (v) => v && typeof v === 'string' && v.length > 5,

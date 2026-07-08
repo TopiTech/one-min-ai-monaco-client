@@ -29,21 +29,21 @@ const sessionCreateSchema = z.object({
 });
 
 const commandExecuteSchema = z.object({
-  command: z.string({ required_error: 'command is required' }).min(1, 'command is required'),
+  command: z.string({ message: 'command is required' }).min(1, 'command is required'),
   cwd: z.string().optional(),
   timeoutMs: z.number().int().positive().optional(),
 });
 
 const approveSchema = z.object({
   approvalToken: z
-    .string({ required_error: 'approvalToken is required' })
+    .string({ message: 'approvalToken is required' })
     .min(1, 'approvalToken is required'),
   timeoutMs: z.number().int().positive().optional(),
 });
 
 const fileReadSchema = z
   .object({
-    path: z.string({ required_error: 'path is required' }).min(1, 'path is required'),
+    path: z.string({ message: 'path is required' }).min(1, 'path is required'),
     startLine: z.preprocess(
       (val) => (val === undefined || val === null || val === '' ? undefined : Number(val)),
       z.number().int().min(1).optional(),
@@ -67,13 +67,13 @@ const fileReadSchema = z
   );
 
 const fileWriteSchema = z.object({
-  path: z.string({ required_error: 'path is required' }).min(1, 'path is required'),
+  path: z.string({ message: 'path is required' }).min(1, 'path is required'),
   content: z.string().optional(),
 });
 
 const searchSchema = z.object({
   query: z
-    .string({ required_error: 'query is required', invalid_type_error: 'query is required' })
+    .string({ message: 'query is required' })
     .min(1, 'query is required'),
   dir: z.string().optional(),
   maxResults: z.preprocess(
@@ -83,8 +83,8 @@ const searchSchema = z.object({
 });
 
 const fileDiffSchema = z.object({
-  path: z.string({ required_error: 'path is required' }).min(1, 'path is required'),
-  diff: z.string({ required_error: 'diff is required' }),
+  path: z.string({ message: 'path is required' }).min(1, 'path is required'),
+  diff: z.string({ message: 'diff is required' }),
   dryRun: z.boolean().optional().default(false),
 });
 

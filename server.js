@@ -22,6 +22,7 @@ import {
 import { assetProxyHandler } from './services/asset-proxy.js';
 import { upload, mapMulterError, UPLOAD_TMP_DIR } from './middlewares/upload.js';
 import { startupCleanup, startPeriodicCleanup } from './services/tmp-cleanup.js';
+import { HttpError, ForbiddenError } from './utils/errors.js';
 
 const MAX_IN_MEMORY_ASSET_FALLBACK_SIZE = 8 * 1024 * 1024;
 
@@ -146,13 +147,12 @@ async function handleAssetUpload(req, res, next) {
       try {
         const stat = await headFd.stat();
         if (stat.size > MAX_IN_MEMORY_ASSET_FALLBACK_SIZE) {
-          const err = new Error(
+          throw new HttpError(
+            500,
             'Large asset uploads require a Node.js runtime with fs.openAsBlob support. ' +
               'Please use Node.js 20+ or reduce the file size.',
+            'ASSET_STREAMING_UNAVAILABLE',
           );
-          err.status = 500;
-          err.code = 'ASSET_STREAMING_UNAVAILABLE';
-          throw err;
         }
         const buf = Buffer.alloc(stat.size);
         await headFd.read(buf, 0, stat.size, 0);
@@ -263,6 +263,9 @@ export function createApp(options = {}) {
   // Serve index.html (before express.json() since this is a GET)
   app.get(['/', '/index.html'], (req, res) => {
     try {
+      // NOTE: index.html is served with 'no-store' cache-control because it contains
+      // dynamically generated per-request CSP nonces. Caching the HTML would result
+      // in stale nonces on subsequent loads, failing CSP verification.
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       let html = loadCachedHtml();
 
@@ -308,9 +311,7 @@ export function createApp(options = {}) {
   // #1: Block source map files before they reach express.static
   app.use((req, _res, next) => {
     if (req.path.endsWith('.map')) {
-      const err = new Error('Source map access denied');
-      err.status = 403;
-      return next(err);
+      return next(new ForbiddenError('Source map access denied'));
     }
     next();
   });

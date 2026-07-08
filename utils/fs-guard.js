@@ -1,6 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { ForbiddenError, NotFoundError } from './errors.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -187,17 +188,13 @@ export function validatePath(targetPath) {
 
   // Prevent null byte injection and other common attack patterns
   if (targetPath.includes('\0')) {
-    const err = new Error('Access denied: Invalid path (null byte detected)');
-    err.status = 403;
-    throw err;
+    throw new ForbiddenError('Access denied: Invalid path (null byte detected)');
   }
 
   // Block Windows reserved device names (CON, NUL, AUX, etc.) to prevent
   // redirection to system devices or OS-level errors.
   if (hasWindowsReservedName(targetPath)) {
-    const err = new Error('Access denied: Path contains a Windows reserved device name');
-    err.status = 403;
-    throw err;
+    throw new ForbiddenError('Access denied: Path contains a Windows reserved device name');
   }
 
   const isAbsolute = path.isAbsolute(targetPath);
@@ -242,9 +239,7 @@ export function validatePath(targetPath) {
   });
 
   if (!isAllowed) {
-    const err = new Error('Access denied: Path is outside the allowed directories');
-    err.status = 403;
-    throw err;
+    throw new ForbiddenError('Access denied: Path is outside the allowed directories');
   }
 
   return realPath;
@@ -350,9 +345,7 @@ export function isProtectedPathForListing(resolvedPath) {
 export function assertNotProtectedPath(resolvedPath) {
   if (isProtectedPath(resolvedPath)) {
     const relativePath = path.relative(PROJECT_ROOT, resolvedPath).replace(/\\/g, '/');
-    const err = new Error(`Access denied: Path is protected: ${relativePath}`);
-    err.status = 403;
-    throw err;
+    throw new ForbiddenError(`Access denied: Path is protected: ${relativePath}`);
   }
 }
 
@@ -364,9 +357,7 @@ export function assertNotProtectedPath(resolvedPath) {
 export function assertNotWriteProtectedPath(resolvedPath) {
   if (isWriteProtectedPath(resolvedPath)) {
     const relativePath = path.relative(PROJECT_ROOT, resolvedPath).replace(/\\/g, '/');
-    const err = new Error(`Access denied: Path is protected from write operations: ${relativePath}`);
-    err.status = 403;
-    throw err;
+    throw new ForbiddenError(`Access denied: Path is protected from write operations: ${relativePath}`);
   }
 }
 
@@ -381,8 +372,7 @@ export function revalidateRealPath(resolvedPath) {
   try {
     real = fs.realpathSync(resolvedPath);
   } catch (err) {
-    const e = new Error(`Path not found: ${resolvedPath}`);
-    e.status = 404;
+    const e = new NotFoundError(`Path not found: ${resolvedPath}`);
     e.cause = err;
     throw e;
   }
@@ -401,9 +391,7 @@ export function revalidateRealPath(resolvedPath) {
     return normalizedReal === normalizedRoot || normalizedReal.startsWith(normalizedRoot + path.sep);
   });
   if (!isAllowed) {
-    const err = new Error('Access denied: Path is outside the allowed directories');
-    err.status = 403;
-    throw err;
+    throw new ForbiddenError('Access denied: Path is outside the allowed directories');
   }
   return real;
 }

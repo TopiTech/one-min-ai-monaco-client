@@ -67,7 +67,7 @@ export function configureCSP() {
     contentSecurityPolicy: {
       directives: {
         'default-src': ["'self'"],
-        'script-src': ["'self'", (_req, res) => `'nonce-${res.locals.nonce}'`, 'blob:'],
+        'script-src': ["'self'", (_req, /** @type {any} */ res) => `'nonce-${res.locals.nonce}'`, 'blob:'],
         'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
         'style-src-attr': ["'unsafe-inline'"],
         'upgrade-insecure-requests': [],
