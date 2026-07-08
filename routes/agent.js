@@ -35,9 +35,7 @@ const commandExecuteSchema = z.object({
 });
 
 const approveSchema = z.object({
-  approvalToken: z
-    .string({ message: 'approvalToken is required' })
-    .min(1, 'approvalToken is required'),
+  approvalToken: z.string({ message: 'approvalToken is required' }).min(1, 'approvalToken is required'),
   timeoutMs: z.number().int().positive().optional(),
 });
 
@@ -72,9 +70,7 @@ const fileWriteSchema = z.object({
 });
 
 const searchSchema = z.object({
-  query: z
-    .string({ message: 'query is required' })
-    .min(1, 'query is required'),
+  query: z.string({ message: 'query is required' }).min(1, 'query is required'),
   dir: z.string().optional(),
   maxResults: z.preprocess(
     (val) => (val === undefined ? undefined : Number(val)),

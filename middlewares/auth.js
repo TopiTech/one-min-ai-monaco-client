@@ -49,12 +49,13 @@ export function localBffAuth({ requireToken = true, authToken } = {}) {
     const cookieCsrfToken = cookies['__bff_csrf'];
 
     const isSessionOk = cookieSessionToken && compareAuthToken(cookieSessionToken, authToken);
-    
+
     // GET/HEAD requests are idempotent and do not need CSRF protection.
     // Standard HTML elements (e.g. <img> tags loading images from the proxy)
     // cannot attach custom HTTP headers.
     const isSafeMethod = req.method === 'GET' || req.method === 'HEAD';
-    const isCsrfOk = isSafeMethod || (headerToken && cookieCsrfToken && compareAuthToken(headerToken, cookieCsrfToken));
+    const isCsrfOk =
+      isSafeMethod || (headerToken && cookieCsrfToken && compareAuthToken(headerToken, cookieCsrfToken));
     const tokenOk = isSessionOk && isCsrfOk;
     if (!tokenOk) {
       return next(new ForbiddenError('Local BFF authentication required or invalid token'));

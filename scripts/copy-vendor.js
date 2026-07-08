@@ -41,7 +41,9 @@ for (const f of files) {
     copied++;
   } catch (err) {
     console.error(`Failed to copy vendor asset from ${f.src} to ${f.dest}:`, err.message);
-    console.error(`Please verify that you have write permissions to ${vendorDir} and that node_modules is properly installed (npm install).`);
+    console.error(
+      `Please verify that you have write permissions to ${vendorDir} and that node_modules is properly installed (npm install).`,
+    );
     process.exit(1);
   }
 }

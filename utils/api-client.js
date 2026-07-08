@@ -40,11 +40,11 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = serverConfig.apiT
   } catch (error) {
     if (error.name === 'AbortError' || error.code === 'ABORT_ERR') {
       if (callerSignal && callerSignal.aborted) {
-      const err = new HttpError(499, 'Request aborted by client');
-      err.name = 'AbortError';
-      throw err;
-    }
-    throw new HttpError(408, `Request timeout after ${timeoutMs}ms`);
+        const err = new HttpError(499, 'Request aborted by client');
+        err.name = 'AbortError';
+        throw err;
+      }
+      throw new HttpError(408, `Request timeout after ${timeoutMs}ms`);
     }
     throw error;
   }
@@ -319,12 +319,7 @@ export async function callOneMin(
     } catch (error) {
       lastError = error;
       const err = /** @type {any} */ (lastError);
-      if (
-        err &&
-        typeof err === 'object' &&
-        !err.status &&
-        err.name !== 'AbortError'
-      ) {
+      if (err && typeof err === 'object' && !err.status && err.name !== 'AbortError') {
         safeDefineProperty(err, 'status', 502);
         safeDefineProperty(err, 'code', 'UPSTREAM_NETWORK_ERROR');
       }

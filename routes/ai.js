@@ -523,7 +523,9 @@ const imageGenerateSchema = z
   .object({
     prompt: z.preprocess(
       (val) => (val === undefined || val === null ? '' : String(val)),
-      z.string({ message: 'prompt is required' }).refine((val) => val.trim().length > 0, { message: 'prompt is required' }),
+      z
+        .string({ message: 'prompt is required' })
+        .refine((val) => val.trim().length > 0, { message: 'prompt is required' }),
     ),
     model: z.string().optional(),
     num_outputs: z.preprocess(
@@ -562,11 +564,15 @@ const imageEditorSchema = z
   .object({
     imageUrl: z.preprocess(
       (val) => (val === undefined || val === null ? '' : String(val)),
-      z.string({ message: 'imageUrl or asset key is required' }).refine((val) => val.trim().length > 0, { message: 'imageUrl or asset key is required' }),
+      z
+        .string({ message: 'imageUrl or asset key is required' })
+        .refine((val) => val.trim().length > 0, { message: 'imageUrl or asset key is required' }),
     ),
     prompt: z.preprocess(
       (val) => (val === undefined || val === null ? '' : String(val)),
-      z.string({ message: 'prompt is required' }).refine((val) => val.trim().length > 0, { message: 'prompt is required' }),
+      z
+        .string({ message: 'prompt is required' })
+        .refine((val) => val.trim().length > 0, { message: 'prompt is required' }),
     ),
     model: z.string().optional(),
     size: z.string().default('1024x1024'),
