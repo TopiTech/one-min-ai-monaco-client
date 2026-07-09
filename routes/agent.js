@@ -18,9 +18,8 @@ import path from 'path';
 import { z } from 'zod';
 import logger from '../utils/logger.js';
 import { SessionLock } from '../utils/async-lock.js';
-import { getEncoding } from 'js-tiktoken';
-
-let tokenizerCache = null;
+import { atomicWriteTextFile, readSpecificLines } from '../utils/fs-utils.js';
+import { countTokensMultiple } from '../utils/tokenizer.js';
 
 const sessionCreateSchema = z.object({
   id: z.string().optional(),
@@ -311,18 +310,6 @@ async function saveSessions() {
 const MAX_HISTORY_ENTRIES = 100;
 const MAX_HISTORY_RESULT_SIZE = 10000; // chars
 
-async function atomicWriteTextFile(filePath, content) {
-  const dir = path.dirname(filePath);
-  const tmpPath = path.join(dir, `.${path.basename(filePath)}.${crypto.randomUUID()}.tmp`);
-  try {
-    await fs.writeFile(tmpPath, content, { encoding: 'utf-8', mode: 0o600 });
-    await fs.rename(tmpPath, filePath);
-  } catch (err) {
-    await fs.unlink(tmpPath).catch(() => {});
-    throw err;
-  }
-}
-
 const MAX_PENDING_COMMANDS = 100;
 
 async function addHistoryEntry(session, entry) {
@@ -491,10 +478,7 @@ router.get('/sessions/:id', (req, res) => {
 router.post('/tokenize', (req, res) => {
   try {
     const texts = Array.isArray(req.body.texts) ? req.body.texts : [req.body.text || ''];
-    if (!tokenizerCache) {
-      tokenizerCache = getEncoding('cl100k_base');
-    }
-    const counts = texts.map((t) => tokenizerCache.encode(String(t)).length);
+    const counts = countTokensMultiple(texts);
     res.json({ counts, total: counts.reduce((a, b) => a + b, 0) });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -816,14 +800,12 @@ router.get('/sessions/:id/files', async (req, res, next) => {
       return res.status(400).json({ error: 'Cannot read binary files as text in the agent.' });
     }
 
-    const buffer = await fs.readFile(realPath);
-    const content = buffer.toString('utf-8');
-    let finalContent = content;
+    let finalContent;
     if (startLine !== undefined || endLine !== undefined) {
-      const lines = content.split(/\r?\n/);
-      const start = startLine !== undefined ? startLine - 1 : 0;
-      const end = endLine !== undefined ? endLine : lines.length;
-      finalContent = lines.slice(start, end).join('\n');
+      finalContent = await readSpecificLines(realPath, startLine, endLine);
+    } else {
+      const buffer = await fs.readFile(realPath);
+      finalContent = buffer.toString('utf-8');
     }
 
     res.json({

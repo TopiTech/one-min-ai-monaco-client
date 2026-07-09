@@ -1,7 +1,6 @@
 import express from 'express';
 import fs from 'fs/promises';
 import path from 'path';
-import crypto from 'crypto';
 import { z } from 'zod';
 import {
   validatePath,
@@ -15,6 +14,7 @@ import {
   isProtectedPathForListing,
 } from '../utils/fs-guard.js';
 import { detectBinaryContent } from '../utils/mime-guard.js';
+import { atomicWriteTextFile, readSpecificLines } from '../utils/fs-utils.js';
 
 const MAX_READ_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_LIST_ENTRIES = 5000;
@@ -39,18 +39,6 @@ const BINARY_EXTENSIONS = new Set([
 ]);
 
 const router = express.Router();
-
-async function atomicWriteTextFile(filePath, content) {
-  const dir = path.dirname(filePath);
-  const tmpPath = path.join(dir, `.${path.basename(filePath)}.${crypto.randomUUID()}.tmp`);
-  try {
-    await fs.writeFile(tmpPath, content, { encoding: 'utf-8', mode: 0o600 });
-    await fs.rename(tmpPath, filePath);
-  } catch (err) {
-    await fs.unlink(tmpPath).catch(() => {});
-    throw err;
-  }
-}
 
 const workspaceSelectSchema = z.object({ dir: z.string().min(1, 'dir is required') });
 const listSchema = z.object({ dir: z.string().optional() });
@@ -342,13 +330,12 @@ router.get('/read', async (req, res, next) => {
       return res.status(400).json({ error: 'Cannot read binary files as text in the editor.' });
     }
 
-    const buffer = await fs.readFile(realPath);
-    let content = buffer.toString('utf-8');
+    let content;
     if (startLine !== undefined || endLine !== undefined) {
-      const lines = content.split(/\r?\n/);
-      const start = startLine !== undefined ? startLine - 1 : 0;
-      const end = endLine !== undefined ? endLine : lines.length;
-      content = lines.slice(start, end).join('\n');
+      content = await readSpecificLines(realPath, startLine, endLine);
+    } else {
+      const buffer = await fs.readFile(realPath);
+      content = buffer.toString('utf-8');
     }
     res.json({ path: realPath, content, writable: canWritePath(realPath) });
   } catch (err) {
