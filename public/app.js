@@ -400,7 +400,7 @@ require(['vs/editor/editor.main'], () => {
   toast.error(t('monaco_load_failed', { error: msg }));
   console.error('Monaco AMD load error:', err);
 
-  const container = document.getElementById('editorContainer');
+  const container = document.getElementById('editor');
   if (container) {
     container.textContent = '';
 

@@ -119,6 +119,7 @@ const SESSIONS_FILE = path.join(DATA_DIR, 'agent_sessions.json');
 // server restart (within their 5-minute expiry window).
 const PENDING_COMMANDS_FILE = path.join(DATA_DIR, 'pending_commands.json');
 const isTestMode = process.env.NODE_ENV === 'test';
+const shouldPersistSessions = !isTestMode && serverConfig.persistAgentSessions;
 
 let sessions = new Map();
 const pendingCommands = new Map();
@@ -197,7 +198,7 @@ function createDebouncedFileWriter(filePath, serialize, { delayMs = 50, label = 
 let _pendingLoadReady = null;
 
 async function loadPendingCommands() {
-  if (isTestMode) return;
+  if (!shouldPersistSessions) return;
   if (_pendingLoadReady) return _pendingLoadReady;
   _pendingLoadReady = (async () => {
     try {
@@ -228,13 +229,14 @@ const pendingWriter = createDebouncedFileWriter(
 );
 
 function savePendingCommands() {
+  if (!shouldPersistSessions) return;
   pendingWriter.save();
 }
 
 // Cache the mkdir promise so it only runs once across concurrent calls.
 let _dirReady = null;
 async function ensureDataDir() {
-  if (isTestMode) return;
+  if (!shouldPersistSessions) return;
   if (_dirReady) return _dirReady;
   _dirReady = fs.mkdir(DATA_DIR, { recursive: true }).catch((err) => {
     // Reset so a future call can retry (e.g. after a transient fs error).
@@ -247,7 +249,7 @@ async function ensureDataDir() {
 // Awaiting explicit initialization via initAgentState()
 
 async function loadSessions() {
-  if (isTestMode) return;
+  if (!shouldPersistSessions) return;
   try {
     await ensureDataDir();
     const data = await fs.readFile(SESSIONS_FILE, 'utf-8');
@@ -302,6 +304,7 @@ const sessionWriter = createDebouncedFileWriter(
  * are committed to disk before returning, preventing data loss on crash.
  */
 async function saveSessions() {
+  if (!shouldPersistSessions) return;
   await sessionWriter.flush();
 }
 
@@ -313,6 +316,7 @@ const MAX_HISTORY_RESULT_SIZE = 10000; // chars
 const MAX_PENDING_COMMANDS = 100;
 
 async function addHistoryEntry(session, entry) {
+  if (!serverConfig.persistAgentSessions) return;
   if (entry.result) {
     const stdoutRaw = entry.result.stdout || '';
     const stderrRaw = entry.result.stderr || '';

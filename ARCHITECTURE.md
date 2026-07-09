@@ -78,7 +78,7 @@
 │       ├── editor.js      # Monaco Editor integration
 │       ├── inline-chat.js # Inline chat widget
 │       ├── editor-tabs.js # Editor tab management
-│       ├── models.js      # Model picker
+│       ├── model-picker.js # Model picker
 │       ├── theme.js       # Dark/light theme
 │       ├── settings.js    # Settings panel
 │       ├── toast.js       # Toast notifications
@@ -134,7 +134,7 @@ The Express server acts as a BFF, keeping the 1min.ai API key on the server side
 
 ### 3. Monaco Editor Integration
 
-The editor runs entirely in the browser. The BFF proxies all code-related API calls (`/api/code/*`). The editor is loaded via CDN by default, with an option for local copy.
+The editor runs entirely in the browser. The BFF proxies all code-related API calls (`/api/code/*`). Monaco and related frontend vendor assets are copied locally into `public/` at startup.
 
 ### 4. Agent System
 

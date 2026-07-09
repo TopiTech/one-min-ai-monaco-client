@@ -69,7 +69,16 @@ function applyTranslations() {
   document.querySelectorAll('[data-i18n-html]').forEach((el) => {
     const key = el.getAttribute('data-i18n-html');
     const val = t(key);
-    if (val !== key) el.innerHTML = val;
+    if (val !== key) {
+      if (typeof window !== 'undefined' && window.DOMPurify?.sanitize) {
+        el.innerHTML = window.DOMPurify.sanitize(val, {
+          ALLOWED_TAGS: ['code', 'strong', 'em', 'br', 'kbd', 'span'],
+          ALLOWED_ATTR: ['class'],
+        });
+      } else {
+        el.textContent = val;
+      }
+    }
   });
 
   // Placeholder

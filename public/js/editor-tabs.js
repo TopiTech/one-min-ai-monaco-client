@@ -53,7 +53,9 @@ export function createEditorTabManager(editorState, editorManager, dom) {
       tabEl.className = `editor-tab ${pathVal === editorState.activeFilePath ? 'active' : ''}`;
       tabEl.title = pathVal;
 
-      const nameSpan = document.createElement('span');
+      const nameSpan = document.createElement('button');
+      nameSpan.type = 'button';
+      nameSpan.className = 'editor-tab-button';
       nameSpan.textContent = fileName;
       nameSpan.onclick = () => {
         if (pathVal !== editorState.activeFilePath) {
@@ -62,7 +64,8 @@ export function createEditorTabManager(editorState, editorManager, dom) {
       };
       tabEl.appendChild(nameSpan);
 
-      const closeBtn = document.createElement('span');
+      const closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
       closeBtn.className = 'close-tab-btn';
       closeBtn.textContent = '\u00d7';
       closeBtn.onclick = (e) => {

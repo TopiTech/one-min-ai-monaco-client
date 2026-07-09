@@ -107,7 +107,7 @@ config/models.js           # UIで選択できるモデル一覧
 public/index.html          # UI
 public/app.js              # フロントエンドロジック
 public/js/api.js           # フロントエンド共通API関数
-public/js/models.js        # モデルピッカーロジック
+public/js/model-picker.js  # モデルピッカーロジック
 public/styles.css          # スタイル
 docs/api-specifications.md  # 1min.ai API仕様
 package.json

@@ -192,6 +192,25 @@ describe('Server Factory', () => {
     });
   });
 
+  describe('GET /api/assets/proxy cache policy', () => {
+    test('uses private cache-control for proxied assets', async () => {
+      const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+      global.fetch = jest.fn().mockResolvedValue(
+        new Response(pngBytes, {
+          status: 200,
+          headers: { 'content-type': 'image/png', 'content-length': String(pngBytes.length) },
+        }),
+      );
+
+      const response = await request(app)
+        .get('/api/assets/proxy')
+        .query({ url: 'https://asset.1min.ai/a.png' });
+
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('private, max-age=300, stale-while-revalidate=600');
+    });
+  });
+
   describe('GET /api/fs/read', () => {
     test('should allow reading non-secret project source files', async () => {
       const response = await request(app).get('/api/fs/read').query({ path: 'server.js' });

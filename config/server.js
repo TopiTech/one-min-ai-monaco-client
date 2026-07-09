@@ -239,6 +239,7 @@ export const serverConfig = {
     MAX_SESSION_TTL,
     FALLBACK.sessionTtlMs,
   ),
+  persistAgentSessions: parseBoolean(process.env.PERSIST_AGENT_SESSIONS, true),
 
   // Logging
   logLevel: parseLogLevel(process.env.LOG_LEVEL),

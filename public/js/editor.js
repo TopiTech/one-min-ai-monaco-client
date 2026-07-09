@@ -8,6 +8,8 @@ import { isDarkTheme } from './theme.js';
 const MAX_OPEN_MODELS = 20;
 const AUTOCOMPLETE_CONTEXT_BEFORE_LINES = 80;
 const AUTOCOMPLETE_CONTEXT_AFTER_LINES = 40;
+const AUTOCOMPLETE_MIN_PREFIX_LENGTH = 3;
+const AUTOCOMPLETE_DEBOUNCE_MS = 180;
 
 function getAutocompleteContext(model, position) {
   const lineCount = model.getLineCount();
@@ -41,6 +43,8 @@ export function createEditorState() {
 export function createEditorManager(state) {
   let _instance = null;
   let _resizeObserver = null;
+  let _lastAutocompleteKey = '';
+  let _lastAutocompleteAt = 0;
 
   function getTheme() {
     // UI-9: Respect OS high-contrast preference
@@ -111,6 +115,26 @@ export function createEditorManager(state) {
 
           try {
             const autocompleteContext = getAutocompleteContext(model, position);
+            const linePrefix = model
+              .getLineContent(position.lineNumber)
+              .slice(0, Math.max(0, position.column - 1));
+            const currentTokenPrefix = linePrefix.match(/[A-Za-z0-9_.$-]+$/)?.[0] || '';
+            if (currentTokenPrefix.length < AUTOCOMPLETE_MIN_PREFIX_LENGTH) return;
+
+            const requestKey = [
+              state.activeFilePath || 'untitled',
+              model.getLanguageId(),
+              autocompleteContext.line,
+              autocompleteContext.column,
+              currentTokenPrefix,
+            ].join('|');
+            const now = Date.now();
+            if (requestKey === _lastAutocompleteKey && now - _lastAutocompleteAt < AUTOCOMPLETE_DEBOUNCE_MS) {
+              return;
+            }
+            _lastAutocompleteKey = requestKey;
+            _lastAutocompleteAt = now;
+
             const data = await api('/api/code/autocomplete', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },

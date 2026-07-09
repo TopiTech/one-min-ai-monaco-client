@@ -59,6 +59,9 @@ async function loadI18nModule({
 
   global.window = {
     dispatchEvent: jest.fn(),
+    DOMPurify: {
+      sanitize: jest.fn((value) => `[sanitized]${value}`),
+    },
   };
   global.CustomEvent = class CustomEvent {
     constructor(name, init) {
@@ -200,7 +203,11 @@ describe('i18n utility module', () => {
     await initI18n();
 
     expect(elText.textContent).toBe('完了');
-    expect(elHtml.innerHTML).toBe('ネスト');
+    expect(global.window.DOMPurify.sanitize).toHaveBeenCalledWith('ネスト', {
+      ALLOWED_TAGS: ['code', 'strong', 'em', 'br', 'kbd', 'span'],
+      ALLOWED_ATTR: ['class'],
+    });
+    expect(elHtml.innerHTML).toBe('[sanitized]ネスト');
     expect(elPlaceholder.placeholder).toBe('完了');
     expect(elTitle.title).toBe('完了');
     expect(elAria.setAttribute).toHaveBeenCalledWith('aria-label', '完了');
@@ -235,5 +242,18 @@ describe('i18n utility module', () => {
     expect(getLangJaFail()).toBe('ja');
 
     consoleErrorSpy.mockRestore();
+  });
+
+  test('data-i18n-html falls back to textContent when DOMPurify is unavailable', async () => {
+    const { initI18n, elements } = await loadI18nModule();
+    delete global.window.DOMPurify;
+
+    const elHtml = createMockElement({ 'data-i18n-html': 'nested.val' });
+    elements['[data-i18n-html]'].push(elHtml);
+
+    await initI18n();
+
+    expect(elHtml.textContent).toBe('ネスト');
+    expect(elHtml.innerHTML).toBe('');
   });
 });

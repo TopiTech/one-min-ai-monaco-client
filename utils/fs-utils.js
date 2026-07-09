@@ -57,6 +57,15 @@ export async function readSpecificLines(filePath, startLine = 1, endLine) {
 
     let currentLine = 0;
     const resultLines = [];
+    let isClosed = false;
+
+    const cleanup = () => {
+      if (!isClosed) {
+        isClosed = true;
+        rl.close();
+        fileStream.destroy();
+      }
+    };
 
     rl.on('line', (line) => {
       currentLine++;
@@ -64,16 +73,23 @@ export async function readSpecificLines(filePath, startLine = 1, endLine) {
         if (endLine === undefined || currentLine <= endLine) {
           resultLines.push(line);
         } else {
-          rl.close();
+          cleanup();
         }
       }
     });
 
     rl.on('close', () => {
+      cleanup();
       resolve(resultLines.join('\n'));
     });
 
     rl.on('error', (err) => {
+      cleanup();
+      reject(err);
+    });
+
+    fileStream.on('error', (err) => {
+      cleanup();
       reject(err);
     });
   });

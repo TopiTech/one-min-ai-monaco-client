@@ -110,7 +110,7 @@ export async function assetProxyHandler(req, res, next) {
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', 'inline');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+    res.setHeader('Cache-Control', 'private, max-age=300, stale-while-revalidate=600');
 
     try {
       if (response.body) {

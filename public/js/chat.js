@@ -14,6 +14,7 @@ const MAX_STREAM_MS = 5 * 60 * 1000;
 const UPLOAD_CONCURRENCY = 3;
 const MAX_STREAM_RETRIES = 2;
 const RETRYABLE_STREAM_STATUSES = new Set([408, 429, 502, 503, 504]);
+const STREAM_RENDER_INTERVAL_MS = 125;
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -326,7 +327,9 @@ export function createChatManager(dom, state) {
     aiMsgDiv.appendChild(aiRoleSpan);
     const aiContentDiv = document.createElement('div');
     aiContentDiv.className = 'msg-content';
-    aiContentDiv.innerHTML = '<span class="streaming-indicator"></span>';
+    const streamingIndicator = document.createElement('span');
+    streamingIndicator.className = 'streaming-indicator';
+    aiContentDiv.appendChild(streamingIndicator);
     aiMsgDiv.appendChild(aiContentDiv);
     dom.chatLog.appendChild(aiMsgDiv);
     // F-6: Only auto-scroll if the user was already near the bottom when they
@@ -418,22 +421,25 @@ export function createChatManager(dom, state) {
           }, MAX_STREAM_MS);
 
           let renderScheduled = false;
+          let lastRenderAt = 0;
           const scheduleRender = () => {
             if (renderScheduled) return;
             renderScheduled = true;
             const run = () => {
               renderScheduled = false;
               if (fullText) {
-                renderMarkdownSafely(aiContentDiv, fullText);
+                aiContentDiv.textContent = fullText;
+                lastRenderAt = Date.now();
                 if (followStreamScroll) {
                   dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
                 }
               }
             };
-            if (typeof requestAnimationFrame === 'function') {
+            const delay = Math.max(0, STREAM_RENDER_INTERVAL_MS - (Date.now() - lastRenderAt));
+            if (typeof requestAnimationFrame === 'function' && delay === 0) {
               requestAnimationFrame(run);
             } else {
-              setTimeout(run, 16);
+              setTimeout(run, delay || STREAM_RENDER_INTERVAL_MS);
             }
           };
 
@@ -488,7 +494,7 @@ export function createChatManager(dom, state) {
                   const text = findTextCandidate(data?.aiRecord || data);
                   if (text && text.length > fullText.length) {
                     fullText = text;
-                    renderMarkdownSafely(aiContentDiv, fullText);
+                    aiContentDiv.textContent = fullText;
                   }
                   continue;
                 }
@@ -501,7 +507,7 @@ export function createChatManager(dom, state) {
                   const text = findTextCandidate(data?.aiRecord || data);
                   if (text) {
                     fullText = text;
-                    renderMarkdownSafely(aiContentDiv, fullText);
+                    aiContentDiv.textContent = fullText;
                   }
                   streamDone = true;
                   break;
