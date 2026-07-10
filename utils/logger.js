@@ -179,7 +179,7 @@ class Logger {
     const reset = LOG_COLORS.reset;
 
     // Console output with colors
-    console.log(`${color}${formatted}${reset}`);
+    process.stdout.write(`${color}${formatted}${reset}\n`);
 
     // File output without colors
     this._writeToFile(formatted);

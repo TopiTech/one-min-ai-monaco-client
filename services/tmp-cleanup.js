@@ -1,4 +1,5 @@
 import fs from 'fs';
+import fsp from 'fs/promises';
 import path from 'path';
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
@@ -7,12 +8,12 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
  * Startup cleanup: remove orphaned temporary files from previous runs
  * that may have been left behind due to sudden server crashes.
  */
-export function startupCleanup(tmpDir) {
+export async function startupCleanup(tmpDir) {
   try {
-    const files = fs.readdirSync(tmpDir);
-    for (const file of files) {
-      fs.unlinkSync(path.join(tmpDir, file));
-    }
+    const entries = await fsp.readdir(tmpDir, { withFileTypes: true });
+    await Promise.all(
+      entries.filter((e) => e.isFile()).map((e) => fsp.unlink(path.join(tmpDir, e.name)).catch(() => {})),
+    );
   } catch {
     // Best-effort cleanup, ignore errors
   }

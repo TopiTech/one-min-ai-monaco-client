@@ -22,6 +22,26 @@ import {
 import { assetProxyHandler } from './services/asset-proxy.js';
 import { upload, mapMulterError, UPLOAD_TMP_DIR } from './middlewares/upload.js';
 import { startupCleanup, startPeriodicCleanup } from './services/tmp-cleanup.js';
+
+export function shouldExposeDetails(req) {
+  const isDev = process.env.NODE_ENV === 'development';
+  const dynamicExposeErrorDetails =
+    process.env.EXPOSE_ERROR_DETAILS !== undefined
+      ? String(process.env.EXPOSE_ERROR_DETAILS).toLowerCase() === 'true'
+      : isDev;
+  const isLocalHost = isDev || /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req?.get?.('host') || '');
+  return dynamicExposeErrorDetails && isLocalHost;
+}
+
+export function shouldExposeErrorText(status, req) {
+  const isDev = process.env.NODE_ENV === 'development';
+  const isProduction =
+    process.env.NODE_ENV === 'production' ||
+    (!process.env.NODE_ENV && process.env.EXPOSE_ERROR_DETAILS !== 'true');
+  const isLocalHost = isDev || /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req?.get?.('host') || '');
+  return status < 500 || !isProduction || isLocalHost;
+}
+
 import { HttpError, ForbiddenError } from './utils/errors.js';
 
 const MAX_IN_MEMORY_ASSET_FALLBACK_SIZE = 8 * 1024 * 1024;
@@ -32,7 +52,7 @@ const MAX_IN_MEMORY_ASSET_FALLBACK_SIZE = 8 * 1024 * 1024;
 // parseBoolean).
 initLogger(serverConfig);
 
-import aiRoutes from './routes/ai.js';
+import aiRoutes from './routes/ai/index.js';
 import fsRoutes from './routes/fs.js';
 import agentRoutes, { flushPendingWriters, initAgentState } from './routes/agent.js';
 import agentChatRoutes from './routes/agent-chat.js';
@@ -256,7 +276,16 @@ export function createApp(options = {}) {
   const loadCachedHtml = () => {
     if (cachedHtml && process.env.NODE_ENV === 'production') return cachedHtml;
     const htmlPath = path.join(__dirname, 'public', 'index.html');
-    cachedHtml = fs.readFileSync(htmlPath, 'utf8');
+    let rawHtml = fs.readFileSync(htmlPath, 'utf8');
+
+    // Pre-parse the HTML to inject %%NONCE%% placeholders
+    rawHtml = rawHtml.replace(/<script\b/g, `<script nonce="%%NONCE%%"`);
+    rawHtml = rawHtml.replace(
+      /<head(\s*[^>]*)>/i,
+      (match, attrs) => `<head${attrs}>\n    <meta name="csp-nonce" content="%%NONCE%%">`,
+    );
+
+    cachedHtml = rawHtml;
     return cachedHtml;
   };
 
@@ -271,14 +300,8 @@ export function createApp(options = {}) {
 
       const nonce = res.locals.nonce;
 
-      // Inject nonce into all <script> tags
-      html = html.replace(/<script\b/g, `<script nonce="${nonce}"`);
-
-      // Expose nonce to client-side JS via meta tag (for dynamic <style> elements)
-      html = html.replace(
-        /<head(\s*[^>]*)>/i,
-        (match, attrs) => `<head${attrs}><meta name="csp-nonce" content="${nonce}">`,
-      );
+      // Inject nonce using the pre-parsed placeholders
+      html = html.replaceAll('%%NONCE%%', nonce);
 
       // Set the token as HttpOnly cookie (CSRF mitigation).
       // We no longer inject data-bff-token into the DOM to prevent exposure.
@@ -289,14 +312,14 @@ export function createApp(options = {}) {
         res.cookie('__bff_session', localAuthToken, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'Strict',
+          sameSite: 'strict',
           maxAge: ONE_DAY_MS,
           path: '/api',
         });
         res.cookie('__bff_csrf', csrfToken, {
           httpOnly: false,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'Strict',
+          sameSite: 'strict',
           maxAge: ONE_DAY_MS,
           path: '/',
         });
@@ -368,18 +391,14 @@ export function createApp(options = {}) {
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, _next) => {
     const status = err.status || 500;
-    const isDev = process.env.NODE_ENV === 'development';
-    const isLocalHost = isDev || /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.get('host') || '');
+
     // In production (NODE_ENV=production) or when NODE_ENV is unset, never
     // expose stack traces or payloads to remote clients unless explicitly enabled
     // and requested from localhost.  Read NODE_ENV dynamically so test-time
     // overrides (process.env.NODE_ENV = 'production') take effect immediately
     // instead of relying on the module-load-time serverConfig snapshot.
-    const dynamicExposeErrorDetails =
-      process.env.EXPOSE_ERROR_DETAILS !== undefined
-        ? String(process.env.EXPOSE_ERROR_DETAILS).toLowerCase() === 'true'
-        : isDev;
-    const exposeDetails = dynamicExposeErrorDetails && isLocalHost;
+    const exposeDetails = shouldExposeDetails(req);
+    const exposeErrorText = shouldExposeErrorText(status, req);
 
     const logLevel = status >= 500 ? 'error' : 'warn';
     logger[logLevel](`API Error: ${status}`, {
@@ -390,11 +409,6 @@ export function createApp(options = {}) {
       payload: exposeDetails ? err.payload : undefined,
       stack: exposeDetails ? err.stack : undefined,
     });
-
-    const isProduction =
-      process.env.NODE_ENV === 'production' ||
-      (!process.env.NODE_ENV && process.env.EXPOSE_ERROR_DETAILS !== 'true');
-    const exposeErrorText = status < 500 || !isProduction || isLocalHost;
 
     res.status(status).json({
       error: exposeErrorText
@@ -459,8 +473,12 @@ if (process.env.NODE_ENV !== 'test') {
   fs.mkdirSync(CODE_RUN_TMP_DIR, { recursive: true });
 
   // E-1: Startup cleanup to remove orphaned temporary files from previous runs
-  startupCleanup(UPLOAD_TMP_DIR);
-  startupCleanup(CODE_RUN_TMP_DIR);
+  startupCleanup(UPLOAD_TMP_DIR).catch((err) =>
+    logger.error(`Failed to cleanup UPLOAD_TMP_DIR: ${err.message}`),
+  );
+  startupCleanup(CODE_RUN_TMP_DIR).catch((err) =>
+    logger.error(`Failed to cleanup CODE_RUN_TMP_DIR: ${err.message}`),
+  );
   // B-6: Periodic cleanup for orphaned temporary files during runtime
   const cleanupInterval = startPeriodicCleanup(UPLOAD_TMP_DIR);
   const codeRunCleanupInterval = startPeriodicCleanup(CODE_RUN_TMP_DIR);

@@ -205,8 +205,9 @@ function extractImages(data) {
 }
 
 function getCookie(name) {
-  const value = `; ${document.cookie}`;
-  const parts = value.split(`; ${name}=`);
-  if (parts.length === 2) return decodeURIComponent(parts.pop().split(';').shift());
-  return null;
+  const nameEq = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '=';
+  const matches = document.cookie.match(new RegExp('(?:^|;\\s*)' + nameEq + '([^;]*)', 'g'));
+  if (!matches || matches.length !== 1) return null;
+  const match = matches[0].match(new RegExp('(?:^|;\\s*)' + nameEq + '([^;]*)'));
+  return match ? decodeURIComponent(match[1]) : null;
 }

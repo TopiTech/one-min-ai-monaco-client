@@ -26,20 +26,20 @@ describe('tmp-cleanup service', () => {
   });
 
   describe('startupCleanup', () => {
-    test('removes all files in target temp directory', () => {
+    test('removes all files in target temp directory', async () => {
       fs.writeFileSync(path.join(tmpDir, 'file1.tmp'), 'hello');
       fs.writeFileSync(path.join(tmpDir, 'file2.tmp'), 'world');
 
       expect(fs.readdirSync(tmpDir).length).toBe(2);
 
-      startupCleanup(tmpDir);
+      await startupCleanup(tmpDir);
 
       expect(fs.readdirSync(tmpDir).length).toBe(0);
     });
 
-    test('ignores errors gracefully when directory does not exist', () => {
+    test('ignores errors gracefully when directory does not exist', async () => {
       const nonExistentDir = path.join(tmpDir, 'does-not-exist');
-      expect(() => startupCleanup(nonExistentDir)).not.toThrow();
+      await expect(startupCleanup(nonExistentDir)).resolves.not.toThrow();
     });
   });
 

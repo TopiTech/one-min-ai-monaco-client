@@ -2,7 +2,7 @@ export function sanitizePayload(payload) {
   if (!payload) return null;
   if (typeof payload !== 'object') return payload;
   try {
-    const sensitiveKeys = [
+    const sensitiveKeys = new Set([
       'api_key',
       'apikey',
       'key',
@@ -10,6 +10,8 @@ export function sanitizePayload(payload) {
       'auth',
       'authorization',
       'secret',
+      'password',
+      'credential',
       'prompt',
       'messages',
       'query',
@@ -25,8 +27,8 @@ export function sanitizePayload(payload) {
       'origin',
       'referer',
       'location',
-    ];
-    const sensitiveValueKeys = ['result', 'resultObject', 'result_object', 'raw'];
+    ]);
+    const sensitiveValueKeys = new Set(['result', 'resultobject', 'result_object', 'raw']);
     const seen = new WeakSet();
     const walk = (obj) => {
       if (!obj || typeof obj !== 'object') return obj;
@@ -38,9 +40,9 @@ export function sanitizePayload(payload) {
       const result = {};
       for (const key in obj) {
         const lowerKey = key.toLowerCase();
-        if (sensitiveKeys.some((sk) => lowerKey.includes(sk))) {
+        if (sensitiveKeys.has(lowerKey)) {
           result[key] = '[MASKED]';
-        } else if (sensitiveValueKeys.some((sk) => lowerKey.includes(sk))) {
+        } else if (sensitiveValueKeys.has(lowerKey)) {
           result[key] = '[REDACTED]';
         } else if (typeof obj[key] === 'object' && obj[key] !== null) {
           result[key] = walk(obj[key]);

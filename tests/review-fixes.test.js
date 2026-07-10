@@ -195,7 +195,7 @@ describe('Review Fixes', () => {
 
       const errorWithRawPayload = new Error('1min.ai request failed: 400');
       errorWithRawPayload.status = 400;
-      errorWithRawPayload.payload = { internal_error_code: 999, raw_sensitive_details: 'secret' };
+      errorWithRawPayload.payload = { internal_error_code: 999, api_key: 'secret' };
       callOneMin.mockRejectedValue(errorWithRawPayload);
 
       const response = await request(app).post('/api/chat').send({ prompt: 'test' });
@@ -211,7 +211,7 @@ describe('Review Fixes', () => {
 
       const errorWithRawPayload = new Error('1min.ai request failed: 400');
       errorWithRawPayload.status = 400;
-      errorWithRawPayload.payload = { internal_error_code: 999, raw_sensitive_details: 'secret' };
+      errorWithRawPayload.payload = { internal_error_code: 999, api_key: 'secret' };
       callOneMin.mockRejectedValue(errorWithRawPayload);
 
       const response = await request(app).post('/api/chat').send({ prompt: 'test' });

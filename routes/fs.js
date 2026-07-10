@@ -404,13 +404,14 @@ router.post('/create', async (req, res, next) => {
  * This prevents accidentally deleting protected files when a parent
  * directory is removed with recursive: true.
  */
-async function assertNoProtectedChildren(dirPath) {
+async function assertNoProtectedChildren(dirPath, maxDepth = 20) {
+  if (maxDepth <= 0) throw new Error('Directory is too deep to validate');
   const entries = await fs.readdir(dirPath, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = path.join(dirPath, entry.name);
     assertNotWriteProtectedPath(fullPath);
-    if (entry.isDirectory()) {
-      await assertNoProtectedChildren(fullPath);
+    if (entry.isDirectory() && !entry.isSymbolicLink()) {
+      await assertNoProtectedChildren(fullPath, maxDepth - 1);
     }
   }
 }

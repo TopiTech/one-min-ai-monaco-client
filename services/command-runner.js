@@ -7,8 +7,7 @@ import { getSafeEnv } from '../utils/env-guard.js';
  * Command execution service with timeout, output collection, and safety checks.
  */
 
-// Default timeout from environment or 30 seconds
-const DEFAULT_TIMEOUT_MS = parseInt(process.env.COMMAND_TIMEOUT_MS || '30000', 10);
+const DEFAULT_TIMEOUT_MS = serverConfig.commandTimeoutMs;
 const MAX_COMMAND_LENGTH = 4096;
 const MAX_COMMAND_ARGS = 128;
 

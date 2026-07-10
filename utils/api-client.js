@@ -6,6 +6,16 @@ import { HttpError } from './errors.js';
 
 const API_BASE = serverConfig.apiBaseUrl;
 
+const RETRYABLE_NETWORK_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'ETIMEDOUT',
+  'EPIPE',
+  'ENETUNREACH',
+  'EAI_AGAIN',
+]);
+
 function requireApiKey() {
   const apiKey = process.env.ONE_MIN_AI_API_KEY;
   if (!apiKey || apiKey.includes('your_1min_ai_api_key_here')) {
@@ -326,16 +336,7 @@ export async function callOneMin(
       // Classify errors by error.code for better retry decisions:
       // - Retryable network errors: ECONNRESET, ECONNREFUSED, ENOTFOUND, ETIMEDOUT, EPIPE
       // - Non-retryable client errors: 4xx (except 429)
-      const retryableNetworkCodes = new Set([
-        'ECONNRESET',
-        'ECONNREFUSED',
-        'ENOTFOUND',
-        'ETIMEDOUT',
-        'EPIPE',
-        'ENETUNREACH',
-        'EAI_AGAIN',
-      ]);
-      const isRetryableNetworkError = error?.code && retryableNetworkCodes.has(error.code);
+      const isRetryableNetworkError = error?.code && RETRYABLE_NETWORK_CODES.has(error.code);
       const isNonRetryableHttpError =
         error?.status && error.status >= 400 && error.status < 500 && error.status !== 429;
       if (isNonRetryableHttpError && !isRetryableNetworkError) throw error;

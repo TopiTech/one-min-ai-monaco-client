@@ -120,10 +120,14 @@ function getDefaultAllowedRoots() {
  * If ALLOWED_ROOTS env var is set, it is split by comma and resolved.
  * Otherwise, PROJECT_ROOT is allowed.
  */
+let _cachedAllowedRoots = null;
+
 export function getAllowedRoots() {
+  if (_cachedAllowedRoots && process.env.NODE_ENV !== 'test') return _cachedAllowedRoots;
   const raw = (process.env.ALLOWED_ROOTS || '').trim();
   if (!raw) {
-    return getDefaultAllowedRoots();
+    _cachedAllowedRoots = getDefaultAllowedRoots();
+    return _cachedAllowedRoots;
   }
   const roots = raw
     .split(',')
@@ -133,6 +137,7 @@ export function getAllowedRoots() {
   if (!roots.includes(PROJECT_ROOT)) {
     roots.unshift(PROJECT_ROOT);
   }
+  _cachedAllowedRoots = roots;
   return roots;
 }
 

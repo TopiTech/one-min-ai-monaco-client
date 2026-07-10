@@ -58,6 +58,8 @@ async function loadTranslations(lang) {
  *   data-i18n-aria="key"      → sets aria-label
  */
 function applyTranslations() {
+  document.documentElement.lang = _currentLang;
+
   // Standard text content
   document.querySelectorAll('[data-i18n]').forEach((el) => {
     const key = el.getAttribute('data-i18n');
