@@ -3,6 +3,24 @@ import { platform } from 'os';
 import { serverConfig } from '../config/server.js';
 import { getSafeEnv } from '../utils/env-guard.js';
 
+const activeProcesses = new Set();
+
+/**
+ * Force terminate all active spawned processes.
+ * Used during server shutdown to prevent zombie processes.
+ */
+export function killAllActiveProcesses() {
+  if (activeProcesses.size === 0) return;
+  for (const child of activeProcesses) {
+    try {
+      killProcessTree(child, true);
+    } catch {
+      // Best-effort cleanup
+    }
+  }
+  activeProcesses.clear();
+}
+
 /**
  * Command execution service with timeout, output collection, and safety checks.
  */
@@ -196,7 +214,21 @@ function runProcess(commandParts, options = {}) {
     detached: platform() !== 'win32',
   });
 
-  return collectProcessOutput(child, timeoutMs, onOutput);
+  activeProcesses.add(child);
+  const cleanUp = () => {
+    activeProcesses.delete(child);
+  };
+
+  return collectProcessOutput(child, timeoutMs, onOutput).then(
+    (res) => {
+      cleanUp();
+      return res;
+    },
+    (err) => {
+      cleanUp();
+      throw err;
+    },
+  );
 }
 
 function collectProcessOutput(child, timeoutMs, onOutput) {

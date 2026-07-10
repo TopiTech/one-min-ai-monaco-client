@@ -259,8 +259,62 @@ function normalizePathForMatching(targetPath) {
 const PROTECTED_PATTERNS = PROTECTED_PATH_GLOBS.map(globToRegExp);
 const WRITE_PROTECTED_PATTERNS = WRITE_PROTECTED_PATH_GLOBS.map(globToRegExp);
 
+// Static paths sets for O(1) lookup speedup
+const STATIC_PROTECTED_PREFIXES = new Set(['.git', '.venv', 'node_modules', '.mimocode', '.commandcode']);
+
+const STATIC_WRITE_PROTECTED_PREFIXES = new Set([
+  ...STATIC_PROTECTED_PREFIXES,
+  'scripts',
+  'utils',
+  'routes',
+  'config',
+  'public',
+  'tests',
+  'docs',
+]);
+
+const STATIC_PROTECTED_EXACT = new Set([
+  '.env',
+  'package.json',
+  'package-lock.json',
+  '.gitignore',
+  '.env.example',
+  'id_rsa',
+  'id_rsa.pub',
+  '.npmrc',
+  'secrets.json',
+  'credentials.json',
+]);
+
+const STATIC_WRITE_PROTECTED_EXACT = new Set([...STATIC_PROTECTED_EXACT, 'server.js', 'readme.md']);
+
+const DYNAMIC_PROTECTED_PATTERNS = [globToRegExp('.env.*'), globToRegExp('*.pem'), globToRegExp('*.key')];
+
+const DYNAMIC_WRITE_PROTECTED_PATTERNS = [...DYNAMIC_PROTECTED_PATTERNS];
+
 function isProtectedByPatterns(relativePath, patterns) {
   const normalized = normalizePathForMatching(relativePath);
+
+  const isStandard = patterns === PROTECTED_PATTERNS;
+  const isWrite = patterns === WRITE_PROTECTED_PATTERNS;
+
+  if (isStandard || isWrite) {
+    const exactSet = isWrite ? STATIC_WRITE_PROTECTED_EXACT : STATIC_PROTECTED_EXACT;
+    if (exactSet.has(normalized)) return true;
+
+    const firstSegment = normalized.split('/')[0];
+    const prefixSet = isWrite ? STATIC_WRITE_PROTECTED_PREFIXES : STATIC_PROTECTED_PREFIXES;
+    if (prefixSet.has(firstSegment)) return true;
+
+    const dynamicRegexes = isWrite ? DYNAMIC_WRITE_PROTECTED_PATTERNS : DYNAMIC_PROTECTED_PATTERNS;
+    for (let i = 0; i < dynamicRegexes.length; i++) {
+      if (dynamicRegexes[i].test(normalized)) return true;
+    }
+
+    return false;
+  }
+
+  // Fallback for custom pattern lists (e.g. from tests)
   return patterns.some((re) => re.test(normalized));
 }
 

@@ -22,6 +22,7 @@ import {
 import { assetProxyHandler } from './services/asset-proxy.js';
 import { upload, mapMulterError, UPLOAD_TMP_DIR } from './middlewares/upload.js';
 import { startupCleanup, startPeriodicCleanup } from './services/tmp-cleanup.js';
+import { killAllActiveProcesses } from './services/command-runner.js';
 
 export function shouldExposeDetails(req) {
   const isDev = process.env.NODE_ENV === 'development';
@@ -273,20 +274,36 @@ export function createApp(options = {}) {
   app.use(logger.requestLogger());
 
   let cachedHtml = null;
+  let cachedHtmlMtime = 0;
+
   const loadCachedHtml = () => {
-    if (cachedHtml && process.env.NODE_ENV === 'production') return cachedHtml;
     const htmlPath = path.join(__dirname, 'public', 'index.html');
-    let rawHtml = fs.readFileSync(htmlPath, 'utf8');
 
-    // Pre-parse the HTML to inject %%NONCE%% placeholders
-    rawHtml = rawHtml.replace(/<script\b/g, `<script nonce="%%NONCE%%"`);
-    rawHtml = rawHtml.replace(
-      /<head(\s*[^>]*)>/i,
-      (match, attrs) => `<head${attrs}>\n    <meta name="csp-nonce" content="%%NONCE%%">`,
-    );
+    if (cachedHtml && process.env.NODE_ENV === 'production') {
+      return cachedHtml;
+    }
 
-    cachedHtml = rawHtml;
-    return cachedHtml;
+    try {
+      const stat = fs.statSync(htmlPath);
+      if (cachedHtml && stat.mtimeMs === cachedHtmlMtime) {
+        return cachedHtml;
+      }
+
+      let rawHtml = fs.readFileSync(htmlPath, 'utf8');
+
+      // Pre-parse the HTML to inject %%NONCE%% placeholders
+      rawHtml = rawHtml.replace(/<script\b/g, `<script nonce="%%NONCE%%"`);
+      rawHtml = rawHtml.replace(
+        /<head(\s*[^>]*)>/i,
+        (match, attrs) => `<head${attrs}>\n    <meta name="csp-nonce" content="%%NONCE%%">`,
+      );
+
+      cachedHtml = rawHtml;
+      cachedHtmlMtime = stat.mtimeMs;
+      return cachedHtml;
+    } catch {
+      return cachedHtml || '';
+    }
   };
 
   // Serve index.html (before express.json() since this is a GET)
@@ -514,6 +531,13 @@ if (process.env.NODE_ENV !== 'test') {
       // Graceful shutdown handling
       const shutdown = () => {
         logger.info('Shutdown signal received. Closing HTTP server...');
+        try {
+          killAllActiveProcesses();
+        } catch (err) {
+          logger.error('Failed to kill active processes during shutdown', {
+            error: err.message,
+          });
+        }
         flushPendingWriters()
           .catch((err) => {
             logger.error('Failed to flush pending writers during shutdown', {

@@ -5,6 +5,19 @@ import { t } from './i18n.js';
 export function createExplorerManager(dom, openFileCallback) {
   let _currentDir = null;
   let _allNodes = []; // flat list for search
+  let _visibleNodesCache = null;
+
+  function invalidateVisibleNodesCache() {
+    _visibleNodesCache = null;
+  }
+
+  function debounce(fn, delay) {
+    let timer;
+    return function (...args) {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn.apply(this, args), delay);
+    };
+  }
 
   // ─── Context menu ─────────────────────────────────────────
   let _ctxMenu = null;
@@ -53,10 +66,12 @@ export function createExplorerManager(dom, openFileCallback) {
     const clearBtn = document.getElementById('fileSearchClear');
     if (!searchInput) return;
 
+    const debouncedFilter = debounce((q) => _applyFilter(q), 200);
+
     searchInput.addEventListener('input', () => {
       const q = searchInput.value.trim().toLowerCase();
       clearBtn?.classList.toggle('u-hidden', !q);
-      _applyFilter(q);
+      debouncedFilter(q);
     });
 
     clearBtn?.addEventListener('click', () => {
@@ -96,6 +111,8 @@ export function createExplorerManager(dom, openFileCallback) {
         }
       }
     });
+
+    invalidateVisibleNodesCache();
   }
 
   // ─── New file / folder ────────────────────────────────────
@@ -202,6 +219,7 @@ export function createExplorerManager(dom, openFileCallback) {
       tree.textContent = '';
       _allNodes = [];
       await renderTreeNodes(data.items, tree, 0);
+      invalidateVisibleNodesCache();
     } catch (e) {
       if (dom.fileTree) dom.fileTree.textContent = '';
       toast.error(t('workspace_load_failed', { error: e.message }));
@@ -319,6 +337,7 @@ export function createExplorerManager(dom, openFileCallback) {
             childrenContainer.classList.remove('is-expanded');
             toggle.classList.remove('expanded');
           }
+          invalidateVisibleNodesCache();
         };
       } else {
         node.onclick = (e) => {
@@ -373,9 +392,10 @@ export function createExplorerManager(dom, openFileCallback) {
   }
 
   function getVisibleNodes() {
+    if (_visibleNodesCache) return _visibleNodesCache;
     const tree = dom.fileTree;
     if (!tree) return [];
-    return Array.from(tree.querySelectorAll('.tree-node')).filter((n) => {
+    _visibleNodesCache = Array.from(tree.querySelectorAll('.tree-node')).filter((n) => {
       let parentGroup = n.parentElement;
       while (parentGroup && parentGroup !== tree) {
         if (
@@ -388,6 +408,7 @@ export function createExplorerManager(dom, openFileCallback) {
       }
       return true;
     });
+    return _visibleNodesCache;
   }
 
   function getNextVisibleNode(node) {

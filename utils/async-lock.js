@@ -18,25 +18,21 @@ export class SessionLock {
    * @returns {Promise<T>}
    */
   async acquire(key, fn) {
-    let queue = this.#locks.get(key);
-    if (!queue) {
-      queue = [];
-      this.#locks.set(key, queue);
-    }
-    while (queue.length > 0) {
-      await queue[queue.length - 1];
-    }
-    let release = () => {};
-    const holder = new Promise((resolve) => {
-      release = /** @type {any} */ (resolve);
+    const promise = this.#locks.get(key) || Promise.resolve();
+    let resolveLock = () => {};
+    const nextPromise = new Promise((resolve) => {
+      resolveLock = /** @type {any} */ (resolve);
     });
-    queue.push(holder);
+    this.#locks.set(key, nextPromise);
+
     try {
+      await promise;
       return await fn();
     } finally {
-      queue.shift();
-      if (queue.length === 0) this.#locks.delete(key);
-      release();
+      resolveLock();
+      if (this.#locks.get(key) === nextPromise) {
+        this.#locks.delete(key);
+      }
     }
   }
 
