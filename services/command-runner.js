@@ -300,7 +300,7 @@ function collectProcessOutput(child, timeoutMs, onOutput) {
 /**
  * Check if a command contains dangerous patterns.
  * @param {string} command The command to check.
- * @returns {object} { safe: boolean, reason?: string }
+ * @returns {{ safe: boolean, reason?: string }}
  */
 export function checkCommandSafety(command) {
   if (!command || typeof command !== 'string') {

@@ -310,8 +310,8 @@ async function saveSessions() {
 
 // Awaiting explicit initialization via initAgentState()
 
-const MAX_HISTORY_ENTRIES = 100;
-const MAX_HISTORY_RESULT_SIZE = 10000; // chars
+const MAX_HISTORY_ENTRIES = 50;
+const MAX_HISTORY_RESULT_SIZE = 2000; // chars
 
 const MAX_PENDING_COMMANDS = 100;
 
@@ -439,7 +439,7 @@ router.post('/sessions', async (req, res, next) => {
       lastAccessedAt: Date.now(),
     };
 
-    const MAX_SESSIONS = parseInt(process.env.AGENT_MAX_SESSIONS, 10) || 50;
+    const MAX_SESSIONS = parseInt(process.env.AGENT_MAX_SESSIONS, 10) || 20;
     if (sessions.size >= MAX_SESSIONS) {
       // M-5: Never evict a session that is actively running a command —
       // killing it would orphan the spawned child process. Prefer evicting

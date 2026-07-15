@@ -46,14 +46,13 @@ describe('tmp-cleanup service', () => {
   describe('startPeriodicCleanup', () => {
     beforeEach(() => {
       jest.useFakeTimers();
-      jest.setSystemTime(new Date('2026-07-03T12:00:00Z'));
     });
 
     afterEach(() => {
       jest.useRealTimers();
     });
 
-    test('deletes only files older than 1 hour when interval fires', () => {
+    test('deletes only files older than 1 hour when interval fires', async () => {
       const freshFile = path.join(tmpDir, 'fresh.tmp');
       fs.writeFileSync(freshFile, 'fresh');
 
@@ -72,7 +71,12 @@ describe('tmp-cleanup service', () => {
       const intervalId = startPeriodicCleanup(tmpDir);
 
       try {
-        jest.advanceTimersByTime(60 * 60 * 1000);
+        await jest.advanceTimersByTimeAsync(60 * 60 * 1000);
+
+        // Wait for real I/O (fsp.readdir, fsp.stat, fsp.unlink) to finish
+        jest.useRealTimers();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        jest.useFakeTimers();
 
         const remaining = fs.readdirSync(tmpDir);
         expect(remaining).toContain('fresh.tmp');
@@ -82,14 +86,12 @@ describe('tmp-cleanup service', () => {
       }
     });
 
-    test('ignores errors gracefully if directory does not exist when interval fires', () => {
+    test('ignores errors gracefully if directory does not exist when interval fires', async () => {
       const nonExistentDir = path.join(tmpDir, 'non-existent');
       const intervalId = startPeriodicCleanup(nonExistentDir);
 
       try {
-        expect(() => {
-          jest.advanceTimersByTime(60 * 60 * 1000);
-        }).not.toThrow();
+        await expect(jest.advanceTimersByTimeAsync(60 * 60 * 1000)).resolves.not.toThrow();
       } finally {
         clearInterval(intervalId);
       }

@@ -112,6 +112,24 @@ describe('Review Fixes', () => {
       const newOnes = [...after].filter((f) => !before.has(f));
       expect(newOnes).toEqual([]);
     });
+
+    test('preserves Japanese and multibyte characters in filenames', async () => {
+      callOneMin.mockResolvedValue({
+        asset: { key: 'uploads/テスト.txt' },
+      });
+
+      const response = await request(app)
+        .post('/api/assets/upload')
+        .attach('asset', Buffer.from('hello'), { filename: 'テスト.txt', contentType: 'text/plain' });
+
+      expect(response.status).toBe(200);
+      expect(callOneMin).toHaveBeenCalled();
+      const sentFormData = callOneMin.mock.calls[0][1].body;
+      if (sentFormData && typeof sentFormData.get === 'function') {
+        const file = sentFormData.get('asset');
+        expect(file.name).toBe('テスト.txt');
+      }
+    });
   });
 
   describe('CSP connect-src stays BFF-scoped', () => {

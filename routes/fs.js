@@ -17,7 +17,7 @@ import { detectBinaryContent } from '../utils/mime-guard.js';
 import { atomicWriteTextFile, readSpecificLines } from '../utils/fs-utils.js';
 import { serverConfig } from '../config/server.js';
 
-const MAX_READ_SIZE = 10 * 1024 * 1024; // 10MB
+// File size read limits evaluated dynamically via serverConfig.maxFileReadSize
 const MAX_LIST_ENTRIES = 5000;
 const MAX_DELETE_ENTRIES = 1000; // Safety cap for recursive directory deletion
 // L-9: Use the server-configured JSON body limit as the upper bound on
@@ -146,7 +146,7 @@ router.get('/drives', async (req, res, next) => {
       if (process.platform === 'win32') {
         const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
         const checks = [];
-        for (let i = 0; i < letters.length; i++) {
+        for (let i = 2; i < letters.length; i++) {
           const driveLetter = letters[i];
           const drivePath = driveLetter + ':\\';
           checks.push(
@@ -301,9 +301,9 @@ router.get('/read', async (req, res, next) => {
     if (stat.isDirectory()) {
       return res.status(400).json({ error: 'Specified path is a directory' });
     }
-    if (stat.size > MAX_READ_SIZE) {
+    if (stat.size > serverConfig.maxFileReadSize) {
       return res.status(413).json({
-        error: `File size (${stat.size} bytes) exceeds maximum read size (${MAX_READ_SIZE} bytes)`,
+        error: `File size (${stat.size} bytes) exceeds maximum read size (${serverConfig.maxFileReadSize} bytes)`,
       });
     }
 

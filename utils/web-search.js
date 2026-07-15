@@ -37,7 +37,7 @@ export function parseWebSearchParams({ webSearch = false, numOfSite, maxWord } =
  * @param {boolean} opts.webSearch
  * @param {number} [opts.parsedNumOfSite]
  * @param {number} [opts.parsedMaxWord]
- * @returns {object}
+ * @returns {{ webSearch: boolean, numOfSite?: number, maxWord?: number }}
  */
 export function buildWebSearchSettings({ webSearch, parsedNumOfSite, parsedMaxWord }) {
   return {
@@ -56,7 +56,7 @@ export function buildWebSearchSettings({ webSearch, parsedNumOfSite, parsedMaxWo
  * @param {boolean} opts.webSearch
  * @param {number} [opts.parsedNumOfSite]
  * @param {number} [opts.parsedMaxWord]
- * @returns {object} The payload object.
+ * @returns {{ type: string, model: string, promptObject: { prompt: string, webSearch: boolean, numOfSite?: number, maxWord?: number } }} The payload object.
  */
 export function buildCodePayload({ prompt, model, webSearch, parsedNumOfSite, parsedMaxWord }) {
   return {

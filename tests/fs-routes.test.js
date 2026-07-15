@@ -164,6 +164,24 @@ describe('FS Routes', () => {
       expect(res.status).toBe(400);
     });
 
+    test('read rejects file exceeding maxFileReadSize with 413', async () => {
+      const filePath = path.join(tmpDir, 'large-read.txt');
+      const content = 'a'.repeat(20); // 20 bytes
+      await fs.writeFile(filePath, content);
+
+      const { serverConfig } = await import('../config/server.js');
+      const originalMaxFileReadSize = serverConfig.maxFileReadSize;
+      serverConfig.maxFileReadSize = 10; // Set limit to 10 bytes
+
+      try {
+        const res = await request(app).get('/api/fs/read').query({ path: filePath });
+        expect(res.status).toBe(413);
+        expect(res.body.error).toContain('exceeds maximum read size');
+      } finally {
+        serverConfig.maxFileReadSize = originalMaxFileReadSize;
+      }
+    });
+
     test('write rejects missing path', async () => {
       const res = await request(app).post('/api/fs/write').send({ content: 'x' });
       expect(res.status).toBe(400);

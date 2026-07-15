@@ -136,9 +136,16 @@ async function handleAssetUpload(req, res, next) {
       mimetype: req.file.mimetype,
     });
 
+    let originalName = req.file.originalname || '';
+    try {
+      originalName = Buffer.from(originalName, 'latin1').toString('utf8');
+    } catch {
+      // Ignore conversion error and keep as is
+    }
+
     let safeName = path
-      .basename(req.file.originalname || '')
-      .replace(/[^a-zA-Z0-9._-]/g, '_')
+      .basename(originalName)
+      .replace(/[^\p{L}\p{N}._-]/gu, '_')
       .substring(0, 255);
 
     const ext = path.extname(safeName);
@@ -218,6 +225,22 @@ async function handleAssetUpload(req, res, next) {
 
 // sanitizePayload has been extracted to utils/sanitize.js
 
+function getOrCreatePersistentAuthToken() {
+  const tokenFile = path.join(__dirname, '.mimocode', 'data', 'bff_session.token');
+  try {
+    return fs.readFileSync(tokenFile, 'utf8').trim();
+  } catch {
+    const token = createLocalAuthToken();
+    try {
+      fs.mkdirSync(path.dirname(tokenFile), { recursive: true });
+      fs.writeFileSync(tokenFile, token, { mode: 0o600 });
+    } catch {
+      // ignore
+    }
+    return token;
+  }
+}
+
 export function createApp(options = {}) {
   const {
     requireLocalAuth = process.env.NODE_ENV !== 'test',
@@ -226,7 +249,7 @@ export function createApp(options = {}) {
     enableRateLimit = process.env.NODE_ENV !== 'test',
   } = options;
   const localAuthToken =
-    localAuthTokenOption ?? authToken ?? process.env.LOCAL_BFF_AUTH_TOKEN ?? createLocalAuthToken();
+    localAuthTokenOption ?? authToken ?? process.env.LOCAL_BFF_AUTH_TOKEN ?? getOrCreatePersistentAuthToken();
 
   const app = express();
 

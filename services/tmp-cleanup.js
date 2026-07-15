@@ -1,4 +1,3 @@
-import fs from 'fs';
 import fsp from 'fs/promises';
 import path from 'path';
 
@@ -25,15 +24,19 @@ export async function startupCleanup(tmpDir) {
  * Returns the interval handle so callers can unref() it.
  */
 export function startPeriodicCleanup(tmpDir) {
-  const intervalId = setInterval(() => {
+  const intervalId = setInterval(async () => {
     try {
-      const files = fs.readdirSync(tmpDir);
+      const files = await fsp.readdir(tmpDir);
       const now = Date.now();
       for (const file of files) {
         const filePath = path.join(tmpDir, file);
-        const stat = fs.statSync(filePath);
-        if (now - stat.mtimeMs > ONE_HOUR_MS) {
-          fs.unlinkSync(filePath);
+        try {
+          const stat = await fsp.stat(filePath);
+          if (now - stat.mtimeMs > ONE_HOUR_MS) {
+            await fsp.unlink(filePath);
+          }
+        } catch {
+          // Ignore errors for individual files (e.g. deleted while iterating)
         }
       }
     } catch {

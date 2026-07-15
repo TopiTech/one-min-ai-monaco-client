@@ -8,6 +8,7 @@ import 'dotenv/config';
 const FALLBACK = {
   port: 3000,
   maxFileSize: 25 * 1024 * 1024,
+  maxFileReadSize: 2 * 1024 * 1024,
   maxJsonBodySize: '2mb',
   assetProxyTimeoutMs: 30_000,
   assetProxyMaxSize: 50 * 1024 * 1024,
@@ -130,6 +131,7 @@ export const serverConfig = {
 
   // File upload limits
   maxFileSize: parseSize(process.env.MAX_FILE_SIZE, FALLBACK.maxFileSize),
+  maxFileReadSize: parseSize(process.env.MAX_FILE_READ_SIZE, FALLBACK.maxFileReadSize),
   maxJsonBodySize: parseBodySize(process.env.MAX_JSON_BODY_SIZE, FALLBACK.maxJsonBodySize),
 
   // Asset proxy guardrails
