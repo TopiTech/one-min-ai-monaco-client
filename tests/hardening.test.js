@@ -17,7 +17,7 @@ jest.unstable_mockModule('../utils/api-client.js', () => ({
 }));
 
 const { createApp } = await import('../server.js');
-const { isWriteProtectedPath } = await import('../utils/fs-guard.js');
+const { isWriteProtectedPath, clearAllowedRootsCache } = await import('../utils/fs-guard.js');
 const { serverConfig } = await import('../config/server.js');
 
 describe('Hardening Improvements Tests', () => {
@@ -43,8 +43,8 @@ describe('Hardening Improvements Tests', () => {
 
   describe('/api/code/run filePath Validation', () => {
     test('rejects filePath containing shell metacharacters', async () => {
-      const prevVal = serverConfig.enableCommandExecution;
-      serverConfig.enableCommandExecution = true;
+      const prevVal = serverConfig.enableCodeRun;
+      serverConfig.enableCodeRun = true;
 
       try {
         const app = createApp({
@@ -61,15 +61,16 @@ describe('Hardening Improvements Tests', () => {
         expect(res.status).toBe(400);
         expect(res.body.error).toContain('filePath contains invalid shell characters');
       } finally {
-        serverConfig.enableCommandExecution = prevVal;
+        serverConfig.enableCodeRun = prevVal;
       }
     });
 
     test('rejects filePath outside allowed roots', async () => {
-      const prevVal = serverConfig.enableCommandExecution;
-      serverConfig.enableCommandExecution = true;
+      const prevVal = serverConfig.enableCodeRun;
+      serverConfig.enableCodeRun = true;
       const prevAllowedRoots = process.env.ALLOWED_ROOTS;
       delete process.env.ALLOWED_ROOTS;
+      clearAllowedRootsCache();
 
       try {
         const app = createApp({
@@ -96,12 +97,13 @@ describe('Hardening Improvements Tests', () => {
         expect(res.status).toBe(403);
         expect(res.body.error).toContain('Access denied');
       } finally {
-        serverConfig.enableCommandExecution = prevVal;
+        serverConfig.enableCodeRun = prevVal;
         if (prevAllowedRoots !== undefined) {
           process.env.ALLOWED_ROOTS = prevAllowedRoots;
         } else {
           delete process.env.ALLOWED_ROOTS;
         }
+        clearAllowedRootsCache();
       }
     });
   });

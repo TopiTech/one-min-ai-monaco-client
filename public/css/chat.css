@@ -214,20 +214,6 @@
   width: 350px;
 }
 
-/* Streaming cursor animation */
-.streaming-cursor {
-  display: inline-block;
-  animation: blink 0.8s step-end infinite;
-  color: var(--accent);
-  font-weight: bold;
-}
-
-@keyframes blink {
-  50% {
-    opacity: 0;
-  }
-}
-
 /* Streaming indicator dots */
 .streaming-indicator {
   display: inline-flex;

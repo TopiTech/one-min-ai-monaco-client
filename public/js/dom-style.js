@@ -94,6 +94,33 @@ export function clearInjectedStyles() {
 }
 
 /**
+ * Inject a style that MUST be applied immediately (e.g. a drag/animation
+ * callback that fires faster than MAX_INJECTS_PER_SECOND). Unlike
+ * `injectStyle`, this bypasses the per-second rate limiter so continuous
+ * updates (image comparison slider position, resize handles, etc.) are
+ * never dropped mid-interaction.
+ *
+ * Safety invariants preserved:
+ * - Still capped by MAX_STYLE_CONTENT_LENGTH (no memory abuse).
+ * - Still keyed by selector so repeated updates for the same target replace
+ *   rather than accumulate.
+ * - Uses the same CSP-nonced <style> element as injectStyle().
+ *
+ * @param {string} css - The CSS rule to inject.
+ */
+export function setCriticalStyle(css) {
+  if (typeof css !== 'string' || !css.trim()) return;
+  if (css.length > MAX_STYLE_CONTENT_LENGTH) return;
+
+  const key = ruleKey(css);
+  if (!key) return;
+
+  ruleIndex.set(key, css);
+  const el = ensureStyleElement();
+  el.textContent = serialize();
+}
+
+/**
  * Inject a static block of CSS exactly once, bypassing the per-second
  * rate limit that protects `injectStyle`. Use this for module-load-time
  * styles (e.g. toast notifications) that need to be present on every

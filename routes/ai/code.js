@@ -345,9 +345,9 @@ router.post('/run', async (req, res, next) => {
   let language;
   let extension;
   try {
-    if (!serverConfig.enableCommandExecution) {
+    if (!serverConfig.enableCodeRun) {
       return res.status(403).json({
-        error: 'Code execution is disabled. Set ENABLE_COMMAND_EXECUTION=true in .env to enable.',
+        error: 'Code execution is disabled. Set ENABLE_CODE_RUN=true in .env to enable.',
       });
     }
 

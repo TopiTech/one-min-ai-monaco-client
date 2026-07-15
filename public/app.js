@@ -9,6 +9,7 @@ import {
   getAllChatModels,
   getAllCodeModels,
   getAllImageModels,
+  setCreditSavingMode,
 } from './js/model-picker.js';
 import { api } from './js/api.js';
 import { parseXMLTags } from './js/utils.js';
@@ -972,6 +973,9 @@ function initCreditSavingMode() {
 }
 
 function applyCreditSavingMode() {
+  // Keep the model picker's fast-only filter in sync with the toggle.
+  setCreditSavingMode(state.creditSaving);
+
   const webSearch = $('webSearch');
   const codeWebSearch = $('codeWebSearch');
   const numOutputs = $('numOutputs');

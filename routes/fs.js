@@ -15,9 +15,11 @@ import {
 } from '../utils/fs-guard.js';
 import { detectBinaryContent } from '../utils/mime-guard.js';
 import { atomicWriteTextFile, readSpecificLines } from '../utils/fs-utils.js';
+import { serverConfig } from '../config/server.js';
 
 const MAX_READ_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_LIST_ENTRIES = 5000;
+const MAX_DELETE_ENTRIES = 1000; // Safety cap for recursive directory deletion
 // L-9: Use the server-configured JSON body limit as the upper bound on
 // editable file size so ops can tune it without code changes.
 const BINARY_EXTENSIONS = new Set([
@@ -109,7 +111,8 @@ router.get('/config', (_req, res) => {
     root: PROJECT_ROOT,
     defaultRoot,
     allowedRoots,
-    enableCommandExecution: String(process.env.ENABLE_COMMAND_EXECUTION || 'false').toLowerCase() === 'true',
+    enableCommandExecution: serverConfig.enableCommandExecution,
+    enableCodeRun: serverConfig.enableCodeRun,
   });
 });
 
@@ -416,6 +419,19 @@ async function assertNoProtectedChildren(dirPath, maxDepth = 20) {
   }
 }
 
+async function countDirectoryEntries(dirPath, maxDepth = 20) {
+  if (maxDepth <= 0) return 0;
+  let count = 0;
+  const entries = await fs.readdir(dirPath, { withFileTypes: true });
+  for (const entry of entries) {
+    count++;
+    if (entry.isDirectory() && !entry.isSymbolicLink()) {
+      count += await countDirectoryEntries(path.join(dirPath, entry.name), maxDepth - 1);
+    }
+  }
+  return count;
+}
+
 /**
  * Delete a file or directory.
  */
@@ -437,6 +453,12 @@ router.post('/delete', async (req, res, next) => {
     if (stat.isDirectory()) {
       // Recursively verify no protected paths exist within before deleting
       await assertNoProtectedChildren(realPath);
+      const entryCount = await countDirectoryEntries(realPath);
+      if (entryCount > MAX_DELETE_ENTRIES) {
+        return res.status(413).json({
+          error: `Directory contains ${entryCount} entries, exceeding the safety limit of ${MAX_DELETE_ENTRIES}. Delete subdirectories individually.`,
+        });
+      }
       await fs.rm(realPath, { recursive: true });
     } else {
       await fs.unlink(realPath);

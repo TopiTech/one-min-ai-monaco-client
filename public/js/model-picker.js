@@ -8,7 +8,19 @@ let _allImageModels = [];
 let _activePickerBtn = null;
 let _activePickerType = null;
 let _activeTag = 'all';
+let _creditSaving = false; // synced from app state; gates fast-only filtering
 let _modelsCache = []; // cached models for current picker session
+
+/**
+ * Sync the credit-saving flag from app state so the picker can restrict the
+ * model list to `fast` tagged models. Previously the picker read `state`
+ * directly, but it is a separate module and `state` was never in scope, so
+ * the check silently always evaluated to false (typeof guard).
+ * @param {boolean} enabled
+ */
+export function setCreditSavingMode(enabled) {
+  _creditSaving = Boolean(enabled);
+}
 
 // Shared handler refs for cleanup
 let _searchHandler = null;
@@ -239,7 +251,7 @@ function openModelPicker(btn, type) {
   btn.setAttribute('aria-expanded', 'true');
   let models = type === 'image' ? _allImageModels : type === 'code' ? _allCodeModels : _allChatModels;
 
-  if (typeof state !== 'undefined' && state.creditSaving) {
+  if (_creditSaving) {
     models = models.filter((m) => m.tags && m.tags.includes('fast'));
   }
 

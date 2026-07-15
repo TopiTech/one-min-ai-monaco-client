@@ -242,14 +242,6 @@ button.small {
   background-color: rgba(10, 15, 30, 0.4) !important;
 }
 
-.diff-added {
-  background-color: rgba(16, 185, 129, 0.15) !important;
-}
-
-.diff-removed {
-  background-color: rgba(239, 68, 68, 0.15) !important;
-}
-
 .model-picker-btn {
   display: inline-flex;
   align-items: center;

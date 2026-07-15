@@ -541,7 +541,7 @@ export function createAgentRuntime({
       state.agent.resolver = null;
       if (approvalResult.abort) return { text: 'ABORTED', success: false, abort: true };
       if (!approvalResult.approved)
-        return { text: `拒否されました: ${approvalResult.reason}`, success: false };
+        return { text: t('cmd_reject_prefix', { reason: approvalResult.reason }), success: false };
       if (approvalResult.error) return { text: `エラー: ${approvalResult.error.message}`, success: false };
 
       const { result } = approvalResult;

@@ -387,31 +387,6 @@ button.ghost:hover {
   margin-left: 2px;
 }
 
-/* Image comparison object-fit toggle (UI-2) */
-.fit-toggle {
-  position: absolute;
-  bottom: 8px;
-  right: 8px;
-  z-index: 5;
-  background: rgba(0, 0, 0, 0.6);
-  color: #ccc;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 6px;
-  padding: 3px 10px;
-  font-size: 0.7rem;
-  cursor: pointer;
-  backdrop-filter: blur(4px);
-}
-
-.fit-toggle:hover {
-  background: rgba(0, 0, 0, 0.8);
-  color: #fff;
-}
-
-.image-comparison-slider img.fit-contain {
-  object-fit: contain;
-}
-
 /* ============================================================
    AI Agent Chat UI Styling
    ============================================================ */
@@ -431,19 +406,6 @@ button.ghost:hover {
   margin-bottom: 8px;
 }
 
-/* Display state modifiers */
-.u-flex {
-  display: flex !important;
-}
-
-.u-block {
-  display: block !important;
-}
-
-.u-inline-flex {
-  display: inline-flex !important;
-}
-
 /* Labels */
 .label-muted {
   display: block;
@@ -457,13 +419,6 @@ button.ghost:hover {
   display: block;
   font-size: 0.75rem;
   margin-bottom: 4px;
-  color: var(--text-muted);
-}
-
-.label-muted-xs {
-  display: block;
-  font-size: 0.72rem;
-  margin-bottom: 2px;
   color: var(--text-muted);
 }
 
@@ -494,10 +449,6 @@ button.ghost:hover {
 }
 
 /* Buttons */
-.btn-block {
-  width: 100%;
-}
-
 .btn-block-mb-18 {
   width: 100%;
   margin-bottom: 18px;

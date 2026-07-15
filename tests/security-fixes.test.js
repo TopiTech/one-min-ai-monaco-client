@@ -46,7 +46,7 @@ const { createApp } = await import('../server.js');
 const { checkCommandSafety } = await import('../services/command-runner.js');
 const { isFailedResponse, extractFailureMessage } = await import('../utils/api-client.js');
 const { validateBufferMimeType, getExtensionFromMimeType } = await import('../utils/mime-guard.js');
-const { revalidateRealPath } = await import('../utils/fs-guard.js');
+const { revalidateRealPath, clearAllowedRootsCache } = await import('../utils/fs-guard.js');
 
 describe('Security fixes regression', () => {
   beforeEach(() => {
@@ -263,10 +263,13 @@ describe('Security fixes regression', () => {
     afterAll(async () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
       await fs.rm(outsideDir, { recursive: true, force: true });
+      clearAllowedRootsCache();
+      delete process.env.ALLOWED_ROOTS;
     });
 
     test('returns the real path for a file inside allowed roots', async () => {
       process.env.ALLOWED_ROOTS = tmpDir;
+      clearAllowedRootsCache();
       const file = path.join(tmpDir, 'ok.txt');
       await fs.writeFile(file, 'hi');
       const real = revalidateRealPath(file);
@@ -275,6 +278,7 @@ describe('Security fixes regression', () => {
 
     test('rejects paths outside allowed roots', async () => {
       process.env.ALLOWED_ROOTS = tmpDir;
+      clearAllowedRootsCache();
       const outside = path.join(outsideDir, 'secret.txt');
       await fs.writeFile(outside, 'secret');
       expect(() => revalidateRealPath(outside)).toThrow(/Access denied/);
@@ -322,6 +326,7 @@ describe('Security fixes regression', () => {
 
     test('successfully reads file inside allowed roots', async () => {
       process.env.ALLOWED_ROOTS = tmpDir;
+      clearAllowedRootsCache();
       const file = path.join(tmpDir, 'ok.txt');
       await fs.writeFile(file, 'content inside');
 
@@ -333,6 +338,7 @@ describe('Security fixes regression', () => {
 
     test('rejects symlink pointing outside allowed roots', async () => {
       process.env.ALLOWED_ROOTS = tmpDir;
+      clearAllowedRootsCache();
       const outsideFile = path.join(outsideDir, 'secret.txt');
       await fs.writeFile(outsideFile, 'secret content');
 
@@ -385,6 +391,7 @@ describe('Security fixes regression', () => {
       app = createApp({ requireLocalAuth: false, enableRateLimit: false });
 
       process.env.ALLOWED_ROOTS = tmpDir;
+      clearAllowedRootsCache();
       const res = await request(app).post('/api/agent/sessions').send({ cwd: tmpDir });
       sessionId = res.body.session.id;
     });
@@ -392,6 +399,8 @@ describe('Security fixes regression', () => {
     afterAll(async () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
       await fs.rm(outsideDir, { recursive: true, force: true });
+      clearAllowedRootsCache();
+      delete process.env.ALLOWED_ROOTS;
     });
 
     test('successfully reads file inside agent workspace', async () => {

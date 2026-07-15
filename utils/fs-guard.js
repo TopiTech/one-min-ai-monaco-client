@@ -121,12 +121,17 @@ function getDefaultAllowedRoots() {
  * Otherwise, PROJECT_ROOT is allowed.
  */
 let _cachedAllowedRoots = null;
+let _cachedAllowedRootsRaw = null;
 
 export function getAllowedRoots() {
-  if (_cachedAllowedRoots && process.env.NODE_ENV !== 'test') return _cachedAllowedRoots;
   const raw = (process.env.ALLOWED_ROOTS || '').trim();
+  // Return cache only if the env var has not changed since last call.
+  if (_cachedAllowedRoots && _cachedAllowedRootsRaw === raw && process.env.NODE_ENV !== 'test') {
+    return _cachedAllowedRoots;
+  }
   if (!raw) {
     _cachedAllowedRoots = getDefaultAllowedRoots();
+    _cachedAllowedRootsRaw = raw;
     return _cachedAllowedRoots;
   }
   const roots = raw
@@ -138,7 +143,16 @@ export function getAllowedRoots() {
     roots.unshift(PROJECT_ROOT);
   }
   _cachedAllowedRoots = roots;
+  _cachedAllowedRootsRaw = raw;
   return roots;
+}
+
+/**
+ * Clears the allowed roots cache. Useful for tests that mutate ALLOWED_ROOTS.
+ */
+export function clearAllowedRootsCache() {
+  _cachedAllowedRoots = null;
+  _cachedAllowedRootsRaw = null;
 }
 
 /**

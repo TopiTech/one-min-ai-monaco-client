@@ -102,7 +102,7 @@ export function createAgentTimeline(dom) {
       const toggleDiv = document.createElement('div');
       toggleDiv.className = 'agent-step-result-toggle';
       const rToggleSpan = document.createElement('span');
-      rToggleSpan.textContent = '▶ 実行出力を表示';
+      rToggleSpan.textContent = t('show_output');
       toggleDiv.appendChild(rToggleSpan);
       if (isTruncated) {
         const warnSpan = document.createElement('span');
@@ -260,7 +260,7 @@ export function createAgentTimeline(dom) {
       feedbackInput.disabled = true;
       rejectBtn.textContent = t('btn_rejected');
       rejectBtn.classList.add('is-disabled');
-      const reason = feedbackInput.value.trim() || 'ユーザーによって却下されました';
+      const reason = feedbackInput.value.trim() || t('default_reject_reason');
       onReject(reason);
       finalizeStep();
     };

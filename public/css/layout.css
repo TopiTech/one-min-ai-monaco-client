@@ -151,7 +151,7 @@
 
 .editor-load-error {
   padding: 2rem;
-  color: var(--text-primary);
+  color: var(--text);
   text-align: center;
   height: 100%;
   display: flex;
@@ -169,7 +169,7 @@
 .editor-load-error__message {
   margin: 0.5rem 0;
   font-family: monospace;
-  background: var(--bg-surface-hover);
+  background: var(--glass-bg-hover);
   padding: 0.5rem 1rem;
   border-radius: 4px;
   max-width: 80%;
@@ -181,10 +181,10 @@
   margin: 1.5rem 0;
   font-size: 0.9rem;
   max-width: 500px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--glass-border);
   padding: 1rem;
   border-radius: 6px;
-  background: var(--bg-surface-hover);
+  background: var(--glass-bg-hover);
 }
 
 .editor-load-error__checklist-title {
@@ -201,9 +201,9 @@
 .editor-load-error__reload {
   padding: 8px 16px;
   cursor: pointer;
-  background: var(--bg-surface-hover);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
+  background: var(--glass-bg-hover);
+  color: var(--text);
+  border: 1px solid var(--glass-border);
   border-radius: 4px;
   transition: background 0.2s;
 }

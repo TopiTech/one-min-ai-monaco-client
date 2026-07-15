@@ -67,7 +67,6 @@ function parseBoolean(raw, fallback) {
   const normalized = String(raw).toLowerCase();
   if (normalized === 'true') return true;
   if (normalized === 'false') return false;
-  // SEC: Warn on unrecognized boolean values to prevent silent misconfiguration
   console.warn(
     `Warning: Unrecognized boolean value "${String(raw)}" (expected "true" or "false"). Falling back to ${fallback}.`,
   );
@@ -200,6 +199,7 @@ export const serverConfig = {
 
   // Agent settings
   enableCommandExecution: parseBoolean(process.env.ENABLE_COMMAND_EXECUTION, false),
+  enableCodeRun: parseBoolean(process.env.ENABLE_CODE_RUN, false),
   commandTimeoutMs: intInRange(
     process.env.COMMAND_TIMEOUT_MS,
     MIN_COMMAND_TIMEOUT,

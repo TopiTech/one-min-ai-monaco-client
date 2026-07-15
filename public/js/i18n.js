@@ -127,7 +127,8 @@ export function t(key, params) {
   if (val === undefined) val = key;
   if (params && typeof val === 'string') {
     for (const [k, v] of Object.entries(params)) {
-      val = val.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
+      const safeKey = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      val = val.replace(new RegExp(`\\{${safeKey}\\}`, 'g'), v);
     }
   }
   return val;

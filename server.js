@@ -267,8 +267,10 @@ export function createApp(options = {}) {
     // so they take precedence over the global default limit.
     app.use('/api/chat', aiChatRateLimit);
     app.use('/api/code', autocompleteRateLimit);
-    // Global default limit for all other routes (including non-API static)
-    app.use(buildRateLimit());
+    // Global default limit for /api only — static assets and the app shell
+    // are excluded so loading Monaco (100+ chunk files) does not exhaust the
+    // rate limit before the user makes any API calls.
+    app.use('/api', buildRateLimit());
   }
 
   app.use(logger.requestLogger());
@@ -454,6 +456,18 @@ function validateEnvironment() {
     logger.warn(
       'EXPOSE_ERROR_DETAILS is set to true in production mode. This may leak sensitive stack traces to localhost clients.',
     );
+  }
+
+  if (serverConfig.enableCodeRun && process.env.NODE_ENV === 'production') {
+    const sandboxConfirmed =
+      String(process.env.ALLOW_UNSAFE_AGENT_AUTO_APPROVE || '').toLowerCase() === 'true';
+    if (!sandboxConfirmed) {
+      logger.error(
+        'Refusing to start: ENABLE_CODE_RUN=true in production requires a sandbox confirmation. ' +
+          'Set ALLOW_UNSAFE_AGENT_AUTO_APPROVE=true only inside an isolated sandbox or Docker environment.',
+      );
+      process.exit(1);
+    }
   }
 
   if (serverConfig.enableCommandExecution && serverConfig.agentAutoApprove) {

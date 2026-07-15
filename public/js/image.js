@@ -3,7 +3,7 @@
  */
 
 import { api, assetUrl, extractImages } from './api.js';
-import { injectStyle } from './dom-style.js';
+import { setCriticalStyle } from './dom-style.js';
 import { getAllImageModels } from './model-picker.js';
 import { t } from './i18n.js';
 import { toast } from './toast.js';
@@ -143,17 +143,34 @@ export function createImageManager(dom) {
         divider.appendChild(handle);
         slider.appendChild(divider);
 
-        injectStyle(
+        setCriticalStyle(
           `.${cmpId} .image-before { clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%); } ` +
             `.${cmpId} .slider-divider { left: 50%; }`,
         );
 
-        range.addEventListener('input', (e) => {
-          const val = e.target.value;
-          injectStyle(
+        // H-2: The slider fires `input` faster than injectStyle's per-second
+        // rate limiter (anti-CSS-exfil) allows, so dragging would stall.
+        // Throttle DOM-style writes to one per animation frame (last value
+        // wins) and guarantee the final position is always applied on
+        // pointer release via `change` (fires once).
+        let _sliderRaf = null;
+        const applySlider = (val) => {
+          setCriticalStyle(
             `.${cmpId} .image-before { clip-path: polygon(0 0, ${val}% 0, ${val}% 100%, 0 100%); } ` +
               `.${cmpId} .slider-divider { left: ${val}%; }`,
           );
+        };
+        range.addEventListener('input', (e) => {
+          const val = e.target.value;
+          if (_sliderRaf) cancelAnimationFrame(_sliderRaf);
+          _sliderRaf = requestAnimationFrame(() => applySlider(val));
+        });
+        range.addEventListener('change', (e) => {
+          if (_sliderRaf) {
+            cancelAnimationFrame(_sliderRaf);
+            _sliderRaf = null;
+          }
+          applySlider(e.target.value);
         });
         card.appendChild(slider);
       } else {

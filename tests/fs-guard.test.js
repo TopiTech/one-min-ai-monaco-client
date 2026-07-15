@@ -12,6 +12,7 @@ import {
   isProtectedPathForListing,
   assertNotProtectedPath,
   assertNotWriteProtectedPath,
+  clearAllowedRootsCache,
 } from '../utils/fs-guard.js';
 import path from 'path';
 
@@ -31,6 +32,7 @@ describe('fs-guard', () => {
       } else {
         process.env.ALLOWED_ROOTS = originalEnv;
       }
+      clearAllowedRootsCache();
     });
 
     test('should return only PROJECT_ROOT when ALLOWED_ROOTS is not set', () => {
@@ -69,6 +71,7 @@ describe('fs-guard', () => {
       } else {
         process.env.ALLOWED_ROOTS = originalEnv;
       }
+      clearAllowedRootsCache();
     });
 
     test('should return PROJECT_ROOT when no custom roots', () => {
@@ -101,6 +104,7 @@ describe('fs-guard', () => {
     test('should identify protected files within custom allowed roots', () => {
       const originalEnv = process.env.ALLOWED_ROOTS;
       process.env.ALLOWED_ROOTS = '/tmp-custom-root';
+      clearAllowedRootsCache();
       const customRoot = path.resolve('/tmp-custom-root');
 
       expect(isProtectedPath(path.join(customRoot, '.env'))).toBe(true);
@@ -113,6 +117,7 @@ describe('fs-guard', () => {
       } else {
         process.env.ALLOWED_ROOTS = originalEnv;
       }
+      clearAllowedRootsCache();
     });
 
     // B-3: glob-based protection should catch the new patterns and
@@ -120,6 +125,7 @@ describe('fs-guard', () => {
     test('matches new glob-based protections (secrets.json, .npmrc, *.pem)', () => {
       const originalEnv = process.env.ALLOWED_ROOTS;
       process.env.ALLOWED_ROOTS = '/tmp-custom-root';
+      clearAllowedRootsCache();
       const customRoot = path.resolve('/tmp-custom-root');
 
       expect(isProtectedPath(path.join(customRoot, 'secrets.json'))).toBe(true);
@@ -137,11 +143,13 @@ describe('fs-guard', () => {
       } else {
         process.env.ALLOWED_ROOTS = originalEnv;
       }
+      clearAllowedRootsCache();
     });
 
     test('write protection also covers new glob patterns', () => {
       const originalEnv = process.env.ALLOWED_ROOTS;
       process.env.ALLOWED_ROOTS = '/tmp-custom-root';
+      clearAllowedRootsCache();
       const customRoot = path.resolve('/tmp-custom-root');
 
       expect(isWriteProtectedPath(path.join(customRoot, 'private.pem'))).toBe(true);
@@ -159,6 +167,7 @@ describe('fs-guard', () => {
       } else {
         process.env.ALLOWED_ROOTS = originalEnv;
       }
+      clearAllowedRootsCache();
     });
 
     test('should throw 403 for protected paths', () => {
@@ -179,6 +188,7 @@ describe('fs-guard', () => {
       } else {
         process.env.ALLOWED_ROOTS = originalEnv;
       }
+      clearAllowedRootsCache();
     });
 
     test('should allow listing the default allowed root itself', () => {
@@ -223,6 +233,7 @@ describe('fs-guard', () => {
     test('should identify write-protected files within custom allowed roots', () => {
       const originalEnv = process.env.ALLOWED_ROOTS;
       process.env.ALLOWED_ROOTS = '/tmp-custom-root';
+      clearAllowedRootsCache();
       const customRoot = path.resolve('/tmp-custom-root');
 
       expect(isWriteProtectedPath(path.join(customRoot, '.env'))).toBe(true);
@@ -236,6 +247,7 @@ describe('fs-guard', () => {
       } else {
         process.env.ALLOWED_ROOTS = originalEnv;
       }
+      clearAllowedRootsCache();
     });
 
     test('should throw 403 for write-protected paths', () => {
@@ -256,6 +268,7 @@ describe('fs-guard', () => {
       } else {
         process.env.ALLOWED_ROOTS = originalEnv;
       }
+      clearAllowedRootsCache();
     });
 
     test('should accept valid path within project root', () => {

@@ -9,6 +9,7 @@ import {
 import { HttpError } from '../../utils/errors.js';
 import logger from '../../utils/logger.js';
 import { serverConfig } from '../../config/server.js';
+import { shouldExposeErrorText } from '../../server.js';
 import { getDefaultModel } from './utils.js';
 
 const router = express.Router();
@@ -208,10 +209,10 @@ router.post('/stream', async (req, res, next) => {
 
     if (!response.ok) {
       const errorPayload = await parseResponsePayload(response);
-      const isDev = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
+      const exposeErrorText = shouldExposeErrorText(response.status, req);
       return res.status(response.status).json({
         error: `1min.ai API error: ${response.status}`,
-        details: isDev
+        details: exposeErrorText
           ? errorPayload?.error?.message || errorPayload?.message || 'Upstream API Error'
           : 'Upstream API Error',
       });
@@ -251,6 +252,8 @@ router.post('/stream', async (req, res, next) => {
 
     let resultBlocks = [];
     let carry = '';
+    let totalStreamBytes = 0;
+    const MAX_STREAM_BYTES = 50 * 1024 * 1024; // 50MB safety limit
 
     const normalizeResultBlock = (block) => {
       const lines = block.split('\n');
@@ -288,6 +291,11 @@ router.post('/stream', async (req, res, next) => {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        totalStreamBytes += value?.byteLength ?? value?.length ?? 0;
+        if (totalStreamBytes > MAX_STREAM_BYTES) {
+          logger.warn('SSE stream exceeded max size, aborting', { totalStreamBytes });
+          break;
+        }
         carry += decoder.decode(value, { stream: true });
 
         const blocks = carry.split(/\r?\n\r?\n/);
