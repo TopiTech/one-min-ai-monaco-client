@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(npm:*)",
+      "Shell(grep:*)",
+      "Shell(echo:*)",
+      "Shell(node -e \"console.log('NODE_ENV:', process.env.NODE_ENV, 'ENABLE_CODE_RUN:', process.env.ENABLE_CODE_RUN)\")",
+      "Shell(set:*)",
+      "Shell(npx prettier --check \"server.js\" \"public/**/*.{js,css,html}\" \"routes/*.js\" \"utils/*.js\" \"config/*.js\" \"services/*.js\" \"tests/*.js\" 2>&1)",
+      "Shell(powershell -Command \"if (Test-Path '.env') { Get-Content '.env' } else { 'No .env file found' }\")",
+      "Shell(findstr:*)",
+      "Shell(Select-String:*)",
+      "Shell(Out-File:*)",
+      "Shell(npx eslint server.js 2 >& 1)",
+      "Shell(npx eslint server.js 2>&1)",
+      "Shell(rm test_output_full.log 2>/dev/null; git status --short)",
+      "powershell"
+    ],
+    "deny": [],
+    "defaultMode": "default"
+  }
+}

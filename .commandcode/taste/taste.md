@@ -3,13 +3,12 @@
 [cmd]: https://commandcode.ai/
 
 # Workflow
-
-- Review/fix workflow uses prioritized tags: B- (blocker), H- (high), M- (medium), L- (low). Confidence: 0.65
-- After implementing review fixes, conduct a full code review (Approve/Reject verdict with evidence). Confidence: 0.70
-
+See [workflow/taste.md](workflow/taste.md)
 # Communication
 
 - Respond in Japanese for this project. Confidence: 0.85
+- Reports only confirmed issues as "problems"; separates speculation, general statements, preferences, and unverifiable concerns into "unconfirmed items". Confidence: 0.90
+- Uses a structured 9-section release report format (conclusion, investigation scope, structure/flow, confirmed issues, verification, references, unconfirmed items, residual risks, fix order). Confidence: 0.80
 
 # Build & Test
 
@@ -19,6 +18,7 @@
 # Git
 
 - Use `git rm --cached <file>` to untrack files already in `.gitignore`. Confidence: 0.75
+- Prohibits destructive git operations: reset, checkout, clean, stage, commit, push. Confidence: 0.90
 
 # Code Style
 
@@ -31,6 +31,7 @@
 
 - When a CSP `style-src` or `script-src` directive contains a nonce, `'unsafe-inline'` is ignored by the browser. To allow inline styles/scripts alongside a nonce, use hashes (e.g. `'sha256-...'`) or remove the nonce, not both together. Confidence: 0.85
 - For libraries like Monaco that internally use `element.style.*` and `setAttribute('style', ...)`, set both `style-src` and `style-src-attr` directives together. Confidence: 0.80
+- Does not output secrets or PII; reports type and location only. Confidence: 0.90
 
 # Testing
 
