@@ -199,7 +199,12 @@ function executeExitCommand(commandParts) {
 }
 
 function runProcess(commandParts, options = {}) {
-  const { cwd = process.cwd(), timeoutMs = DEFAULT_TIMEOUT_MS, onOutput = null } = options;
+  const {
+    cwd = process.cwd(),
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    onOutput = null,
+    maxOutputSize = serverConfig.maxCommandOutputSize,
+  } = options;
   const commandName = normalizeCommandName(commandParts[0]);
 
   if (isExitCommand(commandName)) {
@@ -219,7 +224,7 @@ function runProcess(commandParts, options = {}) {
     activeProcesses.delete(child);
   };
 
-  return collectProcessOutput(child, timeoutMs, onOutput).then(
+  return collectProcessOutput(child, timeoutMs, onOutput, maxOutputSize).then(
     (res) => {
       cleanUp();
       return res;
@@ -231,16 +236,35 @@ function runProcess(commandParts, options = {}) {
   );
 }
 
-function collectProcessOutput(child, timeoutMs, onOutput) {
+function collectProcessOutput(child, timeoutMs, onOutput, maxOutputSize = serverConfig.maxCommandOutputSize) {
   return new Promise((resolve, reject) => {
     let stdout = '';
     let stderr = '';
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let stdoutTruncated = false;
+    let stderrTruncated = false;
     let timedOut = false;
     let killed = false;
 
+    const limit = typeof maxOutputSize === 'number' && maxOutputSize > 0 ? maxOutputSize : 10 * 1024 * 1024;
+
     child.stdout.on('data', (data) => {
       const text = data.toString();
-      stdout += text;
+      if (stdoutBytes < limit) {
+        if (stdoutBytes + text.length > limit) {
+          const allowedLen = limit - stdoutBytes;
+          stdout += text.slice(0, allowedLen) + '\n...[output truncated]';
+          stdoutBytes = limit;
+          stdoutTruncated = true;
+        } else {
+          stdout += text;
+          stdoutBytes += text.length;
+        }
+      } else if (!stdoutTruncated) {
+        stdoutTruncated = true;
+        stdout += '\n...[output truncated]';
+      }
       if (onOutput) {
         onOutput('stdout', text);
       }
@@ -248,7 +272,20 @@ function collectProcessOutput(child, timeoutMs, onOutput) {
 
     child.stderr.on('data', (data) => {
       const text = data.toString();
-      stderr += text;
+      if (stderrBytes < limit) {
+        if (stderrBytes + text.length > limit) {
+          const allowedLen = limit - stderrBytes;
+          stderr += text.slice(0, allowedLen) + '\n...[output truncated]';
+          stderrBytes = limit;
+          stderrTruncated = true;
+        } else {
+          stderr += text;
+          stderrBytes += text.length;
+        }
+      } else if (!stderrTruncated) {
+        stderrTruncated = true;
+        stderr += '\n...[output truncated]';
+      }
       if (onOutput) {
         onOutput('stderr', text);
       }
@@ -284,6 +321,8 @@ function collectProcessOutput(child, timeoutMs, onOutput) {
         stdout: stdout.trim(),
         stderr: stderr.trim(),
         timedOut,
+        stdoutTruncated,
+        stderrTruncated,
       });
     });
 
@@ -358,10 +397,16 @@ export function checkCommandSafety(command) {
  * @param {string} [options.cwd] Working directory.
  * @param {number} [options.timeoutMs] Timeout in milliseconds.
  * @param {function} [options.onOutput] Callback for streaming output.
- * @returns {Promise<{ exitCode: number, stdout: string, stderr: string, timedOut: boolean }>}
+ * @param {number} [options.maxOutputSize] Maximum output buffer size in bytes.
+ * @returns {Promise<{ exitCode: number, stdout: string, stderr: string, timedOut: boolean, stdoutTruncated?: boolean, stderrTruncated?: boolean }>}
  */
 export async function executeCommand(command, options = {}) {
-  const { cwd = process.cwd(), timeoutMs = DEFAULT_TIMEOUT_MS, onOutput = null } = options;
+  const {
+    cwd = process.cwd(),
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    onOutput = null,
+    maxOutputSize = serverConfig.maxCommandOutputSize,
+  } = options;
 
   // Safety check
   const safety = checkCommandSafety(command);
@@ -390,6 +435,7 @@ export async function executeCommand(command, options = {}) {
     cwd,
     timeoutMs: clampedTimeout,
     onOutput,
+    maxOutputSize,
   });
 }
 

@@ -98,12 +98,36 @@ describe('Hardening Improvements Tests', () => {
         expect(res.body.error).toContain('Access denied');
       } finally {
         serverConfig.enableCodeRun = prevVal;
-        if (prevAllowedRoots !== undefined) {
-          process.env.ALLOWED_ROOTS = prevAllowedRoots;
-        } else {
-          delete process.env.ALLOWED_ROOTS;
-        }
+        if (prevAllowedRoots !== undefined) process.env.ALLOWED_ROOTS = prevAllowedRoots;
         clearAllowedRootsCache();
+      }
+    });
+
+    test('truncates output if maxCommandOutputSize is exceeded during execution', async () => {
+      const prevVal = serverConfig.enableCodeRun;
+      const prevMax = serverConfig.maxCommandOutputSize;
+      serverConfig.enableCodeRun = true;
+      serverConfig.maxCommandOutputSize = 5;
+
+      try {
+        const app = createApp({
+          requireLocalAuth: false,
+          enableRateLimit: false,
+        });
+
+        const res = await request(app).post('/api/code/run').send({
+          code: 'console.log("hello world from code run")',
+          language: 'javascript',
+          extension: 'js',
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.body.ok).toBe(true);
+        expect(res.body.stdoutTruncated).toBe(true);
+        expect(res.body.stdout).toContain('...[output truncated]');
+      } finally {
+        serverConfig.enableCodeRun = prevVal;
+        serverConfig.maxCommandOutputSize = prevMax;
       }
     });
   });

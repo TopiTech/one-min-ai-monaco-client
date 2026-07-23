@@ -403,9 +403,15 @@ router.post('/run', async (req, res, next) => {
 
     const safeEnv = getSafeEnv();
 
+    const maxOutputSize = serverConfig.maxCommandOutputSize || 10 * 1024 * 1024;
+
     const output = await new Promise((resolve, reject) => {
       let stdout = '';
       let stderr = '';
+      let stdoutBytes = 0;
+      let stderrBytes = 0;
+      let stdoutTruncated = false;
+      let stderrTruncated = false;
       let timedOut = false;
       let killed = false;
 
@@ -425,12 +431,40 @@ router.post('/run', async (req, res, next) => {
 
       if (child.stdout) {
         child.stdout.on('data', (data) => {
-          stdout += data.toString();
+          const text = data.toString();
+          if (stdoutBytes < maxOutputSize) {
+            if (stdoutBytes + text.length > maxOutputSize) {
+              const allowedLen = maxOutputSize - stdoutBytes;
+              stdout += text.slice(0, allowedLen) + '\n...[output truncated]';
+              stdoutBytes = maxOutputSize;
+              stdoutTruncated = true;
+            } else {
+              stdout += text;
+              stdoutBytes += text.length;
+            }
+          } else if (!stdoutTruncated) {
+            stdoutTruncated = true;
+            stdout += '\n...[output truncated]';
+          }
         });
       }
       if (child.stderr) {
         child.stderr.on('data', (data) => {
-          stderr += data.toString();
+          const text = data.toString();
+          if (stderrBytes < maxOutputSize) {
+            if (stderrBytes + text.length > maxOutputSize) {
+              const allowedLen = maxOutputSize - stderrBytes;
+              stderr += text.slice(0, allowedLen) + '\n...[output truncated]';
+              stderrBytes = maxOutputSize;
+              stderrTruncated = true;
+            } else {
+              stderr += text;
+              stderrBytes += text.length;
+            }
+          } else if (!stderrTruncated) {
+            stderrTruncated = true;
+            stderr += '\n...[output truncated]';
+          }
         });
       }
 
@@ -444,6 +478,8 @@ router.post('/run', async (req, res, next) => {
           stdout: stdout.trim(),
           stderr: stderr.trim(),
           timedOut,
+          stdoutTruncated,
+          stderrTruncated,
         });
       });
 
@@ -459,6 +495,8 @@ router.post('/run', async (req, res, next) => {
       stderr: output.stderr || '',
       output: output.stdout || '',
       exitCode: output.exitCode ?? 0,
+      stdoutTruncated: output.stdoutTruncated,
+      stderrTruncated: output.stderrTruncated,
     });
   } catch (err) {
     next(err);

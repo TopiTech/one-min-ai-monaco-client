@@ -27,6 +27,7 @@ const FALLBACK = {
   agentMaxContextTokens: 40000,
   agentMaxContextTokensCreditSaving: 12000,
   sessionTtlMs: 30 * 60 * 1000,
+  maxCommandOutputSize: 10 * 1024 * 1024,
 };
 
 const MIN_PORT = 1;
@@ -208,6 +209,7 @@ export const serverConfig = {
     MAX_COMMAND_TIMEOUT,
     FALLBACK.commandTimeoutMs,
   ),
+  maxCommandOutputSize: parseSize(process.env.MAX_COMMAND_OUTPUT_SIZE, FALLBACK.maxCommandOutputSize),
   agentAutoApprove: parseBoolean(process.env.AGENT_AUTO_APPROVE, false),
   enableDrivesShellLookup: parseBoolean(process.env.ENABLE_DRIVES_SHELL_LOOKUP, true),
 

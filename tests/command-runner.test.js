@@ -106,5 +106,11 @@ describe('command-runner', () => {
       const result = await executeCommand('exit 42', { timeoutMs: 5000 });
       expect(result.exitCode).toBe(42);
     });
+
+    test('should truncate stdout when maxOutputSize is exceeded', async () => {
+      const result = await executeCommand('node --version', { maxOutputSize: 2 });
+      expect(result.stdoutTruncated).toBe(true);
+      expect(result.stdout).toContain('...[output truncated]');
+    });
   });
 });

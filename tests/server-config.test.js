@@ -27,6 +27,7 @@ const ENV_KEYS = [
   'RATE_LIMIT_AUTOCOMPLETE_MAX',
   'RATE_LIMIT_CHAT_MAX',
   'COMMAND_TIMEOUT_MS',
+  'MAX_COMMAND_OUTPUT_SIZE',
   'AGENT_MAX_LOOPS',
   'SESSION_TTL_MS',
   'LOG_LEVEL',
@@ -96,6 +97,18 @@ describe('config/server.js env validation', () => {
     process.env.MAX_FILE_SIZE = '5gb';
     const c = await loadConfig();
     expect(c.serverConfig.maxFileSize).toBe(25 * 1024 * 1024);
+  });
+
+  test('MAX_COMMAND_OUTPUT_SIZE parses byte sizes and defaults to 10MB', async () => {
+    jest.resetModules();
+    process.env.MAX_COMMAND_OUTPUT_SIZE = '5mb';
+    const c = await loadConfig();
+    expect(c.serverConfig.maxCommandOutputSize).toBe(5 * 1024 * 1024);
+
+    jest.resetModules();
+    delete process.env.MAX_COMMAND_OUTPUT_SIZE;
+    const c2 = await loadConfig();
+    expect(c2.serverConfig.maxCommandOutputSize).toBe(10 * 1024 * 1024);
   });
 
   test('RATE_LIMIT_MAX falls back on non-numeric input', async () => {
