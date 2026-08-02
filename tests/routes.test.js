@@ -158,7 +158,7 @@ describe('AI Routes Integration Tests', () => {
       const sentBody = JSON.parse(callOneMin.mock.calls.at(-1)[1].body);
       expect(sentBody.promptObject).toEqual(
         expect.objectContaining({
-          prompt: expect.stringContaining('ユーザー指示:'),
+          prompt: expect.stringContaining('User instruction:'),
           webSearch: false,
         }),
       );

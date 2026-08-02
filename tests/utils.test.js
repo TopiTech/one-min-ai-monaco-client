@@ -247,7 +247,7 @@ describe('parseXMLTags', () => {
       errorReason: 'missing close tag',
     });
 
-    expect(prompt).toContain('XMLフォーマット');
+    expect(prompt).toContain('XML format');
     expect(prompt).toContain('&lt;finish&gt;done&lt;/finish&gt;');
     expect(prompt).toContain('missing close tag');
     expect(prompt).toContain('<thought>, <call_tool>, <finish>');

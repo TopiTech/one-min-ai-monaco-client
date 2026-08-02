@@ -58,6 +58,28 @@ describe('config/models.js', () => {
       expect(models.some((m) => m.id === 'qwen3-coder-plus')).toBe(true);
     });
 
+    test('includes newly added Anthropic, OpenAI, and Z.AI models in chat and code models', async () => {
+      const { getChatModels, getCodeModels } = await import('../config/models.js');
+      const chatModels = getChatModels();
+      const codeModels = getCodeModels();
+
+      const newModelIds = [
+        'claude-sonnet-5',
+        'claude-fable-5',
+        'gpt-5.6-terra',
+        'gpt-5.6-sol',
+        'gpt-5.6-luna',
+        'glm-5.2',
+        'glm-5.1',
+        'glm-5',
+      ];
+
+      for (const id of newModelIds) {
+        expect(chatModels.some((m) => m.id === id)).toBe(true);
+        expect(codeModels.some((m) => m.id === id)).toBe(true);
+      }
+    });
+
     test('getImageModels returns an array with image models', async () => {
       const { getImageModels } = await import('../config/models.js');
       const models = getImageModels();

@@ -108,14 +108,27 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function parseResponsePayload(response) {
-  const text = await response.text();
-  if (!text) return {};
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { message: text };
+export async function parseResponsePayloadWithInfo(response) {
+  if (!response || typeof response.text !== 'function') {
+    return { payload: {}, jsonParseError: null, rawText: '' };
   }
+  let text;
+  try {
+    text = await response.text();
+  } catch (err) {
+    return { payload: {}, jsonParseError: err, rawText: '' };
+  }
+  if (!text) return { payload: {}, jsonParseError: null, rawText: '' };
+  try {
+    return { payload: JSON.parse(text), jsonParseError: null, rawText: text };
+  } catch (err) {
+    return { payload: { message: text }, jsonParseError: err, rawText: text };
+  }
+}
+
+export async function parseResponsePayload(response) {
+  const { payload } = await parseResponsePayloadWithInfo(response);
+  return payload;
 }
 
 /**
@@ -126,23 +139,36 @@ export async function parseResponsePayload(response) {
  * - Non-JSON responses are exposed via `result` and `text` so existing
  *   extractText()/isFailedResponse() consumers can continue working.
  */
-export async function normalizeOneMinRawResponse(response) {
+export async function normalizeOneMinRawResponse(response, options = {}) {
   if (!response || typeof response.text !== 'function') {
     return response;
   }
 
   const contentType = response.headers?.get?.('content-type') || '';
-  const payload = await parseResponsePayload(response);
+  const { payload, jsonParseError, rawText } = await parseResponsePayloadWithInfo(response);
 
-  if (contentType.includes('application/json')) {
+  if (!jsonParseError && contentType.includes('application/json')) {
     return payload;
   }
 
-  const text = payload?.message ?? payload?.text ?? '';
+  const text = rawText || payload?.message || payload?.text || '';
   if (!text) return payload;
 
-  const sse = parseSseResponseText(text);
+  const sse = parseSseResponseText(text, options);
   if (sse) return sse;
+
+  if (
+    jsonParseError &&
+    rawText &&
+    (!response.ok || contentType.includes('application/json') || contentType.includes('html'))
+  ) {
+    const context = options.context || 'Code Generator';
+    logger.error(`[${context}] Failed to parse JSON response from upstream API. Raw response: ${rawText}`, {
+      error: jsonParseError.message,
+      status: response.status,
+      contentType,
+    });
+  }
 
   return {
     ...payload,
@@ -151,7 +177,7 @@ export async function normalizeOneMinRawResponse(response) {
   };
 }
 
-function parseSseResponseText(text) {
+function parseSseResponseText(text, options = {}) {
   if (typeof text !== 'string' || !/^\s*(event:|data:)/m.test(text)) return null;
 
   const chunks = [];
@@ -177,7 +203,13 @@ function parseSseResponseText(text) {
     let data;
     try {
       data = JSON.parse(dataStr);
-    } catch {
+    } catch (err) {
+      if (dataStr.startsWith('{') || dataStr.startsWith('[')) {
+        const context = options.context || 'Code Generator';
+        logger.error(`[${context}] Failed to parse SSE JSON chunk. Raw chunk: ${dataStr}`, {
+          error: err.message,
+        });
+      }
       chunks.push(dataStr);
       continue;
     }
@@ -244,8 +276,11 @@ export async function callOneMin(
     // M-1: When true, retry is disabled entirely because the upstream side
     // effect would be duplicated (e.g. POST /api/conversations, POST /api/assets).
     // Callers that mutate state on the upstream should pass `idempotent: false`.
-    idempotent = method.toUpperCase() === 'GET',
+    idempotent = method.toUpperCase() === 'GET' ||
+      pathname.includes('/api/features') ||
+      pathname.includes('/api/chat'),
     timeout,
+    suppressJsonParseErrorLog = pathname === '/api/models',
   } = {},
 ) {
   const apiKey = requireApiKey();
@@ -296,25 +331,35 @@ export async function callOneMin(
 
       const response = await makeRequest();
 
-      if (response.status === 429 && attempt < effectiveRetries) {
+      if ((response.status === 429 || response.status >= 500) && attempt < effectiveRetries) {
         const retryAfter = response.headers.get('Retry-After');
         const waitTime = retryAfter
           ? Math.min(parseInt(retryAfter, 10) * 1000 + 1000, 60000)
           : Math.round(retryDelay * Math.pow(2, attempt) * (1 + (Math.random() * 0.2 - 0.1)));
         // Consume the response body to release the connection back to the pool.
-        // Without this, the HTTP connection stays open and may leak.
         try {
           response.body?.cancel?.();
         } catch {
           /* ignore */
         }
-        logger.warn(`Rate limited (429) on ${pathname}. Retrying in ${waitTime}ms...`);
+        logger.warn(
+          `Upstream transient error (${response.status}) on ${pathname}. Retrying attempt ${attempt + 1}/${effectiveRetries} in ${waitTime}ms...`,
+        );
         await delay(waitTime);
         continue;
       }
 
       if (!response.ok) {
-        const payload = await parseResponsePayload(response);
+        const { payload, jsonParseError, rawText } = await parseResponsePayloadWithInfo(response);
+        if (jsonParseError && rawText && !suppressJsonParseErrorLog && pathname !== '/api/models') {
+          logger.error(
+            `Failed to parse JSON error response from upstream API (${pathname}). Raw response: ${rawText}`,
+            {
+              error: jsonParseError.message,
+              status: response.status,
+            },
+          );
+        }
         throw new HttpError(
           response.status,
           `1min.ai request failed: ${response.status}`,

@@ -19,6 +19,9 @@
     { "id": "gpt-5.4-pro", "label": "GPT-5.4 Pro", "provider": "OpenAI", "tags": ["flagship"] },
     { "id": "gpt-5.5", "label": "GPT-5.5", "provider": "OpenAI", "tags": ["flagship"] },
     { "id": "gpt-5.5-pro", "label": "GPT-5.5 Pro", "provider": "OpenAI", "tags": ["flagship"] },
+    { "id": "gpt-5.6-terra", "label": "GPT-5.6 Terra", "provider": "OpenAI", "tags": ["flagship"] },
+    { "id": "gpt-5.6-sol", "label": "GPT-5.6 Sol", "provider": "OpenAI", "tags": ["flagship"] },
+    { "id": "gpt-5.6-luna", "label": "GPT-5.6 Luna", "provider": "OpenAI", "tags": ["flagship"] },
     { "id": "gpt-5.1-codex", "label": "GPT-5.1 Codex", "provider": "OpenAI", "tags": ["flagship"] },
     { "id": "gpt-5.1-codex-mini", "label": "GPT-5.1 Codex Mini", "provider": "OpenAI", "tags": ["fast"] },
     { "id": "gpt-5.2-codex", "label": "GPT-5.2 Codex", "provider": "OpenAI" },
@@ -42,6 +45,8 @@
     },
     { "id": "openai/gpt-oss-20b", "label": "GPT OSS 20b", "provider": "OpenAI", "tags": ["fast"] },
     { "id": "openai/gpt-oss-120b", "label": "GPT OSS 120b", "provider": "OpenAI", "tags": ["flagship"] },
+    { "id": "claude-sonnet-5", "label": "Claude 5 Sonnet", "provider": "Anthropic", "tags": ["flagship"] },
+    { "id": "claude-fable-5", "label": "Claude 5 Fable", "provider": "Anthropic", "tags": ["flagship"] },
     {
       "id": "claude-sonnet-4-6",
       "label": "Claude Sonnet 4.6",
@@ -163,7 +168,10 @@
       "tags": ["flagship"]
     },
     { "id": "meta/meta-llama-3-70b-instruct", "label": "Llama 3 70B", "provider": "Meta" },
-    { "id": "meta/llama-2-70b-chat", "label": "Llama 2 70B", "provider": "Meta" }
+    { "id": "meta/llama-2-70b-chat", "label": "Llama 2 70B", "provider": "Meta" },
+    { "id": "glm-5.2", "label": "GLM-5.2", "provider": "Z.AI", "tags": ["flagship"] },
+    { "id": "glm-5.1", "label": "GLM-5.1", "provider": "Z.AI", "tags": ["flagship"] },
+    { "id": "glm-5", "label": "GLM-5", "provider": "Z.AI", "tags": ["flagship"] }
   ],
   "codeModels": [
     {
@@ -178,6 +186,8 @@
       "provider": "Alibaba",
       "tags": ["code", "fast"]
     },
+    { "id": "claude-sonnet-5", "label": "Claude 5 Sonnet", "provider": "Anthropic", "tags": ["code", "flagship"] },
+    { "id": "claude-fable-5", "label": "Claude 5 Fable", "provider": "Anthropic", "tags": ["code", "flagship"] },
     {
       "id": "claude-sonnet-4-6",
       "label": "Claude 4.6 Sonnet",
@@ -267,6 +277,9 @@
     },
     { "id": "gpt-5.1-codex", "label": "GPT-5.1 Codex", "provider": "OpenAI", "tags": ["code", "flagship"] },
     { "id": "gpt-5.5-pro", "label": "GPT-5.5 Pro", "provider": "OpenAI", "tags": ["code", "flagship"] },
+    { "id": "gpt-5.6-terra", "label": "GPT-5.6 Terra", "provider": "OpenAI", "tags": ["code", "flagship"] },
+    { "id": "gpt-5.6-sol", "label": "GPT-5.6 Sol", "provider": "OpenAI", "tags": ["code", "flagship"] },
+    { "id": "gpt-5.6-luna", "label": "GPT-5.6 Luna", "provider": "OpenAI", "tags": ["code", "flagship"] },
     { "id": "gpt-5.5", "label": "GPT-5.5", "provider": "OpenAI", "tags": ["code", "flagship"] },
     { "id": "gpt-5.4-nano", "label": "GPT-5.4 Nano", "provider": "OpenAI", "tags": ["code", "fast"] },
     { "id": "gpt-5.4-mini", "label": "GPT-5.4 Mini", "provider": "OpenAI", "tags": ["code", "fast"] },
@@ -280,7 +293,10 @@
     { "id": "gpt-5", "label": "GPT-5", "provider": "OpenAI", "tags": ["code", "flagship"] },
     { "id": "gpt-4o", "label": "GPT-4o", "provider": "OpenAI", "tags": ["code", "flagship"] },
     { "id": "o3", "label": "o3", "provider": "OpenAI", "tags": ["code", "reasoning"] },
-    { "id": "grok-code-fast-1", "label": "Grok Code Fast 1", "provider": "xAI", "tags": ["code", "fast"] }
+    { "id": "grok-code-fast-1", "label": "Grok Code Fast 1", "provider": "xAI", "tags": ["code", "fast"] },
+    { "id": "glm-5.2", "label": "GLM-5.2", "provider": "Z.AI", "tags": ["code", "flagship"] },
+    { "id": "glm-5.1", "label": "GLM-5.1", "provider": "Z.AI", "tags": ["code", "flagship"] },
+    { "id": "glm-5", "label": "GLM-5", "provider": "Z.AI", "tags": ["code", "flagship"] }
   ],
   "imageModels": [
     {

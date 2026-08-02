@@ -345,17 +345,17 @@ export function buildXmlRepairPrompt({
   const safeReason = sanitizeXmlText(typeof errorReason === 'string' ? errorReason : 'XML parse failed');
 
   return [
-    '前回の出力は定義されたXMLフォーマットに準拠していませんでした。',
-    `問題: ${safeReason}`,
-    `必須タグ: ${expectedTags}`,
-    '次のルールを厳守して、同じ内容をXMLとして再出力してください。',
-    '1. 出力はXMLのみ。説明文、箇条書き、コードフェンス、Markdownは禁止。',
-    '2. 最上位は <thought> か <call_tool> か <finish> のいずれかで始める。',
-    '3. タグ内の &, <, > は必ずXMLエスケープする。',
-    '4. <call_tool> を使う場合は <parameter name="..."> を閉じ忘れない。',
-    '5. 迷ったら <finish> に要約だけを返す。',
+    'Your previous output did not adhere to the defined XML format.',
+    `Issue: ${safeReason}`,
+    `Required tags: ${expectedTags}`,
+    'Strictly follow these rules and re-output the content in valid XML:',
+    '1. Output XML ONLY. No introductory text, bullet points, code fences, or Markdown outside tags.',
+    '2. Top-level element MUST start with <thought> followed by <call_tool> or <finish>.',
+    '3. Character entities (&, <, >) inside tag values MUST be properly XML-escaped.',
+    '4. When using <call_tool>, do not forget to close <parameter name="..."> tags.',
+    '5. If unsure, return only a summary inside <finish>.',
     '',
-    '前回の出力（参照用、修正して再送信）:',
+    'Previous output (reference only, repair and re-send):',
     safeAiText || '(empty)',
   ].join('\n');
 }

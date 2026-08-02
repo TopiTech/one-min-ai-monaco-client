@@ -717,6 +717,10 @@ button.ghost:hover {
   --provider-color: #0866ff;
 }
 
+.model-picker-group-header--z-ai {
+  --provider-color: #4f46e5;
+}
+
 .model-picker-group-header--flux {
   --provider-color: #a855f7;
 }

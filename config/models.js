@@ -37,7 +37,7 @@ export { fetchModels };
 
 async function fetchModels() {
   try {
-    const data = await callOneMin('/api/models');
+    const data = await callOneMin('/api/models', { suppressJsonParseErrorLog: true });
     if (data && Array.isArray(data.models)) {
       const modelType = (m) => m?.type ?? m?.featureType ?? m?.modelType ?? '';
       const newChatModels = data.models.filter((m) => modelType(m) === 'CHAT');

@@ -257,6 +257,36 @@ describe('api-client callOneMin', () => {
     expect(extractText(normalized)).toBe('final answer');
   });
 
+  test('logs raw response as error when JSON parsing fails in normalizeOneMinRawResponse', async () => {
+    const loggerModule = await import('../utils/logger.js');
+    const loggerSpy = jest.spyOn(loggerModule.default, 'error').mockImplementation(() => {});
+
+    const invalidJsonResponse = {
+      ok: true,
+      status: 200,
+      headers: new Map([['content-type', 'text/html']]),
+      text: async () => '<html><body>502 Bad Gateway</html>',
+    };
+
+    const { normalizeOneMinRawResponse } = await import('../utils/api-client.js');
+    const normalized = await normalizeOneMinRawResponse(invalidJsonResponse, {
+      context: 'Code Generator generate',
+    });
+
+    expect(normalized.message).toBe('<html><body>502 Bad Gateway</html>');
+    expect(loggerSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Failed to parse JSON response from upstream API. Raw response: <html><body>502 Bad Gateway</html>',
+      ),
+      expect.objectContaining({
+        status: 200,
+        contentType: 'text/html',
+      }),
+    );
+
+    loggerSpy.mockRestore();
+  });
+
   // ----------------------------------------------------------------
   // Non-JSON response falls back to { text }
   // ----------------------------------------------------------------

@@ -8,12 +8,12 @@ const FILE_LIST_CACHE_MAX = 20;
 
 function buildAgentPromptInstructions() {
   return [
-    '重要: 返答は必ずXMLのみで出力してください。',
-    '許可されるトップレベルタグは <thought>, <call_tool>, <finish> のみです。',
-    '説明文、Markdown、箇条書き、コードフェンスは出力しないでください。',
-    'XMLの特殊文字 (&, <, >) は必ずエスケープしてください。',
-    'ツールを呼ぶ場合は <call_tool name="..."> と <parameter name="..."> を正しく閉じてください。',
-    '迷った場合は <finish> を使って簡潔に完了を返してください。',
+    'IMPORTANT: Your response MUST be output in valid XML format ONLY.',
+    'The allowed top-level tags are ONLY <thought>, <call_tool>, and <finish>.',
+    'Do NOT output any explanatory text, Markdown, bullet points, or code fences outside tags.',
+    'XML special characters (&, <, >) MUST be properly XML-escaped (&amp;, &lt;, &gt;).',
+    'When invoking a tool, properly close <call_tool name="..."> and <parameter name="..."> tags.',
+    'If unsure, use <finish> to concisely return completion.',
   ].join('\n');
 }
 
@@ -26,7 +26,7 @@ async function fetchWorkspaceFiles(apiFn, workspaceRoot) {
   const filesList = listRes.items
     .map((item) => `- ${item.isDirectory ? '[Dir] ' : '[File] '}${item.name}`)
     .join('\n');
-  const text = `ワークスペースパス: ${workspaceRoot}\n` + filesList;
+  const text = `Workspace path: ${workspaceRoot}\n` + filesList;
   _fileListCache.set(workspaceRoot, { text, timestamp: Date.now() });
   // Evict oldest entry when cache exceeds limit
   if (_fileListCache.size > FILE_LIST_CACHE_MAX) {
@@ -217,81 +217,80 @@ async function processCommandStream(res, stepId, t) {
 }
 
 function buildSystemPrompt({ workspaceFilesText, activeFilePath }) {
-  return `あなたは極めて優秀なソフトウェアエンジニアAIエージェントです。
-あなたの目的は、ユーザーの指示を「正確に」かつ「安全に」達成することです。
-あなたは現在、隔離されたワークスペース内のファイルを直接操作できる特権セッションにいます。
+  return `You are an exceptionally talented software engineer AI agent.
+Your objective is to achieve the user's instructions accurately and safely.
+You are currently in a privileged session where you can directly operate on files within an isolated workspace.
 
-【必須XML出力スキーマ】
-各ターンは必ず以下の形式だけを出力してください。Markdownコードブロック、JSON、自由形式の説明文は禁止です。
-<thought>...</thought><call_tool name="tool名"><parameter name="パラメータ名">値</parameter></call_tool>
+[REQUIRED XML OUTPUT SCHEMA]
+Every turn MUST output strictly in the following format ONLY. Markdown code blocks, JSON, and free-form explanatory text outside tags are strictly prohibited.
+<thought>...</thought><call_tool name="tool_name"><parameter name="parameter_name">value</parameter></call_tool>
 
 1. read_file
-   - パラメータ: { "path": "ファイルパス", "startLine": 行番号(任意/1開始), "endLine": 行番号(任意/1開始) }
-   - 目的: 指定したファイルの内容を読み取る。大きなファイルや特定箇所のみを見たい場合、startLineとendLineで範囲を指定して分割して読み込むことが可能。
+   - Parameters: { "path": "file path", "startLine": line number (optional, 1-based), "endLine": line number (optional, 1-based) }
+   - Purpose: Read contents of specified file. For large files or specific sections, range lines can be specified via startLine and endLine to read in chunks.
    <call_tool name="read_file"><parameter name="path">utils/helper.js</parameter><parameter name="startLine">10</parameter><parameter name="endLine">30</parameter></call_tool>
 
 2. write_file
-    - 【必須】このツールの <parameter> 値は XML テキストなので、& < > はそれぞれ & < > に、完全なコードは省略せずにエスケープして出力してください。
-   - パラメータ: { "path": "ファイルパス", "content": "完全なコード内容" }
-   - 目的: **新規ファイル作成**、または**既存ファイル全体を置換候補として提示**する。実際の適用前には必ずユーザー確認が入る。
-   - **注意点**:
-     - 既存ファイルの部分編集は write_file ではなく **apply_diff を優先**してください。
-     - \`content\` パラメータには、絶対にマークダウンのコードブロック（例: \`\`\`js ... \`\`\`）を含めず、**プログラムの生テキストのみ**を直接記述してください。
-     - HTML/XMLの実体参照エスケープ（\`<\`や\`>\`、\`&\`など）は**一切行わず**、そのままの記号（\`<\`, \`>\`, \`&\`）で記述してください。
-     - コードの途中で省略（例: \`// ... 残りのコード ...\`）せず、完全な内容を出力してください。
-   <call_tool name="write_file"><parameter name="path">utils/helper.js</parameter><parameter name="content">export const add = (a, b) => a + b;</parameter></call_tool>
+   - Parameters: { "path": "file path", "content": "complete file content" }
+   - Purpose: Create a new file or propose replacing an entire existing file. User confirmation is required before actual application.
+   - Important notes:
+     - Prefer apply_diff over write_file for partial edits to existing files.
+     - The "content" parameter must NEVER contain markdown code fences (e.g. \`\`\`js ... \`\`\`); write ONLY raw program code text directly.
+     - Escape XML metacharacters (& to &amp;, < to &lt;, > to &gt;) properly inside XML parameters.
+     - Output complete contents without truncating or skipping code (e.g. do NOT use "// ... rest of code ...").
+   <call_tool name="write_file"><parameter name="path">utils/helper.js</parameter><parameter name="content">export const add = (a, b) =&gt; a + b;</parameter></call_tool>
 
 3. apply_diff
-   - パラメータ: { "path": "ファイルパス", "diff": "SEARCH/REPLACEブロック形式の差分" }
-   - 目的: ファイルの特定箇所のみを置換（編集）する。全文を書き換える write_file よりも軽量で安全なため、既存ファイルの編集にはこちらを使用すること。複数の箇所の置換（マルチブロック）も同時に実行可能です。
-   - **注意点**:
-     - \`diff\` パラメータには、絶対にマークダウンのコードブロック（例: \`\`\`diff ... \`\`\`）を含めず、かつ実体参照エスケープを行わずに、**以下のSEARCH/REPLACE形式のみ**を記述してください。
-     - SEARCHブロックの内容は、ファイル内の対象コード（インデント・改行等含む）と完全に一致する必要があります。一意に特定できるように、十分な長さ（前後の行を含む）で指定してください。
-     - 形式見本:
+   - Parameters: { "path": "file path", "diff": "SEARCH/REPLACE block format diff" }
+   - Purpose: Replace (edit) specific sections of a file. Safer and lighter than write_file for editing existing files. Multiple SEARCH/REPLACE blocks can be included in a single call.
+   - Important notes:
+     - The "diff" parameter must NEVER contain markdown code fences (e.g. \`\`\`diff ... \`\`\`), and must follow the SEARCH/REPLACE block format below.
+     - The SEARCH block content must match the target code in the file (including indentation and line breaks) exactly. Provide enough surrounding context to uniquely identify the location.
+     - Format example:
 <<<<<<< SEARCH
-[置換前の元のコード]
+[Original code before replacement]
 =======
-[置換後の新しいコード]
+[New code after replacement]
 >>>>>>> REPLACE
-   <call_tool name="apply_diff"><parameter name="path">utils/helper.js</parameter><parameter name="diff"><<<<<<< SEARCH
-export const add = (a, b) => a + b;
+   <call_tool name="apply_diff"><parameter name="path">utils/helper.js</parameter><parameter name="diff">&lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH
+export const add = (a, b) =&gt; a + b;
 =======
-export const add = (a, b) => {
+export const add = (a, b) =&gt; {
   return a + b;
 };
->>>>>>> REPLACE</parameter></call_tool>
+&gt;&gt;&gt;&gt;&gt;&gt;&gt; REPLACE</parameter></call_tool>
 
 4. list_directory
-   - パラメータ: { "path": "ディレクトリパス" }
-   - 目的: 指定したディレクトリの直下にあるファイルやフォルダの一覧を取得する。フォルダ構成や中身を把握する際に最初に使用すること。
+   - Parameters: { "path": "directory path" }
+   - Purpose: List files and subdirectories directly under the specified directory path. Use first when exploring directory layout or contents.
    <call_tool name="list_directory"><parameter name="path">src</parameter></call_tool>
 
 5. search_files
-   - パラメータ: { "query": "検索文字列" }
-   - 目的: プロジェクト全体から特定のシンボルや文字列を検索する。
+   - Parameters: { "query": "search query string" }
+   - Purpose: Search for specific symbols or text patterns across the entire project.
    <call_tool name="search_files"><parameter name="query">app.listen</parameter></call_tool>
 
 6. run_command
-   - パラメータ: { "command": "シェルコマンド" }
-   - 目的: テストの実行、依存関係の確認など。破壊的な操作は控え、実行前にユーザーの承認を求めることを想定すること。
+   - Parameters: { "command": "shell command" }
+   - Purpose: Execute test suites, check dependencies, etc. Avoid destructive operations, expecting user approval prior to execution.
    <call_tool name="run_command"><parameter name="command">npm test</parameter></call_tool>
 
-【完了報告】
-目的を完全に達成した場合は、ツールの代わりに <finish>要約</finish> タグを使い、何を行ったか簡潔に報告してください。
+[COMPLETION REPORTING]
+When the goal is fully accomplished, use the <finish>summary</finish> tag instead of a tool call to briefly report what was done.
 
-【重要な注意】
-- 出力は必ず <thought> と <call_tool> (または <finish>) のペアのみにしてください。
-- 余計な挨拶、マークダウンのコードブロック、解説文をタグの外側に含めないでください。
-- parameter の値（特に content と diff）は XML テキストなので、& は &、< は <、> は > に必ずエスケープしてください。
-- diff の SEARCH/REPLACE マーカー（<<<<<<<、=======、>>>>>>>）も XML 内では <<<<<<<、>>>>>>> にエスケープしてください。
-- 値の中身に Markdown のコードブロック記号は使わないでください。
-- すでに存在するファイルを変更する場合、まず read_file で現在の内容を確認するか、または search_files や list_directory でファイル構成を把握することが必須です。
+[IMPORTANT RULES]
+- Output MUST strictly consist of a <thought> tag paired with either a <call_tool> or <finish> tag.
+- Do NOT include any extra greetings, markdown code blocks, or commentary text outside the tags.
+- In parameter values (especially content and diff), ensure XML metacharacters (&, <, >) are properly XML-escaped (&amp;, &lt;, &gt;).
+- In diff SEARCH/REPLACE markers (<<<<<<<, =======, >>>>>>>), XML-escape them inside the XML as &lt;&lt;&lt;&lt;&lt;&lt;&lt;, &gt;&gt;&gt;&gt;&gt;&gt;&gt;.
+- Do NOT use markdown code block backticks within parameter values.
+- When modifying existing files, always read the current file contents using read_file or inspect directory structure with search_files / list_directory first.
 
-現在のワークスペース構造:
+Current workspace structure:
 ${workspaceFilesText}
 
-現在の Monaco エディタで開いているファイル:
-パス: ${activeFilePath || 'なし'}
+Currently open file in Monaco editor:
+Path: ${activeFilePath || 'None'}
 `;
 }
 
@@ -623,7 +622,7 @@ export function createAgentRuntime({
       try {
         workspaceFilesText = await fetchWorkspaceFiles(api, workspaceRoot);
       } catch {
-        workspaceFilesText = `ワークスペースパス: ${workspaceRoot}\n(ファイル一覧の取得に失敗しました)`;
+        workspaceFilesText = `Workspace path: ${workspaceRoot}\n(Failed to fetch file list)`;
       }
       const freshSysPrompt = buildSystemPrompt({
         workspaceRoot,
@@ -639,23 +638,40 @@ export function createAgentRuntime({
       ];
 
       let chatRes;
-      try {
-        chatRes = await api('/api/agent/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: messagesForApi,
-            model: modelSelected,
-            webSearch: false,
-            conversationId: sessionId,
-          }),
-          timeout: 600000,
-        });
-      } catch (e) {
-        addAgentTimelineStep('error', 'AI通信失敗', `AIとの通信に失敗しました: ${e.message}`);
-        setAgentStatus('エラー', 'error');
-        break;
+      let networkRetryCount = 0;
+      const maxNetworkRetries = 3;
+      while (networkRetryCount < maxNetworkRetries) {
+        try {
+          chatRes = await api('/api/agent/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              messages: messagesForApi,
+              model: modelSelected,
+              webSearch: false,
+              conversationId: sessionId,
+            }),
+            timeout: 600000,
+          });
+          break;
+        } catch (e) {
+          networkRetryCount++;
+          if (networkRetryCount < maxNetworkRetries) {
+            addAgentTimelineStep(
+              'warn',
+              `AI通信リトライ (${networkRetryCount}/${maxNetworkRetries})`,
+              `AIとの通信に失敗しました (${e.message})。3秒後に自動再試行します...`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+          } else {
+            addAgentTimelineStep('error', 'AI通信失敗', `AIとの通信に失敗しました: ${e.message}`);
+            setAgentStatus('エラー', 'error');
+            break;
+          }
+        }
       }
+
+      if (!chatRes) break;
 
       const aiText = chatRes.text || '';
       if (!aiText) {
@@ -741,9 +757,13 @@ export function createAgentRuntime({
         await trimHistory(state.agent.history);
       } else {
         consecutiveParseErrors++;
+        console.warn(
+          `[Code Generator Agent] XML parse failed on AI response (attempt ${consecutiveParseErrors}/${maxParseFailures}). Raw response:\n`,
+          aiText,
+        );
         const repairPrompt = buildXmlRepairPrompt({
           aiText,
-          errorReason: 'XMLタグが欠落、または閉じタグの不整合があります。',
+          errorReason: 'XML tag missing or closing tag mismatch.',
         });
         const shouldRetryRepair = consecutiveParseErrors <= Math.floor(maxParseFailures / 2);
         if (consecutiveParseErrors >= maxParseFailures) {
@@ -751,17 +771,19 @@ export function createAgentRuntime({
             'error',
             'パースエラー',
             `AIがフォーマットに従わない状態が ${maxParseFailures} 回連続したため、安全のためにエージェントを強制停止します。`,
+            aiText,
           );
           setAgentStatus('エラー', 'error');
           break;
         }
 
         const errMsg =
-          'エラー: XMLフォーマットの解析に失敗しました。<thought>, <call_tool>, <finish> のいずれかで再出力してください。';
+          'Error: Failed to parse XML format. Please output again using <thought>, <call_tool>, or <finish>.';
         addAgentTimelineStep(
           'error',
           'パース失敗',
           'AIが定義されたXMLフォーマットに準拠していません。自動修正指示を送信します。',
+          aiText,
         );
 
         state.agent.history.push({ role: 'assistant', content: aiText });

@@ -162,7 +162,23 @@ router.post('/generate', async (req, res, next) => {
       maxWord: data.maxWord,
     });
 
-    const prompt = `あなたは熟練のソフトウェアエンジニアです。以下のコードに対してユーザー指示を実行してください。\n\n出力ルール:\n- 変更コードが必要な場合は完全なコードブロックで返す\n- 変更理由を短く説明する\n- 可能なら注意点も述べる\n\nファイル名: ${sanitizeForPrompt(data.fileName)}\n言語: ${sanitizeForPrompt(data.language)}\n\nユーザー指示:\n${data.instruction}\n\n現在のコード:\n\`\`\`${sanitizeForPrompt(data.language)}\n${data.code}\n\`\`\``;
+    const prompt = `You are an expert software engineer. Execute the user instruction on the following code.
+
+Output rules:
+- Return a complete code block if modified code is needed
+- Briefly explain the reason for the changes
+- Mention any important caveats or considerations if applicable
+
+File name: ${sanitizeForPrompt(data.fileName)}
+Language: ${sanitizeForPrompt(data.language)}
+
+User instruction:
+${data.instruction}
+
+Current code:
+\`\`\`${sanitizeForPrompt(data.language)}
+${data.code}
+\`\`\``;
 
     const payload = buildCodePayload({
       prompt,
@@ -177,7 +193,9 @@ router.post('/generate', async (req, res, next) => {
       raw: true,
       timeout: 600000,
     });
-    const normalizedDataRes = await normalizeOneMinRawResponse(dataRes);
+    const normalizedDataRes = await normalizeOneMinRawResponse(dataRes, {
+      context: 'Code Generator generate',
+    });
     if (isFailedResponse(normalizedDataRes)) {
       throw new HttpError(
         502,
@@ -211,21 +229,21 @@ router.post('/autocomplete', async (req, res, next) => {
 
     const { beforeCode, afterCode } = buildCodeContext(data.code, lineNum, colNum, 100);
 
-    const prompt = `あなたはAIコーディングアシスタントです。ユーザーがエディタでコードを入力中であり、カーソルの直後に続くべきコード（数行〜最大20行程度）を提案してください。
-必ず提案するコード「のみ」を出力してください。説明、マークダウンのコードブロック記号(\`\`\`)、解説、挨拶などは絶対に含めないでください。
-また、提案コードは「カーソルより前のコード」の直後からシームレスに繋がるようにしてください（すでに書かれているコードを重複して出力しないでください）。
+    const prompt = `You are an AI coding assistant. The user is currently typing code in the editor. Suggest the code (a few lines up to approximately 20 lines) that should immediately follow the cursor position.
+Output ONLY the suggested code. Do NOT include any explanations, markdown code block fences (\`\`\`), commentary, or greetings under any circumstances.
+Ensure the suggested code connects seamlessly directly after the code before the cursor (do not duplicate code that has already been written).
 
-コンテキスト:
-ファイル名: ${sanitizeForPrompt(data.fileName || 'untitled')}
-言語: ${sanitizeForPrompt(data.language || 'plaintext')}
+Context:
+File name: ${sanitizeForPrompt(data.fileName || 'untitled')}
+Language: ${sanitizeForPrompt(data.language || 'plaintext')}
 
-カーソルより前のコード:
+Code before cursor:
 ${beforeCode}
 
-カーソルより後のコード:
+Code after cursor:
 ${afterCode}
 
-提案コード:`;
+Suggested code:`;
 
     const payload = buildCodePayload({
       prompt,
@@ -240,7 +258,9 @@ ${afterCode}
       body: JSON.stringify(payload),
       raw: true,
     });
-    const normalizedDataRes = await normalizeOneMinRawResponse(dataRes);
+    const normalizedDataRes = await normalizeOneMinRawResponse(dataRes, {
+      context: 'Code Generator autocomplete',
+    });
     if (isFailedResponse(normalizedDataRes)) {
       throw new HttpError(
         502,
@@ -278,21 +298,21 @@ router.post('/inline-chat', async (req, res, next) => {
 
     const { beforeCode, afterCode } = buildCodeContext(data.code, lineNum, colNum, 150);
 
-    const prompt = `あなたは熟練のソフトウェアエンジニアです。エディタのカーソル位置でユーザー指示を実行し、挿入または変更すべきコードを出力してください。
-必ず提案するコード「のみ」を出力し、説明やマークダウンのコードブロック記号(\`\`\`)は一切含めないでください。
+    const prompt = `You are an expert software engineer. Execute the user instruction at the editor cursor position and output the code to be inserted or modified.
+Output ONLY the proposed code. Do NOT include any explanations or markdown code block fences (\`\`\`).
 
-コンテキスト:
-ファイル名: ${sanitizeForPrompt(data.fileName || 'untitled')}
-言語: ${sanitizeForPrompt(data.language || 'plaintext')}
-ユーザー指示: ${data.prompt}
+Context:
+File name: ${sanitizeForPrompt(data.fileName || 'untitled')}
+Language: ${sanitizeForPrompt(data.language || 'plaintext')}
+User instruction: ${data.prompt}
 
-カーソルより前のコード:
+Code before cursor:
 ${beforeCode}
 
-カーソルより後のコード:
+Code after cursor:
 ${afterCode}
 
-挿入/変更コード:`;
+Inserted/Modified code:`;
 
     const payload = buildCodePayload({
       prompt,
@@ -307,7 +327,9 @@ ${afterCode}
       body: JSON.stringify(payload),
       raw: true,
     });
-    const normalizedDataRes = await normalizeOneMinRawResponse(dataRes);
+    const normalizedDataRes = await normalizeOneMinRawResponse(dataRes, {
+      context: 'Code Generator inline-chat',
+    });
     if (isFailedResponse(normalizedDataRes)) {
       throw new HttpError(
         502,

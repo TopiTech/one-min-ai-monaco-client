@@ -128,7 +128,9 @@ router.post('/chat', async (req, res, next) => {
       raw: true,
       timeout: serverConfig.agentChatTimeoutMs,
     });
-    const normalizedDataRes = await normalizeOneMinRawResponse(dataRes);
+    const normalizedDataRes = await normalizeOneMinRawResponse(dataRes, {
+      context: 'Code Generator agent-chat',
+    });
 
     // 6. Handle upstream failure
     if (isFailedResponse(normalizedDataRes)) {
