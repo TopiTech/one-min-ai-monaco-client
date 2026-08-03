@@ -126,6 +126,9 @@ router.post('/chat', async (req, res, next) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       raw: true,
+      // SEC: CODE_GENERATOR creates an upstream record; never retry a POST
+      // that would duplicate the side effect / credit consumption.
+      idempotent: false,
       timeout: serverConfig.agentChatTimeoutMs,
     });
     const normalizedDataRes = await normalizeOneMinRawResponse(dataRes, {

@@ -38,7 +38,7 @@ The following are **not** implemented and must be addressed before hosting the s
 ## Secret Hygiene
 
 - Never commit `.env`. The repository's `.gitignore` excludes it, but if a key is ever pushed, **rotate it immediately** via https://app.1min.ai/. Past leaks remain in git history even after a `git filter-repo` rewrite.
-- The local BFF token is regenerated on every server start when not supplied via `LOCAL_BFF_AUTH_TOKEN`.
+- When `LOCAL_BFF_AUTH_TOKEN` is not set, a random token is generated on first start and persisted to `.mimocode/data/bff_session.token` (mode 0600), so browser sessions survive server restarts.
 
 ## Threat Model Summary
 

@@ -27,7 +27,13 @@ jobs:
         run: npm ci
 
       - name: Check formatting
-        run: npx prettier --check "server.js" "public/**/*.{js,css,html}" "routes/*.js" "utils/*.js" "config/*.js" "services/*.js" "tests/*.js"
+        run: npx prettier --check "server.js" "public/**/*.{js,css,html}" "routes/**/*.js" "utils/*.js" "config/*.js" "services/*.js" "tests/*.js"
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run type-check
 
       - name: Security audit
         run: npm audit --audit-level=high

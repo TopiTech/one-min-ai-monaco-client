@@ -130,6 +130,75 @@ describe('Hardening Improvements Tests', () => {
         serverConfig.maxCommandOutputSize = prevMax;
       }
     });
+
+    test('rejects extension containing path traversal sequences', async () => {
+      const prevVal = serverConfig.enableCodeRun;
+      serverConfig.enableCodeRun = true;
+
+      try {
+        const app = createApp({
+          requireLocalAuth: false,
+          enableRateLimit: false,
+        });
+
+        const res = await request(app).post('/api/code/run').send({
+          code: 'console.log("hello")',
+          language: 'javascript',
+          extension: '../../../../../../tmp/pwned',
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toContain('extension');
+      } finally {
+        serverConfig.enableCodeRun = prevVal;
+      }
+    });
+
+    test('rejects extension with shell metacharacters', async () => {
+      const prevVal = serverConfig.enableCodeRun;
+      serverConfig.enableCodeRun = true;
+
+      try {
+        const app = createApp({
+          requireLocalAuth: false,
+          enableRateLimit: false,
+        });
+
+        const res = await request(app).post('/api/code/run').send({
+          code: 'console.log("hello")',
+          language: 'javascript',
+          extension: 'js;rm -rf /',
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toContain('extension');
+      } finally {
+        serverConfig.enableCodeRun = prevVal;
+      }
+    });
+
+    test('accepts a normal alphanumeric extension', async () => {
+      const prevVal = serverConfig.enableCodeRun;
+      serverConfig.enableCodeRun = true;
+
+      try {
+        const app = createApp({
+          requireLocalAuth: false,
+          enableRateLimit: false,
+        });
+
+        const res = await request(app).post('/api/code/run').send({
+          code: 'console.log("hello from extension test")',
+          language: 'javascript',
+          extension: 'js',
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.body.ok).toBe(true);
+      } finally {
+        serverConfig.enableCodeRun = prevVal;
+      }
+    });
   });
 
   describe('Production 500 error leak prevention', () => {

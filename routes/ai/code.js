@@ -191,6 +191,9 @@ ${data.code}
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       raw: true,
+      // SEC: CODE_GENERATOR creates an upstream record; never retry a POST
+      // that would duplicate the side effect / credit consumption.
+      idempotent: false,
       timeout: 600000,
     });
     const normalizedDataRes = await normalizeOneMinRawResponse(dataRes, {
@@ -257,6 +260,9 @@ Suggested code:`;
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       raw: true,
+      // SEC: CODE_GENERATOR creates an upstream record; never retry a POST
+      // that would duplicate the side effect / credit consumption.
+      idempotent: false,
     });
     const normalizedDataRes = await normalizeOneMinRawResponse(dataRes, {
       context: 'Code Generator autocomplete',
@@ -326,6 +332,9 @@ Inserted/Modified code:`;
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       raw: true,
+      // SEC: CODE_GENERATOR creates an upstream record; never retry a POST
+      // that would duplicate the side effect / credit consumption.
+      idempotent: false,
     });
     const normalizedDataRes = await normalizeOneMinRawResponse(dataRes, {
       context: 'Code Generator inline-chat',
@@ -357,7 +366,14 @@ const codeRunSchema = z.object({
     .optional(),
   code: z.string().max(500000, 'code exceeds 500000 characters').optional(),
   language: z.string().optional(),
-  extension: z.string().optional(),
+  // SEC-5: `extension` is used to build the temp file name handed to node/python.
+  // Restrict it to short alphanumeric strings so it can never inject path
+  // separators or traversal sequences (`../`) into the resolved tmp path.
+  extension: z
+    .string()
+    .regex(/^[a-zA-Z0-9]+$/, { message: 'extension must be alphanumeric only' })
+    .max(10, { message: 'extension must be 10 characters or fewer' })
+    .optional(),
 });
 
 router.post('/run', async (req, res, next) => {
@@ -407,12 +423,19 @@ router.post('/run', async (req, res, next) => {
     targetPath = filePath;
 
     if (code) {
-      const tmpDir = pathPkg.join(PROJECT_ROOT, '.mimocode', 'tmp');
+      const tmpDir = pathPkg.resolve(PROJECT_ROOT, '.mimocode', 'tmp');
       await fsPkg.mkdir(tmpDir, { recursive: true });
-      const tmpFile = pathPkg.join(
-        tmpDir,
-        `code_run_${cryptoPkg.randomBytes(6).toString('hex')}.${ext || 'js'}`,
-      );
+      // SEC-5: Defense-in-depth. The schema already restricts `extension` to
+      // alphanumeric, but sanitize again and assert the resolved tmp path stays
+      // inside tmpDir before writing anything to disk.
+      const safeExt =
+        String(ext || 'js')
+          .replace(/[^a-zA-Z0-9]/g, '')
+          .slice(0, 10) || 'js';
+      const tmpFile = pathPkg.join(tmpDir, `code_run_${cryptoPkg.randomBytes(6).toString('hex')}.${safeExt}`);
+      if (!pathPkg.resolve(tmpFile).startsWith(tmpDir + pathPkg.sep)) {
+        throw new HttpError(400, 'Invalid extension', 'INVALID_EXTENSION');
+      }
       await fsPkg.writeFile(tmpFile, code, 'utf-8');
       targetPath = tmpFile;
     }

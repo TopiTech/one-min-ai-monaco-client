@@ -264,6 +264,8 @@ function parseSseResponseText(text, options = {}) {
  * @param {AbortSignal} [options.signal]
  * @param {boolean} [options.idempotent]
  * @param {number} [options.timeout]
+ * @param {boolean} [options.suppressJsonParseErrorLog] - Suppress logging of raw upstream
+ *   bodies that fail JSON parsing (used for noisy endpoints like /api/models).
  */
 export async function callOneMin(
   pathname,

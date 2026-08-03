@@ -481,7 +481,15 @@ router.get('/sessions/:id', (req, res) => {
  */
 router.post('/tokenize', (req, res) => {
   try {
-    const texts = Array.isArray(req.body.texts) ? req.body.texts : [req.body.text || ''];
+    // Bound the input so a large `texts` array cannot trigger unbounded
+    // tokenizer work. Legitimate agent batches stay far below these caps
+    // (history is trimmed to ~40k tokens, i.e. tens of messages).
+    const MAX_TOKENIZE_TEXTS = 500;
+    const MAX_TOKENIZE_TEXT_LENGTH = 100000;
+    const rawTexts = Array.isArray(req.body.texts) ? req.body.texts : [req.body.text || ''];
+    const texts = rawTexts
+      .slice(0, MAX_TOKENIZE_TEXTS)
+      .map((t) => String(t ?? '').slice(0, MAX_TOKENIZE_TEXT_LENGTH));
     const counts = countTokensMultiple(texts);
     res.json({ counts, total: counts.reduce((a, b) => a + b, 0) });
   } catch (err) {

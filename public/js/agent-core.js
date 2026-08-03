@@ -649,7 +649,8 @@ export function createAgentRuntime({
               messages: messagesForApi,
               model: modelSelected,
               webSearch: false,
-              conversationId: sessionId,
+              // NOTE: the CODE_GENERATOR feature has no conversation concept;
+              // do not send conversationId here (it would be silently dropped).
             }),
             timeout: 600000,
           });

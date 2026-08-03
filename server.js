@@ -292,8 +292,20 @@ export function createApp(options = {}) {
     app.use('/api/code', autocompleteRateLimit);
     // Global default limit for /api only — static assets and the app shell
     // are excluded so loading Monaco (100+ chunk files) does not exhaust the
-    // rate limit before the user makes any API calls.
-    app.use('/api', buildRateLimit());
+    // rate limit before the user makes any API calls. Endpoints that already
+    // went through a dedicated limiter above (/api/chat, /api/code) are
+    // skipped here; otherwise every chat/autocomplete request would be
+    // double-counted and the global limit would silently override the
+    // dedicated (higher) limits.
+    app.use(
+      '/api',
+      buildRateLimit({
+        skip: (req) => {
+          const p = req.path;
+          return p === '/chat' || p.startsWith('/chat/') || p === '/code' || p.startsWith('/code/');
+        },
+      }),
+    );
   }
 
   app.use(logger.requestLogger());
