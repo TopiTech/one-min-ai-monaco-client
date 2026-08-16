@@ -84,6 +84,7 @@ const fileDiffSchema = z.object({
 });
 
 const MAX_AGENT_READ_SIZE = 10 * 1024 * 1024;
+const MAX_DIR_ENTRIES = 5000;
 const SKIPPED_DIRS = new Set([
   'node_modules',
   '.git',
@@ -1114,13 +1115,16 @@ router.get('/sessions/:id/dir', async (req, res, next) => {
     assertNotProtectedPath(resolvedPath);
 
     const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
-    const items = entries
-      .filter((entry) => entry.name !== '.git' && entry.name !== 'node_modules' && entry.name !== '.venv')
-      .map((entry) => ({
+    const items = [];
+    for (const entry of entries) {
+      if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === '.venv') continue;
+      items.push({
         name: entry.name,
         isDirectory: entry.isDirectory(),
         path: path.join(resolvedPath, entry.name),
-      }));
+      });
+      if (items.length >= MAX_DIR_ENTRIES) break;
+    }
 
     res.json({
       path: resolvedPath,
