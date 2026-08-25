@@ -2,7 +2,7 @@ import express from 'express';
 import crypto from 'crypto';
 import { spawn } from 'child_process';
 import { StringDecoder } from 'string_decoder';
-import { executeCommand, checkCommandSafety } from '../services/command-runner.js';
+import { executeCommand, checkCommandSafety, killProcessTree } from '../services/command-runner.js';
 import { detectBinaryContent } from '../utils/mime-guard.js';
 import {
   validatePath,
@@ -11,6 +11,7 @@ import {
   assertNotWriteProtectedPath,
   getAllowedRoots,
   getDefaultRoot,
+  PROJECT_ROOT,
 } from '../utils/fs-guard.js';
 import { serverConfig } from '../config/server.js';
 import fs from 'fs/promises';
@@ -114,7 +115,9 @@ function getSession(req, res) {
 const router = express.Router();
 
 // Persistent session storage
-const DATA_DIR = path.join(process.cwd(), '.mimocode', 'data');
+// Anchor to the project root (not process.cwd()) so launching from another
+// directory cannot fork persistence into an unprotected location.
+const DATA_DIR = path.join(PROJECT_ROOT, '.mimocode', 'data');
 const SESSIONS_FILE = path.join(DATA_DIR, 'agent_sessions.json');
 // Pending commands also persist to disk so approval tokens survive a
 // server restart (within their 5-minute expiry window).
@@ -124,6 +127,10 @@ const shouldPersistSessions = !isTestMode && serverConfig.persistAgentSessions;
 
 let sessions = new Map();
 const pendingCommands = new Map();
+
+// rg processes spawned by /sessions/:id/search. Tracked separately from
+// command-runner's activeProcesses so shutdown can terminate stragglers.
+const activeSearchProcesses = new Set();
 
 // --- Session Per-Key Lock ---
 
@@ -146,41 +153,44 @@ const sessionLock = new SessionLock();
 function createDebouncedFileWriter(filePath, serialize, { delayMs = 50, label = 'data' } = {}) {
   let timer = null;
   let isWriting = false;
-  let needsSave = false;
+  let writingPromise = null;
 
   async function flush() {
     if (isWriting) {
-      needsSave = true;
-      return;
+      // Re-entrant/concurrent call while a write is in flight: wait for it,
+      // then fall through to one more write so the latest state is actually
+      // on disk before this flush resolves. Callers rely on flush for
+      // durability (saveSessions(), shutdown's flushPendingWriters()).
+      await writingPromise.catch(() => {});
+      if (isWriting) return; // another flush took over and covers our state
     }
     isWriting = true;
-    needsSave = false;
-    try {
-      await ensureDataDir();
-      if (isTestMode) return;
+    writingPromise = (async () => {
       try {
-        await fs.access(DATA_DIR);
-      } catch {
-        return;
+        await ensureDataDir();
+        if (isTestMode) return;
+        try {
+          await fs.access(DATA_DIR);
+        } catch {
+          return;
+        }
+        const data = await serialize();
+        const suffix = crypto.randomBytes(4).toString('hex');
+        const tmpFile = `${filePath}.${suffix}.tmp`;
+        try {
+          await fs.writeFile(tmpFile, data, { encoding: 'utf-8', mode: 0o600 });
+          await fs.rename(tmpFile, filePath);
+        } catch (writeErr) {
+          await fs.unlink(tmpFile).catch(() => {});
+          throw writeErr;
+        }
+      } catch (err) {
+        logger.error(`Failed to save ${label} to file`, { error: err.message });
+      } finally {
+        isWriting = false;
       }
-      const data = await serialize();
-      const suffix = crypto.randomBytes(4).toString('hex');
-      const tmpFile = `${filePath}.${suffix}.tmp`;
-      try {
-        await fs.writeFile(tmpFile, data, { encoding: 'utf-8', mode: 0o600 });
-        await fs.rename(tmpFile, filePath);
-      } catch (writeErr) {
-        await fs.unlink(tmpFile).catch(() => {});
-        throw writeErr;
-      }
-    } catch (err) {
-      logger.error(`Failed to save ${label} to file`, { error: err.message });
-    } finally {
-      isWriting = false;
-      if (needsSave) {
-        save();
-      }
-    }
+    })();
+    await writingPromise;
   }
 
   function save() {
@@ -919,6 +929,28 @@ async function searchWithRg(dir, query, maxResults) {
     ];
 
     const child = spawn('rg', args);
+    // Bound the search so a huge tree or slow filesystem cannot hold the
+    // request open forever; matches command-runner's timeout policy and
+    // keeps the process killable during shutdown.
+    activeSearchProcesses.add(child);
+    let settled = false;
+    let forceKillTimeoutId = null;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(searchTimeoutId);
+      clearTimeout(forceKillTimeoutId);
+      activeSearchProcesses.delete(child);
+      resolve(value);
+    };
+    const searchTimeoutId = setTimeout(() => {
+      killProcessTree(child, false);
+      forceKillTimeoutId = setTimeout(() => {
+        if (child.exitCode === null) {
+          killProcessTree(child, true);
+        }
+      }, 5000);
+    }, serverConfig.commandTimeoutMs || 30_000);
     // M-5: Parse lines as they arrive so we can stop early without
     // buffering the full output. Each `data` chunk can contain multiple
     // lines — we keep a small carry-over buffer for the trailing partial
@@ -987,14 +1019,14 @@ async function searchWithRg(dir, query, maxResults) {
         sawError = true;
       }
       if (sawError) {
-        resolve(null);
+        finish(null);
         return;
       }
-      resolve(results);
+      finish(results);
     });
 
     child.on('error', () => {
-      resolve(null);
+      finish(null);
     });
   });
 }
@@ -1423,6 +1455,22 @@ export async function flushPendingWriters() {
       logger.error('Failed to flush pending writer', { error: r.reason?.message });
     }
   }
+}
+
+/**
+ * Force-terminate any rg processes still running for /sessions/:id/search.
+ * Used during server shutdown so slow searches cannot outlive the server.
+ */
+export function killAllSearchProcesses() {
+  if (activeSearchProcesses.size === 0) return;
+  for (const child of activeSearchProcesses) {
+    try {
+      killProcessTree(child, true);
+    } catch {
+      // Best-effort cleanup
+    }
+  }
+  activeSearchProcesses.clear();
 }
 
 export async function initAgentState() {

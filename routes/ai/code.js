@@ -404,13 +404,11 @@ router.post('/run', async (req, res, next) => {
     let runner = null;
     if (ext === 'py' || language === 'python') {
       runner = process.platform === 'win32' ? 'python' : 'python3';
-    } else if (
-      ext === 'js' ||
-      ext === 'mjs' ||
-      ext === 'cjs' ||
-      language === 'javascript' ||
-      language === 'typescript'
-    ) {
+    } else if (ext === 'js' || ext === 'mjs' || ext === 'cjs' || language === 'javascript') {
+      // Note: `typescript` is intentionally not mapped to node — plain Node
+      // cannot execute .ts sources directly on supported LTS runtimes, and
+      // running them would surface a confusing SyntaxError instead of a
+      // clear "unsupported language" response.
       runner = 'node';
     }
 

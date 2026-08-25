@@ -335,9 +335,14 @@ export async function callOneMin(
 
       if ((response.status === 429 || response.status >= 500) && attempt < effectiveRetries) {
         const retryAfter = response.headers.get('Retry-After');
-        const waitTime = retryAfter
-          ? Math.min(parseInt(retryAfter, 10) * 1000 + 1000, 60000)
-          : Math.round(retryDelay * Math.pow(2, attempt) * (1 + (Math.random() * 0.2 - 0.1)));
+        // Retry-After may be an HTTP-date (RFC 7231 §7.1.3); parseInt yields
+        // NaN for those, and delay(NaN) fires immediately — falling back to
+        // the exponential backoff keeps the upstream rate limit respected.
+        const retryAfterSeconds = Number.parseInt(retryAfter, 10);
+        const waitTime =
+          retryAfter && Number.isFinite(retryAfterSeconds)
+            ? Math.min(retryAfterSeconds * 1000 + 1000, 60000)
+            : Math.round(retryDelay * Math.pow(2, attempt) * (1 + (Math.random() * 0.2 - 0.1)));
         // Consume the response body to release the connection back to the pool.
         try {
           response.body?.cancel?.();

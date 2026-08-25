@@ -55,7 +55,7 @@ initLogger(serverConfig);
 
 import aiRoutes from './routes/ai/index.js';
 import fsRoutes from './routes/fs.js';
-import agentRoutes, { flushPendingWriters, initAgentState } from './routes/agent.js';
+import agentRoutes, { flushPendingWriters, initAgentState, killAllSearchProcesses } from './routes/agent.js';
 import agentChatRoutes from './routes/agent-chat.js';
 import { initModels, getModelSyncStatus } from './config/models.js';
 
@@ -228,7 +228,11 @@ async function handleAssetUpload(req, res, next) {
 function getOrCreatePersistentAuthToken() {
   const tokenFile = path.join(__dirname, '.mimocode', 'data', 'bff_session.token');
   try {
-    return fs.readFileSync(tokenFile, 'utf8').trim();
+    const token = fs.readFileSync(tokenFile, 'utf8').trim();
+    // An existing-but-empty (or truncated) token file would otherwise yield ''
+    // and crash localBffAuth on every start; regenerate instead.
+    if (token.length >= 32) return token;
+    throw new Error('token file is empty or truncated');
   } catch {
     const token = createLocalAuthToken();
     try {
@@ -525,10 +529,10 @@ function validateEnvironment() {
     logger.warn('ALLOWED_ROOTS is not set. Defaulting to project root only.');
   }
   if (!process.env.LOCAL_BFF_AUTH_TOKEN) {
-    logger.warn(
-      'LOCAL_BFF_AUTH_TOKEN not set. A random token will be generated on each restart. ' +
-        'Browser sessions will be invalidated when the server restarts. ' +
-        'Set LOCAL_BFF_AUTH_TOKEN in .env for persistent sessions.',
+    logger.info(
+      'LOCAL_BFF_AUTH_TOKEN not set. A random token was generated and persisted to ' +
+        '.mimocode/data/bff_session.token; browser sessions survive restarts. ' +
+        'Set LOCAL_BFF_AUTH_TOKEN in .env to control the token explicitly.',
     );
   }
 }
@@ -584,6 +588,13 @@ if (process.env.NODE_ENV !== 'test') {
           killAllActiveProcesses();
         } catch (err) {
           logger.error('Failed to kill active processes during shutdown', {
+            error: err.message,
+          });
+        }
+        try {
+          killAllSearchProcesses();
+        } catch (err) {
+          logger.error('Failed to kill search processes during shutdown', {
             error: err.message,
           });
         }

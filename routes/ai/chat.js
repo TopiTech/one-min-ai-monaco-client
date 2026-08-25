@@ -253,6 +253,7 @@ router.post('/stream', async (req, res, next) => {
     let resultBlocks = [];
     let carry = '';
     let totalStreamBytes = 0;
+    let streamLimitExceeded = false;
     const MAX_STREAM_BYTES = 50 * 1024 * 1024; // 50MB safety limit
 
     const normalizeResultBlock = (block) => {
@@ -294,6 +295,7 @@ router.post('/stream', async (req, res, next) => {
         totalStreamBytes += value?.byteLength ?? value?.length ?? 0;
         if (totalStreamBytes > MAX_STREAM_BYTES) {
           logger.warn('SSE stream exceeded max size, aborting', { totalStreamBytes });
+          streamLimitExceeded = true;
           break;
         }
         carry += decoder.decode(value, { stream: true });
@@ -338,8 +340,26 @@ router.post('/stream', async (req, res, next) => {
         logger.info('Stream reading aborted due to client disconnection.');
       } else {
         logger.warn('Stream interrupted', { error: streamErr.message });
+        // SSE normal closure means "complete" for clients; without an explicit
+        // error event a mid-stream upstream failure would be presented to the
+        // user as a truncated-but-successful answer.
+        if (!res.writableEnded && !res.destroyed) {
+          res.write(`event: error\ndata: ${JSON.stringify({ error: 'Upstream stream interrupted' })}\n\n`);
+        }
       }
     } finally {
+      if (streamLimitExceeded) {
+        // Stop consuming the oversized upstream body so the connection is
+        // released immediately instead of being held until the fetch timeout.
+        try {
+          await reader.cancel();
+        } catch {
+          // ignore — reader may already be released or errored
+        }
+        if (!res.writableEnded && !res.destroyed) {
+          res.write(`event: error\ndata: ${JSON.stringify({ error: 'Stream exceeded maximum size' })}\n\n`);
+        }
+      }
       clearInterval(heartbeatInterval);
       try {
         reader.releaseLock();
