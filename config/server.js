@@ -26,8 +26,20 @@ const FALLBACK = {
   agentMaxParseFailures: 3,
   agentMaxContextTokens: 40000,
   agentMaxContextTokensCreditSaving: 12000,
+  // Centralize agent session tunables so the limits are discoverable
+  // through serverConfig and configurable via env vars.
+  agentMaxSessions: 50,
+  agentMaxPendingCommands: 100,
+  agentMaxHistoryEntries: 50,
+  agentMaxHistoryResultSize: 2000,
+  agentZombieGraceMs: 60_000,
+  agentMaxReadSize: 10 * 1024 * 1024,
+  agentTmpFileMaxAgeMs: 30 * 60 * 1000,
   sessionTtlMs: 30 * 60 * 1000,
   maxCommandOutputSize: 10 * 1024 * 1024,
+  // Filesystem listing/deletion safety caps.
+  fsMaxListEntries: 5000,
+  fsMaxDeleteEntries: 1000,
 };
 
 const MIN_PORT = 1;
@@ -236,6 +248,47 @@ export const serverConfig = {
     FALLBACK.agentMaxContextTokensCreditSaving,
   ),
 
+  // Agent session / queue tunables. Previously hard-coded in routes/agent.js;
+  // moving them here keeps the configuration discoverable and lets operators
+  // tune limits without code changes.
+  agentMaxSessions: intInRange(
+    process.env.AGENT_MAX_SESSIONS,
+    1,
+    1000,
+    FALLBACK.agentMaxSessions,
+  ),
+  agentMaxPendingCommands: intInRange(
+    process.env.AGENT_MAX_PENDING_COMMANDS,
+    1,
+    10000,
+    FALLBACK.agentMaxPendingCommands,
+  ),
+  agentMaxHistoryEntries: intInRange(
+    process.env.AGENT_MAX_HISTORY_ENTRIES,
+    1,
+    500,
+    FALLBACK.agentMaxHistoryEntries,
+  ),
+  agentMaxHistoryResultSize: intInRange(
+    process.env.AGENT_MAX_HISTORY_RESULT_SIZE,
+    100,
+    1_000_000,
+    FALLBACK.agentMaxHistoryResultSize,
+  ),
+  agentZombieGraceMs: intInRange(
+    process.env.AGENT_ZOMBIE_GRACE_MS,
+    0,
+    24 * 60 * 60 * 1000,
+    FALLBACK.agentZombieGraceMs,
+  ),
+  agentMaxReadSize: parseSize(process.env.AGENT_MAX_READ_SIZE, FALLBACK.agentMaxReadSize),
+  agentTmpFileMaxAgeMs: intInRange(
+    process.env.AGENT_TMP_FILE_MAX_AGE_MS,
+    60_000,
+    24 * 60 * 60 * 1000,
+    FALLBACK.agentTmpFileMaxAgeMs,
+  ),
+
   // Session
   sessionTtlMs: intInRange(
     process.env.SESSION_TTL_MS,
@@ -244,6 +297,22 @@ export const serverConfig = {
     FALLBACK.sessionTtlMs,
   ),
   persistAgentSessions: parseBoolean(process.env.PERSIST_AGENT_SESSIONS, true),
+
+  // Filesystem listing/deletion safety caps. Previously hard-coded in
+  // routes/fs.js; moving them to serverConfig keeps the configuration
+  // discoverable and lets operators tune without code changes.
+  fsMaxListEntries: intInRange(
+    process.env.FS_MAX_LIST_ENTRIES,
+    100,
+    100_000,
+    FALLBACK.fsMaxListEntries,
+  ),
+  fsMaxDeleteEntries: intInRange(
+    process.env.FS_MAX_DELETE_ENTRIES,
+    10,
+    100_000,
+    FALLBACK.fsMaxDeleteEntries,
+  ),
 
   // Logging
   logLevel: parseLogLevel(process.env.LOG_LEVEL),

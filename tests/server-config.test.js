@@ -29,6 +29,15 @@ const ENV_KEYS = [
   'COMMAND_TIMEOUT_MS',
   'MAX_COMMAND_OUTPUT_SIZE',
   'AGENT_MAX_LOOPS',
+  'AGENT_MAX_SESSIONS',
+  'AGENT_MAX_PENDING_COMMANDS',
+  'AGENT_MAX_HISTORY_ENTRIES',
+  'AGENT_MAX_HISTORY_RESULT_SIZE',
+  'AGENT_ZOMBIE_GRACE_MS',
+  'AGENT_MAX_READ_SIZE',
+  'AGENT_TMP_FILE_MAX_AGE_MS',
+  'FS_MAX_LIST_ENTRIES',
+  'FS_MAX_DELETE_ENTRIES',
   'SESSION_TTL_MS',
   'LOG_LEVEL',
   'ONE_MIN_AI_API_BASE_URL',
@@ -236,5 +245,186 @@ describe('config/server.js env validation', () => {
     const c2 = await loadConfig();
     expect(c2.serverConfig.assetBaseUrl).toBe('https://asset.1min.ai');
     expect(c2.serverConfig.s3Bucket).toBe('asset.1min.ai');
+  });
+
+  test('AGENT_MAX_SESSIONS clamps to [1, 1000] and defaults to 50', async () => {
+    jest.resetModules();
+    const c = await loadConfig();
+    expect(c.serverConfig.agentMaxSessions).toBe(50);
+
+    jest.resetModules();
+    process.env.AGENT_MAX_SESSIONS = '0';
+    const c2 = await loadConfig();
+    expect(c2.serverConfig.agentMaxSessions).toBe(50);
+
+    jest.resetModules();
+    process.env.AGENT_MAX_SESSIONS = '99999';
+    const c3 = await loadConfig();
+    expect(c3.serverConfig.agentMaxSessions).toBe(50);
+
+    jest.resetModules();
+    process.env.AGENT_MAX_SESSIONS = '25';
+    const c4 = await loadConfig();
+    expect(c4.serverConfig.agentMaxSessions).toBe(25);
+
+    jest.resetModules();
+    process.env.AGENT_MAX_SESSIONS = 'not-a-number';
+    const c5 = await loadConfig();
+    expect(c5.serverConfig.agentMaxSessions).toBe(50);
+  });
+
+  test('AGENT_MAX_PENDING_COMMANDS clamps to [1, 10000] and defaults to 100', async () => {
+    jest.resetModules();
+    const c = await loadConfig();
+    expect(c.serverConfig.agentMaxPendingCommands).toBe(100);
+
+    jest.resetModules();
+    process.env.AGENT_MAX_PENDING_COMMANDS = '500';
+    const c2 = await loadConfig();
+    expect(c2.serverConfig.agentMaxPendingCommands).toBe(500);
+
+    jest.resetModules();
+    process.env.AGENT_MAX_PENDING_COMMANDS = '99999';
+    const c3 = await loadConfig();
+    expect(c3.serverConfig.agentMaxPendingCommands).toBe(100);
+  });
+
+  test('AGENT_MAX_HISTORY_ENTRIES clamps to [1, 500] and defaults to 50', async () => {
+    jest.resetModules();
+    const c = await loadConfig();
+    expect(c.serverConfig.agentMaxHistoryEntries).toBe(50);
+
+    jest.resetModules();
+    process.env.AGENT_MAX_HISTORY_ENTRIES = '0';
+    const c2 = await loadConfig();
+    expect(c2.serverConfig.agentMaxHistoryEntries).toBe(50);
+
+    jest.resetModules();
+    process.env.AGENT_MAX_HISTORY_ENTRIES = '10000';
+    const c3 = await loadConfig();
+    expect(c3.serverConfig.agentMaxHistoryEntries).toBe(50);
+
+    jest.resetModules();
+    process.env.AGENT_MAX_HISTORY_ENTRIES = '25';
+    const c4 = await loadConfig();
+    expect(c4.serverConfig.agentMaxHistoryEntries).toBe(25);
+  });
+
+  test('AGENT_MAX_HISTORY_RESULT_SIZE clamps to [100, 1000000] and defaults to 2000', async () => {
+    jest.resetModules();
+    const c = await loadConfig();
+    expect(c.serverConfig.agentMaxHistoryResultSize).toBe(2000);
+
+    jest.resetModules();
+    process.env.AGENT_MAX_HISTORY_RESULT_SIZE = '10';
+    const c2 = await loadConfig();
+    expect(c2.serverConfig.agentMaxHistoryResultSize).toBe(2000);
+
+    jest.resetModules();
+    process.env.AGENT_MAX_HISTORY_RESULT_SIZE = '99999999';
+    const c3 = await loadConfig();
+    expect(c3.serverConfig.agentMaxHistoryResultSize).toBe(2000);
+
+    jest.resetModules();
+    process.env.AGENT_MAX_HISTORY_RESULT_SIZE = '5000';
+    const c4 = await loadConfig();
+    expect(c4.serverConfig.agentMaxHistoryResultSize).toBe(5000);
+  });
+
+  test('AGENT_ZOMBIE_GRACE_MS clamps to [0, 86400000] and defaults to 60000', async () => {
+    jest.resetModules();
+    const c = await loadConfig();
+    expect(c.serverConfig.agentZombieGraceMs).toBe(60000);
+
+    jest.resetModules();
+    process.env.AGENT_ZOMBIE_GRACE_MS = '120000';
+    const c2 = await loadConfig();
+    expect(c2.serverConfig.agentZombieGraceMs).toBe(120000);
+
+    jest.resetModules();
+    process.env.AGENT_ZOMBIE_GRACE_MS = '-1';
+    const c3 = await loadConfig();
+    expect(c3.serverConfig.agentZombieGraceMs).toBe(60000);
+
+    jest.resetModules();
+    process.env.AGENT_ZOMBIE_GRACE_MS = '99999999';
+    const c4 = await loadConfig();
+    expect(c4.serverConfig.agentZombieGraceMs).toBe(60000);
+  });
+
+  test('AGENT_MAX_READ_SIZE accepts suffixed values, falls back on out-of-range', async () => {
+    jest.resetModules();
+    const c = await loadConfig();
+    expect(c.serverConfig.agentMaxReadSize).toBe(10 * 1024 * 1024);
+
+    jest.resetModules();
+    process.env.AGENT_MAX_READ_SIZE = '5mb';
+    const c2 = await loadConfig();
+    expect(c2.serverConfig.agentMaxReadSize).toBe(5 * 1024 * 1024);
+
+    jest.resetModules();
+    process.env.AGENT_MAX_READ_SIZE = '100';
+    const c3 = await loadConfig();
+    // A small but valid byte count is accepted by parseSize (min 1 byte).
+    expect(c3.serverConfig.agentMaxReadSize).toBe(100);
+
+    jest.resetModules();
+    process.env.AGENT_MAX_READ_SIZE = '5gb';
+    const c4 = await loadConfig();
+    // Above the configured maximum (100MB) — falls back to default.
+    expect(c4.serverConfig.agentMaxReadSize).toBe(10 * 1024 * 1024);
+
+    jest.resetModules();
+    process.env.AGENT_MAX_READ_SIZE = 'garbage';
+    const c5 = await loadConfig();
+    expect(c5.serverConfig.agentMaxReadSize).toBe(10 * 1024 * 1024);
+  });
+
+  test('AGENT_TMP_FILE_MAX_AGE_MS clamps to [60000, 86400000] and defaults to 30 minutes', async () => {
+    jest.resetModules();
+    const c = await loadConfig();
+    expect(c.serverConfig.agentTmpFileMaxAgeMs).toBe(30 * 60 * 1000);
+
+    jest.resetModules();
+    process.env.AGENT_TMP_FILE_MAX_AGE_MS = '10000';
+    const c2 = await loadConfig();
+    expect(c2.serverConfig.agentTmpFileMaxAgeMs).toBe(30 * 60 * 1000);
+
+    jest.resetModules();
+    process.env.AGENT_TMP_FILE_MAX_AGE_MS = '7200000';
+    const c3 = await loadConfig();
+    expect(c3.serverConfig.agentTmpFileMaxAgeMs).toBe(7200000);
+  });
+
+  test('FS_MAX_LIST_ENTRIES clamps to [100, 100000] and defaults to 5000', async () => {
+    jest.resetModules();
+    const c = await loadConfig();
+    expect(c.serverConfig.fsMaxListEntries).toBe(5000);
+
+    jest.resetModules();
+    process.env.FS_MAX_LIST_ENTRIES = '10';
+    const c2 = await loadConfig();
+    expect(c2.serverConfig.fsMaxListEntries).toBe(5000);
+
+    jest.resetModules();
+    process.env.FS_MAX_LIST_ENTRIES = '20000';
+    const c3 = await loadConfig();
+    expect(c3.serverConfig.fsMaxListEntries).toBe(20000);
+  });
+
+  test('FS_MAX_DELETE_ENTRIES clamps to [10, 100000] and defaults to 1000', async () => {
+    jest.resetModules();
+    const c = await loadConfig();
+    expect(c.serverConfig.fsMaxDeleteEntries).toBe(1000);
+
+    jest.resetModules();
+    process.env.FS_MAX_DELETE_ENTRIES = '0';
+    const c2 = await loadConfig();
+    expect(c2.serverConfig.fsMaxDeleteEntries).toBe(1000);
+
+    jest.resetModules();
+    process.env.FS_MAX_DELETE_ENTRIES = '5000';
+    const c3 = await loadConfig();
+    expect(c3.serverConfig.fsMaxDeleteEntries).toBe(5000);
   });
 });

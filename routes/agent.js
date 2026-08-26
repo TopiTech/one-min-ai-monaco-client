@@ -84,7 +84,6 @@ const fileDiffSchema = z.object({
   dryRun: z.boolean().optional().default(false),
 });
 
-const MAX_AGENT_READ_SIZE = 10 * 1024 * 1024;
 const MAX_DIR_ENTRIES = 5000;
 const SKIPPED_DIRS = new Set([
   'node_modules',
@@ -331,10 +330,10 @@ async function saveSessions() {
 
 // Awaiting explicit initialization via initAgentState()
 
-const MAX_HISTORY_ENTRIES = 50;
-const MAX_HISTORY_RESULT_SIZE = 2000; // chars
+const MAX_HISTORY_ENTRIES = serverConfig.agentMaxHistoryEntries;
+const MAX_HISTORY_RESULT_SIZE = serverConfig.agentMaxHistoryResultSize;
 
-const MAX_PENDING_COMMANDS = 100;
+const MAX_PENDING_COMMANDS = serverConfig.agentMaxPendingCommands;
 
 async function addHistoryEntry(session, entry) {
   if (!serverConfig.persistAgentSessions) return;
@@ -363,7 +362,7 @@ async function addHistoryEntry(session, entry) {
 
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
-const ZOMBIE_GRACE_MS = 60_000; // 1 minute beyond command timeout
+const ZOMBIE_GRACE_MS = serverConfig.agentZombieGraceMs;
 
 function cleanupExpiredSessions() {
   const now = Date.now();
@@ -406,13 +405,14 @@ function cleanupExpiredSessions() {
 }
 
 async function cleanupTmpFiles(now) {
+  const maxAgeMs = serverConfig.agentTmpFileMaxAgeMs;
   try {
     const files = await fs.readdir(DATA_DIR);
     for (const file of files) {
       if (file.endsWith('.tmp')) {
         const filePath = path.join(DATA_DIR, file);
         const stat = await fs.stat(filePath);
-        if (now - stat.mtimeMs > 30 * 60 * 1000) {
+        if (now - stat.mtimeMs > maxAgeMs) {
           await fs.unlink(filePath).catch(() => {});
         }
       }
@@ -460,7 +460,7 @@ router.post('/sessions', async (req, res, next) => {
       lastAccessedAt: Date.now(),
     };
 
-    const MAX_SESSIONS = parseInt(process.env.AGENT_MAX_SESSIONS, 10) || 20;
+    const MAX_SESSIONS = serverConfig.agentMaxSessions;
     if (sessions.size >= MAX_SESSIONS) {
       // M-5: Never evict a session that is actively running a command —
       // killing it would orphan the spawned child process. Prefer evicting
@@ -811,9 +811,9 @@ router.get('/sessions/:id/files', async (req, res, next) => {
     if (stat.isDirectory()) {
       return res.status(400).json({ error: 'Specified path is a directory' });
     }
-    if (stat.size > MAX_AGENT_READ_SIZE) {
+    if (stat.size > serverConfig.agentMaxReadSize) {
       return res.status(413).json({
-        error: `File size (${stat.size} bytes) exceeds maximum read size (${MAX_AGENT_READ_SIZE} bytes)`,
+        error: `File size (${stat.size} bytes) exceeds maximum read size (${serverConfig.agentMaxReadSize} bytes)`,
       });
     }
 

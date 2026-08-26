@@ -18,8 +18,10 @@ import { atomicWriteTextFile, readSpecificLines } from '../utils/fs-utils.js';
 import { serverConfig } from '../config/server.js';
 
 // File size read limits evaluated dynamically via serverConfig.maxFileReadSize
-const MAX_LIST_ENTRIES = 5000;
-const MAX_DELETE_ENTRIES = 1000; // Safety cap for recursive directory deletion
+// SAFETY: list/delete caps are configurable via serverConfig so operators
+// can tune without code changes; defaults preserve prior hard-coded values.
+const MAX_LIST_ENTRIES = serverConfig.fsMaxListEntries;
+const MAX_DELETE_ENTRIES = serverConfig.fsMaxDeleteEntries; // Safety cap for recursive directory deletion
 // L-9: Use the server-configured JSON body limit as the upper bound on
 // editable file size so ops can tune it without code changes.
 const BINARY_EXTENSIONS = new Set([
