@@ -251,12 +251,7 @@ export const serverConfig = {
   // Agent session / queue tunables. Previously hard-coded in routes/agent.js;
   // moving them here keeps the configuration discoverable and lets operators
   // tune limits without code changes.
-  agentMaxSessions: intInRange(
-    process.env.AGENT_MAX_SESSIONS,
-    1,
-    1000,
-    FALLBACK.agentMaxSessions,
-  ),
+  agentMaxSessions: intInRange(process.env.AGENT_MAX_SESSIONS, 1, 1000, FALLBACK.agentMaxSessions),
   agentMaxPendingCommands: intInRange(
     process.env.AGENT_MAX_PENDING_COMMANDS,
     1,
@@ -301,18 +296,8 @@ export const serverConfig = {
   // Filesystem listing/deletion safety caps. Previously hard-coded in
   // routes/fs.js; moving them to serverConfig keeps the configuration
   // discoverable and lets operators tune without code changes.
-  fsMaxListEntries: intInRange(
-    process.env.FS_MAX_LIST_ENTRIES,
-    100,
-    100_000,
-    FALLBACK.fsMaxListEntries,
-  ),
-  fsMaxDeleteEntries: intInRange(
-    process.env.FS_MAX_DELETE_ENTRIES,
-    10,
-    100_000,
-    FALLBACK.fsMaxDeleteEntries,
-  ),
+  fsMaxListEntries: intInRange(process.env.FS_MAX_LIST_ENTRIES, 100, 100_000, FALLBACK.fsMaxListEntries),
+  fsMaxDeleteEntries: intInRange(process.env.FS_MAX_DELETE_ENTRIES, 10, 100_000, FALLBACK.fsMaxDeleteEntries),
 
   // Logging
   logLevel: parseLogLevel(process.env.LOG_LEVEL),
