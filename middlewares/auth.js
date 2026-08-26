@@ -79,10 +79,10 @@ export function localBffAuth({ requireToken = true, authToken } = {}) {
           return false;
         }
       };
-      if (origin && checkUrl(origin)) return true;
-      if (referer && checkUrl(referer)) return true;
+      if (origin) return checkUrl(origin);
+      if (referer) return checkUrl(referer);
 
-      // S-3 Fix: If there is no sec-fetch-site and no same-origin header (Origin/Referer),
+      // If there is no sec-fetch-site and no same-origin header (Origin/Referer),
       // block in production to prevent CSRF. In development/test environments, allow it
       // to simplify local development (browsers may strip these headers in some configs).
       if (!secFetchSite && !origin && !referer) {
@@ -90,15 +90,6 @@ export function localBffAuth({ requireToken = true, authToken } = {}) {
           return false;
         }
         return true;
-      }
-
-      // SEC-NEW: When sec-fetch-site is missing but Origin/Referer exist,
-      // validate them. This catches older browsers or custom clients that
-      // send Origin without sec-fetch-site.
-      if (!secFetchSite && (origin || referer)) {
-        if (origin && checkUrl(origin)) return true;
-        if (referer && checkUrl(referer)) return true;
-        return false;
       }
 
       return false;

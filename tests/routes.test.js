@@ -536,5 +536,63 @@ describe('AI Routes Integration Tests', () => {
       expect(response.status).toBe(403);
       expect(response.body.error).toContain('Untrusted asset host');
     });
+
+    test('should return 400 for invalid URL format', async () => {
+      const response = await request(app).get('/api/assets/proxy').query({ url: ':::not-a-valid-url:::' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('Invalid URL format');
+    });
+
+    test('should return 400 for unsupported URL protocol', async () => {
+      const response = await request(app).get('/api/assets/proxy').query({ url: 'file:///etc/passwd' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('Only http and https protocols are supported');
+    });
+
+    test('should block redirect to untrusted host', async () => {
+      global.fetch = jest.fn().mockResolvedValueOnce({
+        status: 302,
+        ok: false,
+        headers: new Headers({ location: 'http://169.254.169.254/latest/meta-data/' }),
+      });
+
+      const response = await request(app).get('/api/assets/proxy').query({ key: 'images/redirect-ssrf.png' });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toContain('Untrusted redirect host');
+    });
+
+    test('should follow redirect to trusted host', async () => {
+      const mockResponseBody = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('redirected image data'));
+          controller.close();
+        },
+      });
+
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce({
+          status: 302,
+          ok: false,
+          headers: new Headers({
+            location: 'https://s3.us-east-1.amazonaws.com/asset.1min.ai/images/target.png',
+          }),
+        })
+        .mockResolvedValueOnce({
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'image/png' }),
+          body: mockResponseBody,
+        });
+
+      const response = await request(app).get('/api/assets/proxy').query({ key: 'images/source.png' });
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toBe('image/png');
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
   });
 });

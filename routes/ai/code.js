@@ -1,7 +1,7 @@
 import express from 'express';
 import { spawn } from 'child_process';
 import { z } from 'zod';
-import { killProcessTree } from '../../services/command-runner.js';
+import { killProcessTree, trackActiveProcess } from '../../services/command-runner.js';
 import { HttpError } from '../../utils/errors.js';
 import {
   callOneMin,
@@ -465,6 +465,7 @@ router.post('/run', async (req, res, next) => {
         windowsHide: true,
         detached: process.platform !== 'win32',
       });
+      trackActiveProcess(child);
 
       const timeoutId = setTimeout(() => {
         timedOut = true;

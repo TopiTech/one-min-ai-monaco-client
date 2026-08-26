@@ -40,6 +40,28 @@ export function createByteLimitTransform(limitBytes) {
   });
 }
 
+export function isTrustedAssetUrl(parsed) {
+  if (!parsed || (parsed.protocol !== 'https:' && parsed.protocol !== 'http:')) {
+    return false;
+  }
+  const apiHost = new URL(serverConfig.apiBaseUrl).hostname;
+  const assetHost = new URL(serverConfig.assetBaseUrl).hostname;
+  const allowedHosts = [assetHost, apiHost];
+
+  const escapedBucket = serverConfig.s3Bucket.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+  const isVirtualHostS3 =
+    new RegExp(`^${escapedBucket}\\.s3(?:\\.[\\w-]+)?\\.amazonaws\\.com$`, 'i').test(parsed.hostname) ||
+    new RegExp(`^${escapedBucket}\\.s3-accelerate\\.amazonaws\\.com$`, 'i').test(parsed.hostname) ||
+    new RegExp(`^${escapedBucket}\\.s3\\.dualstack\\.[\\w-]+\\.amazonaws\\.com$`, 'i').test(parsed.hostname);
+
+  const isPathStyleS3 =
+    /^s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname) &&
+    (parsed.pathname === `/${serverConfig.s3Bucket}` ||
+      parsed.pathname.startsWith(`/${serverConfig.s3Bucket}/`));
+
+  return allowedHosts.some((h) => parsed.hostname === h) || isVirtualHostS3 || isPathStyleS3;
+}
+
 export async function assetProxyHandler(req, res, next) {
   try {
     const { url, key } = req.query;
@@ -52,43 +74,60 @@ export async function assetProxyHandler(req, res, next) {
       targetUrl = `${serverConfig.assetBaseUrl}/${key.replace(/^\//, '')}`;
     }
 
-    const parsed = new URL(targetUrl);
-    const apiHost = new URL(serverConfig.apiBaseUrl).hostname;
-    const assetHost = new URL(serverConfig.assetBaseUrl).hostname;
-    const allowedHosts = [assetHost, apiHost];
+    let parsed;
+    try {
+      parsed = new URL(targetUrl);
+    } catch {
+      return res.status(400).json({ error: 'Invalid URL format' });
+    }
 
-    const escapedBucket = serverConfig.s3Bucket.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-    const isVirtualHostS3 =
-      new RegExp(`^${escapedBucket}\\.s3(?:\\.[\\w-]+)?\\.amazonaws\\.com$`, 'i').test(parsed.hostname) ||
-      new RegExp(`^${escapedBucket}\\.s3-accelerate\\.amazonaws\\.com$`, 'i').test(parsed.hostname) ||
-      new RegExp(`^${escapedBucket}\\.s3\\.dualstack\\.[\\w-]+\\.amazonaws\\.com$`, 'i').test(
-        parsed.hostname,
-      );
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return res.status(400).json({ error: 'Only http and https protocols are supported' });
+    }
 
-    const isPathStyleS3 =
-      /^s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname) &&
-      // The previous startsWith('/${bucket}/') form would accept e.g.
-      // bucket="foo" matching path "/foobar/x" because the trailing slash
-      // anchor was implicit. Require an exact path or a path with a
-      // directory boundary so we only match the bucket name in full.
-      (parsed.pathname === `/${serverConfig.s3Bucket}` ||
-        parsed.pathname.startsWith(`/${serverConfig.s3Bucket}/`));
-
-    const isAllowedHost = allowedHosts.some((h) => parsed.hostname === h) || isVirtualHostS3 || isPathStyleS3;
-    if (!isAllowedHost) {
+    if (!isTrustedAssetUrl(parsed)) {
       return res.status(403).json({ error: 'Access denied: Untrusted asset host' });
     }
 
     const abort = buildAssetProxyAbortSignal(serverConfig.assetProxyTimeoutMs);
     let response;
-    try {
-      response = await fetch(targetUrl, { signal: abort.signal });
-    } catch (err) {
-      abort.clear();
-      if (err?.name === 'AbortError') {
-        return res.status(504).json({ error: 'Asset proxy request timed out' });
+    let currentUrl = targetUrl;
+    let redirectCount = 0;
+    const MAX_REDIRECTS = 3;
+
+    while (true) {
+      try {
+        response = await fetch(currentUrl, { signal: abort.signal, redirect: 'manual' });
+      } catch (err) {
+        abort.clear();
+        if (err?.name === 'AbortError') {
+          return res.status(504).json({ error: 'Asset proxy request timed out' });
+        }
+        throw err;
       }
-      throw err;
+
+      if ([301, 302, 307, 308].includes(response.status) && response.headers.has('location')) {
+        redirectCount++;
+        if (redirectCount > MAX_REDIRECTS) {
+          abort.clear();
+          return res.status(502).json({ error: 'Too many redirects from upstream asset host' });
+        }
+        const locationHeader = response.headers.get('location');
+        let redirectTarget;
+        try {
+          redirectTarget = new URL(locationHeader, currentUrl);
+        } catch {
+          abort.clear();
+          return res.status(502).json({ error: 'Invalid redirect location from upstream' });
+        }
+        if (!isTrustedAssetUrl(redirectTarget)) {
+          abort.clear();
+          return res.status(403).json({ error: 'Access denied: Untrusted redirect host' });
+        }
+        currentUrl = redirectTarget.toString();
+        continue;
+      }
+      break;
     }
 
     if (!response.ok) {

@@ -421,14 +421,16 @@ async function assertNoProtectedChildren(dirPath, maxDepth = 20) {
   }
 }
 
-async function countDirectoryEntries(dirPath, maxDepth = 20) {
-  if (maxDepth <= 0) return 0;
+async function countDirectoryEntries(dirPath, maxDepth = 20, limit = MAX_DELETE_ENTRIES) {
+  if (maxDepth <= 0 || limit <= 0) return 0;
   let count = 0;
   const entries = await fs.readdir(dirPath, { withFileTypes: true });
   for (const entry of entries) {
     count++;
+    if (count > limit) return count;
     if (entry.isDirectory() && !entry.isSymbolicLink()) {
-      count += await countDirectoryEntries(path.join(dirPath, entry.name), maxDepth - 1);
+      count += await countDirectoryEntries(path.join(dirPath, entry.name), maxDepth - 1, limit - count);
+      if (count > limit) return count;
     }
   }
   return count;

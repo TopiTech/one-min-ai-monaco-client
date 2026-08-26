@@ -6,6 +6,25 @@ import { getSafeEnv } from '../utils/env-guard.js';
 const activeProcesses = new Set();
 
 /**
+ * Register a spawned child process for lifecycle tracking so that
+ * graceful shutdown can terminate it cleanly.
+ * @param {import('child_process').ChildProcess} child
+ * @returns {() => void} Cleanup function to remove process from tracker
+ */
+export function trackActiveProcess(child) {
+  activeProcesses.add(child);
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    activeProcesses.delete(child);
+  };
+  child.once('close', cleanup);
+  child.once('error', cleanup);
+  return cleanup;
+}
+
+/**
  * Force terminate all active spawned processes.
  * Used during server shutdown to prevent zombie processes.
  */
@@ -219,10 +238,7 @@ function runProcess(commandParts, options = {}) {
     detached: platform() !== 'win32',
   });
 
-  activeProcesses.add(child);
-  const cleanUp = () => {
-    activeProcesses.delete(child);
-  };
+  const cleanUp = trackActiveProcess(child);
 
   return collectProcessOutput(child, timeoutMs, onOutput, maxOutputSize).then(
     (res) => {

@@ -471,7 +471,7 @@ export function createAgentRuntime({
         };
       }
 
-      setAgentStatus('承認待ち...', 'awaiting_approval');
+      setAgentStatus(t('agent_status_awaiting') || '承認待ち...', 'awaiting_approval');
       const runResRaw = await api(`/api/agent/sessions/${sessionId}/commands?stream=true`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -507,7 +507,7 @@ export function createAgentRuntime({
           workspaceRoot,
           runRes.approvalToken,
           async () => {
-            setAgentStatus('実行中...', 'executing');
+            setAgentStatus(t('agent_status_executing') || '実行中...', 'executing');
             try {
               const resRaw = await api(`/api/agent/sessions/${sessionId}/approve?stream=true`, {
                 method: 'POST',
@@ -676,8 +676,8 @@ export function createAgentRuntime({
 
       const aiText = chatRes.text || '';
       if (!aiText) {
-        addAgentTimelineStep('error', '応答空', 'AIからの応答が空でした。');
-        setAgentStatus('エラー', 'error');
+        addAgentTimelineStep('error', t('status_error'), 'AIからの応答が空でした。');
+        setAgentStatus(t('status_error'), 'error');
         break;
       }
 
@@ -695,7 +695,7 @@ export function createAgentRuntime({
           'タスク完了',
           `エージェントがタスクの完了を報告しました。\n\n要約:\n${parsed.finish}`,
         );
-        setAgentStatus('完了', 'completed');
+        setAgentStatus(t('status_done'), 'completed');
         break;
       }
 
@@ -708,7 +708,7 @@ export function createAgentRuntime({
           .map(([k, v]) => `• ${k}: ${v}`)
           .join('\n');
         addAgentTimelineStep('action', `ツール呼び出し: ${toolName}`, paramListStr);
-        setAgentStatus('実行中...', 'executing');
+        setAgentStatus(t('agent_status_executing') || '実行中...', 'executing');
 
         let toolResultText;
         let toolSuccess;
@@ -774,7 +774,7 @@ export function createAgentRuntime({
             `AIがフォーマットに従わない状態が ${maxParseFailures} 回連続したため、安全のためにエージェントを強制停止します。`,
             aiText,
           );
-          setAgentStatus('エラー', 'error');
+          setAgentStatus(t('status_error'), 'error');
           break;
         }
 
@@ -804,10 +804,11 @@ export function createAgentRuntime({
     if (loopCount >= maxLoops && state.agent.active) {
       addAgentTimelineStep(
         'error',
-        '制限到達',
-        `実行ステップ数が上限 (${maxLoops}) に達したため、安全のために停止しました。`,
+        t('agent_status_limit_reached') || '制限到達',
+        t('agent_status_limit_desc', { max: maxLoops }) ||
+          `実行ステップ数が上限 (${maxLoops}) に達したため、安全のために停止しました。`,
       );
-      setAgentStatus('エラー', 'error');
+      setAgentStatus(t('status_error'), 'error');
     }
 
     state.agent.active = false;
@@ -815,9 +816,9 @@ export function createAgentRuntime({
     dom.sendAgentFeedbackBtn.classList.remove('is-shown');
     dom.stopAgentBtn.classList.remove('is-shown');
     dom.resetAgentBtn.classList.remove('is-hidden');
-    dom.agentInstruction.placeholder = '指示を入力してエージェントを開始...';
-    if (dom.agentStatus.textContent !== '完了' && dom.agentStatus.textContent !== 'エラー') {
-      setAgentStatus('待機中', 'idle');
+    dom.agentInstruction.placeholder = t('agent_instruction_placeholder');
+    if (!dom.agentStatus.classList.contains('completed') && !dom.agentStatus.classList.contains('error')) {
+      setAgentStatus(t('agent_status_idle'), 'idle');
     }
   }
 

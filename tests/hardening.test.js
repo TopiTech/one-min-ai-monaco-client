@@ -213,14 +213,16 @@ describe('Hardening Improvements Tests', () => {
         enableRateLimit: false,
       });
 
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockRejectedValue(new Error('Sensitive internal details that must not leak'));
+
       try {
-        // Trigger a 500 error through asset proxy by providing an invalid URL,
-        // which causes the URL constructor inside the handler to throw.
+        // Trigger a 500 error through asset proxy by rejecting fetch with an internal error.
         // Set host to example.com to simulate non-localhost access, making isLocalHost=false.
         const resProxyFail = await request(app)
           .get('/api/assets/proxy')
           .query({
-            url: 'invalid-url',
+            key: 'images/test.png',
           })
           .set('host', 'example.com');
 
@@ -229,6 +231,7 @@ describe('Hardening Improvements Tests', () => {
         expect(resProxyFail.status).toBe(500);
         expect(resProxyFail.body.error).toBe('Internal Server Error');
       } finally {
+        global.fetch = originalFetch;
         process.env.NODE_ENV = prevEnv;
         process.env.ALLOWED_CORS_ORIGINS = prevCors;
       }

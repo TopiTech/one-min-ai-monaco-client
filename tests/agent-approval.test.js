@@ -68,6 +68,7 @@ jest.unstable_mockModule('../services/command-runner.js', () => ({
   killProcess: jest.fn(),
   killProcessTree: jest.fn(),
   killAllActiveProcesses: jest.fn(),
+  trackActiveProcess: jest.fn(() => () => {}),
   DEFAULT_TIMEOUT_MS: 30000,
 }));
 

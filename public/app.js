@@ -572,7 +572,7 @@ dom.resetAgentBtn.onclick = async () => {
       placeholder.textContent = t('agent_placeholder');
       log.appendChild(placeholder);
     }
-    setAgentStatus('待機中', 'idle');
+    setAgentStatus(t('agent_status_idle'), 'idle');
     dom.agentInstruction.placeholder = t('agent_instruction_placeholder');
     dom.startAgentBtn.classList.remove('is-hidden');
     dom.sendAgentFeedbackBtn.classList.remove('is-shown');
