@@ -25,6 +25,7 @@ export function getSafeEnv() {
     'LANG',
     'LC_ALL',
   ]);
+  const SAFE_ENV_KEYS_UPPER = new Set([...SAFE_ENV_KEYS].map((k) => k.toUpperCase()));
 
   /** @type {NodeJS.ProcessEnv} */
   const safeEnv = {};
@@ -33,7 +34,7 @@ export function getSafeEnv() {
   );
 
   for (const [key, value] of Object.entries(process.env)) {
-    if (SAFE_ENV_KEYS.has(key) && value) {
+    if (SAFE_ENV_KEYS_UPPER.has(key.toUpperCase()) && value) {
       const containsSecret = secretValues.some((secret) => value.includes(secret));
       if (!containsSecret) {
         safeEnv[key] = value;
