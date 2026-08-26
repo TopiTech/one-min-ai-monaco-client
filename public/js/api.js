@@ -205,9 +205,17 @@ function extractImages(data) {
 }
 
 function getCookie(name) {
-  const nameEq = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '=';
-  const matches = document.cookie.match(new RegExp('(?:^|;\\s*)' + nameEq + '([^;]*)', 'g'));
-  if (!matches || matches.length !== 1) return null;
-  const match = matches[0].match(new RegExp('(?:^|;\\s*)' + nameEq + '([^;]*)'));
-  return match ? decodeURIComponent(match[1]) : null;
+  // SECURITY: Reject cookies that are missing OR duplicated in the
+  // document.cookie string. A duplicated CSRF cookie is a sign of cookie
+  // injection by a sibling subdomain or an extension, and we must NOT
+  // forward an attacker-controlled value as the x-local-bff-token.
+  // (The match regex is built from a fixed name string, so no user input
+  // ever feeds into the regex itself — see taste note on RegExp construction.)
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const occurrences = document.cookie.split(new RegExp('(?:^|;\\s*)' + escapedName + '=', 'g'));
+  // document.cookie always has a leading empty string before the first ';'-prefixed
+  // entry, so we expect `occurrences.length` to be `matchCount + 1`.
+  if (occurrences.length !== 2) return null;
+  const rawValue = occurrences[1].split(';')[0];
+  return rawValue ? decodeURIComponent(rawValue) : null;
 }

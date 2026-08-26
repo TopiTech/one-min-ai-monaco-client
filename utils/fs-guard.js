@@ -300,7 +300,7 @@ const STATIC_PROTECTED_EXACT = new Set([
   'credentials.json',
 ]);
 
-const STATIC_WRITE_PROTECTED_EXACT = new Set([...STATIC_PROTECTED_EXACT, 'server.js', 'readme.md']);
+const STATIC_WRITE_PROTECTED_EXACT = new Set([...STATIC_PROTECTED_EXACT, 'server.js']);
 
 const DYNAMIC_PROTECTED_PATTERNS = [globToRegExp('.env.*'), globToRegExp('*.pem'), globToRegExp('*.key')];
 

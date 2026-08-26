@@ -157,12 +157,22 @@ function createDebouncedFileWriter(filePath, serialize, { delayMs = 50, label = 
 
   async function flush() {
     if (isWriting) {
-      // Re-entrant/concurrent call while a write is in flight: wait for it,
-      // then fall through to one more write so the latest state is actually
-      // on disk before this flush resolves. Callers rely on flush for
-      // durability (saveSessions(), shutdown's flushPendingWriters()).
+      // Re-entrant/concurrent call while a write is in flight: wait for the
+      // in-flight write to complete, then check again. If a parallel flush
+      // scheduled another write during our wait, that write already covers
+      // the latest state — calling flush again is unnecessary. Otherwise,
+      // proceed to write once more so the most recent serialize() result
+      // reaches disk before this flush resolves. Callers (saveSessions(),
+      // shutdown's flushPendingWriters()) depend on this for durability.
       await writingPromise.catch(() => {});
-      if (isWriting) return; // another flush took over and covers our state
+      if (!isWriting) {
+        // The previous write just finished and no new one is queued —
+        // ensure the latest state is on disk before returning.
+        // Fall through to the regular write path below.
+      } else {
+        // Another flush() beat us to it and is in flight, covering our state.
+        return;
+      }
     }
     isWriting = true;
     writingPromise = (async () => {

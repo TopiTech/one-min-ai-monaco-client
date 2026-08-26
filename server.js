@@ -23,6 +23,15 @@ import { assetProxyHandler } from './services/asset-proxy.js';
 import { upload, mapMulterError, UPLOAD_TMP_DIR } from './middlewares/upload.js';
 import { startupCleanup, startPeriodicCleanup } from './services/tmp-cleanup.js';
 import { killAllActiveProcesses } from './services/command-runner.js';
+import { HttpError, ForbiddenError } from './utils/errors.js';
+import aiRoutes from './routes/ai/index.js';
+import fsRoutes from './routes/fs.js';
+import agentRoutes, { flushPendingWriters, initAgentState, killAllSearchProcesses } from './routes/agent.js';
+import agentChatRoutes from './routes/agent-chat.js';
+import { initModels, getModelSyncStatus } from './config/models.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export function shouldExposeDetails(req) {
   const isDev = process.env.NODE_ENV === 'development';
@@ -43,8 +52,6 @@ export function shouldExposeErrorText(status, req) {
   return status < 500 || !isProduction || isLocalHost;
 }
 
-import { HttpError, ForbiddenError } from './utils/errors.js';
-
 const MAX_IN_MEMORY_ASSET_FALLBACK_SIZE = 8 * 1024 * 1024;
 
 // Replace the env-var-based default singleton with the validated serverConfig.
@@ -52,15 +59,6 @@ const MAX_IN_MEMORY_ASSET_FALLBACK_SIZE = 8 * 1024 * 1024;
 // consistently (e.g. LOG_LEVEL "info" → parseLogLevel, LOG_TO_FILE "true" →
 // parseBoolean).
 initLogger(serverConfig);
-
-import aiRoutes from './routes/ai/index.js';
-import fsRoutes from './routes/fs.js';
-import agentRoutes, { flushPendingWriters, initAgentState, killAllSearchProcesses } from './routes/agent.js';
-import agentChatRoutes from './routes/agent-chat.js';
-import { initModels, getModelSyncStatus } from './config/models.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Authentication and proxy helpers have been modularized to middlewares/auth.js, middlewares/security.js, and services/asset-proxy.js.
 
