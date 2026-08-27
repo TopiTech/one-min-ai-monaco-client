@@ -236,8 +236,15 @@ function getOrCreatePersistentAuthToken() {
     try {
       fs.mkdirSync(path.dirname(tokenFile), { recursive: true });
       fs.writeFileSync(tokenFile, token, { mode: 0o600 });
-    } catch {
-      // ignore
+    } catch (err) {
+      // Persistence is best-effort: the in-memory token still works for
+      // this process, but log a warning so operators notice the
+      // (potentially read-only) data directory and the resulting
+      // lack of session continuity across restarts.
+      logger.warn('Failed to persist BFF session token; using in-memory token for this run', {
+        tokenFile,
+        error: err.message,
+      });
     }
     return token;
   }

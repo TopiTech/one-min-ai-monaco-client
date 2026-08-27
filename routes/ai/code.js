@@ -48,70 +48,72 @@ const codeGenerateSchema = z.object({
   ),
 });
 
-function validateLineColumn(data, ctx) {
-  const lineNum = Number(data.line);
-  if (!Number.isInteger(lineNum) || lineNum < 1 || lineNum > 1000000) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'line must be a positive integer',
-    });
-  }
-  const colNum = Number(data.column);
-  if (!Number.isInteger(colNum) || colNum < 1 || colNum > 1000000) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'column must be a positive integer',
-    });
-  }
+function lineColumnSchema() {
+  return z.preprocess(
+    (val) => {
+      if (val === undefined || val === null || val === '') return undefined;
+      const n = Number(val);
+      // Reject NaN, Infinity, and non-finite values that Number() can produce
+      // from non-numeric input. Passing NaN through would otherwise be caught
+      // by the downstream int() check, but a single tailored error message
+      // is more actionable for the caller.
+      if (!Number.isFinite(n)) return val;
+      return n;
+    },
+    z
+      .number({ message: 'line and column must be finite numbers' })
+      .int({ message: 'line and column must be integers' })
+      .min(1, { message: 'line and column must be >= 1' })
+      .max(1000000, { message: 'line and column must be <= 1000000' }),
+  );
 }
 
-const codeAutocompleteSchema = z
-  .object({
-    code: z
-      .string({ message: 'code, line, and column are required' })
-      .refine((val) => val.length <= 100000, { message: 'code exceeds 100000 characters' }),
-    line: z.any(),
-    column: z.any(),
-    fileName: z.string().optional(),
-    language: z.string().optional(),
-    model: z.string().optional(),
-    webSearch: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
-    numOfSite: z.preprocess(
-      (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
-      z.number().int().optional(),
-    ),
-    maxWord: z.preprocess(
-      (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
-      z.number().int().optional(),
-    ),
-  })
-  .superRefine(validateLineColumn);
+const codeAutocompleteSchema = z.object({
+  code: z
+    .string({ message: 'code, line, and column are required' })
+    .min(1, { message: 'code, line, and column are required' })
+    .refine((val) => val.length <= 100000, { message: 'code exceeds 100000 characters' }),
+  line: lineColumnSchema(),
+  column: lineColumnSchema(),
+  fileName: z.string().optional(),
+  language: z.string().optional(),
+  model: z.string().optional(),
+  webSearch: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
+  numOfSite: z.preprocess(
+    (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
+    z.number().int().optional(),
+  ),
+  maxWord: z.preprocess(
+    (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
+    z.number().int().optional(),
+  ),
+});
 
-const codeInlineChatSchema = z
-  .object({
-    prompt: z
-      .string({ message: 'prompt, code, line, and column are required' })
-      .refine((val) => val.trim().length > 0, { message: 'prompt, code, line, and column are required' })
-      .refine((val) => val.length <= 50000, { message: 'prompt exceeds 50000 characters' }),
-    code: z
-      .string({ message: 'prompt, code, line, and column are required' })
-      .refine((val) => val.length <= 100000, { message: 'code exceeds 100000 characters' }),
-    line: z.any(),
-    column: z.any(),
-    fileName: z.string().optional(),
-    language: z.string().optional(),
-    model: z.string().optional(),
-    webSearch: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
-    numOfSite: z.preprocess(
-      (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
-      z.number().int().optional(),
-    ),
-    maxWord: z.preprocess(
-      (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
-      z.number().int().optional(),
-    ),
-  })
-  .superRefine(validateLineColumn);
+const codeInlineChatSchema = z.object({
+  prompt: z
+    .string({ message: 'prompt, code, line, and column are required' })
+    .min(1, { message: 'prompt, code, line, and column are required' })
+    .refine((val) => val.trim().length > 0, { message: 'prompt, code, line, and column are required' })
+    .refine((val) => val.length <= 50000, { message: 'prompt exceeds 50000 characters' }),
+  code: z
+    .string({ message: 'prompt, code, line, and column are required' })
+    .min(1, { message: 'prompt, code, line, and column are required' })
+    .refine((val) => val.length <= 100000, { message: 'code exceeds 100000 characters' }),
+  line: lineColumnSchema(),
+  column: lineColumnSchema(),
+  fileName: z.string().optional(),
+  language: z.string().optional(),
+  model: z.string().optional(),
+  webSearch: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
+  numOfSite: z.preprocess(
+    (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
+    z.number().int().optional(),
+  ),
+  maxWord: z.preprocess(
+    (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
+    z.number().int().optional(),
+  ),
+});
 
 function buildCodeContext(code, line, column, contextLines = 100) {
   const lines = code.split(/\r?\n/);
@@ -221,16 +223,13 @@ router.post('/autocomplete', async (req, res, next) => {
       return res.status(400).json({ error: errorMsg });
     }
     const data = result.data;
-    const lineNum = Number(data.line);
-    const colNum = Number(data.column);
-
     const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({
       webSearch: data.webSearch,
       numOfSite: data.numOfSite,
       maxWord: data.maxWord,
     });
 
-    const { beforeCode, afterCode } = buildCodeContext(data.code, lineNum, colNum, 100);
+    const { beforeCode, afterCode } = buildCodeContext(data.code, data.line, data.column, 100);
 
     const prompt = `You are an AI coding assistant. The user is currently typing code in the editor. Suggest the code (a few lines up to approximately 20 lines) that should immediately follow the cursor position.
 Output ONLY the suggested code. Do NOT include any explanations, markdown code block fences (\`\`\`), commentary, or greetings under any circumstances.
@@ -293,16 +292,13 @@ router.post('/inline-chat', async (req, res, next) => {
       return res.status(400).json({ error: errorMsg });
     }
     const data = result.data;
-    const lineNum = Number(data.line);
-    const colNum = Number(data.column);
-
     const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({
       webSearch: data.webSearch,
       numOfSite: data.numOfSite,
       maxWord: data.maxWord,
     });
 
-    const { beforeCode, afterCode } = buildCodeContext(data.code, lineNum, colNum, 150);
+    const { beforeCode, afterCode } = buildCodeContext(data.code, data.line, data.column, 150);
 
     const prompt = `You are an expert software engineer. Execute the user instruction at the editor cursor position and output the code to be inserted or modified.
 Output ONLY the proposed code. Do NOT include any explanations or markdown code block fences (\`\`\`).

@@ -240,6 +240,74 @@ describe('AI Routes Integration Tests', () => {
         }),
       );
     });
+
+    // M-3: The line/column schema is now strictly numeric. These tests
+    // confirm that non-numeric, out-of-range, and missing values are
+    // rejected with a 400, instead of being silently coerced to NaN.
+    test('rejects non-numeric line in /api/code/inline-chat', async () => {
+      const response = await request(app).post('/api/code/inline-chat').send({
+        prompt: 'simplify this',
+        code: 'return 1;',
+        line: 'abc',
+        column: 1,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/finite numbers|integers/);
+    });
+
+    test('rejects line values that exceed the maximum in /api/code/inline-chat', async () => {
+      const response = await request(app).post('/api/code/inline-chat').send({
+        prompt: 'simplify this',
+        code: 'return 1;',
+        line: 2_000_000,
+        column: 1,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/<= 1000000/);
+    });
+
+    test('rejects column values that are below the minimum in /api/code/inline-chat', async () => {
+      const response = await request(app).post('/api/code/inline-chat').send({
+        prompt: 'simplify this',
+        code: 'return 1;',
+        line: 1,
+        column: 0,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/>= 1/);
+    });
+  });
+
+  describe('POST /api/code/autocomplete line/column validation', () => {
+    test('rejects non-numeric line in /api/code/autocomplete', async () => {
+      const response = await request(app).post('/api/code/autocomplete').send({
+        code: 'return 1;',
+        line: 'not-a-number',
+        column: 1,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/finite numbers|integers/);
+    });
+
+    test('rejects missing line/column in /api/code/autocomplete', async () => {
+      const response = await request(app).post('/api/code/autocomplete').send({
+        code: 'return 1;',
+      });
+      expect(response.status).toBe(400);
+      // Either the missing-line or missing-code message is acceptable
+      expect(typeof response.body.error).toBe('string');
+      expect(response.body.error.length).toBeGreaterThan(0);
+    });
+
+    test('accepts numeric string for line/column and coerces to number', async () => {
+      callOneMin.mockResolvedValue({ result: 'x' });
+      const response = await request(app).post('/api/code/autocomplete').send({
+        code: 'return 1;',
+        line: '5',
+        column: '1',
+      });
+      expect(response.status).toBe(200);
+    });
   });
 
   describe('POST /api/images/text-editor', () => {
