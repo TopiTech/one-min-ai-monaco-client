@@ -62,6 +62,10 @@ export function generateNonce(req, res, next) {
 }
 
 // CSP configuration middleware
+// SEC: script-src uses nonce-based policy. When a nonce is present,
+// 'unsafe-inline' is ignored by browsers, blocking inline scripts without the nonce.
+// style-src requires 'unsafe-inline' for Monaco's CSSOM insertRule operations.
+// style-src-attr uses nonce for inline style attribute protection.
 export function configureCSP() {
   return helmet({
     contentSecurityPolicy: {

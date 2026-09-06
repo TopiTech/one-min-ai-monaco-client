@@ -36,7 +36,10 @@ function flattenMessages(messages) {
   if (!Array.isArray(messages) || messages.length === 0) return null;
   return messages
     .map((m) => {
-      const role = (m.role || 'user').toLowerCase();
+      // SEC: Sanitize role to prevent XML attribute injection.
+      // Only allow alphanumeric characters and common role names.
+      const rawRole = (m.role || 'user').toLowerCase();
+      const role = rawRole.replace(/[^a-z0-9_-]/g, '').slice(0, 50) || 'user';
       const content = typeof m.content === 'string' ? m.content : '';
       // Avoid double-escaping by wrapping content inside CDATA block.
       // Safely escape any existing ']]>' sequence by breaking the CDATA block and restarting.

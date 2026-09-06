@@ -460,4 +460,105 @@ describe('Security fixes regression', () => {
       expect(getExtensionFromMimeType(null)).toBe('.bin');
     });
   });
+
+  describe('Agent chat XSS prevention (role attribute injection)', () => {
+    test('sanitizes malicious role values in messages array', async () => {
+      callOneMin.mockResolvedValue({
+        aiRecord: { aiRecordDetail: { resultObject: 'safe response' } },
+      });
+
+      const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
+
+      // Attempt to inject via role attribute
+      const maliciousRole = 'user" onmouseover="alert(1)" data-x="';
+      const res = await request(app)
+        .post('/api/agent/chat')
+        .send({
+          messages: [{ role: maliciousRole, content: 'test' }],
+        });
+
+      expect(res.status).toBe(200);
+      // The call should succeed and the role should be sanitized
+      expect(callOneMin).toHaveBeenCalled();
+      const payload = callOneMin.mock.calls[0][1];
+      const body = JSON.parse(payload.body);
+      // Role should be sanitized: quotes and spaces must be removed to prevent attribute breakout
+      expect(body.promptObject.prompt).not.toContain('" onmouseover');
+      expect(body.promptObject.prompt).not.toContain('" data-x');
+      // The role attribute should be properly quoted with no breakout
+      expect(body.promptObject.prompt).toMatch(/role="[a-z0-9_-]+"/);
+    });
+
+    test('falls back to "user" for empty role after sanitization', async () => {
+      callOneMin.mockResolvedValue({
+        aiRecord: { aiRecordDetail: { resultObject: 'safe response' } },
+      });
+
+      const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
+
+      // Role that becomes empty after sanitization (only special chars)
+      const res = await request(app)
+        .post('/api/agent/chat')
+        .send({
+          messages: [{ role: '!@#$%^&*()', content: 'test' }],
+        });
+
+      expect(res.status).toBe(200);
+      expect(callOneMin).toHaveBeenCalled();
+      const payload = callOneMin.mock.calls[0][1];
+      const body = JSON.parse(payload.body);
+      // Should fall back to "user"
+      expect(body.promptObject.prompt).toContain('role="user"');
+    });
+
+    test('allows valid role values (user, assistant, system)', async () => {
+      callOneMin.mockResolvedValue({
+        aiRecord: { aiRecordDetail: { resultObject: 'safe response' } },
+      });
+
+      const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
+
+      const res = await request(app)
+        .post('/api/agent/chat')
+        .send({
+          messages: [
+            { role: 'user', content: 'hello' },
+            { role: 'assistant', content: 'hi' },
+            { role: 'system', content: 'context' },
+          ],
+        });
+
+      expect(res.status).toBe(200);
+      expect(callOneMin).toHaveBeenCalled();
+      const payload = callOneMin.mock.calls[0][1];
+      const body = JSON.parse(payload.body);
+      expect(body.promptObject.prompt).toContain('role="user"');
+      expect(body.promptObject.prompt).toContain('role="assistant"');
+      expect(body.promptObject.prompt).toContain('role="system"');
+    });
+  });
+
+  describe('CSP script-src nonce security', () => {
+    test('includes nonce in script-src directive to block unauthorized inline scripts', async () => {
+      const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
+      const res = await request(app).get('/api/health');
+
+      expect(res.status).toBe(200);
+      const csp = res.headers['content-security-policy'] || '';
+      // script-src must have nonce to block inline scripts without the nonce
+      expect(csp).toMatch(/script-src[^;]*'nonce-/);
+      // script-src should NOT have 'unsafe-inline' (nonce makes it ignored anyway)
+      expect(csp).not.toMatch(/script-src[^;]*'unsafe-inline'/);
+    });
+
+    test('style-src includes unsafe-inline for Monaco CSSOM compatibility', async () => {
+      const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
+      const res = await request(app).get('/api/health');
+
+      expect(res.status).toBe(200);
+      const csp = res.headers['content-security-policy'] || '';
+      // style-src requires 'unsafe-inline' for Monaco's CSSOM insertRule operations
+      expect(csp).toMatch(/style-src[^;]*'unsafe-inline'/);
+    });
+  });
 });
