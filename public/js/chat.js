@@ -220,7 +220,7 @@ export function createChatManager(dom, state) {
 
     container.querySelectorAll('.remove-attachment').forEach((btn) => {
       btn.onclick = () => {
-        const idx = parseInt(btn.dataset.index);
+        const idx = parseInt(btn.dataset.index, 10);
         const attachments = state.chat.attachments;
         if (attachments[idx].previewUrl) URL.revokeObjectURL(attachments[idx].previewUrl);
         attachments.splice(idx, 1);
@@ -362,8 +362,8 @@ export function createChatManager(dom, state) {
         model: dom.chatModel.value,
         conversationId: dom.conversationId.value || undefined,
         webSearch: dom.webSearch.checked,
-        numOfSite: dom.chatNumOfSite?.value ? parseInt(dom.chatNumOfSite.value) : undefined,
-        maxWord: dom.chatMaxWord?.value ? parseInt(dom.chatMaxWord.value) : undefined,
+        numOfSite: dom.chatNumOfSite?.value ? parseInt(dom.chatNumOfSite.value, 10) : undefined,
+        maxWord: dom.chatMaxWord?.value ? parseInt(dom.chatMaxWord.value, 10) : undefined,
         withMemories: dom.withMemories?.checked || false,
         isMixed: dom.isMixed?.checked || false,
         brandVoiceId: dom.brandVoiceId?.value?.trim() || undefined,
@@ -535,7 +535,7 @@ export function createChatManager(dom, state) {
                   break;
                 }
               } catch {
-                console.debug('SSE non-JSON chunk:', dataStr);
+                // Ignore non-JSON SSE chunks
               }
             }
           }

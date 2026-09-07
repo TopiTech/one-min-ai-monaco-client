@@ -120,8 +120,8 @@ export function createInlineChatManager(editorState, editorManager, dom) {
           language,
           model: dom.codeModel.value,
           webSearch: dom.codeWebSearch?.checked || false,
-          numOfSite: dom.codeNumOfSite?.value ? parseInt(dom.codeNumOfSite.value) : undefined,
-          maxWord: dom.codeMaxWord?.value ? parseInt(dom.codeMaxWord.value) : undefined,
+          numOfSite: dom.codeNumOfSite?.value ? parseInt(dom.codeNumOfSite.value, 10) : undefined,
+          maxWord: dom.codeMaxWord?.value ? parseInt(dom.codeMaxWord.value, 10) : undefined,
         }),
       });
 

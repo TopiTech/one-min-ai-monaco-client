@@ -25,7 +25,7 @@ const LOCAL_STORAGE_KEYS = [
 ];
 
 function getNumberInRange(value, min, max, defaultValue) {
-  const num = parseInt(value);
+  const num = parseInt(value, 10);
   if (isNaN(num)) return defaultValue;
   if (num < min) return min;
   if (num > max) return max;

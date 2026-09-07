@@ -1200,9 +1200,9 @@ document.addEventListener('editor:show-diff', async (e) => {
   let isDragging = false;
 
   function getResizeMetrics() {
-    const minW = parseInt(getComputedStyle(root).getPropertyValue('--sidebar-min-width')) || 200;
-    const maxW = parseInt(getComputedStyle(root).getPropertyValue('--sidebar-max-width')) || 320;
-    const current = parseInt(getComputedStyle(root).getPropertyValue('--sidebar-width')) || 280;
+    const minW = parseInt(getComputedStyle(root).getPropertyValue('--sidebar-min-width'), 10) || 200;
+    const maxW = parseInt(getComputedStyle(root).getPropertyValue('--sidebar-max-width'), 10) || 320;
+    const current = parseInt(getComputedStyle(root).getPropertyValue('--sidebar-width'), 10) || 280;
     return { minW, maxW, current };
   }
 
