@@ -186,8 +186,18 @@
       "provider": "Alibaba",
       "tags": ["code", "fast"]
     },
-    { "id": "claude-sonnet-5", "label": "Claude 5 Sonnet", "provider": "Anthropic", "tags": ["code", "flagship"] },
-    { "id": "claude-fable-5", "label": "Claude 5 Fable", "provider": "Anthropic", "tags": ["code", "flagship"] },
+    {
+      "id": "claude-sonnet-5",
+      "label": "Claude 5 Sonnet",
+      "provider": "Anthropic",
+      "tags": ["code", "flagship"]
+    },
+    {
+      "id": "claude-fable-5",
+      "label": "Claude 5 Fable",
+      "provider": "Anthropic",
+      "tags": ["code", "flagship"]
+    },
     {
       "id": "claude-sonnet-4-6",
       "label": "Claude 4.6 Sonnet",

@@ -3,7 +3,9 @@
 [cmd]: https://commandcode.ai/
 
 # Workflow
+
 See [workflow/taste.md](workflow/taste.md)
+
 # Communication
 
 - Respond in Japanese for this project. Confidence: 0.85

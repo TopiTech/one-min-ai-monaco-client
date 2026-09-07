@@ -53,7 +53,9 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "setupFiles": ["./tests/setup-env.cjs"],
+    "setupFiles": [
+      "./tests/setup-env.cjs"
+    ],
     "transform": {},
     "moduleNameMapper": {
       "^(\\.{1,2}/.*)\\.js$": "$1"

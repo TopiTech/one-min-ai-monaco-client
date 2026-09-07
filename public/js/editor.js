@@ -149,7 +149,7 @@ export function createEditorManager(state) {
                 numOfSite: document.getElementById('codeNumOfSite')?.value
                   ? parseInt(document.getElementById('codeNumOfSite').value, 10)
                   : undefined,
-                  maxWord: document.getElementById('codeMaxWord').value
+                maxWord: document.getElementById('codeMaxWord').value
                   ? parseInt(document.getElementById('codeMaxWord').value, 10)
                   : undefined,
               }),

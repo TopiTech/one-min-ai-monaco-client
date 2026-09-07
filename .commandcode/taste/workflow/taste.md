@@ -1,4 +1,5 @@
 # Workflow
+
 - Review/fix workflow uses prioritized tags: B- (blocker), H- (high), M- (medium), L- (low). Confidence: 0.65
 - After implementing review fixes, conduct a full code review (Approve/Reject verdict with evidence). Confidence: 0.70
 - Prefers deep code reading over relying on tool output (file listings, search results, git stats) for verification — tool output alone does not count as "reading code". Confidence: 0.90
