@@ -587,7 +587,12 @@ if (process.env.NODE_ENV !== 'test') {
       server.requestTimeout = 600000;
 
       // Graceful shutdown handling
+      let isShuttingDown = false;
       const shutdown = () => {
+        if (isShuttingDown) {
+          return;
+        }
+        isShuttingDown = true;
         logger.info('Shutdown signal received. Closing HTTP server...');
         try {
           killAllActiveProcesses();
@@ -610,8 +615,14 @@ if (process.env.NODE_ENV !== 'test') {
             });
           })
           .finally(() => {
-            server.close(() => {
-              logger.info('HTTP server closed. Exiting process.');
+            server.close((err) => {
+              if (err) {
+                logger.error('Error closing HTTP server during shutdown', {
+                  error: err.message,
+                });
+              } else {
+                logger.info('HTTP server closed. Exiting process.');
+              }
               process.exit(0);
             });
           });

@@ -230,11 +230,29 @@ describe('fs-guard', () => {
       expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'routes', 'fs.js'))).toBe(true);
       expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'public', 'app.js'))).toBe(true);
       expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'tests', 'fs-guard.test.js'))).toBe(true);
+      // Hardened write protection for server modules, configs, and root files
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'middlewares', 'auth.js'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'middlewares', 'security.js'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'services', 'command-runner.js'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'services', 'asset-proxy.js'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, '.github', 'workflows', 'ci.yml'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'eslint.config.js'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'tsconfig.json'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, '.prettierrc'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'README.md'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'README.ja.md'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'README.en.md'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'SECURITY.md'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'ARCHITECTURE.md'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'CHANGELOG.md'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'LICENSE'))).toBe(true);
     });
 
-    test('should allow normal writable project paths', () => {
+    test('should allow normal writable project paths including sub-folder readmes', () => {
       expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'src', 'app.js'))).toBe(false);
       expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'workspace', 'notes.txt'))).toBe(false);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'workspace', 'README.md'))).toBe(false);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'src', 'docs', 'README.md'))).toBe(false);
     });
 
     test('should identify write-protected files within custom allowed roots', () => {

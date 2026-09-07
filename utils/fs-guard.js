@@ -49,7 +49,18 @@ const WRITE_PROTECTED_PATH_GLOBS = [
   'public/**',
   'tests/**',
   'docs/**',
+  'middlewares/**',
+  'services/**',
+  '.github/**',
+  'eslint.config.js',
+  'tsconfig.json',
+  '.prettierrc',
   'README.md',
+  'README.*.md',
+  'ARCHITECTURE.md',
+  'CHANGELOG.md',
+  'SECURITY.md',
+  'LICENSE',
 ];
 
 /**
@@ -285,6 +296,9 @@ const STATIC_WRITE_PROTECTED_PREFIXES = new Set([
   'public',
   'tests',
   'docs',
+  'middlewares',
+  'services',
+  '.github',
 ]);
 
 const STATIC_PROTECTED_EXACT = new Set([
@@ -300,7 +314,23 @@ const STATIC_PROTECTED_EXACT = new Set([
   'credentials.json',
 ]);
 
-const STATIC_WRITE_PROTECTED_EXACT = new Set([...STATIC_PROTECTED_EXACT, 'server.js']);
+const STATIC_WRITE_PROTECTED_EXACT = new Set([
+  ...STATIC_PROTECTED_EXACT,
+  'server.js',
+  'eslint.config.js',
+  'tsconfig.json',
+  '.prettierrc',
+  'readme.md',
+  'readme.en.md',
+  'readme.ja.md',
+  'readme.es.md',
+  'readme.ko.md',
+  'readme.zh.md',
+  'architecture.md',
+  'changelog.md',
+  'security.md',
+  'license',
+]);
 
 // Secret-like files can be placed below an otherwise writable workspace
 // directory (for example `config/credentials.json` or `certs/server.pem`).
@@ -328,6 +358,11 @@ function isProtectedByPatterns(relativePath, patterns) {
   if (isStandard || isWrite) {
     const exactSet = isWrite ? STATIC_WRITE_PROTECTED_EXACT : STATIC_PROTECTED_EXACT;
     if (exactSet.has(normalized)) return true;
+
+    // Protect localized README.*.md files at the root level from write operations
+    if (isWrite && !normalized.includes('/') && /^readme\..*\.md$/i.test(normalized)) {
+      return true;
+    }
 
     const firstSegment = normalized.split('/')[0];
     const prefixSet = isWrite ? STATIC_WRITE_PROTECTED_PREFIXES : STATIC_PROTECTED_PREFIXES;

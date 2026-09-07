@@ -318,7 +318,7 @@ function openModelPicker(btn, type) {
     topPx = rect.top + window.scrollY - Math.min(dropH, availH) - 6;
   }
 
-  const leftPx = Math.min(rect.left, window.innerWidth - dropW - 8);
+  const leftPx = Math.max(8, Math.min(rect.left, window.innerWidth - dropW - 8));
 
   // Apply calculated positions directly to avoid layout shift
   dropdown.style.top = `${topPx}px`;
@@ -403,7 +403,12 @@ function closeModelPicker() {
   _tabHandlers.forEach((h) => h.remove());
   _tabHandlers = [];
   _modelsCache = [];
-  if (_activePickerBtn) _activePickerBtn.setAttribute('aria-expanded', 'false');
+  if (_activePickerBtn) {
+    _activePickerBtn.setAttribute('aria-expanded', 'false');
+    if (typeof _activePickerBtn.focus === 'function') {
+      _activePickerBtn.focus();
+    }
+  }
   _activePickerBtn = null;
   _activePickerType = null;
 }

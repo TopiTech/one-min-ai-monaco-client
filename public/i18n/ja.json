@@ -23,6 +23,8 @@
   "chat_placeholder": "メッセージを入力... (Ctrl+Enter で送信、動画/音声の解析、YouTube URLも対応)",
   "chat_input_label": "チャットメッセージ入力",
   "attach_file": "ファイルを添付",
+  "remove_attachment": "添付ファイルを削除",
+  "tab_close": "タブを閉じる",
   "btn_send": "送信",
   "btn_stop": "停止",
   "abort_generation": "生成を中止 (Escape)",

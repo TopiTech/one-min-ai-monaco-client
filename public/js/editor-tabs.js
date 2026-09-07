@@ -67,6 +67,7 @@ export function createEditorTabManager(editorState, editorManager, dom) {
       const closeBtn = document.createElement('button');
       closeBtn.type = 'button';
       closeBtn.className = 'close-tab-btn';
+      closeBtn.setAttribute('aria-label', `${t('tab_close') || 'Close tab'}: ${fileName}`);
       closeBtn.textContent = '\u00d7';
       closeBtn.onclick = (e) => {
         e.stopPropagation();

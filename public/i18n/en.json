@@ -23,6 +23,8 @@
   "chat_placeholder": "Type a message... (Ctrl+Enter to send, supports video/audio analysis, YouTube URLs)",
   "chat_input_label": "Chat message input",
   "attach_file": "Attach file",
+  "remove_attachment": "Remove attachment",
+  "tab_close": "Close tab",
   "btn_send": "Send",
   "btn_stop": "Stop",
   "abort_generation": "Abort generation (Escape)",

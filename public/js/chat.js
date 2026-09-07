@@ -180,6 +180,7 @@ export function createChatManager(dom, state) {
       removeButton.type = 'button';
       removeButton.className = 'remove-attachment';
       removeButton.dataset.index = index;
+      removeButton.setAttribute('aria-label', t('remove_attachment') || 'Remove attachment');
       removeButton.textContent = '\u00d7';
 
       if (att.type === 'image' && att.previewUrl) {

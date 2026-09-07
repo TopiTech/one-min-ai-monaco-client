@@ -290,6 +290,38 @@ describe('FS Routes', () => {
       expect(res.status).toBe(403);
     });
 
+    test('write blocks protected middlewares/ path', async () => {
+      const res = await request(app)
+        .post('/api/fs/write')
+        .send({ path: 'middlewares/auth.js', content: 'bad' });
+      expect(res.status).toBe(403);
+    });
+
+    test('write blocks protected services/ path', async () => {
+      const res = await request(app)
+        .post('/api/fs/write')
+        .send({ path: 'services/command-runner.js', content: 'bad' });
+      expect(res.status).toBe(403);
+    });
+
+    test('write blocks protected .github/ path', async () => {
+      const res = await request(app)
+        .post('/api/fs/write')
+        .send({ path: '.github/workflows/ci.yml', content: 'bad' });
+      expect(res.status).toBe(403);
+    });
+
+    test('write blocks protected root configs and docs', async () => {
+      const res1 = await request(app)
+        .post('/api/fs/write')
+        .send({ path: 'eslint.config.js', content: 'bad' });
+      expect(res1.status).toBe(403);
+      const res2 = await request(app).post('/api/fs/write').send({ path: 'SECURITY.md', content: 'bad' });
+      expect(res2.status).toBe(403);
+      const res3 = await request(app).post('/api/fs/write').send({ path: 'README.ja.md', content: 'bad' });
+      expect(res3.status).toBe(403);
+    });
+
     test('read marks protected write paths as read-only', async () => {
       const res = await request(app).get('/api/fs/read').query({ path: 'server.js' });
       expect(res.status).toBe(200);
