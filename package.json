@@ -27,7 +27,7 @@
     "js-tiktoken": "^1.0.21",
     "marked": "^18.0.11",
     "monaco-editor": "^0.56.0",
-    "multer": "^2.1.1",
+    "multer": "^2.3.0",
     "zod": "^4.5.4"
   },
   "overrides": {
