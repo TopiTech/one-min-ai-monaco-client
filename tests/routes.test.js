@@ -469,6 +469,21 @@ describe('AI Routes Integration Tests', () => {
       expect(response.body.error).toContain('prompt');
     });
 
+    test('should reject oversized agent prompts and message batches', async () => {
+      const oversizedPrompt = await request(app)
+        .post('/api/agent/chat')
+        .send({ prompt: 'x'.repeat(50001), model: 'claude-sonnet-4-6' });
+      expect(oversizedPrompt.status).toBe(400);
+
+      const oversizedMessages = await request(app)
+        .post('/api/agent/chat')
+        .send({
+          messages: Array.from({ length: 101 }, () => ({ role: 'user', content: 'x' })),
+          model: 'claude-sonnet-4-6',
+        });
+      expect(oversizedMessages.status).toBe(400);
+    });
+
     test('should not include conversationId in payload (CODE_GENERATOR has no conversation concept)', async () => {
       callOneMin.mockResolvedValue({
         result: 'ok',

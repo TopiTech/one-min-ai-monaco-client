@@ -374,7 +374,9 @@ const codeRunSchema = z.object({
 
 router.post('/run', async (req, res, next) => {
   let targetPath;
+  let temporaryTargetPath;
   let filePath;
+  let resolvedFilePath;
   let code;
   let language;
   let extension;
@@ -392,10 +394,10 @@ router.post('/run', async (req, res, next) => {
 
     ({ filePath, code, language, extension } = result.data);
     if (filePath) {
-      const resolvedPath = validatePath(filePath);
-      assertNotProtectedPath(resolvedPath);
+      resolvedFilePath = validatePath(filePath);
+      assertNotProtectedPath(resolvedFilePath);
     }
-    const ext = extension || (filePath ? pathPkg.extname(filePath).replace('.', '') : '');
+    const ext = extension || (resolvedFilePath ? pathPkg.extname(resolvedFilePath).replace('.', '') : '');
 
     let runner = null;
     if (ext === 'py' || language === 'python') {
@@ -414,7 +416,10 @@ router.post('/run', async (req, res, next) => {
       });
     }
 
-    targetPath = filePath;
+    // Always execute the validated absolute path. Passing the original
+    // relative path to spawn made execution depend on the server's current
+    // directory instead of the path that was actually authorized.
+    targetPath = resolvedFilePath;
 
     if (code) {
       const tmpDir = pathPkg.resolve(PROJECT_ROOT, '.mimocode', 'tmp');
@@ -432,17 +437,21 @@ router.post('/run', async (req, res, next) => {
       }
       await fsPkg.writeFile(tmpFile, code, 'utf-8');
       targetPath = tmpFile;
+      temporaryTargetPath = tmpFile;
     }
 
     if (!targetPath) {
       return res.status(400).json({ error: 'No file path or code provided.' });
     }
 
-    const cwd = filePath ? pathPkg.dirname(filePath) : process.cwd();
+    const cwd = resolvedFilePath ? pathPkg.dirname(resolvedFilePath) : process.cwd();
 
     const safeEnv = getSafeEnv();
 
-    const maxOutputSize = serverConfig.maxCommandOutputSize || 10 * 1024 * 1024;
+    const maxOutputSize =
+      Number.isFinite(serverConfig.maxCommandOutputSize) && serverConfig.maxCommandOutputSize > 0
+        ? Math.floor(serverConfig.maxCommandOutputSize)
+        : 10 * 1024 * 1024;
 
     const output = await new Promise((resolve, reject) => {
       let stdout = '';
@@ -471,16 +480,17 @@ router.post('/run', async (req, res, next) => {
 
       if (child.stdout) {
         child.stdout.on('data', (data) => {
-          const text = data.toString();
+          const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+          const chunkBytes = buffer.byteLength;
           if (stdoutBytes < maxOutputSize) {
-            if (stdoutBytes + text.length > maxOutputSize) {
+            if (stdoutBytes + chunkBytes > maxOutputSize) {
               const allowedLen = maxOutputSize - stdoutBytes;
-              stdout += text.slice(0, allowedLen) + '\n...[output truncated]';
+              stdout += buffer.subarray(0, allowedLen).toString('utf8') + '\n...[output truncated]';
               stdoutBytes = maxOutputSize;
               stdoutTruncated = true;
             } else {
-              stdout += text;
-              stdoutBytes += text.length;
+              stdout += buffer.toString('utf8');
+              stdoutBytes += chunkBytes;
             }
           } else if (!stdoutTruncated) {
             stdoutTruncated = true;
@@ -490,16 +500,17 @@ router.post('/run', async (req, res, next) => {
       }
       if (child.stderr) {
         child.stderr.on('data', (data) => {
-          const text = data.toString();
+          const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+          const chunkBytes = buffer.byteLength;
           if (stderrBytes < maxOutputSize) {
-            if (stderrBytes + text.length > maxOutputSize) {
+            if (stderrBytes + chunkBytes > maxOutputSize) {
               const allowedLen = maxOutputSize - stderrBytes;
-              stderr += text.slice(0, allowedLen) + '\n...[output truncated]';
+              stderr += buffer.subarray(0, allowedLen).toString('utf8') + '\n...[output truncated]';
               stderrBytes = maxOutputSize;
               stderrTruncated = true;
             } else {
-              stderr += text;
-              stderrBytes += text.length;
+              stderr += buffer.toString('utf8');
+              stderrBytes += chunkBytes;
             }
           } else if (!stderrTruncated) {
             stderrTruncated = true;
@@ -541,8 +552,8 @@ router.post('/run', async (req, res, next) => {
   } catch (err) {
     next(err);
   } finally {
-    if (targetPath && targetPath !== filePath) {
-      fsPkg.unlink(targetPath).catch(() => {});
+    if (temporaryTargetPath) {
+      fsPkg.unlink(temporaryTargetPath).catch(() => {});
     }
   }
 });

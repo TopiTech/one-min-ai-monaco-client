@@ -122,6 +122,44 @@
   user-select: none;
   transition: all 0.2s ease;
   width: fit-content;
+  font: inherit;
+  text-align: left;
+}
+
+.agent-step-result-toggle {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border: 1px solid rgba(124, 156, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(124, 156, 255, 0.04);
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+.agent-step-result-toggle:hover,
+.agent-step-result-toggle:focus-visible,
+.agent-step-thought-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.agent-step-result-box {
+  white-space: pre-wrap;
+  overflow: auto;
+  max-height: 40vh;
+  margin: 8px 0 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  color: #e2e8f0;
+  font: 0.8rem/1.5 monospace;
+  overflow-wrap: anywhere;
 }
 
 .agent-step-thought-toggle:hover {

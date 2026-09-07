@@ -208,13 +208,17 @@ function showToast(message, options = {}) {
 
   if (dismissible) {
     const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
     closeBtn.className = 'toast-close';
     closeBtn.setAttribute('aria-label', t('toast_close'));
     const closeSvg = parseSvgIcon(
       `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
     );
     if (closeSvg) closeBtn.appendChild(closeSvg);
-    closeBtn.onclick = () => removeToast(toast);
+    closeBtn.onclick = () => {
+      if (dismissTimeout) clearTimeout(dismissTimeout);
+      removeToast(toast);
+    };
     toast.appendChild(closeBtn);
   }
 
@@ -244,9 +248,19 @@ function removeToast(toast) {
   if (!toast || toast.classList.contains('removing')) return;
 
   toast.classList.add('removing');
-  toast.addEventListener('animationend', () => {
+  let removed = false;
+  let fallbackTimer;
+  const remove = () => {
+    if (removed) return;
+    removed = true;
+    clearTimeout(fallbackTimer);
+    toast.removeEventListener('animationend', remove);
     toast.remove();
-  });
+  };
+  toast.addEventListener('animationend', remove, { once: true });
+  // Reduced-motion styles, test environments, and interrupted animations may
+  // never dispatch animationend. Do not leave dismissed toasts in the DOM.
+  fallbackTimer = setTimeout(remove, 500);
 }
 
 /**
@@ -320,6 +334,16 @@ function toastPrompt(message, defaultValue = '', options = {}) {
     actions.style.gap = '8px';
     actions.style.marginTop = '12px';
 
+    let settled = false;
+    let onKey;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      if (onKey) document.removeEventListener('keydown', onKey);
+      removeToast(toast);
+      resolve(value);
+    };
+
     const cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
     cancelBtn.className = 'toast-btn toast-btn--cancel';
@@ -330,10 +354,7 @@ function toastPrompt(message, defaultValue = '', options = {}) {
     cancelBtn.style.background = 'transparent';
     cancelBtn.style.color = '#fff';
     cancelBtn.style.cursor = 'pointer';
-    cancelBtn.onclick = () => {
-      removeToast(toast);
-      resolve(null);
-    };
+    cancelBtn.onclick = () => finish(null);
 
     const confirmBtn = document.createElement('button');
     confirmBtn.type = 'button';
@@ -345,10 +366,7 @@ function toastPrompt(message, defaultValue = '', options = {}) {
     confirmBtn.style.background = 'rgba(255,255,255,0.1)';
     confirmBtn.style.color = '#fff';
     confirmBtn.style.cursor = 'pointer';
-    confirmBtn.onclick = () => {
-      removeToast(toast);
-      resolve(inputEl.value);
-    };
+    confirmBtn.onclick = () => finish(inputEl.value);
 
     actions.appendChild(cancelBtn);
     actions.appendChild(confirmBtn);
@@ -362,15 +380,11 @@ function toastPrompt(message, defaultValue = '', options = {}) {
     inputEl.focus();
     inputEl.select();
 
-    const onKey = (e) => {
+    onKey = (e) => {
       if (e.key === 'Escape') {
-        document.removeEventListener('keydown', onKey);
-        removeToast(toast);
-        resolve(null);
+        finish(null);
       } else if (e.key === 'Enter') {
-        document.removeEventListener('keydown', onKey);
-        removeToast(toast);
-        resolve(inputEl.value);
+        finish(inputEl.value);
       }
     };
     document.addEventListener('keydown', onKey);
@@ -394,23 +408,27 @@ function toastConfirm(message, options = {}) {
     const actions = document.createElement('div');
     actions.className = 'toast-actions';
 
+    let settled = false;
+    let onKey;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      if (onKey) document.removeEventListener('keydown', onKey);
+      removeToast(toast);
+      resolve(value);
+    };
+
     const cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
     cancelBtn.className = 'toast-btn toast-btn--cancel';
     cancelBtn.textContent = cancelText;
-    cancelBtn.onclick = () => {
-      removeToast(toast);
-      resolve(false);
-    };
+    cancelBtn.onclick = () => finish(false);
 
     const confirmBtn = document.createElement('button');
     confirmBtn.type = 'button';
     confirmBtn.className = 'toast-btn toast-btn--confirm';
     confirmBtn.textContent = confirmText;
-    confirmBtn.onclick = () => {
-      removeToast(toast);
-      resolve(true);
-    };
+    confirmBtn.onclick = () => finish(true);
 
     actions.appendChild(cancelBtn);
     actions.appendChild(confirmBtn);
@@ -421,11 +439,9 @@ function toastConfirm(message, options = {}) {
     toastContainer.appendChild(toast);
 
     // Escape key to cancel
-    const onKey = (e) => {
+    onKey = (e) => {
       if (e.key === 'Escape') {
-        document.removeEventListener('keydown', onKey);
-        removeToast(toast);
-        resolve(false);
+        finish(false);
       }
     };
     document.addEventListener('keydown', onKey);

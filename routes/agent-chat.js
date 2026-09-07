@@ -23,6 +23,9 @@ import { serverConfig } from '../config/server.js';
 
 const router = express.Router();
 const CODE_GENERATOR_FEATURE_ENDPOINT = '/api/features?isStreaming=true';
+const MAX_AGENT_PROMPT_CHARS = 200000;
+const MAX_AGENT_MESSAGES = 100;
+const MAX_AGENT_MESSAGE_CHARS = 50000;
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -51,16 +54,17 @@ function flattenMessages(messages) {
 
 const agentChatSchema = z
   .object({
-    prompt: z.string().optional(),
+    prompt: z.string().max(50000, 'prompt exceeds 50000 characters').optional(),
     messages: z
       .array(
         z.object({
-          role: z.string().default('user'),
-          content: z.string().default(''),
+          role: z.string().max(50, 'message role is too long').default('user'),
+          content: z.string().max(MAX_AGENT_MESSAGE_CHARS, 'message content is too long').default(''),
         }),
       )
+      .max(MAX_AGENT_MESSAGES, `messages exceeds ${MAX_AGENT_MESSAGES} entries`)
       .optional(),
-    model: z.string().optional(),
+    model: z.string().max(100, 'model is too long').optional(),
     webSearch: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
     numOfSite: z.preprocess(
       (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
@@ -78,6 +82,11 @@ const agentChatSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'prompt or messages is required',
+      });
+    } else if (String(promptText).length > MAX_AGENT_PROMPT_CHARS) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `prompt exceeds ${MAX_AGENT_PROMPT_CHARS} characters`,
       });
     }
   });

@@ -3,6 +3,7 @@ process.env.ALLOWED_CORS_ORIGINS = 'https://example.com';
 
 import { jest } from '@jest/globals';
 import request from 'supertest';
+import fs from 'fs/promises';
 import path from 'path';
 
 // Mock the API client to prevent calling actual 1min.ai APIs
@@ -103,6 +104,38 @@ describe('Hardening Improvements Tests', () => {
       }
     });
 
+    test('executes an authorized relative file from its resolved directory', async () => {
+      const prevVal = serverConfig.enableCodeRun;
+      const fixtureDir = path.join(process.cwd(), 'temp-code-run-relative');
+      const fixturePath = path.join(fixtureDir, 'relative-run.js');
+      serverConfig.enableCodeRun = true;
+
+      try {
+        await fs.mkdir(fixtureDir, { recursive: true });
+        await fs.writeFile(fixturePath, 'console.log("relative execution works")', 'utf8');
+
+        const app = createApp({
+          requireLocalAuth: false,
+          enableRateLimit: false,
+        });
+
+        const res = await request(app)
+          .post('/api/code/run')
+          .send({
+            filePath: path.join('temp-code-run-relative', 'relative-run.js'),
+            language: 'javascript',
+          });
+
+        expect(res.status).toBe(200);
+        expect(res.body.stdout).toContain('relative execution works');
+        expect(res.body.exitCode).toBe(0);
+      } finally {
+        await fs.unlink(fixturePath).catch(() => {});
+        await fs.rmdir(fixtureDir).catch(() => {});
+        serverConfig.enableCodeRun = prevVal;
+      }
+    });
+
     test('truncates output if maxCommandOutputSize is exceeded during execution', async () => {
       const prevVal = serverConfig.enableCodeRun;
       const prevMax = serverConfig.maxCommandOutputSize;
@@ -125,6 +158,34 @@ describe('Hardening Improvements Tests', () => {
         expect(res.body.ok).toBe(true);
         expect(res.body.stdoutTruncated).toBe(true);
         expect(res.body.stdout).toContain('...[output truncated]');
+      } finally {
+        serverConfig.enableCodeRun = prevVal;
+        serverConfig.maxCommandOutputSize = prevMax;
+      }
+    });
+
+    test('enforces the code-run output limit in bytes for multibyte output', async () => {
+      const prevVal = serverConfig.enableCodeRun;
+      const prevMax = serverConfig.maxCommandOutputSize;
+      serverConfig.enableCodeRun = true;
+      serverConfig.maxCommandOutputSize = 3;
+
+      try {
+        const app = createApp({
+          requireLocalAuth: false,
+          enableRateLimit: false,
+        });
+
+        const res = await request(app).post('/api/code/run').send({
+          code: 'console.log("あああ")',
+          language: 'javascript',
+          extension: 'js',
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.body.stdoutTruncated).toBe(true);
+        const prefix = res.body.stdout.split('\n...[output truncated]')[0];
+        expect(Buffer.byteLength(prefix, 'utf8')).toBeLessThanOrEqual(3);
       } finally {
         serverConfig.enableCodeRun = prevVal;
         serverConfig.maxCommandOutputSize = prevMax;

@@ -1,7 +1,7 @@
 import { serverConfig } from '../config/server.js';
 import logger from './logger.js';
 import { extractTextFromOneMinResponse } from './one-min-response.js';
-import { sanitizePayload } from './sanitize.js';
+import { sanitizeLogText, sanitizePayload } from './sanitize.js';
 import { HttpError } from './errors.js';
 
 const API_BASE = serverConfig.apiBaseUrl;
@@ -48,7 +48,13 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = serverConfig.apiT
     const response = await fetch(url, { ...fetchOpts, signal: combinedSignal });
     return response;
   } catch (error) {
-    if (error.name === 'AbortError' || error.code === 'ABORT_ERR') {
+    // Undici/Node uses DOMException "TimeoutError" (code 23) for
+    // AbortSignal.timeout(), while a caller cancellation usually surfaces as
+    // "AbortError". Treating TimeoutError as a generic network error turns a
+    // deterministic request timeout into a misleading 502 (and may trigger
+    // retries), so inspect both the error and the source signal.
+    const isTimeout = timeoutSignal.aborted || error?.name === 'TimeoutError' || error?.code === 23;
+    if (error?.name === 'AbortError' || error?.code === 'ABORT_ERR' || isTimeout) {
       if (callerSignal && callerSignal.aborted) {
         const err = new HttpError(499, 'Request aborted by client');
         err.name = 'AbortError';
@@ -163,11 +169,14 @@ export async function normalizeOneMinRawResponse(response, options = {}) {
     (!response.ok || contentType.includes('application/json') || contentType.includes('html'))
   ) {
     const context = options.context || 'Code Generator';
-    logger.error(`[${context}] Failed to parse JSON response from upstream API. Raw response: ${rawText}`, {
-      error: jsonParseError.message,
-      status: response.status,
-      contentType,
-    });
+    logger.error(
+      `[${context}] Failed to parse JSON response from upstream API. Raw response: ${sanitizeLogText(rawText)}`,
+      {
+        error: jsonParseError.message,
+        status: response.status,
+        contentType,
+      },
+    );
   }
 
   return {
@@ -206,7 +215,7 @@ function parseSseResponseText(text, options = {}) {
     } catch (err) {
       if (dataStr.startsWith('{') || dataStr.startsWith('[')) {
         const context = options.context || 'Code Generator';
-        logger.error(`[${context}] Failed to parse SSE JSON chunk. Raw chunk: ${dataStr}`, {
+        logger.error(`[${context}] Failed to parse SSE JSON chunk. Raw chunk: ${sanitizeLogText(dataStr)}`, {
           error: err.message,
         });
       }
@@ -278,9 +287,7 @@ export async function callOneMin(
     // M-1: When true, retry is disabled entirely because the upstream side
     // effect would be duplicated (e.g. POST /api/conversations, POST /api/assets).
     // Callers that mutate state on the upstream should pass `idempotent: false`.
-    idempotent = method.toUpperCase() === 'GET' ||
-      pathname.includes('/api/features') ||
-      pathname.includes('/api/chat'),
+    idempotent = ['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase()),
     timeout,
     suppressJsonParseErrorLog = pathname === '/api/models',
   } = {},
@@ -321,12 +328,41 @@ export async function callOneMin(
     );
 
   let lastError = new Error(`All ${effectiveRetries + 1} retry attempts failed for ${pathname}`);
+  let scheduledRetryDelay = null;
+
+  const exponentialRetryDelay = (attempt) =>
+    Math.round(retryDelay * Math.pow(2, attempt) * (1 + (Math.random() * 0.2 - 0.1)));
+
+  const retryAfterDelay = (value) => {
+    if (typeof value !== 'string' || !value.trim()) return null;
+    const trimmed = value.trim();
+
+    // Keep the existing one-second safety cushion for a numeric Retry-After,
+    // but reject partial/negative values instead of parseInt('10ms')=10.
+    if (/^\d+$/.test(trimmed)) {
+      const seconds = Number(trimmed);
+      if (Number.isFinite(seconds)) return Math.min(seconds * 1000 + 1000, 60000);
+    }
+
+    // RFC 7231 also permits an HTTP-date. A past date means retry promptly,
+    // while a far-future date is capped so a single upstream header cannot
+    // suspend the request indefinitely.
+    const retryAt = Date.parse(trimmed);
+    if (Number.isFinite(retryAt)) {
+      return Math.min(Math.max(retryAt - Date.now() + 1000, 1000), 60000);
+    }
+    return null;
+  };
 
   for (let attempt = 0; attempt <= effectiveRetries; attempt++) {
     try {
       if (attempt > 0) {
-        const jitter = 1 + (Math.random() * 0.2 - 0.1);
-        const waitTime = Math.round(retryDelay * Math.pow(2, attempt - 1) * jitter);
+        // A transient response or network error schedules the delay below.
+        // Waiting here is the single wait point for each retry; the previous
+        // implementation waited in the error branch and again here, doubling
+        // every backoff interval.
+        const waitTime = scheduledRetryDelay ?? exponentialRetryDelay(attempt - 1);
+        scheduledRetryDelay = null;
         logger.warn(`Retry ${attempt}/${effectiveRetries} for ${pathname} after ${waitTime}ms`);
         await delay(waitTime);
       }
@@ -334,25 +370,18 @@ export async function callOneMin(
       const response = await makeRequest();
 
       if ((response.status === 429 || response.status >= 500) && attempt < effectiveRetries) {
-        const retryAfter = response.headers.get('Retry-After');
-        // Retry-After may be an HTTP-date (RFC 7231 §7.1.3); parseInt yields
-        // NaN for those, and delay(NaN) fires immediately — falling back to
-        // the exponential backoff keeps the upstream rate limit respected.
-        const retryAfterSeconds = Number.parseInt(retryAfter, 10);
-        const waitTime =
-          retryAfter && Number.isFinite(retryAfterSeconds)
-            ? Math.min(retryAfterSeconds * 1000 + 1000, 60000)
-            : Math.round(retryDelay * Math.pow(2, attempt) * (1 + (Math.random() * 0.2 - 0.1)));
+        const retryAfter = response.headers?.get?.('Retry-After');
+        const waitTime = retryAfterDelay(retryAfter) ?? exponentialRetryDelay(attempt);
         // Consume the response body to release the connection back to the pool.
         try {
-          response.body?.cancel?.();
+          await response.body?.cancel?.();
         } catch {
           /* ignore */
         }
+        scheduledRetryDelay = waitTime;
         logger.warn(
           `Upstream transient error (${response.status}) on ${pathname}. Retrying attempt ${attempt + 1}/${effectiveRetries} in ${waitTime}ms...`,
         );
-        await delay(waitTime);
         continue;
       }
 
@@ -360,7 +389,7 @@ export async function callOneMin(
         const { payload, jsonParseError, rawText } = await parseResponsePayloadWithInfo(response);
         if (jsonParseError && rawText && !suppressJsonParseErrorLog && pathname !== '/api/models') {
           logger.error(
-            `Failed to parse JSON error response from upstream API (${pathname}). Raw response: ${rawText}`,
+            `Failed to parse JSON error response from upstream API (${pathname}). Raw response: ${sanitizeLogText(rawText)}`,
             {
               error: jsonParseError.message,
               status: response.status,
@@ -392,8 +421,13 @@ export async function callOneMin(
       const isNonRetryableHttpError =
         error?.status && error.status >= 400 && error.status < 500 && error.status !== 429;
       if (isNonRetryableHttpError && !isRetryableNetworkError) throw error;
-      if (attempt < effectiveRetries)
-        logger.warn(`Request failed for ${pathname}, will retry: ${error.message}`);
+      if (attempt < effectiveRetries) {
+        scheduledRetryDelay = exponentialRetryDelay(attempt);
+        const errorMessage = sanitizeLogText(error?.message || String(error));
+        logger.warn(
+          `Request failed for ${pathname}, will retry after ${scheduledRetryDelay}ms: ${errorMessage}`,
+        );
+      }
     }
   }
 

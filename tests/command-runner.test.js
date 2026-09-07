@@ -112,5 +112,16 @@ describe('command-runner', () => {
       expect(result.stdoutTruncated).toBe(true);
       expect(result.stdout).toContain('...[output truncated]');
     });
+
+    test('should survive a streaming output callback that throws', async () => {
+      const result = await executeCommand('node --version', {
+        onOutput: () => {
+          throw new Error('client disconnected');
+        },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.length).toBeGreaterThan(0);
+    });
   });
 });

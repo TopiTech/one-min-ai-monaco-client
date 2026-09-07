@@ -37,7 +37,12 @@ export { fetchModels };
 
 async function fetchModels() {
   try {
-    const data = await callOneMin('/api/models', { suppressJsonParseErrorLog: true });
+    // Model discovery is a read-only endpoint. Be explicit because the API
+    // client defaults to POST for mutating endpoints.
+    const data = await callOneMin('/api/models', {
+      method: 'GET',
+      suppressJsonParseErrorLog: true,
+    });
     if (data && Array.isArray(data.models)) {
       const modelType = (m) => m?.type ?? m?.featureType ?? m?.modelType ?? '';
       const newChatModels = data.models.filter((m) => modelType(m) === 'CHAT');

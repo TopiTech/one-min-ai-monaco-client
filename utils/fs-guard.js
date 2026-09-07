@@ -302,7 +302,20 @@ const STATIC_PROTECTED_EXACT = new Set([
 
 const STATIC_WRITE_PROTECTED_EXACT = new Set([...STATIC_PROTECTED_EXACT, 'server.js']);
 
-const DYNAMIC_PROTECTED_PATTERNS = [globToRegExp('.env.*'), globToRegExp('*.pem'), globToRegExp('*.key')];
+// Secret-like files can be placed below an otherwise writable workspace
+// directory (for example `config/credentials.json` or `certs/server.pem`).
+// Match the basename at every depth, not only at the workspace root.
+const DYNAMIC_PROTECTED_PATTERNS = [
+  globToRegExp('**/.env'),
+  globToRegExp('**/.env.*'),
+  globToRegExp('**/*.pem'),
+  globToRegExp('**/*.key'),
+  globToRegExp('**/id_rsa'),
+  globToRegExp('**/id_rsa.pub'),
+  globToRegExp('**/.npmrc'),
+  globToRegExp('**/secrets.json'),
+  globToRegExp('**/credentials.json'),
+];
 
 const DYNAMIC_WRITE_PROTECTED_PATTERNS = [...DYNAMIC_PROTECTED_PATTERNS];
 

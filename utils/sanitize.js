@@ -38,16 +38,27 @@ export function sanitizePayload(payload) {
         return obj.map((item) => walk(item));
       }
       const result = {};
-      for (const key in obj) {
+      // Use own enumerable keys only. Apart from avoiding inherited data in
+      // logs, defining the property explicitly prevents a JSON field named
+      // `__proto__` from changing the prototype of the sanitized object.
+      for (const key of Object.keys(obj)) {
         const lowerKey = key.toLowerCase();
+        const assign = (value) => {
+          Object.defineProperty(result, key, {
+            value,
+            enumerable: true,
+            configurable: true,
+            writable: true,
+          });
+        };
         if (sensitiveKeys.has(lowerKey)) {
-          result[key] = '[MASKED]';
+          assign('[MASKED]');
         } else if (sensitiveValueKeys.has(lowerKey)) {
-          result[key] = '[REDACTED]';
+          assign('[REDACTED]');
         } else if (typeof obj[key] === 'object' && obj[key] !== null) {
-          result[key] = walk(obj[key]);
+          assign(walk(obj[key]));
         } else {
-          result[key] = obj[key];
+          assign(obj[key]);
         }
       }
       return result;
@@ -56,4 +67,26 @@ export function sanitizePayload(payload) {
   } catch {
     return '[Unable to sanitize details]';
   }
+}
+
+/**
+ * Keep arbitrary upstream text out of log messages where it could expose a
+ * credential, forge log lines, or create an unbounded log entry. This is
+ * intentionally separate from sanitizePayload because callers still need to
+ * return the original response body to the API consumer.
+ */
+export function sanitizeLogText(value, maxLength = 2048) {
+  if (typeof value !== 'string') return '';
+
+  let text = value.replace(/[\r\n]/g, '\\n');
+  text = text
+    .replace(/(["']?authorization["']?\s*[:=]\s*["']?)Bearer\s+[^\s,;"'<>\\]+/gi, '$1Bearer [REDACTED]')
+    .replace(
+      /(["']?(?:api[-_ ]?key|authorization|token|password|secret|credential)["']?\s*[:=]\s*["']?)(?!Bearer\b)([^\s,;"'<>}\\]+)/gi,
+      '$1[REDACTED]',
+    )
+    .replace(/\bBearer\s+[^\s,;"'<>\\]+/gi, 'Bearer [REDACTED]');
+
+  const limit = Number.isFinite(maxLength) && maxLength > 0 ? Math.floor(maxLength) : 2048;
+  return text.length > limit ? text.slice(0, limit) + '...[truncated]' : text;
 }

@@ -121,6 +121,10 @@ describe('config/models.js', () => {
       expect(status.ok).toBe(true);
       expect(status.lastSync).not.toBeNull();
       expect(status.source).toBe('remote');
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/models'),
+        expect.objectContaining({ method: 'GET' }),
+      );
     });
   });
 
@@ -148,13 +152,21 @@ describe('config/models.js', () => {
     test('marks sync as failed on server error', async () => {
       mockFetchError(500);
 
-      const { initModels, getModelSyncStatus } = await import('../config/models.js');
-      await initModels();
+      const { serverConfig } = await import('../config/server.js');
+      const previousAttempts = serverConfig.apiRetryAttempts;
+      serverConfig.apiRetryAttempts = 0;
 
-      const status = getModelSyncStatus();
-      expect(status.ok).toBe(false);
-      expect(status.error).toBeDefined();
-      expect(status.source).toBe('fallback');
+      try {
+        const { initModels, getModelSyncStatus } = await import('../config/models.js');
+        await initModels();
+
+        const status = getModelSyncStatus();
+        expect(status.ok).toBe(false);
+        expect(status.error).toBeDefined();
+        expect(status.source).toBe('fallback');
+      } finally {
+        serverConfig.apiRetryAttempts = previousAttempts;
+      }
     });
   });
 

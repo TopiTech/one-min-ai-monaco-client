@@ -112,13 +112,14 @@ function parseSize(raw, fallback) {
 }
 
 function parseBodySize(raw, fallback) {
-  // Body-parser accepts a string like "2mb" or a byte number. We forward
-  // the validated value as-is so Express can parse it the same way.
+  // Body-parser accepts a string like "2mb" or a byte number. Validate the
+  // equivalent byte count as well; forwarding an arbitrarily large value to
+  // Express would otherwise allow an operator typo to remove the request
+  // body guardrail entirely.
   if (!raw) return fallback;
   const v = String(raw).trim();
-  if (/^\d+$/.test(v)) return v;
-  if (/^\d+(?:\.\d+)?\s*(b|kb|mb|gb)$/i.test(v)) return v;
-  return fallback;
+  const bytes = parseSize(v, Number.NaN);
+  return Number.isFinite(bytes) ? v : fallback;
 }
 
 function parseApiUrl(raw, fallback) {

@@ -18,9 +18,11 @@ export function createAgentTimeline(dom) {
     const box = document.getElementById(`result-${stepId}`);
     if (!box) return;
     const toggle = box.previousElementSibling;
+    if (!toggle) return;
     const toggleSpan = toggle.querySelector('span');
     const willBeHidden = !box.classList.contains('u-hidden');
     box.classList.toggle('u-hidden', willBeHidden);
+    toggle.setAttribute('aria-expanded', String(!willBeHidden));
     if (toggleSpan) {
       toggleSpan.textContent = willBeHidden ? t('show_output') : t('hide_output');
     }
@@ -69,23 +71,28 @@ export function createAgentTimeline(dom) {
 
     const isLongThought = type === 'thought' && body && body.length > 100;
     if (isLongThought) {
-      const toggleDiv = document.createElement('div');
-      toggleDiv.className = 'agent-step-thought-toggle';
+      const toggleButton = document.createElement('button');
+      toggleButton.type = 'button';
+      toggleButton.className = 'agent-step-thought-toggle';
+      toggleButton.setAttribute('aria-expanded', 'false');
+      toggleButton.setAttribute('aria-controls', `thought-${stepId}`);
       const toggleSpan = document.createElement('span');
       toggleSpan.textContent = t('thought_expand');
-      toggleDiv.appendChild(toggleSpan);
+      toggleButton.appendChild(toggleSpan);
 
       const thoughtBox = document.createElement('div');
+      thoughtBox.id = `thought-${stepId}`;
       thoughtBox.className = 'agent-step-thought-box u-hidden';
       thoughtBox.appendChild(bodyEl);
 
-      toggleDiv.onclick = () => {
+      toggleButton.onclick = () => {
         const willBeHidden = !thoughtBox.classList.contains('u-hidden');
         thoughtBox.classList.toggle('u-hidden', willBeHidden);
+        toggleButton.setAttribute('aria-expanded', String(!willBeHidden));
         toggleSpan.textContent = willBeHidden ? t('thought_expand') : t('thought_collapse');
       };
 
-      card.appendChild(toggleDiv);
+      card.appendChild(toggleButton);
       card.appendChild(thoughtBox);
     } else {
       card.appendChild(bodyEl);
@@ -99,19 +106,22 @@ export function createAgentTimeline(dom) {
           `\n\n... [出力が ${(resultText.length - MAX_RESULT_VISIBLE).toLocaleString()} 文字を超過したため切り詰められました]`
         : resultText;
 
-      const toggleDiv = document.createElement('div');
-      toggleDiv.className = 'agent-step-result-toggle';
+      const toggleButton = document.createElement('button');
+      toggleButton.type = 'button';
+      toggleButton.className = 'agent-step-result-toggle';
+      toggleButton.setAttribute('aria-expanded', 'false');
+      toggleButton.setAttribute('aria-controls', `result-${stepId}`);
       const rToggleSpan = document.createElement('span');
       rToggleSpan.textContent = t('show_output');
-      toggleDiv.appendChild(rToggleSpan);
+      toggleButton.appendChild(rToggleSpan);
       if (isTruncated) {
         const warnSpan = document.createElement('span');
         warnSpan.className = 'result-truncated-badge';
         warnSpan.textContent = '切詰';
-        toggleDiv.appendChild(warnSpan);
+        toggleButton.appendChild(warnSpan);
       }
-      toggleDiv.onclick = () => toggleTimelineResult(stepId);
-      card.appendChild(toggleDiv);
+      toggleButton.onclick = () => toggleTimelineResult(stepId);
+      card.appendChild(toggleButton);
 
       const resultPre = document.createElement('pre');
       resultPre.id = 'result-' + stepId;
@@ -170,6 +180,8 @@ export function createAgentTimeline(dom) {
 
     const body = document.createElement('div');
     body.className = 'agent-step-body';
+    body.id = `approval-description-${stepId}`;
+    step.setAttribute('aria-describedby', body.id);
     body.textContent = t('cmd_approval_desc');
 
     const details = document.createElement('div');
@@ -227,6 +239,9 @@ export function createAgentTimeline(dom) {
 
     log.appendChild(step);
     log.scrollTop = log.scrollHeight;
+    // Move focus to the first actionable control so the approval can be
+    // completed without a mouse or a second tab sequence.
+    approveBtn.focus();
 
     // M-9: Fade out the approval step once it has been resolved.
     let finalized = false;

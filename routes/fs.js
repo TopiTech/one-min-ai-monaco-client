@@ -493,6 +493,13 @@ router.post('/rename', async (req, res, next) => {
     const realOld = revalidateRealPath(resolvedOld);
     assertNotWriteProtectedPath(realOld);
 
+    const oldStat = await fs.stat(realOld);
+    if (oldStat.isDirectory()) {
+      // Renaming a parent can otherwise move a protected descendant to a new
+      // location in one operation, bypassing the per-path write check.
+      await assertNoProtectedChildren(realOld);
+    }
+
     // New path may or may not exist (TOCTOU mitigation)
     const realNew = await getSafeRealPath(resolvedNew);
 

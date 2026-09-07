@@ -41,6 +41,15 @@ describe('Agent Directory and Patch Routes', () => {
     sessionId = response.body.session.id;
   });
 
+  test('rejects oversized session metadata before it is retained in memory', async () => {
+    const response = await request(app)
+      .post('/api/agent/sessions')
+      .send({ task: 'x'.repeat(50001) });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('50000');
+  });
+
   afterEach(() => {
     delete process.env.NODE_ENV;
   });
@@ -69,6 +78,12 @@ describe('Agent Directory and Patch Routes', () => {
       const response = await request(app).get(`/api/agent/sessions/${sessionId}/dir`).query({ path: '.env' });
 
       expect(response.status).toBe(403);
+    });
+
+    test('should reject duplicate path query parameters', async () => {
+      const response = await request(app).get(`/api/agent/sessions/${sessionId}/dir?path=config&path=public`);
+
+      expect(response.status).toBe(400);
     });
   });
 
@@ -292,6 +307,18 @@ replaced
 
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('有効な SEARCH/REPLACE ブロックが見つかりませんでした');
+    });
+
+    test('should reject an oversized diff before reading the target file', async () => {
+      const response = await request(app)
+        .post(`/api/agent/sessions/${sessionId}/diff`)
+        .send({
+          path: testFile,
+          diff: 'x'.repeat(500001),
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('500000');
     });
   });
 

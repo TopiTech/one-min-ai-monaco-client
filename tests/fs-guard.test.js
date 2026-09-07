@@ -131,6 +131,10 @@ describe('fs-guard', () => {
       expect(isProtectedPath(path.join(customRoot, 'secrets.json'))).toBe(true);
       expect(isProtectedPath(path.join(customRoot, '.npmrc'))).toBe(true);
       expect(isProtectedPath(path.join(customRoot, 'private.pem'))).toBe(true);
+      expect(isProtectedPath(path.join(customRoot, 'certs', 'private.pem'))).toBe(true);
+      expect(isProtectedPath(path.join(customRoot, 'env', '.env.production'))).toBe(true);
+      expect(isProtectedPath(path.join(customRoot, 'config', 'credentials.json'))).toBe(true);
+      expect(isProtectedPath(path.join(customRoot, 'npm', '.npmrc'))).toBe(true);
       expect(isProtectedPath(path.join(customRoot, 'id_rsa'))).toBe(true);
       expect(isProtectedPath(path.join(customRoot, '.mimocode', 'data', 'agent_sessions.json'))).toBe(true);
       expect(isProtectedPath(path.join(customRoot, '.commandcode', 'state.json'))).toBe(true);
@@ -153,6 +157,9 @@ describe('fs-guard', () => {
       const customRoot = path.resolve('/tmp-custom-root');
 
       expect(isWriteProtectedPath(path.join(customRoot, 'private.pem'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(customRoot, 'certs', 'private.key'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(customRoot, 'env', '.env.local'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(customRoot, 'config', 'credentials.json'))).toBe(true);
       expect(isWriteProtectedPath(path.join(customRoot, 'id_rsa'))).toBe(true);
       expect(isWriteProtectedPath(path.join(customRoot, '.mimocode', 'data', 'pending_commands.json'))).toBe(
         true,

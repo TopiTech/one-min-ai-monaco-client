@@ -263,47 +263,63 @@ function collectProcessOutput(child, timeoutMs, onOutput, maxOutputSize = server
     let timedOut = false;
     let killed = false;
 
-    const limit = typeof maxOutputSize === 'number' && maxOutputSize > 0 ? maxOutputSize : 10 * 1024 * 1024;
+    const limit =
+      typeof maxOutputSize === 'number' && maxOutputSize > 0 ? Math.floor(maxOutputSize) : 10 * 1024 * 1024;
 
     child.stdout.on('data', (data) => {
-      const text = data.toString();
+      const buffer = Buffer.isBuffer(data) ? data : Buffer.from(String(data));
+      const text = buffer.toString('utf8');
+      const chunkBytes = buffer.byteLength;
       if (stdoutBytes < limit) {
-        if (stdoutBytes + text.length > limit) {
+        if (stdoutBytes + chunkBytes > limit) {
           const allowedLen = limit - stdoutBytes;
-          stdout += text.slice(0, allowedLen) + '\n...[output truncated]';
+          stdout += buffer.subarray(0, allowedLen).toString('utf8') + '\n...[output truncated]';
           stdoutBytes = limit;
           stdoutTruncated = true;
         } else {
           stdout += text;
-          stdoutBytes += text.length;
+          stdoutBytes += chunkBytes;
         }
       } else if (!stdoutTruncated) {
         stdoutTruncated = true;
         stdout += '\n...[output truncated]';
       }
       if (onOutput) {
-        onOutput('stdout', text);
+        // A disconnected SSE client can make its response writer throw.
+        // Streaming output is best-effort and must not turn that UI event
+        // into an unhandled exception in the command process.
+        try {
+          onOutput('stdout', text);
+        } catch {
+          // Ignore consumer callback failures; continue collecting output.
+        }
       }
     });
 
     child.stderr.on('data', (data) => {
-      const text = data.toString();
+      const buffer = Buffer.isBuffer(data) ? data : Buffer.from(String(data));
+      const text = buffer.toString('utf8');
+      const chunkBytes = buffer.byteLength;
       if (stderrBytes < limit) {
-        if (stderrBytes + text.length > limit) {
+        if (stderrBytes + chunkBytes > limit) {
           const allowedLen = limit - stderrBytes;
-          stderr += text.slice(0, allowedLen) + '\n...[output truncated]';
+          stderr += buffer.subarray(0, allowedLen).toString('utf8') + '\n...[output truncated]';
           stderrBytes = limit;
           stderrTruncated = true;
         } else {
           stderr += text;
-          stderrBytes += text.length;
+          stderrBytes += chunkBytes;
         }
       } else if (!stderrTruncated) {
         stderrTruncated = true;
         stderr += '\n...[output truncated]';
       }
       if (onOutput) {
-        onOutput('stderr', text);
+        try {
+          onOutput('stderr', text);
+        } catch {
+          // Ignore consumer callback failures; continue collecting output.
+        }
       }
     });
 

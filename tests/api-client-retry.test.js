@@ -99,6 +99,61 @@ describe('api-client callOneMin', () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
+  test('does not retry a POST merely because its path looks like a chat endpoint', async () => {
+    const { callOneMin } = await import('../utils/api-client.js');
+    const { serverConfig } = await import('../config/server.js');
+    const previousAttempts = serverConfig.apiRetryAttempts;
+    const previousDelay = serverConfig.apiRetryDelay;
+    serverConfig.apiRetryAttempts = 2;
+    serverConfig.apiRetryDelay = 0;
+    mockFetch([jsonResponse({ error: 'temporary failure' }, 503)]);
+
+    try {
+      await expect(
+        callOneMin('/api/chat-with-ai', {
+          method: 'POST',
+          body: '{}',
+        }),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    } finally {
+      serverConfig.apiRetryAttempts = previousAttempts;
+      serverConfig.apiRetryDelay = previousDelay;
+    }
+  });
+
+  test('waits only once for each transient response retry', async () => {
+    const { callOneMin } = await import('../utils/api-client.js');
+    const { serverConfig } = await import('../config/server.js');
+    const previousAttempts = serverConfig.apiRetryAttempts;
+    const previousDelay = serverConfig.apiRetryDelay;
+    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
+    serverConfig.apiRetryAttempts = 1;
+    serverConfig.apiRetryDelay = 1000;
+    mockFetch([jsonResponse({ error: 'temporary failure' }, 503), jsonResponse({ ok: true })]);
+    jest.useFakeTimers();
+
+    try {
+      const requestPromise = callOneMin('/api/models', {
+        method: 'GET',
+        timeout: 60_000,
+      });
+      await jest.advanceTimersByTimeAsync(0);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+      await jest.advanceTimersByTimeAsync(1000);
+      // The retry is issued after one base backoff, not after the same delay
+      // a second time at the top of the loop.
+      expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+      await expect(requestPromise).resolves.toEqual({ ok: true });
+    } finally {
+      jest.useRealTimers();
+      randomSpy.mockRestore();
+      serverConfig.apiRetryAttempts = previousAttempts;
+      serverConfig.apiRetryDelay = previousDelay;
+    }
+  });
+
   // ----------------------------------------------------------------
   // Timeout throws 408
   // ----------------------------------------------------------------
@@ -144,6 +199,25 @@ describe('api-client callOneMin', () => {
       }),
     ).rejects.toMatchObject({ status: 408 });
   }, 10_000);
+
+  test('maps Node/undici TimeoutError to 408', async () => {
+    const timeoutError = new Error('The operation was aborted due to timeout');
+    timeoutError.name = 'TimeoutError';
+    timeoutError.code = 23;
+    globalThis.fetch = jest.fn(async () => {
+      throw timeoutError;
+    });
+
+    const { callOneMin } = await import('../utils/api-client.js');
+    await expect(
+      callOneMin('/api/chat-with-ai', {
+        method: 'POST',
+        body: '{}',
+        idempotent: false,
+        timeout: 1000,
+      }),
+    ).rejects.toMatchObject({ status: 408 });
+  });
 
   // ----------------------------------------------------------------
   // Cancellation by the caller's signal must surface 499, not 408.

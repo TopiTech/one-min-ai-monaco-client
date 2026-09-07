@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { spawn } from 'child_process';
 import { StringDecoder } from 'string_decoder';
 import { executeCommand, checkCommandSafety, killProcessTree } from '../services/command-runner.js';
+import { getSafeEnv } from '../utils/env-guard.js';
 import { detectBinaryContent } from '../utils/mime-guard.js';
 import {
   validatePath,
@@ -23,25 +24,31 @@ import { atomicWriteTextFile, readSpecificLines } from '../utils/fs-utils.js';
 import { countTokensMultiple } from '../utils/tokenizer.js';
 
 const sessionCreateSchema = z.object({
-  id: z.string().optional(),
-  cwd: z.string().optional(),
-  task: z.string().optional(),
+  id: z.string().max(128, 'session id is too long').optional(),
+  cwd: z.string().max(4096, 'cwd is too long').optional(),
+  task: z.string().max(50000, 'task exceeds 50000 characters').optional(),
 });
 
 const commandExecuteSchema = z.object({
-  command: z.string({ message: 'command is required' }).min(1, 'command is required'),
-  cwd: z.string().optional(),
+  command: z
+    .string({ message: 'command is required' })
+    .min(1, 'command is required')
+    .max(4096, 'command exceeds 4096 characters'),
+  cwd: z.string().max(4096, 'cwd is too long').optional(),
   timeoutMs: z.number().int().positive().optional(),
 });
 
 const approveSchema = z.object({
-  approvalToken: z.string({ message: 'approvalToken is required' }).min(1, 'approvalToken is required'),
+  approvalToken: z
+    .string({ message: 'approvalToken is required' })
+    .min(1, 'approvalToken is required')
+    .max(128, 'approvalToken is too long'),
   timeoutMs: z.number().int().positive().optional(),
 });
 
 const fileReadSchema = z
   .object({
-    path: z.string({ message: 'path is required' }).min(1, 'path is required'),
+    path: z.string({ message: 'path is required' }).min(1, 'path is required').max(4096, 'path is too long'),
     startLine: z.preprocess(
       (val) => (val === undefined || val === null || val === '' ? undefined : Number(val)),
       z.number().int().min(1).optional(),
@@ -65,13 +72,19 @@ const fileReadSchema = z
   );
 
 const fileWriteSchema = z.object({
-  path: z.string({ message: 'path is required' }).min(1, 'path is required'),
-  content: z.string().optional(),
+  path: z.string({ message: 'path is required' }).min(1, 'path is required').max(4096, 'path is too long'),
+  content: z
+    .string()
+    .max(2 * 1024 * 1024, 'content exceeds 2MB')
+    .optional(),
 });
 
 const searchSchema = z.object({
-  query: z.string({ message: 'query is required' }).min(1, 'query is required'),
-  dir: z.string().optional(),
+  query: z
+    .string({ message: 'query is required' })
+    .min(1, 'query is required')
+    .max(4096, 'query is too long'),
+  dir: z.string().max(4096, 'dir is too long').optional(),
   maxResults: z.preprocess(
     (val) => (val === undefined ? undefined : Number(val)),
     z.number().int().positive().max(100).optional().default(20),
@@ -79,9 +92,13 @@ const searchSchema = z.object({
 });
 
 const fileDiffSchema = z.object({
-  path: z.string({ message: 'path is required' }).min(1, 'path is required'),
-  diff: z.string({ message: 'diff is required' }),
+  path: z.string({ message: 'path is required' }).min(1, 'path is required').max(4096, 'path is too long'),
+  diff: z.string({ message: 'diff is required' }).max(500000, 'diff exceeds 500000 characters'),
   dryRun: z.boolean().optional().default(false),
+});
+
+const directoryQuerySchema = z.object({
+  path: z.string().max(4096, 'path is too long').optional(),
 });
 
 const MAX_DIR_ENTRIES = 5000;
@@ -109,6 +126,20 @@ function getSession(req, res) {
   }
   session.lastAccessedAt = Date.now();
   return session;
+}
+
+/**
+ * Atomically transition a session to running. The status check must be
+ * serialized with the transition; a plain check followed by assignment lets
+ * two concurrent HTTP requests execute commands in the same session.
+ */
+async function beginSessionCommand(session) {
+  return sessionLock.acquire(session.id, async () => {
+    if (session.status === 'running') return false;
+    session.status = 'running';
+    session.runningSince = Date.now();
+    return true;
+  });
 }
 
 const router = express.Router();
@@ -214,6 +245,8 @@ function createDebouncedFileWriter(filePath, serialize, { delayMs = 50, label = 
 
 // --- Pending Commands Persistence ---
 
+const PENDING_COMMAND_TTL_MS = 5 * 60 * 1000;
+
 // Cache the pending-commands-load promise so it runs exactly once.
 let _pendingLoadReady = null;
 
@@ -226,10 +259,10 @@ async function loadPendingCommands() {
       const data = await fs.readFile(PENDING_COMMANDS_FILE, 'utf-8');
       const parsed = JSON.parse(data);
       const now = Date.now();
-      const FIVE_MIN = 5 * 60 * 1000;
       for (const [token, pending] of Object.entries(parsed)) {
         // Discard tokens that already expired while the server was down.
-        if (now - pending.createdAt > FIVE_MIN) continue;
+        const createdAt = Number(pending?.createdAt);
+        if (!Number.isFinite(createdAt) || now - createdAt > PENDING_COMMAND_TTL_MS) continue;
         pendingCommands.set(token, pending);
       }
       logger.info(`Loaded ${pendingCommands.size} pending commands from persistence`);
@@ -390,7 +423,8 @@ function cleanupExpiredSessions() {
     }
   }
   for (const [token, pending] of pendingCommands) {
-    if (now - pending.createdAt > 5 * 60 * 1000) {
+    const createdAt = Number(pending?.createdAt);
+    if (!Number.isFinite(createdAt) || now - createdAt > PENDING_COMMAND_TTL_MS) {
       pendingCommands.delete(token);
     }
   }
@@ -437,6 +471,10 @@ router.post('/sessions', async (req, res, next) => {
       return res.status(400).json({ error: result.error.issues[0]?.message || 'Validation error' });
     const { id, cwd, task } = result.data;
     const sessionId = id || crypto.randomUUID();
+
+    if (sessions.has(sessionId)) {
+      return res.status(409).json({ error: 'Session ID already exists' });
+    }
 
     let validatedCwd;
     if (cwd) {
@@ -546,6 +584,10 @@ router.post('/sessions/:id/commands', async (req, res, next) => {
       });
     }
 
+    if (session.status === 'running') {
+      return res.status(409).json({ error: 'A command is already running in this session.' });
+    }
+
     const resultBody = commandExecuteSchema.safeParse(req.body);
     if (!resultBody.success)
       return res.status(400).json({ error: resultBody.error.issues[0]?.message || 'Validation error' });
@@ -608,8 +650,9 @@ router.post('/sessions/:id/commands', async (req, res, next) => {
       });
     }
 
-    session.status = 'running';
-    session.runningSince = Date.now();
+    if (!(await beginSessionCommand(session))) {
+      return res.status(409).json({ error: 'A command is already running in this session.' });
+    }
     logger.info(`Executing command (auto-approved or bypass-auth)`, {
       sessionId: req.params.id,
       command: command.split(/\s+/)[0],
@@ -645,6 +688,7 @@ router.post('/sessions/:id/commands', async (req, res, next) => {
       throw err;
     } finally {
       session.status = 'idle';
+      delete session.runningSince;
     }
     logger.info(`Command execution finished`, {
       sessionId: req.params.id,
@@ -691,17 +735,27 @@ router.post('/sessions/:id/approve', async (req, res, next) => {
     const { approvalToken, timeoutMs } = resultBody.data;
 
     const isStream = req.query.stream === 'true';
-    if (!pendingCommands.has(approvalToken)) {
+    const pending = pendingCommands.get(approvalToken);
+    if (!pending) {
       return res.status(400).json({ error: 'Invalid or expired approval token' });
     }
 
-    const pending = pendingCommands.get(approvalToken);
-    pendingCommands.delete(approvalToken);
-    savePendingCommands();
+    const createdAt = Number(pending.createdAt);
+    if (!Number.isFinite(createdAt) || Date.now() - createdAt > PENDING_COMMAND_TTL_MS) {
+      pendingCommands.delete(approvalToken);
+      savePendingCommands();
+      return res.status(400).json({ error: 'Invalid or expired approval token' });
+    }
 
     // Verify session ID matches
     if (pending.sessionId !== req.params.id) {
       return res.status(403).json({ error: 'Session ID mismatch' });
+    }
+
+    // Do not consume a valid approval token while another command is active;
+    // the caller can retry after that command finishes.
+    if (session.status === 'running') {
+      return res.status(409).json({ error: 'A command is already running in this session.' });
     }
 
     // Re-verify safety before execution
@@ -717,8 +771,17 @@ router.post('/sessions/:id/approve', async (req, res, next) => {
     validatePath(workingDir);
     assertNotProtectedPath(workingDir);
 
-    session.status = 'running';
-    session.runningSince = Date.now();
+    const started = await sessionLock.acquire(session.id, async () => {
+      if (session.status === 'running') return false;
+      pendingCommands.delete(approvalToken);
+      session.status = 'running';
+      session.runningSince = Date.now();
+      return true;
+    });
+    if (!started) {
+      return res.status(409).json({ error: 'A command is already running in this session.' });
+    }
+    savePendingCommands();
     logger.info(`Executing approved command`, {
       sessionId: req.params.id,
       command: pending.command.split(/\s+/)[0],
@@ -754,6 +817,7 @@ router.post('/sessions/:id/approve', async (req, res, next) => {
       throw err;
     } finally {
       session.status = 'idle';
+      delete session.runningSince;
     }
     logger.info(`Approved command finished`, {
       sessionId: req.params.id,
@@ -904,7 +968,11 @@ let _isRgAvailable = null;
 async function checkRgAvailable() {
   if (_isRgAvailable !== null) return _isRgAvailable;
   return new Promise((resolve) => {
-    const child = spawn('rg', ['--version'], { stdio: 'ignore' });
+    const child = spawn('rg', ['--version'], {
+      stdio: 'ignore',
+      env: getSafeEnv(),
+      windowsHide: true,
+    });
     child.on('close', (code) => {
       _isRgAvailable = code === 0;
       resolve(_isRgAvailable);
@@ -938,7 +1006,10 @@ async function searchWithRg(dir, query, maxResults) {
       dir,
     ];
 
-    const child = spawn('rg', args);
+    const child = spawn('rg', args, {
+      env: getSafeEnv(),
+      windowsHide: true,
+    });
     // Bound the search so a huge tree or slow filesystem cannot hold the
     // request open forever; matches command-runner's timeout policy and
     // keeps the process killable during shutdown.
@@ -975,25 +1046,12 @@ async function searchWithRg(dir, query, maxResults) {
     function processLine(rawLine) {
       if (results.length >= maxResults) return false;
       if (!rawLine.trim()) return true;
-      const parts = rawLine.split(':');
-      if (parts.length < 3) return true;
-
-      let file;
-      let lineNumStr;
-      let content;
-
-      if (process.platform === 'win32' && parts[0].length === 1 && /^[a-zA-Z]$/.test(parts[0])) {
-        file = parts[0] + ':' + parts[1];
-        lineNumStr = parts[2];
-        content = parts.slice(3).join(':');
-      } else {
-        file = parts[0];
-        lineNumStr = parts[1];
-        content = parts.slice(2).join(':');
-      }
-
-      const lineNum = parseInt(lineNumStr, 10);
-      if (isNaN(lineNum)) return true;
+      // Use the final `:<line>:<content>` boundary so Windows drive letters
+      // and colons in either filenames or matching lines are preserved.
+      const match = rawLine.match(/^(.+):(\d+):(.*)$/);
+      if (!match) return true;
+      const [, file, lineNumStr, content] = match;
+      const lineNum = Number.parseInt(lineNumStr, 10);
       try {
         const resolvedFile = validatePath(file);
         assertNotProtectedPath(resolvedFile);
@@ -1064,9 +1122,13 @@ router.get('/sessions/:id/search', async (req, res, next) => {
     const rgAvailable = await checkRgAvailable();
     if (rgAvailable) {
       results = await searchWithRg(resolvedSearchDir, query, limit);
-    }
-
-    if (results === null) {
+      if (results === null) {
+        // Ripgrep was available, so a process error/timeout is not equivalent
+        // to "no matches". Falling back to a recursive JS scan here can turn
+        // a bounded request into an unexpectedly expensive second scan.
+        return res.status(503).json({ error: 'Search process failed or timed out.' });
+      }
+    } else {
       results = [];
       await searchInDirectory(resolvedSearchDir, query, results, limit);
     }
@@ -1102,7 +1164,8 @@ async function searchInDirectory(dir, query, results, maxResults, depth = 0) {
       const fullPath = path.join(dir, entry.name);
 
       try {
-        validatePath(fullPath);
+        const validatedPath = validatePath(fullPath);
+        assertNotProtectedPath(validatedPath);
       } catch {
         continue;
       }
@@ -1118,6 +1181,7 @@ async function searchInDirectory(dir, query, results, maxResults, depth = 0) {
       } else if (entry.isFile()) {
         try {
           const revalidated = revalidateRealPath(fullPath);
+          assertNotProtectedPath(revalidated);
           const stat = await fs.stat(revalidated);
           if (stat.size > 256 * 1024) continue;
 
@@ -1152,7 +1216,11 @@ router.get('/sessions/:id/dir', async (req, res, next) => {
     const session = getSession(req, res);
     if (!session) return;
 
-    const dirPath = req.query.path || session.cwd;
+    const resultQuery = directoryQuerySchema.safeParse(req.query);
+    if (!resultQuery.success) {
+      return res.status(400).json({ error: resultQuery.error.issues[0]?.message || 'Validation error' });
+    }
+    const dirPath = resultQuery.data.path || session.cwd;
     const resolvedPath = validatePath(dirPath);
     assertNotProtectedPath(resolvedPath);
 
@@ -1196,6 +1264,16 @@ router.post('/sessions/:id/diff', async (req, res, next) => {
     assertNotWriteProtectedPath(resolvedPath);
     const realPath = revalidateRealPath(resolvedPath);
     assertNotWriteProtectedPath(realPath);
+
+    const stat = await fs.stat(realPath);
+    if (!stat.isFile()) {
+      return res.status(400).json({ error: 'Specified path is not a file' });
+    }
+    if (stat.size > serverConfig.agentMaxReadSize) {
+      return res.status(413).json({
+        error: `File size (${stat.size} bytes) exceeds maximum read size (${serverConfig.agentMaxReadSize} bytes)`,
+      });
+    }
 
     const content = await fs.readFile(realPath, 'utf-8');
 

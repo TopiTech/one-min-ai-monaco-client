@@ -108,6 +108,17 @@ describe('config/server.js env validation', () => {
     expect(c.serverConfig.maxFileSize).toBe(25 * 1024 * 1024);
   });
 
+  test('MAX_JSON_BODY_SIZE is also bounded by the 100MB safety limit', async () => {
+    process.env.MAX_JSON_BODY_SIZE = '200mb';
+    const c = await loadConfig();
+    expect(c.serverConfig.maxJsonBodySize).toBe('2mb');
+
+    jest.resetModules();
+    process.env.MAX_JSON_BODY_SIZE = '4mb';
+    const c2 = await loadConfig();
+    expect(c2.serverConfig.maxJsonBodySize).toBe('4mb');
+  });
+
   test('MAX_COMMAND_OUTPUT_SIZE parses byte sizes and defaults to 10MB', async () => {
     jest.resetModules();
     process.env.MAX_COMMAND_OUTPUT_SIZE = '5mb';

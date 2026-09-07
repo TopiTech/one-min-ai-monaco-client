@@ -192,6 +192,23 @@ describe('Agent Approval Flow', () => {
       expect(mockExecuteCommand).not.toHaveBeenCalled();
     });
 
+    test('rejects approval tokens after their five-minute lifetime', async () => {
+      const createdAt = Date.now();
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(createdAt + 5 * 60 * 1000 + 1);
+
+      try {
+        const response = await request(app)
+          .post(`/api/agent/sessions/${sessionId}/approve`)
+          .send({ approvalToken: validToken });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toBe('Invalid or expired approval token');
+        expect(mockExecuteCommand).not.toHaveBeenCalled();
+      } finally {
+        nowSpy.mockRestore();
+      }
+    });
+
     test('returns 400 or 403 for missing approval token', async () => {
       const response = await request(app).post(`/api/agent/sessions/${sessionId}/approve`).send({});
 
@@ -216,6 +233,24 @@ describe('Agent Approval Flow', () => {
       expect(response.status).toBe(403);
       expect(response.body.error).toBe('Session ID mismatch');
       expect(mockExecuteCommand).not.toHaveBeenCalled();
+    });
+
+    test('does not consume a valid token when another session presents it', async () => {
+      const res2 = await request(app)
+        .post('/api/agent/sessions')
+        .send({ cwd: process.cwd(), task: 'Second session' });
+      const secondSessionId = res2.body.session.id;
+
+      const mismatch = await request(app)
+        .post(`/api/agent/sessions/${secondSessionId}/approve`)
+        .send({ approvalToken: validToken });
+      expect(mismatch.status).toBe(403);
+
+      const approved = await request(app)
+        .post(`/api/agent/sessions/${sessionId}/approve`)
+        .send({ approvalToken: validToken });
+      expect(approved.status).toBe(200);
+      expect(approved.body.executed).toBe(true);
     });
 
     test('re-executes safety check before approving', async () => {
