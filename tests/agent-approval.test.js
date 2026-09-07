@@ -73,6 +73,7 @@ jest.unstable_mockModule('../services/command-runner.js', () => ({
 }));
 
 const { createApp } = await import('../server.js');
+const { serverConfig } = await import('../config/server.js');
 
 describe('Agent Approval Flow', () => {
   let app;
@@ -268,6 +269,23 @@ describe('Agent Approval Flow', () => {
 
       expect(response.status).toBe(200);
       expect(mockExecuteCommand).toHaveBeenCalled();
+    });
+
+    test('does not execute a pending command after command execution is disabled', async () => {
+      const previousValue = serverConfig.enableCommandExecution;
+      serverConfig.enableCommandExecution = false;
+
+      try {
+        const response = await request(app)
+          .post(`/api/agent/sessions/${sessionId}/approve`)
+          .send({ approvalToken: validToken });
+
+        expect(response.status).toBe(403);
+        expect(response.body.error).toContain('Command execution is disabled');
+        expect(mockExecuteCommand).not.toHaveBeenCalled();
+      } finally {
+        serverConfig.enableCommandExecution = previousValue;
+      }
     });
   });
 });

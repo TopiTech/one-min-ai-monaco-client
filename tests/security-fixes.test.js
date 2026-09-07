@@ -201,6 +201,42 @@ describe('Security fixes regression', () => {
     });
   });
 
+  describe('image request bounds', () => {
+    test('rejects fractional or out-of-range image counts', async () => {
+      callOneMin.mockResolvedValue({ aiRecord: { status: 'SUCCESS' } });
+      const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
+
+      for (const num_outputs of [1.5, 0, 11]) {
+        const res = await request(app)
+          .post('/api/images/generate')
+          .send({ prompt: 'a cat', model: 'gpt-image-2', num_outputs });
+        expect(res.status).toBe(400);
+      }
+
+      const editor = await request(app)
+        .post('/api/images/text-editor')
+        .send({ imageUrl: 'images/source.png', prompt: 'edit', model: 'gpt-image-2', n: 1.5 });
+      expect(editor.status).toBe(400);
+      expect(callOneMin).not.toHaveBeenCalled();
+    });
+
+    test('rejects oversized image prompts and asset references before upstream calls', async () => {
+      callOneMin.mockResolvedValue({ aiRecord: { status: 'SUCCESS' } });
+      const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
+
+      const prompt = await request(app)
+        .post('/api/images/generate')
+        .send({ prompt: 'x'.repeat(50_001), model: 'gpt-image-2' });
+      expect(prompt.status).toBe(400);
+
+      const imageUrl = await request(app)
+        .post('/api/images/text-editor')
+        .send({ imageUrl: 'x'.repeat(4097), prompt: 'edit', model: 'gpt-image-2' });
+      expect(imageUrl.status).toBe(400);
+      expect(callOneMin).not.toHaveBeenCalled();
+    });
+  });
+
   describe('command-runner injection gaps', () => {
     test("blocks trailing '&' backgrounding", () => {
       const r = checkCommandSafety('npm test &');

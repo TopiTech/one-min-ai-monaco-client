@@ -7,22 +7,27 @@ import { getDefaultModel, outputCompressionSchema } from './utils.js';
 
 const router = express.Router();
 
+const IMAGE_PROMPT_MAX_LENGTH = 50_000;
+const IMAGE_REFERENCE_MAX_LENGTH = 4096;
+const IMAGE_MODEL_MAX_LENGTH = 200;
+const IMAGE_SIZE_MAX_LENGTH = 32;
+
+const imagePromptSchema = z
+  .string({ message: 'prompt is required' })
+  .max(IMAGE_PROMPT_MAX_LENGTH, `prompt exceeds ${IMAGE_PROMPT_MAX_LENGTH} characters`)
+  .refine((val) => val.trim().length > 0, { message: 'prompt is required' });
+
+const imageCountSchema = z
+  .number()
+  .int('image count must be an integer')
+  .min(1, 'image count must be between 1 and 10')
+  .max(10, 'image count must be between 1 and 10');
+
 const imageGenerateSchema = z
   .object({
-    prompt: z.preprocess(
-      (val) => (val === undefined || val === null ? '' : String(val)),
-      z
-        .string({ message: 'prompt is required' })
-        .refine((val) => val.trim().length > 0, { message: 'prompt is required' }),
-    ),
-    model: z.string().optional(),
-    num_outputs: z.preprocess(
-      (val) => (val === undefined ? 1 : Number(val)),
-      z
-        .number()
-        .min(1, 'num_outputs must be between 1 and 10')
-        .max(10, 'num_outputs must be between 1 and 10'),
-    ),
+    prompt: z.preprocess((val) => (val === undefined || val === null ? '' : String(val)), imagePromptSchema),
+    model: z.string().max(IMAGE_MODEL_MAX_LENGTH, 'model is too long').optional(),
+    num_outputs: z.preprocess((val) => (val === undefined ? 1 : Number(val)), imageCountSchema),
     aspect_ratio: z.string().default('1:1'),
     quality: z.string().default('medium'),
     background: z.string().default('auto'),
@@ -33,7 +38,7 @@ const imageGenerateSchema = z
         message: 'output_format must be one of: png, webp, jpeg, jpg',
       }),
     output_compression: outputCompressionSchema,
-    size: z.string().optional(),
+    size: z.string().max(IMAGE_SIZE_MAX_LENGTH, 'size is too long').optional(),
   })
   .superRefine((data, ctx) => {
     const selectedModel = data.model || getDefaultModel('IMAGE_GENERATOR');
@@ -54,18 +59,14 @@ const imageEditorSchema = z
       (val) => (val === undefined || val === null ? '' : String(val)),
       z
         .string({ message: 'imageUrl or asset key is required' })
+        .max(IMAGE_REFERENCE_MAX_LENGTH, `imageUrl exceeds ${IMAGE_REFERENCE_MAX_LENGTH} characters`)
         .refine((val) => val.trim().length > 0, { message: 'imageUrl or asset key is required' }),
     ),
-    prompt: z.preprocess(
-      (val) => (val === undefined || val === null ? '' : String(val)),
-      z
-        .string({ message: 'prompt is required' })
-        .refine((val) => val.trim().length > 0, { message: 'prompt is required' }),
-    ),
-    model: z.string().optional(),
-    size: z.string().default('1024x1024'),
+    prompt: z.preprocess((val) => (val === undefined || val === null ? '' : String(val)), imagePromptSchema),
+    model: z.string().max(IMAGE_MODEL_MAX_LENGTH, 'model is too long').optional(),
+    size: z.string().max(IMAGE_SIZE_MAX_LENGTH, 'size is too long').default('1024x1024'),
     quality: z.string().default('medium'),
-    n: z.preprocess((val) => (val === undefined ? 1 : Number(val)), z.number().default(1)),
+    n: z.preprocess((val) => (val === undefined ? 1 : Number(val)), imageCountSchema.default(1)),
     background: z.string().default('auto'),
     output_format: z.string().default('webp'),
     output_compression: outputCompressionSchema,

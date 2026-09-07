@@ -141,13 +141,15 @@ function renderPickerList(models, search = '', tag = 'all') {
     );
   }
 
-  const groups = {};
+  // Use a Map instead of a plain object so an upstream provider name such as
+  // "__proto__" cannot change the grouping object's prototype or crash the UI.
+  const groups = new Map();
   for (const m of filtered) {
-    if (!groups[m.provider]) groups[m.provider] = [];
-    groups[m.provider].push(m);
+    if (!groups.has(m.provider)) groups.set(m.provider, []);
+    groups.get(m.provider).push(m);
   }
 
-  if (!Object.keys(groups).length) {
+  if (!groups.size) {
     const emptyDiv = document.createElement('div');
     emptyDiv.className = 'model-picker-empty';
     emptyDiv.textContent = t('model_not_found');
@@ -155,7 +157,7 @@ function renderPickerList(models, search = '', tag = 'all') {
     return;
   }
 
-  for (const [provider, items] of Object.entries(groups)) {
+  for (const [provider, items] of groups.entries()) {
     const header = document.createElement('div');
     header.className = `model-picker-group-header model-picker-group-header--${providerToSlug(provider)}`;
     header.textContent = provider;

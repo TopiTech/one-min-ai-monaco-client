@@ -596,9 +596,11 @@ router.post('/sessions/:id/commands', async (req, res, next) => {
     const isStream = req.query.stream === 'true';
 
     // Validate working directory
-    const workingDir = path.resolve(resolveAgentPath(cwd || session.cwd, session.cwd));
+    let workingDir = path.resolve(resolveAgentPath(cwd || session.cwd, session.cwd));
     try {
-      validatePath(workingDir);
+      // Keep using the canonical path returned by validatePath. This avoids
+      // executing from a symlink that changes after the initial check.
+      workingDir = validatePath(workingDir);
       assertNotProtectedPath(workingDir);
     } catch (err) {
       return res.status(403).json({ error: `Invalid working directory: ${err.message}` });
@@ -729,6 +731,14 @@ router.post('/sessions/:id/approve', async (req, res, next) => {
     const session = getSession(req, res);
     if (!session) return;
 
+    // A pending approval may have survived a restart. Re-check the current
+    // feature flag here so persisted tokens cannot bypass a disabled runner.
+    if (!serverConfig.enableCommandExecution) {
+      return res.status(403).json({
+        error: 'Command execution is disabled. Set ENABLE_COMMAND_EXECUTION=true to enable.',
+      });
+    }
+
     const resultBody = approveSchema.safeParse(req.body);
     if (!resultBody.success)
       return res.status(400).json({ error: resultBody.error.issues[0]?.message || 'Validation error' });
@@ -768,8 +778,8 @@ router.post('/sessions/:id/approve', async (req, res, next) => {
     }
 
     const workingDir = path.resolve(resolveAgentPath(pending.cwd, session.cwd));
-    validatePath(workingDir);
-    assertNotProtectedPath(workingDir);
+    const validatedWorkingDir = validatePath(workingDir);
+    assertNotProtectedPath(validatedWorkingDir);
 
     const started = await sessionLock.acquire(session.id, async () => {
       if (session.status === 'running') return false;
@@ -803,7 +813,7 @@ router.post('/sessions/:id/approve', async (req, res, next) => {
       }
 
       result = await executeCommand(pending.command, {
-        cwd: workingDir,
+        cwd: validatedWorkingDir,
         timeoutMs: timeoutMs || serverConfig.commandTimeoutMs,
         onOutput,
       });
@@ -828,7 +838,7 @@ router.post('/sessions/:id/approve', async (req, res, next) => {
     await addHistoryEntry(session, {
       type: 'command',
       command: pending.command,
-      cwd: workingDir,
+      cwd: validatedWorkingDir,
       result,
       approved: true,
       timestamp: new Date().toISOString(),
@@ -837,14 +847,14 @@ router.post('/sessions/:id/approve', async (req, res, next) => {
     if (isStream) {
       res.write(`event: done\n`);
       res.write(
-        `data: ${JSON.stringify({ executed: true, command: pending.command, cwd: workingDir, ...result })}\n\n`,
+        `data: ${JSON.stringify({ executed: true, command: pending.command, cwd: validatedWorkingDir, ...result })}\n\n`,
       );
       res.end();
     } else {
       res.json({
         executed: true,
         command: pending.command,
-        cwd: workingDir,
+        cwd: validatedWorkingDir,
         ...result,
       });
     }

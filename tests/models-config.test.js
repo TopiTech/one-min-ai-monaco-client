@@ -184,5 +184,35 @@ describe('config/models.js', () => {
 
       expect(getModelSyncStatus().ok).toBe(true);
     });
+
+    test('normalizes malformed entries and removes duplicate model IDs', async () => {
+      mockFetchJson({
+        models: [
+          { type: 'CHAT', id: 'safe-chat', label: 'Safe Chat', provider: '__proto__', tags: ['fast'] },
+          { type: 'CHAT', id: 'safe-chat', label: 'Duplicate', provider: 'Other' },
+          { type: 'CHAT', label: 'Missing ID', provider: 'Other' },
+          null,
+          { type: 'CHAT', id: 'fallback-label', provider: 'Other' },
+        ],
+      });
+
+      const { fetchModels, getChatModels } = await import('../config/models.js');
+      await fetchModels();
+
+      expect(getChatModels()).toEqual([
+        expect.objectContaining({
+          id: 'safe-chat',
+          label: 'Safe Chat',
+          provider: '__proto__',
+          tags: ['fast'],
+        }),
+        expect.objectContaining({
+          id: 'fallback-label',
+          label: 'fallback-label',
+          provider: 'Other',
+          tags: [],
+        }),
+      ]);
+    });
   });
 });

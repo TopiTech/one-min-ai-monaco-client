@@ -164,6 +164,14 @@
 
 画像の生成と編集は、汎用の AI Feature エンドポイント (`POST /api/features`) を使用します。
 
+このBFFの画像エンドポイント (`/api/images/generate`、`/api/images/text-editor`) では、上流APIへの過大な
+リクエストや不正な枚数を防ぐため、次の入力制限を適用します。
+
+- `prompt`: 最大50,000文字
+- `imageUrl`: 最大4,096文字
+- `num_outputs` / `n`: 1〜10の整数
+- `size`: 最大32文字（gpt-imageモデルでは下記の解像度制約も適用）
+
 ### A. 新規画像生成 (IMAGE_GENERATOR)
 
 - **エンドポイント**: `POST /api/features`
