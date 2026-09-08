@@ -2,7 +2,12 @@
  * Unit tests for command-runner service
  */
 
-import { checkCommandSafety, executeCommand } from '../services/command-runner.js';
+import {
+  checkCommandSafety,
+  executeCommand,
+  killProcessTree,
+  killProcess,
+} from '../services/command-runner.js';
 
 describe('command-runner', () => {
   describe('checkCommandSafety', () => {
@@ -122,6 +127,31 @@ describe('command-runner', () => {
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('killProcessTree', () => {
+    test('does not throw or fail for null or undefined child process', () => {
+      expect(() => killProcessTree(null)).not.toThrow();
+      expect(() => killProcessTree(undefined)).not.toThrow();
+    });
+
+    test('ignores child process that has already exited', () => {
+      expect(() => killProcessTree({ exitCode: 0, pid: 1234 })).not.toThrow();
+    });
+
+    test('ignores child process with invalid or non-positive pid', () => {
+      expect(() => killProcessTree({ exitCode: null, pid: undefined })).not.toThrow();
+      expect(() => killProcessTree({ exitCode: null, pid: null })).not.toThrow();
+      expect(() => killProcessTree({ exitCode: null, pid: -1 })).not.toThrow();
+      expect(() => killProcessTree({ exitCode: null, pid: 0 })).not.toThrow();
+      expect(() => killProcessTree({ exitCode: null, pid: NaN })).not.toThrow();
+      expect(() => killProcessTree({ exitCode: null, pid: '123' })).not.toThrow();
+    });
+
+    test('killProcess delegates to killProcessTree without error', () => {
+      expect(() => killProcess(null)).not.toThrow();
+      expect(() => killProcess({ exitCode: null, pid: undefined })).not.toThrow();
     });
   });
 });

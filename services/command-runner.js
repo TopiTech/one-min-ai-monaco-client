@@ -479,6 +479,7 @@ export async function executeCommand(command, options = {}) {
 export function killProcessTree(childProcess, force = false) {
   if (!childProcess || childProcess.exitCode !== null) return;
   const pid = childProcess.pid;
+  if (!Number.isInteger(pid) || pid <= 0) return;
   try {
     if (platform() === 'win32') {
       // SEC-KILL-1: Handle taskkill errors to detect zombie processes.

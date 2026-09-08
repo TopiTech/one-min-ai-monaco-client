@@ -21,6 +21,10 @@ const LOCAL_STORAGE_KEYS = [
   'monaco_client_credit_saving',
   'monaco_client_perf_mode',
   'monaco_client_theme',
+  'monaco_client_font_size',
+  'monaco_client_word_wrap',
+  'monaco_client_minimap',
+  'monaco_client_tab_size',
   'diffRenderInline',
 ];
 

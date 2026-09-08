@@ -367,4 +367,33 @@ replaced
       expect(response.status).toBe(403);
     });
   });
+
+  describe('DELETE /api/agent/sessions/:id and /api/agent/sessions/all', () => {
+    test('should delete an individual session', async () => {
+      // Create another session to test deletion
+      const res = await request(app)
+        .post('/api/agent/sessions')
+        .send({ cwd: process.cwd(), task: 'Task to delete' });
+      const idToDelete = res.body.session.id;
+
+      const deleteRes = await request(app).delete(`/api/agent/sessions/${idToDelete}`);
+      expect(deleteRes.status).toBe(200);
+      expect(deleteRes.body.ok).toBe(true);
+
+      const getRes = await request(app).get(`/api/agent/sessions/${idToDelete}`);
+      expect(getRes.status).toBe(404);
+    });
+
+    test('should return 404 when deleting non-existent session', async () => {
+      const deleteRes = await request(app).delete('/api/agent/sessions/non-existent-session-id');
+      expect(deleteRes.status).toBe(404);
+    });
+
+    test('should delete all idle sessions', async () => {
+      const clearRes = await request(app).delete('/api/agent/sessions/all');
+      expect(clearRes.status).toBe(200);
+      expect(clearRes.body.ok).toBe(true);
+      expect(typeof clearRes.body.cleared).toBe('number');
+    });
+  });
 });

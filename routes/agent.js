@@ -1527,6 +1527,38 @@ router.delete('/sessions/all', (req, res, next) => {
 });
 
 /**
+ * Delete a specific session and its pending commands.
+ */
+router.delete('/sessions/:id', async (req, res, next) => {
+  try {
+    const session = getSession(req, res);
+    if (!session) return;
+
+    if (session.status === 'running') {
+      return res.status(409).json({
+        error: 'Cannot delete a running session',
+      });
+    }
+
+    const sessionId = session.id;
+    sessions.delete(sessionId);
+
+    for (const [token, pending] of pendingCommands) {
+      if (pending.sessionId === sessionId) {
+        pendingCommands.delete(token);
+      }
+    }
+
+    await saveSessions();
+    savePendingCommands();
+    logger.info('Session deleted', { sessionId });
+    res.json({ ok: true, message: `Session ${sessionId} deleted` });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * Get allowed roots.
  */
 router.get('/config', (_req, res) => {

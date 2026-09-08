@@ -217,5 +217,10 @@ function getCookie(name) {
   // entry, so we expect `occurrences.length` to be `matchCount + 1`.
   if (occurrences.length !== 2) return null;
   const rawValue = occurrences[1].split(';')[0];
-  return rawValue ? decodeURIComponent(rawValue) : null;
+  if (!rawValue) return null;
+  try {
+    return decodeURIComponent(rawValue);
+  } catch {
+    return rawValue;
+  }
 }

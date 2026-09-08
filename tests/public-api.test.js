@@ -290,4 +290,26 @@ describe('public api wrapper', () => {
 
     await expect(api('/api/empty')).resolves.toEqual({});
   });
+
+  test('safely falls back without throwing when CSRF cookie contains malformed URI component', async () => {
+    global.fetch.mockResolvedValue(jsonResponse({ ok: true }));
+    const { api } = await loadApiModule({ cookie: '__bff_csrf=bad%token%' });
+
+    await expect(api('/api/health')).resolves.toEqual({ ok: true });
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/health',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'x-local-bff-token': 'bad%token%' }),
+      }),
+    );
+  });
+
+  test('does not forward CSRF header if CSRF cookie is duplicated (cookie injection guard)', async () => {
+    global.fetch.mockResolvedValue(jsonResponse({ ok: true }));
+    const { api } = await loadApiModule({ cookie: '__bff_csrf=first; __bff_csrf=second' });
+
+    await expect(api('/api/health')).resolves.toEqual({ ok: true });
+    const headers = global.fetch.mock.calls[0][1].headers;
+    expect(headers['x-local-bff-token']).toBeUndefined();
+  });
 });
