@@ -70,6 +70,21 @@ describe('AI Routes Integration Tests', () => {
       expect(response.body.error).toBe('prompt is required');
     });
 
+    test.each([
+      ['numOfSite', 0, 'numOfSite must be a number between 1 and 10'],
+      ['numOfSite', 11, 'numOfSite must be a number between 1 and 10'],
+      ['maxWord', 99, 'maxWord must be a number between 100 and 10000'],
+      ['maxWord', 10001, 'maxWord must be a number between 100 and 10000'],
+    ])('should reject out-of-range web-search %s', async (field, value, expectedError) => {
+      const response = await request(app)
+        .post('/api/chat')
+        .send({ ...testPayloads.chat, webSearch: true, [field]: value });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe(expectedError);
+      expect(callOneMin).not.toHaveBeenCalled();
+    });
+
     test('stream endpoint should preserve upstream JSON error status instead of returning SSE 200', async () => {
       callOneMin.mockResolvedValue({
         ok: false,

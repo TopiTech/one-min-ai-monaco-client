@@ -86,11 +86,21 @@ const chatRequestSchema = z.object({
   webSearch: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
   numOfSite: z.preprocess(
     (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
-    z.number().int().optional(),
+    z
+      .number()
+      .int()
+      .min(1, { message: 'numOfSite must be a number between 1 and 10' })
+      .max(10, { message: 'numOfSite must be a number between 1 and 10' })
+      .optional(),
   ),
   maxWord: z.preprocess(
     (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
-    z.number().int().optional(),
+    z
+      .number()
+      .int()
+      .min(100, { message: 'maxWord must be a number between 100 and 10000' })
+      .max(10000, { message: 'maxWord must be a number between 100 and 10000' })
+      .optional(),
   ),
   history: z.preprocess(
     (val) => (val === undefined ? true : val === 'true' || val === true),
