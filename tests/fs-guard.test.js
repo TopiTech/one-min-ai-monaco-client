@@ -363,5 +363,42 @@ describe('fs-guard', () => {
       process.env.ALLOWED_ROOTS = '/tmp';
       expect(() => validatePath('/etc/passwd')).toThrow('Access denied');
     });
+
+    // SEC-VAL-REGRESSION-1: Non-existent paths must still be validated against
+    // allowed roots. This prevents symlink-swap attacks where an attacker creates
+    // a symlink at a non-existent path that resolves outside allowed roots.
+    test('should reject non-existent path outside allowed roots', () => {
+      delete process.env.ALLOWED_ROOTS;
+      const nonExistentOutside = path.join(path.dirname(PROJECT_ROOT), 'nonexistent', 'file.txt');
+      expect(() => validatePath(nonExistentOutside)).toThrow('Access denied');
+    });
+
+    // SEC-VAL-REGRESSION-2: Non-existent path within allowed roots should be accepted.
+    test('should accept non-existent path within allowed roots', () => {
+      delete process.env.ALLOWED_ROOTS;
+      const nonExistentInside = path.join(PROJECT_ROOT, 'nonexistent', 'subdir', 'file.txt');
+      expect(validatePath(nonExistentInside)).toBe(nonExistentInside);
+    });
+
+    // SEC-VAL-REGRESSION-3: Path traversal via non-existent intermediate directories
+    // must be rejected.
+    test('should reject path traversal via non-existent intermediate', () => {
+      delete process.env.ALLOWED_ROOTS;
+      const traversalViaNonExistent = path.join(
+        PROJECT_ROOT,
+        'nonexistent',
+        '..',
+        '..',
+        'etc',
+        'passwd',
+      );
+      expect(() => validatePath(traversalViaNonExistent)).toThrow('Access denied');
+    });
+
+    // SEC-VAL-REGRESSION: Null byte injection must be rejected
+    test('should reject path with null byte injection', () => {
+      delete process.env.ALLOWED_ROOTS;
+      expect(() => validatePath('valid\0malicious')).toThrow('null byte');
+    });
   });
 });

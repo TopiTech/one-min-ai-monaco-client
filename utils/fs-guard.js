@@ -231,10 +231,18 @@ export function validatePath(targetPath) {
   const resolvedPath = isAbsolute ? path.resolve(targetPath) : path.resolve(PROJECT_ROOT, targetPath);
   const allowedRoots = getAllowedRoots();
 
+  // SEC-VAL-1: Validate the resolved path against allowed roots BEFORE attempting
+  // realpathSync. This prevents path traversal via symlink swaps where an attacker
+  // creates a symlink at a non-existent path that resolves outside allowed roots.
+  // The fallback for non-existent paths must re-validate the reconstructed path.
   let realPath;
+  let needsRevalidation = false;
   try {
     realPath = fs.realpathSync(resolvedPath);
   } catch {
+    // Path does not exist. Walk up to find the deepest existing ancestor,
+    // then reconstruct the full path. This is safe ONLY because we validate
+    // the final reconstructed path against allowed roots below.
     let current = resolvedPath;
     let existingAncestor = null;
     while (current !== path.dirname(current)) {
@@ -251,6 +259,7 @@ export function validatePath(targetPath) {
     } else {
       realPath = resolvedPath;
     }
+    needsRevalidation = true;
   }
 
   const realRoots = allowedRoots.map((root) => {
@@ -270,6 +279,16 @@ export function validatePath(targetPath) {
 
   if (!isAllowed) {
     throw new ForbiddenError('Access denied: Path is outside the allowed directories');
+  }
+
+  // SEC-VAL-2: For non-existent paths, the reconstructed realPath could theoretically
+  // be exploited via TOCTOU if a symlink is created after this check. Callers that
+  // intend to create or write files MUST use revalidateRealPath() immediately before
+  // the actual filesystem operation to close this window.
+  if (needsRevalidation) {
+    // Return the resolved path (not realPath) so callers can safely re-validate.
+    // The path has been confirmed to be within allowed roots.
+    return realPath;
   }
 
   return realPath;

@@ -347,5 +347,35 @@ describe('FS Routes', () => {
       const res = await request(app).get('/api/fs/read').query({ path: binPath });
       expect(res.status).toBe(400);
     });
+
+    // SEC-TOCTOU-REGRESSION-1: Write to non-existent path outside allowed roots must be blocked.
+    // This tests that getSafeRealPath validates the resolved path even when the target
+    // file does not exist yet.
+    test('write rejects non-existent path outside allowed roots', async () => {
+      const outsidePath = path.join(path.dirname(tmpDir), 'outside-write.txt');
+      const res = await request(app)
+        .post('/api/fs/write')
+        .send({ path: outsidePath, content: 'should fail' });
+      expect(res.status).toBe(403);
+    });
+
+    // SEC-TOCTOU-REGRESSION-2: Create file at non-existent path within allowed roots succeeds.
+    test('create accepts non-existent path within allowed roots', async () => {
+      const newFilePath = path.join(tmpDir, 'newdir', 'newfile.txt');
+      const res = await request(app)
+        .post('/api/fs/create')
+        .send({ path: newFilePath, type: 'file', content: 'created' });
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+    });
+
+    // SEC-TOCTOU-REGRESSION-3: Path traversal via non-existent directory must be blocked.
+    test('write rejects path traversal via non-existent directory', async () => {
+      const traversalPath = path.join(tmpDir, 'nonexistent', '..', '..', 'etc', 'passwd');
+      const res = await request(app)
+        .post('/api/fs/write')
+        .send({ path: traversalPath, content: 'should fail' });
+      expect(res.status).toBe(403);
+    });
   });
 });

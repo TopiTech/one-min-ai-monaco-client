@@ -481,7 +481,15 @@ export function killProcessTree(childProcess, force = false) {
   const pid = childProcess.pid;
   try {
     if (platform() === 'win32') {
-      exec(`taskkill /PID ${pid} /T /F`, () => {});
+      // SEC-KILL-1: Handle taskkill errors to detect zombie processes.
+      // The /T flag terminates the process tree, /F forces termination.
+      // Log errors but don't throw — this is best-effort cleanup during shutdown.
+      exec(`taskkill /PID ${pid} /T /F`, (err) => {
+        if (err && err.code !== 'ESRCH') {
+          // ESRCH means the process already exited — not an error.
+          console.error(`Failed to kill process tree (PID ${pid}):`, err.message);
+        }
+      });
     } else {
       process.kill(-pid, force ? 'SIGKILL' : 'SIGTERM');
     }
