@@ -88,9 +88,7 @@ async function loadTimelineModule() {
     default_reject_reason: 'Rejected by user',
   };
 
-  global.fetch = jest.fn(() =>
-    Promise.resolve({ ok: true, json: () => Promise.resolve(catalogue) }),
-  );
+  global.fetch = jest.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(catalogue) }));
 
   const timeline = await import('../public/js/agent-timeline.js');
   const i18n = await import('../public/js/i18n.js');
@@ -143,9 +141,7 @@ describe('agent-timeline i18n (truncation UI)', () => {
     };
     walk(dom.agentActivityLog);
 
-    const badge = allElements.find(
-      (el) => el.className === 'result-truncated-badge',
-    );
+    const badge = allElements.find((el) => el.className === 'result-truncated-badge');
     expect(badge).toBeDefined();
     expect(badge.textContent).toBe('Truncated');
 

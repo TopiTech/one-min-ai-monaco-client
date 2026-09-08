@@ -9,18 +9,9 @@
     "npm test / lint / type-check がすべて成功",
     "調査範囲・発見・変更・互換性・テスト結果・未解決事項を報告"
   ],
-  "constraints": [
-    "既存動作を壊さない、無関係な変更をしない",
-    "commit / push は行わない"
-  ],
-  "non_goals": [
-    "大規模リファクタリング、依存関係の大幅更新"
-  ],
-  "verification": [
-    "npm test",
-    "npm run lint",
-    "npm run type-check"
-  ],
+  "constraints": ["既存動作を壊さない、無関係な変更をしない", "commit / push は行わない"],
+  "non_goals": ["大規模リファクタリング、依存関係の大幅更新"],
+  "verification": ["npm test", "npm run lint", "npm run type-check"],
   "budget": {
     "max_iterations": 20,
     "max_elapsed_minutes": null
@@ -35,9 +26,7 @@
       "agent-timeline.js の i18n バイパス修正（output_truncated / output_exceeded を使用）+ ja.json の先頭改行除去",
       "回帰テスト tests/agent-timeline-i18n.test.js 追加（3 tests, 全 green）"
     ],
-    "remaining": [
-      "最終報告の作成"
-    ],
+    "remaining": ["最終報告の作成"],
     "last_action": "全検証の再実行（npm test 459 passing, lint clean, type-check clean）",
     "last_result": "全完了条件を満たした。最終報告のみ残る"
   },
