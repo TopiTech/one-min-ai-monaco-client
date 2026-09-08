@@ -109,13 +109,11 @@ async function getSafeRealPath(resolvedPath) {
     // still within allowed roots to prevent symlink-swap attacks where an
     // attacker creates a malicious symlink at this location after our check.
     const allowedRoots = getAllowedRoots();
-    const normalizedResolved =
-      process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath;
+    const normalizedResolved = process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath;
     const isWithinRoots = allowedRoots.some((root) => {
       const normalizedRoot = process.platform === 'win32' ? root.toLowerCase() : root;
       return (
-        normalizedResolved === normalizedRoot ||
-        normalizedResolved.startsWith(normalizedRoot + path.sep)
+        normalizedResolved === normalizedRoot || normalizedResolved.startsWith(normalizedRoot + path.sep)
       );
     });
     if (!isWithinRoots) {

@@ -10,17 +10,13 @@
       "id": "qwen3.7-max",
       "label": "Qwen 3.7 Max - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "qwen3.7-flash",
       "label": "Qwen 3.7 Flash - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "qwen3.6-plus",
@@ -32,17 +28,13 @@
       "id": "qwen3.6-max-preview",
       "label": "Qwen 3.6 Max Preview - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "qwen3.6-flash",
       "label": "Qwen 3.6 Flash - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "qwen3-vl-plus",
@@ -54,25 +46,19 @@
       "id": "qwen3-vl-flash",
       "label": "Qwen3 VL Flash - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "qwen3-vl-8b-thinking",
       "label": "Qwen3 VL 8B Thinking",
       "provider": "Alibaba",
-      "tags": [
-        "reasoning"
-      ]
+      "tags": ["reasoning"]
     },
     {
       "id": "qwen3-max",
       "label": "Qwen3 Max - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "qwen3-8b",
@@ -90,9 +76,7 @@
       "id": "qwen-vl-max",
       "label": "Qwen VL Max - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "qwen-plus",
@@ -104,65 +88,49 @@
       "id": "qwen-max",
       "label": "Qwen Max - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "qwen-flash",
       "label": "Qwen Flash - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "us.anthropic.claude-sonnet-4-6",
       "label": "Claude 4.6 Sonnet - AWS Bedrock US",
       "provider": "AWS Bedrock",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
       "label": "Claude 4.5 Sonnet - AWS Bedrock US",
       "provider": "AWS Bedrock",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "us.anthropic.claude-opus-4-8",
       "label": "Claude 4.8 Opus - AWS Bedrock US",
       "provider": "AWS Bedrock",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "us.anthropic.claude-opus-4-7",
       "label": "Claude 4.7 Opus - AWS Bedrock US",
       "provider": "AWS Bedrock",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "us.anthropic.claude-opus-4-6-v1",
       "label": "Claude 4.6 Opus - AWS Bedrock US",
       "provider": "AWS Bedrock",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "us.anthropic.claude-opus-4-5-20251101-v1:0",
       "label": "Claude 4.5 Opus - AWS Bedrock US",
       "provider": "AWS Bedrock",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
@@ -174,33 +142,25 @@
       "id": "claude-sonnet-5",
       "label": "Claude 5 Sonnet - Anthropic",
       "provider": "Anthropic",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "claude-opus-5",
       "label": "Claude 5 Opus - Anthropic",
       "provider": "Anthropic",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "claude-fable-5-1",
       "label": "Claude 5.1 Fable - Anthropic",
       "provider": "Anthropic",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "claude-fable-5",
       "label": "Claude 5 Fable - Anthropic",
       "provider": "Anthropic",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "command-r-08-2024",
@@ -212,25 +172,19 @@
       "id": "deepseek-v4-pro",
       "label": "DeepSeek V4 Pro",
       "provider": "DeepSeek",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "deepseek-v4-flash",
       "label": "DeepSeek V4 Flash",
       "provider": "DeepSeek",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "deepseek-reasoner",
       "label": "DeepSeek V3.2 Reasoner",
       "provider": "DeepSeek",
-      "tags": [
-        "reasoning"
-      ]
+      "tags": ["reasoning"]
     },
     {
       "id": "deepseek-chat",
@@ -242,75 +196,55 @@
       "id": "gemini-3.8-flash",
       "label": "Gemini 3.8 Flash - GoogleAI",
       "provider": "Google",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "gemini-3.7-flash",
       "label": "Gemini 3.7 Flash - GoogleAI",
       "provider": "Google",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "gemini-3.6-flash",
       "label": "Gemini 3.6 Flash - GoogleAI",
       "provider": "Google",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "gemini-3.5-flash",
       "label": "Gemini 3.5 Flash - GoogleAI",
       "provider": "Google",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "gemini-3.1-pro-preview",
       "label": "Gemini 3.1 Pro - GoogleAI",
       "provider": "Google",
-      "tags": [
-        "fast",
-        "flagship"
-      ]
+      "tags": ["fast", "flagship"]
     },
     {
       "id": "gemini-3.1-flash-lite-preview",
       "label": "Gemini 3.1 Flash Lite - GoogleAI",
       "provider": "Google",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "gemini-3-flash-preview",
       "label": "Gemini 3 Flash - GoogleAI",
       "provider": "Google",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "gemini-2.5-pro",
       "label": "Gemini 2.5 Pro -  GoogleAI",
       "provider": "Google",
-      "tags": [
-        "fast",
-        "flagship"
-      ]
+      "tags": ["fast", "flagship"]
     },
     {
       "id": "gemini-2.5-flash",
       "label": "Gemini 2.5 Flash -  GoogleAI",
       "provider": "Google",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "meta/meta-llama-3-70b-instruct",
@@ -322,17 +256,13 @@
       "id": "meta/llama-4-maverick-instruct",
       "label": "LLaMA 4 Maverick Instruct - MetaAI",
       "provider": "Replicate",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "magistral-small-latest",
       "label": "Magistral Small 1.2 - MistralAI",
       "provider": "Mistral",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "magistral-medium-latest",
@@ -344,9 +274,7 @@
       "id": "ministral-14b-latest",
       "label": "Ministral 14B Latest - MistralAI",
       "provider": "Mistral",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "open-mistral-nemo",
@@ -358,17 +286,13 @@
       "id": "mistral-small-latest",
       "label": "Mistral Small - MistralAI",
       "provider": "Mistral",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "mistral-small-2603",
       "label": "Mistral Small 4 - MistralAI",
       "provider": "Mistral",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "mistral-medium-latest",
@@ -386,150 +310,109 @@
       "id": "mistral-large-latest",
       "label": "Mistral Large 2 - MistralAI",
       "provider": "Mistral",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "mistral-large-2512",
       "label": "Mistral Large 3 - MistralAI",
       "provider": "Mistral",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "gpt-5.3-codex",
       "label": "GPT-5.3 Codex - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "o3-mini",
       "label": "GPT-o3 Mini - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "reasoning",
-        "fast"
-      ]
+      "tags": ["reasoning", "fast"]
     },
     {
       "id": "gpt-5.6-terra",
       "label": "GPT-5.6 Terra - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "gpt-5.6-sol",
       "label": "GPT-5.6 Sol - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "gpt-5.6-luna",
       "label": "GPT-5.6 Luna - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "gpt-5.5-pro",
       "label": "GPT-5.5 Pro - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "gpt-5.5",
       "label": "GPT-5.5 - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "gpt-5.4-pro",
       "label": "GPT-5.4 Pro - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "gpt-5.4-nano",
       "label": "GPT-5.4 Nano - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "fast",
-        "flagship"
-      ]
+      "tags": ["fast", "flagship"]
     },
     {
       "id": "gpt-5.4-mini",
       "label": "GPT-5.4 Mini - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "fast",
-        "flagship"
-      ]
+      "tags": ["fast", "flagship"]
     },
     {
       "id": "gpt-5.4",
       "label": "GPT-5.4 - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "gpt-5.2-pro",
       "label": "GPT-5.2 Pro - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "gpt-5.2",
       "label": "GPT-5.2 - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "gpt-5.1",
       "label": "GPT-5.1 - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "gpt-5-nano",
       "label": "GPT-5 Nano - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "fast",
-        "flagship"
-      ]
+      "tags": ["fast", "flagship"]
     },
     {
       "id": "gpt-5-mini",
       "label": "GPT-5 Mini - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "fast",
-        "flagship"
-      ]
+      "tags": ["fast", "flagship"]
     },
     {
       "id": "gpt-5",
@@ -541,10 +424,7 @@
       "id": "gpt-4o-mini",
       "label": "GPT-4o Mini - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "fast",
-        "flagship"
-      ]
+      "tags": ["fast", "flagship"]
     },
     {
       "id": "gpt-4o",
@@ -556,17 +436,13 @@
       "id": "gpt-4.1-nano",
       "label": "GPT-4.1 nano - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "gpt-4.1-mini",
       "label": "GPT-4.1 mini - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "gpt-4.1",
@@ -578,17 +454,13 @@
       "id": "gpt-4-turbo",
       "label": "GPT-4 Turbo - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "gpt-3.5-turbo",
       "label": "GPT-3.5 - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "openai/gpt-oss-20b",
@@ -606,10 +478,7 @@
       "id": "o3-pro",
       "label": "o3 Pro - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "reasoning",
-        "flagship"
-      ]
+      "tags": ["reasoning", "flagship"]
     },
     {
       "id": "o3",
@@ -621,9 +490,7 @@
       "id": "moonshotai/kimi-k3",
       "label": "Kimi K3",
       "provider": "OpenRouter",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "moonshotai/kimi-k2.7-code",
@@ -641,26 +508,19 @@
       "id": "sonar-reasoning-pro",
       "label": "Perplexity [reasoning pro]",
       "provider": "Perplexity",
-      "tags": [
-        "reasoning",
-        "flagship"
-      ]
+      "tags": ["reasoning", "flagship"]
     },
     {
       "id": "sonar-pro",
       "label": "Perplexity [pro]",
       "provider": "Perplexity",
-      "tags": [
-        "flagship"
-      ]
+      "tags": ["flagship"]
     },
     {
       "id": "sonar-deep-research",
       "label": "Perplexity [deep research]",
       "provider": "Perplexity",
-      "tags": [
-        "reasoning"
-      ]
+      "tags": ["reasoning"]
     },
     {
       "id": "sonar",
@@ -690,19 +550,13 @@
       "id": "grok-4-fast-reasoning",
       "label": "xAI - Grok 4 Fast Reasoning",
       "provider": "xAI",
-      "tags": [
-        "reasoning",
-        "fast"
-      ]
+      "tags": ["reasoning", "fast"]
     },
     {
       "id": "grok-4-fast-non-reasoning",
       "label": "xAI - Grok 4 Fast Non-Reasoning",
       "provider": "xAI",
-      "tags": [
-        "reasoning",
-        "fast"
-      ]
+      "tags": ["reasoning", "fast"]
     },
     {
       "id": "grok-4-0709",
@@ -714,9 +568,7 @@
       "id": "grok-3-mini",
       "label": "xAI - Grok 3 Mini",
       "provider": "xAI",
-      "tags": [
-        "fast"
-      ]
+      "tags": ["fast"]
     },
     {
       "id": "grok-3",
@@ -754,490 +606,337 @@
       "id": "qwen3.7-plus",
       "label": "Qwen 3.7 Plus - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "code"
-      ]
+      "tags": ["code"]
     },
     {
       "id": "qwen3.7-max",
       "label": "Qwen 3.7 Max - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "qwen3.7-flash",
       "label": "Qwen 3.7 Flash - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "code",
-        "fast"
-      ]
+      "tags": ["code", "fast"]
     },
     {
       "id": "qwen3.6-plus",
       "label": "Qwen 3.6 Plus - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "code"
-      ]
+      "tags": ["code"]
     },
     {
       "id": "qwen3.6-max-preview",
       "label": "Qwen 3.6 Max Preview - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "qwen3.6-flash",
       "label": "Qwen 3.6 Flash - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "code",
-        "fast"
-      ]
+      "tags": ["code", "fast"]
     },
     {
       "id": "qwen3-coder-plus",
       "label": "Qwen3 Coder Plus - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "code"
-      ]
+      "tags": ["code"]
     },
     {
       "id": "qwen3-coder-flash",
       "label": "Qwen3 Coder Flash - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "code",
-        "fast"
-      ]
+      "tags": ["code", "fast"]
     },
     {
       "id": "us.anthropic.claude-sonnet-4-6",
       "label": "Claude 4.6 Sonnet - AWS Bedrock US",
       "provider": "AWS Bedrock",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
       "label": "Claude 4.5 Sonnet - AWS Bedrock US",
       "provider": "AWS Bedrock",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "us.anthropic.claude-opus-4-8",
       "label": "Claude 4.8 Opus - AWS Bedrock US",
       "provider": "AWS Bedrock",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "us.anthropic.claude-opus-4-7",
       "label": "Claude 4.7 Opus - AWS Bedrock US",
       "provider": "AWS Bedrock",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "us.anthropic.claude-opus-4-6-v1",
       "label": "Claude 4.6 Opus - AWS Bedrock US",
       "provider": "AWS Bedrock",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "us.anthropic.claude-opus-4-5-20251101-v1:0",
       "label": "Claude 4.5 Opus - AWS Bedrock US",
       "provider": "AWS Bedrock",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
       "label": "Claude 4.5 Haiku - AWS Bedrock US",
       "provider": "AWS Bedrock",
-      "tags": [
-        "code"
-      ]
+      "tags": ["code"]
     },
     {
       "id": "claude-sonnet-5",
       "label": "Claude 5 Sonnet - Anthropic",
       "provider": "Anthropic",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "claude-opus-5",
       "label": "Claude 5 Opus - Anthropic",
       "provider": "Anthropic",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "claude-fable-5-1",
       "label": "Claude 5.1 Fable - Anthropic",
       "provider": "Anthropic",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "claude-fable-5",
       "label": "Claude 5 Fable - Anthropic",
       "provider": "Anthropic",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "deepseek-v4-pro",
       "label": "DeepSeek V4 Pro",
       "provider": "DeepSeek",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "deepseek-v4-flash",
       "label": "DeepSeek V4 Flash",
       "provider": "DeepSeek",
-      "tags": [
-        "code",
-        "fast"
-      ]
+      "tags": ["code", "fast"]
     },
     {
       "id": "deepseek-reasoner",
       "label": "DeepSeek V3.2 Reasoner",
       "provider": "DeepSeek",
-      "tags": [
-        "code",
-        "reasoning"
-      ]
+      "tags": ["code", "reasoning"]
     },
     {
       "id": "deepseek-chat",
       "label": "DeepSeek V3.2 Chat",
       "provider": "DeepSeek",
-      "tags": [
-        "code"
-      ]
+      "tags": ["code"]
     },
     {
       "id": "gemini-3.8-flash",
       "label": "Gemini 3.8 Flash - GoogleAI",
       "provider": "Google",
-      "tags": [
-        "code",
-        "fast"
-      ]
+      "tags": ["code", "fast"]
     },
     {
       "id": "gemini-3.7-flash",
       "label": "Gemini 3.7 Flash - GoogleAI",
       "provider": "Google",
-      "tags": [
-        "code",
-        "fast"
-      ]
+      "tags": ["code", "fast"]
     },
     {
       "id": "gemini-3.6-flash",
       "label": "Gemini 3.6 Flash - GoogleAI",
       "provider": "Google",
-      "tags": [
-        "code",
-        "fast"
-      ]
+      "tags": ["code", "fast"]
     },
     {
       "id": "gemini-3.5-flash",
       "label": "Gemini 3.5 Flash - GoogleAI",
       "provider": "Google",
-      "tags": [
-        "code",
-        "fast"
-      ]
+      "tags": ["code", "fast"]
     },
     {
       "id": "gemini-3.1-pro-preview",
       "label": "Gemini 3.1 Pro - GoogleAI",
       "provider": "Google",
-      "tags": [
-        "code",
-        "fast",
-        "flagship"
-      ]
+      "tags": ["code", "fast", "flagship"]
     },
     {
       "id": "gemini-3.1-flash-lite-preview",
       "label": "Gemini 3.1 Flash Lite - GoogleAI",
       "provider": "Google",
-      "tags": [
-        "code",
-        "fast"
-      ]
+      "tags": ["code", "fast"]
     },
     {
       "id": "gemini-3-flash-preview",
       "label": "Gemini 3 Flash - GoogleAI",
       "provider": "Google",
-      "tags": [
-        "code",
-        "fast"
-      ]
+      "tags": ["code", "fast"]
     },
     {
       "id": "mistral-small-2603",
       "label": "Mistral Small 4 - MistralAI",
       "provider": "Mistral",
-      "tags": [
-        "code",
-        "fast"
-      ]
+      "tags": ["code", "fast"]
     },
     {
       "id": "mistral-medium-3-5",
       "label": "Mistral Medium 3.5 - MistralAI",
       "provider": "Mistral",
-      "tags": [
-        "code"
-      ]
+      "tags": ["code"]
     },
     {
       "id": "mistral-large-2512",
       "label": "Mistral Large 3 - MistralAI",
       "provider": "Mistral",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "gpt-5.3-codex",
       "label": "GPT-5.3 Codex - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "gpt-5.6-terra",
       "label": "GPT-5.6 Terra - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "gpt-5.6-sol",
       "label": "GPT-5.6 Sol - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "gpt-5.6-luna",
       "label": "GPT-5.6 Luna - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "gpt-5.5-pro",
       "label": "GPT-5.5 Pro - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "gpt-5.5",
       "label": "GPT-5.5 - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "gpt-5.4-nano",
       "label": "GPT-5.4 Nano - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "code",
-        "fast",
-        "flagship"
-      ]
+      "tags": ["code", "fast", "flagship"]
     },
     {
       "id": "gpt-5.4-mini",
       "label": "GPT-5.4 Mini - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "code",
-        "fast",
-        "flagship"
-      ]
+      "tags": ["code", "fast", "flagship"]
     },
     {
       "id": "gpt-5.4",
       "label": "GPT-5.4 - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "gpt-5",
       "label": "GPT-5 - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "code"
-      ]
+      "tags": ["code"]
     },
     {
       "id": "gpt-4o",
       "label": "GPT-4o - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "code"
-      ]
+      "tags": ["code"]
     },
     {
       "id": "o3",
       "label": "o3 - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "code"
-      ]
+      "tags": ["code"]
     },
     {
       "id": "moonshotai/kimi-k3",
       "label": "Kimi K3",
       "provider": "OpenRouter",
-      "tags": [
-        "code",
-        "flagship"
-      ]
+      "tags": ["code", "flagship"]
     },
     {
       "id": "moonshotai/kimi-k2.7-code",
       "label": "Kimi K2.7 Code",
       "provider": "OpenRouter",
-      "tags": [
-        "code"
-      ]
+      "tags": ["code"]
     },
     {
       "id": "moonshotai/kimi-k2.6",
       "label": "Kimi K2.6",
       "provider": "OpenRouter",
-      "tags": [
-        "code"
-      ]
+      "tags": ["code"]
     },
     {
       "id": "grok-code-fast-1",
       "label": "xAI - Grok Code Fast 1",
       "provider": "xAI",
-      "tags": [
-        "code",
-        "fast"
-      ]
+      "tags": ["code", "fast"]
     },
     {
       "id": "grok-4.6",
       "label": "xAI - Grok 4.6",
       "provider": "xAI",
-      "tags": [
-        "code"
-      ]
+      "tags": ["code"]
     },
     {
       "id": "grok-4.5",
       "label": "xAI - Grok 4.5",
       "provider": "xAI",
-      "tags": [
-        "code"
-      ]
+      "tags": ["code"]
     },
     {
       "id": "grok-4.3",
       "label": "xAI - Grok 4.3",
       "provider": "xAI",
-      "tags": [
-        "code"
-      ]
+      "tags": ["code"]
     },
     {
       "id": "glm-5.3",
       "label": "GLM-5.3 - Z.AI",
       "provider": "Z.AI",
-      "tags": [
-        "code"
-      ]
+      "tags": ["code"]
     },
     {
       "id": "glm-5.2",
       "label": "GLM-5.2 - Z.AI",
       "provider": "Z.AI",
-      "tags": [
-        "code"
-      ]
+      "tags": ["code"]
     },
     {
       "id": "glm-5.1",
       "label": "GLM-5.1 - Z.AI",
       "provider": "Z.AI",
-      "tags": [
-        "code"
-      ]
+      "tags": ["code"]
     },
     {
       "id": "glm-5",
       "label": "GLM-5 - Z.AI",
       "provider": "Z.AI",
-      "tags": [
-        "code"
-      ]
+      "tags": ["code"]
     }
   ],
   "imageModels": [
@@ -1245,443 +944,301 @@
       "id": "qwen-image-plus",
       "label": "Qwen Image Plus - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "qwen-image-max",
       "label": "Qwen Image Max - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "image",
-        "flagship"
-      ]
+      "tags": ["image", "flagship"]
     },
     {
       "id": "black-forest-labs/flux-schnell-lora",
       "label": "Flux Schnell LoRA - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image",
-        "fast"
-      ]
+      "tags": ["image", "fast"]
     },
     {
       "id": "black-forest-labs/flux-krea-dev",
       "label": "Flux Krea Dev - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "black-forest-labs/flux-dev-lora",
       "label": "Flux Dev LoRA - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "black-forest-labs/flux-dev",
       "label": "Flux Dev - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "black-forest-labs/flux-2-pro",
       "label": "Flux 2 Pro - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image",
-        "editor",
-        "flagship"
-      ]
+      "tags": ["image", "editor", "flagship"]
     },
     {
       "id": "black-forest-labs/flux-2-max",
       "label": "Flux 2 Max - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image",
-        "editor",
-        "flagship"
-      ]
+      "tags": ["image", "editor", "flagship"]
     },
     {
       "id": "black-forest-labs/flux-2-klein-9b",
       "label": "Flux 2 Klein 9B - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "black-forest-labs/flux-2-klein-4b",
       "label": "Flux 2 Klein 4B - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image",
-        "editor"
-      ]
+      "tags": ["image", "editor"]
     },
     {
       "id": "black-forest-labs/flux-2-flex",
       "label": "Flux 2 Flex - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image",
-        "editor"
-      ]
+      "tags": ["image", "editor"]
     },
     {
       "id": "black-forest-labs/flux-2-dev",
       "label": "Flux 2 Dev - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image",
-        "editor"
-      ]
+      "tags": ["image", "editor"]
     },
     {
       "id": "black-forest-labs/flux-1.1-pro-ultra",
       "label": "Flux 1.1 Pro Ultra - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image",
-        "flagship"
-      ]
+      "tags": ["image", "flagship"]
     },
     {
       "id": "black-forest-labs/flux-1.1-pro",
       "label": "Flux Pro 1.1 - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image",
-        "flagship"
-      ]
+      "tags": ["image", "flagship"]
     },
     {
       "id": "dzine",
       "label": "Dzine AI",
       "provider": "Dzine",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "gemini-3.1-flash-image-preview",
       "label": "Gemini 3.1 Flash Image Preview (Nano Banana 2) - GoogleAI",
       "provider": "Google",
-      "tags": [
-        "image",
-        "editor",
-        "fast"
-      ]
+      "tags": ["image", "editor", "fast"]
     },
     {
       "id": "gemini-3-pro-image-preview",
       "label": "Gemini 3 Pro Image Preview - GoogleAI",
       "provider": "Google",
-      "tags": [
-        "image",
-        "editor",
-        "fast",
-        "flagship"
-      ]
+      "tags": ["image", "editor", "fast", "flagship"]
     },
     {
       "id": "gemini-2.5-flash-image",
       "label": "Gemini 2.5 Flash Image (Nano Banana) - GoogleAI",
       "provider": "Google",
-      "tags": [
-        "image",
-        "editor",
-        "fast"
-      ]
+      "tags": ["image", "editor", "fast"]
     },
     {
       "id": "ideogram-3",
       "label": "Ideogram 3.0",
       "provider": "Ideogram",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "e71a1c2f-4f80-4800-934f-2c68979d8cc8",
       "label": "Leonardo Anime XL - LeonardoAI",
       "provider": "Leonardo",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "b24e16ff-06e3-43eb-8d33-4416c2d75876",
       "label": "Leonardo Lightning XL - LeonardoAI",
       "provider": "Leonardo",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "aa77f04e-3eec-4034-9c07-d0f619684628",
       "label": "Leonardo Kino XL - LeonardoAI",
       "provider": "Leonardo",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "6b645e3a-d64f-4341-a6d8-7a3690fbf042",
       "label": "Leonardo Phoenix - LeonardoAI",
       "provider": "Leonardo",
-      "tags": [
-        "image",
-        "flagship"
-      ]
+      "tags": ["image", "flagship"]
     },
     {
       "id": "5c232a9e-9061-4777-980a-ddc8e65647c6",
       "label": "Leonardo Vision XL - LeonardoAI",
       "provider": "Leonardo",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "2067ae52-33fd-4a82-bb92-c2c55e7d2786",
       "label": "Leonardo AlbedoBase XL - LeonardoAI",
       "provider": "Leonardo",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "1e60896f-3c26-4296-8ecc-53e2afecc132",
       "label": "Leonardo Diffusion XL",
       "provider": "Leonardo",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "magic-art_7_0",
       "label": "Magic Art 7.0",
       "provider": "Magic Art",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "magic-art_6_1",
       "label": "Magic Art 6.1",
       "provider": "Magic Art",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "magic-art",
       "label": "Magic Art 5.2",
       "provider": "Magic Art",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "gpt-image-2",
       "label": "GPT Image 2 - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "image",
-        "editor"
-      ]
+      "tags": ["image", "editor"]
     },
     {
       "id": "gpt-image-1-mini",
       "label": "GPT Image 1 Mini - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "image",
-        "editor",
-        "fast"
-      ]
+      "tags": ["image", "editor", "fast"]
     },
     {
       "id": "gpt-image-1",
       "label": "GPT Image 1 - OpenAI",
       "provider": "OpenAI",
-      "tags": [
-        "image",
-        "editor"
-      ]
+      "tags": ["image", "editor"]
     },
     {
       "id": "recraft",
       "label": "Recraft",
       "provider": "Recraft",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "stable-diffusion-xl-1024-v1-0",
       "label": "Stable Diffusion XL 1.0 - StabilityAI",
       "provider": "Stability",
-      "tags": [
-        "image",
-        "editor"
-      ]
+      "tags": ["image", "editor"]
     },
     {
       "id": "stable-image-ultra",
       "label": "Stable Image Ultra - StabilityAI",
       "provider": "Stability",
-      "tags": [
-        "image",
-        "flagship"
-      ]
+      "tags": ["image", "flagship"]
     },
     {
       "id": "stable-image",
       "label": "Stable Image Core - StabilityAI",
       "provider": "Stability",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "sd3.5-medium",
       "label": "Stable Diffusion 3.5 Medium - StabilityAI",
       "provider": "Stability",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "sd3.5-large-turbo",
       "label": "Stable Diffusion 3.5 Large Turbo - StabilityAI",
       "provider": "Stability",
-      "tags": [
-        "image",
-        "fast",
-        "flagship"
-      ]
+      "tags": ["image", "fast", "flagship"]
     },
     {
       "id": "sd3.5-large",
       "label": "Stable Diffusion 3.5 Large - StabilityAI",
       "provider": "Stability",
-      "tags": [
-        "image",
-        "flagship"
-      ]
+      "tags": ["image", "flagship"]
     },
     {
       "id": "sd3.5-flash",
       "label": "Stable Diffusion 3.5 Flash - StabilityAI",
       "provider": "Stability",
-      "tags": [
-        "image",
-        "fast"
-      ]
+      "tags": ["image", "fast"]
     },
     {
       "id": "grok-imagine-image",
       "label": "xAI - Grok Imagine Image",
       "provider": "xAI",
-      "tags": [
-        "image"
-      ]
+      "tags": ["image"]
     },
     {
       "id": "qwen-image-edit-plus",
       "label": "Qwen Image Edit Plus - Alibaba Cloud",
       "provider": "Alibaba",
-      "tags": [
-        "image",
-        "editor"
-      ]
+      "tags": ["image", "editor"]
     },
     {
       "id": "black-forest-labs/flux-kontext-pro",
       "label": "Flux Kontext Pro - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image",
-        "editor",
-        "flagship"
-      ]
+      "tags": ["image", "editor", "flagship"]
     },
     {
       "id": "black-forest-labs/flux-kontext-max",
       "label": "Flux Kontext Max - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image",
-        "editor",
-        "flagship"
-      ]
+      "tags": ["image", "editor", "flagship"]
     },
     {
       "id": "black-forest-labs/flux-kontext-dev-lora",
       "label": "Flux Kontext Dev LoRA - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image",
-        "editor"
-      ]
+      "tags": ["image", "editor"]
     },
     {
       "id": "black-forest-labs/flux-kontext-dev",
       "label": "Flux Kontext Dev - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image",
-        "editor"
-      ]
+      "tags": ["image", "editor"]
     },
     {
       "id": "black-forest-labs/flux-depth-pro",
       "label": "Flux Depth Pro - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image",
-        "editor",
-        "flagship"
-      ]
+      "tags": ["image", "editor", "flagship"]
     },
     {
       "id": "black-forest-labs/flux-depth-dev",
       "label": "Flux Depth Dev - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image",
-        "editor"
-      ]
+      "tags": ["image", "editor"]
     },
     {
       "id": "black-forest-labs/flux-canny-pro",
       "label": "Flux Canny Pro - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image",
-        "editor",
-        "flagship"
-      ]
+      "tags": ["image", "editor", "flagship"]
     },
     {
       "id": "black-forest-labs/flux-canny-dev",
       "label": "Flux Canny Dev - Black Forest Labs",
       "provider": "Replicate",
-      "tags": [
-        "image",
-        "editor"
-      ]
+      "tags": ["image", "editor"]
     }
   ]
 }

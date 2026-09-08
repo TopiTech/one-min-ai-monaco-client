@@ -384,14 +384,7 @@ describe('fs-guard', () => {
     // must be rejected.
     test('should reject path traversal via non-existent intermediate', () => {
       delete process.env.ALLOWED_ROOTS;
-      const traversalViaNonExistent = path.join(
-        PROJECT_ROOT,
-        'nonexistent',
-        '..',
-        '..',
-        'etc',
-        'passwd',
-      );
+      const traversalViaNonExistent = path.join(PROJECT_ROOT, 'nonexistent', '..', '..', 'etc', 'passwd');
       expect(() => validatePath(traversalViaNonExistent)).toThrow('Access denied');
     });
 
