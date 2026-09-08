@@ -116,7 +116,7 @@
   "show_output": "▶ 実行出力を表示",
   "hide_output": "▼ 実行出力を非表示",
   "output_truncated": "切詰",
-  "output_exceeded": "\n\n... [出力が {count} 文字を超過したため切り詰められました]",
+  "output_exceeded": "... [出力が {count} 文字を超過したため切り詰められました]",
   "cmd_approval": "コマンド実行",
   "cmd_approval_label": "コマンド実行承認",
   "cmd_approval_desc": "エージェントが以下のコマンドを実行しようとしています。",

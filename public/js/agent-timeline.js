@@ -103,7 +103,9 @@ export function createAgentTimeline(dom) {
       const isTruncated = resultText.length > MAX_RESULT_VISIBLE;
       const displayText = isTruncated
         ? resultText.slice(0, MAX_RESULT_VISIBLE) +
-          `\n\n... [出力が ${(resultText.length - MAX_RESULT_VISIBLE).toLocaleString()} 文字を超過したため切り詰められました]`
+          `\n\n${t('output_exceeded', {
+            count: (resultText.length - MAX_RESULT_VISIBLE).toLocaleString(),
+          })}`
         : resultText;
 
       const toggleButton = document.createElement('button');
@@ -117,7 +119,7 @@ export function createAgentTimeline(dom) {
       if (isTruncated) {
         const warnSpan = document.createElement('span');
         warnSpan.className = 'result-truncated-badge';
-        warnSpan.textContent = '切詰';
+        warnSpan.textContent = t('output_truncated');
         toggleButton.appendChild(warnSpan);
       }
       toggleButton.onclick = () => toggleTimelineResult(stepId);
