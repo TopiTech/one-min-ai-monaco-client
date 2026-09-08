@@ -37,21 +37,42 @@ export function getAllImageModels() {
 }
 
 const FALLBACK_CHAT_MODELS = [
+  { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra (Fallback)', provider: 'OpenAI', tags: ['flagship'] },
+  { id: 'claude-opus-5', label: 'Claude 5 Opus (Fallback)', provider: 'Anthropic', tags: ['flagship'] },
+  { id: 'qwen3.7-flash', label: 'Qwen 3.7 Flash (Fallback)', provider: 'Alibaba', tags: ['fast'] },
   { id: 'gpt-4o-mini', label: 'GPT-4o mini (Fallback)', provider: 'OpenAI', tags: ['fast'] },
   {
-    id: 'claude-sonnet-4-6',
-    label: 'Claude Sonnet 4.6 (Fallback)',
-    provider: 'Anthropic',
-    tags: ['flagship'],
+    id: 'deepseek-v4-flash',
+    label: 'DeepSeek V4 Flash (Fallback)',
+    provider: 'DeepSeek',
+    tags: ['fast'],
   },
 ];
 
 const FALLBACK_CODE_MODELS = [
   {
+    id: 'qwen3.7-plus',
+    label: 'Qwen 3.7 Plus (Fallback)',
+    provider: 'Alibaba',
+    tags: ['code', 'flagship'],
+  },
+  {
     id: 'qwen3-coder-plus',
     label: 'Qwen3 Coder Plus (Fallback)',
     provider: 'Alibaba',
     tags: ['code', 'flagship'],
+  },
+  {
+    id: 'claude-opus-5',
+    label: 'Claude 5 Opus (Fallback)',
+    provider: 'Anthropic',
+    tags: ['code', 'flagship'],
+  },
+  {
+    id: 'grok-code-fast-1',
+    label: 'Grok Code Fast 1 (Fallback)',
+    provider: 'xAI',
+    tags: ['code', 'fast'],
   },
 ];
 
@@ -61,6 +82,24 @@ const FALLBACK_IMAGE_MODELS = [
     label: 'GPT Image 2 (Fallback)',
     provider: 'OpenAI',
     tags: ['image', 'flagship', 'editor'],
+  },
+  {
+    id: 'qwen-image-max',
+    label: 'Qwen Image Max (Fallback)',
+    provider: 'Alibaba',
+    tags: ['image', 'flagship'],
+  },
+  {
+    id: 'black-forest-labs/flux-2-pro',
+    label: 'Flux 2 Pro (Fallback)',
+    provider: 'Replicate',
+    tags: ['image', 'flagship', 'editor'],
+  },
+  {
+    id: 'gemini-3.1-flash-image-preview',
+    label: 'Gemini 3.1 Flash Image Preview (Fallback)',
+    provider: 'Google',
+    tags: ['image', 'fast', 'editor'],
   },
 ];
 

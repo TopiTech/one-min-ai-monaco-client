@@ -64,11 +64,20 @@ describe('config/models.js', () => {
       const codeModels = getCodeModels();
 
       const newModelIds = [
+        'qwen3.7-plus',
+        'qwen3.6-max-preview',
         'claude-sonnet-5',
+        'claude-opus-5',
+        'claude-fable-5-1',
         'claude-fable-5',
+        'deepseek-v4-pro',
+        'gemini-3.8-flash',
+        'moonshotai/kimi-k3',
         'gpt-5.6-terra',
         'gpt-5.6-sol',
         'gpt-5.6-luna',
+        'grok-4.6',
+        'glm-5.3',
         'glm-5.2',
         'glm-5.1',
         'glm-5',
@@ -88,6 +97,50 @@ describe('config/models.js', () => {
     });
   });
 
+  test('normalizes the documented model catalog fields and ignores disabled models', async () => {
+    globalThis.fetch = jest.fn(async (url) => {
+      const feature = new URL(url).searchParams.get('feature');
+      const models =
+        feature === 'UNIFY_CHAT_WITH_AI'
+          ? [
+              {
+                modelId: 'live-chat-model',
+                name: 'Live Chat Model',
+                provider: 'openai',
+                status: 'ACTIVE',
+                features: ['UNIFY_CHAT_WITH_AI'],
+              },
+              {
+                modelId: 'disabled-chat-model',
+                name: 'Disabled Chat Model',
+                provider: 'openai',
+                status: 'DISABLED',
+                features: ['UNIFY_CHAT_WITH_AI'],
+              },
+            ]
+          : [];
+      return {
+        ok: true,
+        status: 200,
+        headers: new Map([['content-type', 'application/json']]),
+        json: async () => ({ models }),
+        text: async () => JSON.stringify({ models }),
+      };
+    });
+
+    const { fetchModels, getChatModels } = await import('../config/models.js');
+    await fetchModels();
+
+    expect(getChatModels()).toEqual([
+      {
+        id: 'live-chat-model',
+        label: 'Live Chat Model',
+        provider: 'OpenAI',
+        tags: [],
+      },
+    ]);
+  });
+
   // ----------------------------------------------------------------
   // getModelSyncStatus
   // ----------------------------------------------------------------
@@ -104,7 +157,7 @@ describe('config/models.js', () => {
   // ----------------------------------------------------------------
   // fetchModels (initModels) - successful fetch
   // ----------------------------------------------------------------
-  describe('initModels with successful /api/models fetch', () => {
+  describe('initModels with successful model discovery fetches', () => {
     test('updates model lists when fetch succeeds', async () => {
       mockFetchJson({
         models: [
@@ -121,17 +174,20 @@ describe('config/models.js', () => {
       expect(status.ok).toBe(true);
       expect(status.lastSync).not.toBeNull();
       expect(status.source).toBe('remote');
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/models'),
-        expect.objectContaining({ method: 'GET' }),
-      );
+      expect(globalThis.fetch).toHaveBeenCalledTimes(4);
+      for (const feature of ['UNIFY_CHAT_WITH_AI', 'CODE_GENERATOR', 'IMAGE_GENERATOR', 'IMAGE_EDITOR']) {
+        expect(globalThis.fetch).toHaveBeenCalledWith(
+          expect.stringContaining(`/models?feature=${feature}`),
+          expect.objectContaining({ method: 'GET' }),
+        );
+      }
     });
   });
 
   // ----------------------------------------------------------------
   // fetchModels - 404 fallback
   // ----------------------------------------------------------------
-  describe('initModels with 404 from /api/models', () => {
+  describe('initModels with 404 from model discovery', () => {
     test('treats 404 as feature unavailable without error', async () => {
       mockFetchError(404);
 
@@ -148,7 +204,7 @@ describe('config/models.js', () => {
   // ----------------------------------------------------------------
   // fetchModels - 500 error
   // ----------------------------------------------------------------
-  describe('initModels with 500 from /api/models', () => {
+  describe('initModels with 500 from model discovery', () => {
     test('marks sync as failed on server error', async () => {
       mockFetchError(500);
 
