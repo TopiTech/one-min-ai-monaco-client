@@ -1355,9 +1355,14 @@
     </div>
 
     <div id="diffModal" class="folder-picker-modal u-hidden">
-      <div class="folder-picker-dialog folder-picker-dialog--wide diff-dialog">
+      <div
+        class="folder-picker-dialog folder-picker-dialog--wide diff-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="diffModalTitle"
+      >
         <div class="diff-header-row">
-          <h3 data-i18n="diff_title">AI 提案の差分確認</h3>
+          <h3 id="diffModalTitle" data-i18n="diff_title">AI 提案の差分確認</h3>
           <label class="check diff-inline-toggle-label">
             <input type="checkbox" id="diffInlineToggle" />
             <span data-i18n="diff_inline_display">インライン表示</span>

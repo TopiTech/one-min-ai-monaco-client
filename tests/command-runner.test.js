@@ -153,5 +153,9 @@ describe('command-runner', () => {
       expect(() => killProcess(null)).not.toThrow();
       expect(() => killProcess({ exitCode: null, pid: undefined })).not.toThrow();
     });
+
+    test('handles terminating non-existent process without throwing', () => {
+      expect(() => killProcessTree({ exitCode: null, pid: 9999999 })).not.toThrow();
+    });
   });
 });

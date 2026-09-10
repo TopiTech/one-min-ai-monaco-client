@@ -2,6 +2,7 @@ import { spawn, exec } from 'child_process';
 import { platform } from 'os';
 import { serverConfig } from '../config/server.js';
 import { getSafeEnv } from '../utils/env-guard.js';
+import logger from '../utils/logger.js';
 
 const activeProcesses = new Set();
 
@@ -486,9 +487,18 @@ export function killProcessTree(childProcess, force = false) {
       // The /T flag terminates the process tree, /F forces termination.
       // Log errors but don't throw — this is best-effort cleanup during shutdown.
       exec(`taskkill /PID ${pid} /T /F`, (err) => {
-        if (err && err.code !== 'ESRCH') {
-          // ESRCH means the process already exited — not an error.
-          console.error(`Failed to kill process tree (PID ${pid}):`, err.message);
+        if (!err) return;
+        // Check if the process already exited (not an error during cleanup/shutdown).
+        // On Windows, taskkill returns exit code 128 or 1 when process was not found,
+        // and message contains "not found" or similar. Node's exec returns numeric code or errno string.
+        const msg = err.message || '';
+        const isNotFound =
+          err.code === 'ESRCH' ||
+          err.code === 128 ||
+          (err.code === 1 && /not found/i.test(msg)) ||
+          /not found/i.test(msg);
+        if (!isNotFound) {
+          logger.warn(`Failed to kill process tree (PID ${pid}): ${msg}`);
         }
       });
     } else {
@@ -496,7 +506,7 @@ export function killProcessTree(childProcess, force = false) {
     }
   } catch (err) {
     if (err.code !== 'ESRCH') {
-      console.error('Failed to kill process tree:', err);
+      logger.warn(`Failed to kill process tree: ${err.message || err}`);
     }
   }
 }

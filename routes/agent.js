@@ -891,16 +891,19 @@ router.get('/sessions/:id/files', async (req, res, next) => {
       });
     }
 
-    const fd = await fs.open(realPath, 'r');
     let isBinary = false;
-    try {
-      const headBuf = Buffer.alloc(8192);
-      const { bytesRead } = await fd.read(headBuf, 0, 8192, 0);
-      if (detectBinaryContent(headBuf.subarray(0, bytesRead))) {
-        isBinary = true;
+    if (stat.size > 0) {
+      const fd = await fs.open(realPath, 'r');
+      try {
+        const readLen = Math.min(8192, stat.size);
+        const headBuf = Buffer.alloc(readLen);
+        const { bytesRead } = await fd.read(headBuf, 0, readLen, 0);
+        if (detectBinaryContent(headBuf.subarray(0, bytesRead))) {
+          isBinary = true;
+        }
+      } finally {
+        await fd.close();
       }
-    } finally {
-      await fd.close();
     }
 
     if (isBinary) {

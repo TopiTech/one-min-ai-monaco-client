@@ -577,6 +577,7 @@ export function createChatManager(dom, state) {
       aiMsgDiv.classList.remove('streaming');
       pruneChatLog();
     } catch (e) {
+      aiMsgDiv.classList.remove('streaming');
       if (e.name === 'AbortError') {
         fullText += '\n\n*(' + t('chat_cancelled') + ')*';
         renderMarkdownSafely(aiContentDiv, fullText);
@@ -593,6 +594,7 @@ export function createChatManager(dom, state) {
         }
       }
     } finally {
+      aiMsgDiv.classList.remove('streaming');
       dom.chatLog.setAttribute('aria-busy', 'false');
       state.chat.abortController = null;
       sendBtn.disabled = false;

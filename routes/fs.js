@@ -338,17 +338,20 @@ router.get('/read', async (req, res, next) => {
     // binary check. Files renamed (e.g. exe.txt) should still be refused
     // from the text editor to avoid corrupting the Monaco buffer.
     // Optimization: Only load the first 8KB to check binary status to avoid OOM
-    // on large binaries before reject.
-    const fd = await fs.open(realPath, 'r');
+    // on large binaries before reject. Empty files are safely skipped.
     let isBinary = false;
-    try {
-      const headBuf = Buffer.alloc(8192);
-      const { bytesRead } = await fd.read(headBuf, 0, 8192, 0);
-      if (detectBinaryContent(headBuf.subarray(0, bytesRead))) {
-        isBinary = true;
+    if (stat.size > 0) {
+      const fd = await fs.open(realPath, 'r');
+      try {
+        const readLen = Math.min(8192, stat.size);
+        const headBuf = Buffer.alloc(readLen);
+        const { bytesRead } = await fd.read(headBuf, 0, readLen, 0);
+        if (detectBinaryContent(headBuf.subarray(0, bytesRead))) {
+          isBinary = true;
+        }
+      } finally {
+        await fd.close();
       }
-    } finally {
-      await fd.close();
     }
 
     if (isBinary) {
