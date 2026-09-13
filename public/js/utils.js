@@ -160,6 +160,32 @@ export const PARSE_LIMITS = Object.freeze({
 });
 
 /**
+ * Strips web search artifacts, grounding preambles, and citation footers
+ * that may be injected into the LLM output by search-enabled models or 1min.ai
+ * grounding features.
+ */
+export function stripSearchArtifacts(text) {
+  if (typeof text !== 'string') return '';
+  let cleaned = text;
+
+  // 1. Remove trailing sources / references / citations blocks
+  cleaned = cleaned.replace(
+    /\n+(?:(?:Web\s+)?Sources?|(?:Web\s+)?References?|Citations?|External\s+[Ll]inks?|Web\s+Search\s+Sources?):\s*\n+[\s\S]*$/i,
+    '',
+  );
+  cleaned = cleaned.replace(/\n+(?:\[\d+\]:?\s*https?:\/\/[^\s\n]+[\s\S]*)$/i, '');
+  cleaned = cleaned.replace(/\n+(?:\[\^\d+\]:?[\s\S]*)$/i, '');
+
+  // 2. Remove leading search result blocks
+  cleaned = cleaned.replace(
+    /^(?:[\s\S]*?(?:(?:Web\s+)?Search\s+results?(?:\s+for[^\n]*)?|Searching\s+the\s+web[^\n]*|Grounding\s+results?):\s*\n+[\s\S]*?)(?=(?:<thought>|<call_tool>|<finish>|```(?:json|xml)?|\{\s*["'\u201C\u2018]?(?:thought|tool|call_tool|action|finish)))/i,
+    '',
+  );
+
+  return cleaned.trim();
+}
+
+/**
  * Progressive JSON repair & parser.
  * Recovers valid objects from noisy, malformed, single-quoted, or markdown-wrapped LLM outputs.
  *
@@ -188,7 +214,17 @@ export function repairAndParseJson(text) {
     // Continue to repair pipeline
   }
 
-  let candidate = trimmed;
+  // 0. Strip web search artifacts (e.g. Sources: ..., References: ..., Search Results: ...)
+  const sanitized = stripSearchArtifacts(trimmed);
+  if (sanitized && sanitized !== trimmed) {
+    try {
+      return JSON.parse(sanitized);
+    } catch {
+      // Continue repair pipeline with sanitized candidate
+    }
+  }
+
+  let candidate = sanitized || trimmed;
   // 1. Strip outer markdown code block if entire string is wrapped
   const fenceMatch = candidate.match(/^```(?:json|javascript|js)?\s*\n?([\s\S]*?)\n?```$/i);
   if (fenceMatch) {
@@ -210,45 +246,17 @@ export function repairAndParseJson(text) {
     }
   }
 
-  // 3. If text does not start with JSON delimiter, search for balanced object
-  if (!candidate.startsWith('{') && !candidate.startsWith('[')) {
-    const firstBrace = candidate.indexOf('{');
-    if (firstBrace !== -1) {
-      let depth = 0;
-      let inStr = false;
-      let esc = false;
-      let start = -1;
-      for (let i = 0; i < candidate.length; i++) {
-        const ch = candidate[i];
-        if (esc) {
-          esc = false;
-          continue;
-        }
-        if (ch === '\\') {
-          esc = true;
-          continue;
-        }
-        if (ch === '"') {
-          inStr = !inStr;
-          continue;
-        }
-        if (!inStr) {
-          if (ch === '{') {
-            if (depth === 0) start = i;
-            depth++;
-          } else if (ch === '}') {
-            if (depth > 0) depth--;
-            if (depth === 0 && start !== -1) {
-              const span = candidate.substring(start, i + 1);
-              try {
-                return repairAndParseJson(span);
-              } catch {
-                // Continue scanning candidates
-              }
-              start = -1;
-            }
-          }
-        }
+  // 3. Search for balanced JSON candidate objects (handles trailing/leading text & search citations)
+  const balancedObjects = extractBalancedObjects(candidate);
+  for (const objSpan of balancedObjects) {
+    if (objSpan === candidate) continue; // Already tried direct JSON.parse
+    try {
+      return JSON.parse(objSpan);
+    } catch {
+      try {
+        return repairAndParseJson(objSpan);
+      } catch {
+        /* try next balanced object */
       }
     }
   }
@@ -413,7 +421,8 @@ export function parseXMLTags(text) {
     return empty;
   }
 
-  const normalizedText = stripMarkdownCodeBlock(text);
+  const sanitized = stripSearchArtifacts(text);
+  const normalizedText = stripMarkdownCodeBlock(sanitized);
 
   const extractTag = (input, tag) => {
     const startRegex = new RegExp(`<${tag}(?:\\s+[\\s\\S]*?)?>`, 'i');
@@ -633,31 +642,53 @@ export function buildXmlRepairPrompt({
  */
 function extractBalancedObjects(text) {
   const results = [];
-  let depth = 0;
+  const openStack = [];
   let inString = false;
+  let quoteChar = '';
   let escape = false;
-  let start = -1;
+
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     if (escape) {
       escape = false;
       continue;
     }
-    if (inString) {
-      if (ch === '\\') escape = true;
-      else if (ch === '"') inString = false;
+    if (ch === '\\') {
+      escape = true;
       continue;
     }
-    if (ch === '"') {
+    if (!inString && (ch === '"' || ch === "'" || ch === '\u201C' || ch === '\u2018')) {
       inString = true;
-    } else if (ch === '{') {
-      if (depth === 0) start = i;
-      depth++;
-    } else if (ch === '}') {
-      if (depth > 0) depth--;
-      if (depth === 0 && start !== -1) {
-        results.push(text.substring(start, i + 1));
-        start = -1;
+      quoteChar = ch;
+      continue;
+    }
+    if (
+      inString &&
+      (ch === quoteChar ||
+        (quoteChar === '\u201C' && ch === '\u201D') ||
+        (quoteChar === '\u2018' && ch === '\u2019'))
+    ) {
+      inString = false;
+      quoteChar = '';
+      continue;
+    }
+    if (!inString) {
+      if (ch === '{') {
+        openStack.push(i);
+      } else if (ch === '}') {
+        if (openStack.length > 0) {
+          const start = openStack.pop();
+          const candidate = text.substring(start, i + 1);
+          // If this span looks like a top-level candidate or contains agent keys, record it
+          if (
+            openStack.length === 0 ||
+            /["'\u201C\u2018]?(?:thought|tool|call_tool|toolName|action|finish)["'\u201D\u2019]?\s*:/i.test(
+              candidate,
+            )
+          ) {
+            results.push(candidate);
+          }
+        }
       }
     }
   }

@@ -36,6 +36,18 @@ function isEmptyPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0;
 }
 
+function isSearchMetadataObject(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+  const t = String(obj.type || '').toLowerCase();
+  if (t === 'web_search' || t === 'search_results' || t === 'grounding') return true;
+  if ('searchResults' in obj || 'search_results' in obj || 'groundingMetadata' in obj || 'webSearchObject' in obj) {
+    return true;
+  }
+  if ('sources' in obj && Array.isArray(obj.sources) && !('thought' in obj) && !('content' in obj)) return true;
+  if ('citations' in obj && Array.isArray(obj.citations) && !('thought' in obj) && !('content' in obj)) return true;
+  return false;
+}
+
 function normalizeTextValue(value, seen = new WeakSet(), { stringifyObjects = false } = {}) {
   if (value === undefined) return undefined;
   if (value === null) return 'null';
@@ -46,7 +58,9 @@ function normalizeTextValue(value, seen = new WeakSet(), { stringifyObjects = fa
     return String(value);
   }
   if (Array.isArray(value)) {
-    const parts = value.map((item) => normalizeTextValue(item, seen, { stringifyObjects })).filter(Boolean);
+    const nonSearch = value.filter((item) => !isSearchMetadataObject(item));
+    const target = nonSearch.length > 0 ? nonSearch : value;
+    const parts = target.map((item) => normalizeTextValue(item, seen, { stringifyObjects })).filter(Boolean);
     return parts.length > 0 ? parts.join('\n') : undefined;
   }
   if (typeof value === 'object') {

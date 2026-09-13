@@ -24,6 +24,8 @@ function buildAgentPromptInstructions() {
     '- Do NOT output conversational chit-chat outside the tags/JSON object.',
     '- In XML parameter values, escape XML metacharacters (&, <, >) or wrap in <![CDATA[...]]>.',
     '- In JSON values, escape double quotes and newlines properly.',
+    '- Do NOT perform web searches, browsing, or search grounding under any circumstances.',
+    '- Do NOT output web search results, source URLs, citations, or references.',
   ].join('\n');
 }
 

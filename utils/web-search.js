@@ -59,14 +59,44 @@ export function buildWebSearchSettings({ webSearch, parsedNumOfSite, parsedMaxWo
  * @returns {{ type: string, model: string, promptObject: { prompt: string, webSearch: boolean, numOfSite?: number, maxWord?: number } }} The payload object.
  */
 export function buildCodePayload({ prompt, model, webSearch, parsedNumOfSite, parsedMaxWord }) {
+  const isWebSearch = Boolean(webSearch);
   return {
     type: 'CODE_GENERATOR',
     model: model || serverConfig.defaultCodeModel,
     promptObject: {
       prompt,
-      webSearch: Boolean(webSearch),
-      ...(parsedNumOfSite !== undefined ? { numOfSite: parsedNumOfSite } : {}),
-      ...(parsedMaxWord !== undefined ? { maxWord: parsedMaxWord } : {}),
+      webSearch: isWebSearch,
+      ...(isWebSearch && parsedNumOfSite !== undefined ? { numOfSite: parsedNumOfSite } : {}),
+      ...(isWebSearch && parsedMaxWord !== undefined ? { maxWord: parsedMaxWord } : {}),
     },
   };
 }
+
+/**
+ * Strips web search artifacts, grounding preambles, and citation footers
+ * that may be injected into the LLM output by search-enabled models or 1min.ai
+ * grounding features.
+ * @param {string} text
+ * @returns {string}
+ */
+export function stripSearchArtifacts(text) {
+  if (typeof text !== 'string') return '';
+  let cleaned = text;
+
+  // 1. Remove trailing sources / references / citations blocks
+  cleaned = cleaned.replace(
+    /\n+(?:(?:Web\s+)?Sources?|(?:Web\s+)?References?|Citations?|External\s+[Ll]inks?|Web\s+Search\s+Sources?):\s*\n+[\s\S]*$/i,
+    '',
+  );
+  cleaned = cleaned.replace(/\n+(?:\[\d+\]:?\s*https?:\/\/[^\s\n]+[\s\S]*)$/i, '');
+  cleaned = cleaned.replace(/\n+(?:\[\^\d+\]:?[\s\S]*)$/i, '');
+
+  // 2. Remove leading search result blocks
+  cleaned = cleaned.replace(
+    /^(?:[\s\S]*?(?:(?:Web\s+)?Search\s+results?(?:\s+for[^\n]*)?|Searching\s+the\s+web[^\n]*|Grounding\s+results?):\s*\n+[\s\S]*?)(?=(?:<thought>|<call_tool>|<finish>|```(?:json|xml)?|\{\s*["'\u201C\u2018]?(?:thought|tool|call_tool|action|finish)))/i,
+    '',
+  );
+
+  return cleaned.trim();
+}
+

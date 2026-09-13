@@ -17,7 +17,7 @@ import {
   extractFailureMessage,
   normalizeOneMinRawResponse,
 } from '../utils/api-client.js';
-import { parseWebSearchParams, buildCodePayload } from '../utils/web-search.js';
+import { parseWebSearchParams, buildCodePayload, stripSearchArtifacts } from '../utils/web-search.js';
 import logger from '../utils/logger.js';
 import { serverConfig } from '../config/server.js';
 
@@ -157,8 +157,9 @@ router.post('/chat', async (req, res, next) => {
       );
     }
 
-    // 7. Extract text and return in agent-friendly format
-    const text = extractText(normalizedDataRes);
+    // 7. Extract text and return in agent-friendly format (stripping any web search artifacts)
+    const rawText = extractText(normalizedDataRes);
+    const text = stripSearchArtifacts(rawText);
     res.json({ text, raw: normalizedDataRes });
   } catch (err) {
     next(err);
