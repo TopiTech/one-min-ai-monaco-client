@@ -122,15 +122,23 @@ describe('parseXMLTags structural payload integrity', () => {
 });
 
 describe('frontend/backend stripSearchArtifacts implementations stay in sync', () => {
+  const readExportedFn = async (relPath, fnName) => {
+    const raw = await fs.readFile(new URL(relPath, import.meta.url), 'utf-8');
+    const src = raw.replace(/\r\n/g, '\n');
+    const match = src.match(new RegExp(`^export function ${fnName}\\b[\\s\\S]*?\\n\\}`, 'm'));
+    expect(match).toBeTruthy();
+    return match[0].trim();
+  };
+
   test('exported source of stripSearchArtifacts is identical in both modules', async () => {
-    const readExportedFn = async (relPath) => {
-      const src = await fs.readFile(new URL(relPath, import.meta.url), 'utf-8');
-      const match = src.match(/export function stripSearchArtifacts[\s\S]*?\n(?=^\/\*\*|\n)/m);
-      expect(match).toBeTruthy();
-      return match[0].trimEnd();
-    };
-    const frontend = await readExportedFn('../public/js/utils.js');
-    const backend = await readExportedFn('../utils/web-search.js');
+    const frontend = await readExportedFn('../public/js/utils.js', 'stripSearchArtifacts');
+    const backend = await readExportedFn('../utils/web-search.js', 'stripSearchArtifacts');
+    expect(frontend).toBe(backend);
+  });
+
+  test('exported source of cleanOutsideStructuralTags is identical in both modules', async () => {
+    const frontend = await readExportedFn('../public/js/utils.js', 'cleanOutsideStructuralTags');
+    const backend = await readExportedFn('../utils/web-search.js', 'cleanOutsideStructuralTags');
     expect(frontend).toBe(backend);
   });
 });
