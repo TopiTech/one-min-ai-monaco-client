@@ -73,35 +73,78 @@ export function buildCodePayload({ prompt, model, webSearch, parsedNumOfSite, pa
 }
 
 /**
+ * Applies a cleaning function only to the regions of the agent response that
+ * live OUTSIDE the structural tags (<call_tool>, <finish>, <artifact>, ...).
+ * Content inside tool parameters is the agent's raw payload (e.g. file bodies
+ * or diffs) and must never be rewritten by heuristic cleanup.
+ * @param {string} text
+ * @param {(segment: string) => string} cleanFn
+ * @returns {string}
+ */
+export function cleanOutsideStructuralTags(text, cleanFn) {
+  if (typeof text !== 'string' || typeof cleanFn !== 'function') return text;
+  const pattern =
+    /<(?:call_tool|tool_call|finish|artifact)\b[\s\S]*?<\/(?:call_tool|tool_call|finish|artifact)>/g;
+  const matches = [...text.matchAll(pattern)];
+  if (matches.length === 0) return cleanFn(text);
+  let out = '';
+  let cursor = 0;
+  for (const m of matches) {
+    out += cleanFn(text.slice(cursor, m.index));
+    out += m[0]; // structural tag content is preserved verbatim
+    cursor = m.index + m[0].length;
+  }
+  out += cleanFn(text.slice(cursor));
+  return out;
+}
+
+function stripCrawlStatusLines(cleaned) {
+  // Tightened: the loose 'Searching for ...' form matched legitimate content,
+  // so bare prose is preserved now. Status-like lines are only removed when
+  // they carry a URL, except the explicit 'Searching the web' form which is
+  // always treated as a status line.
+  return cleaned.replace(
+    /(?:^|\n)[ \t]*(?:⚙\s*|[•\-*]\s*)?(?:(?:Crawling(?:\s+site)?|Crawled(?:\s+site)?|Browsing(?:\s+page|\s+site)?|Reading\s+site|Navigating\s+to|Fetching(?:\s+URL)?|Searching(?:\s+the\s+web|\s+for)?)[^\n]*https?:\/\/\S*|Searching\s+the\s+web[^\n]*)[^\n]*(?=\n|$)/gi,
+    '',
+  );
+}
+
+/**
  * Strips web search artifacts, grounding preambles, and citation footers
  * that may be injected into the LLM output by search-enabled models or 1min.ai
  * grounding features.
+ *
+ * Structural regions of agent output (<call_tool>..., <finish>..., <artifact>...)
+ * are never rewritten: their content is the agent's raw payload (file bodies,
+ * diffs), and heuristic cleanup would silently corrupt it.
  * @param {string} text
  * @returns {string}
  */
 export function stripSearchArtifacts(text) {
   if (typeof text !== 'string') return '';
-  let cleaned = text;
 
-  // 1. Remove trailing sources / references / citations blocks
-  cleaned = cleaned.replace(
-    /\n+(?:(?:Web\s+)?Sources?|(?:Web\s+)?References?|Citations?|External\s+[Ll]inks?|Web\s+Search\s+Sources?):\s*\n+[\s\S]*$/i,
-    '',
-  );
-  cleaned = cleaned.replace(/\n+(?:\[\d+\]:?\s*https?:\/\/[^\s\n]+[\s\S]*)$/i, '');
-  cleaned = cleaned.replace(/\n+(?:\[\^\d+\]:?[\s\S]*)$/i, '');
+  const cleanSegment = (segment) => {
+    let cleaned = segment;
 
-  // 2. Remove crawl / browsing / search status lines anywhere before or around payload
-  cleaned = cleaned.replace(
-    /(?:^|\n)[ \t]*(?:⚙\s*|[•\-*]\s*)?(?:Crawling(?:\s+site)?|Crawled(?:\s+site)?|Browsing(?:\s+page|\s+site)?|Searching(?:\s+the\s+web|\s+for)?|Navigating\s+to|Fetching(?:\s+URL)?|Reading\s+site)[^\n]*(?=\n|$)/gi,
-    '',
-  );
+    // 1. Remove trailing sources / references / citations blocks
+    cleaned = cleaned.replace(
+      /\n+(?:(?:Web\s+)?Sources?|(?:Web\s+)?References?|Citations?|External\s+[Ll]inks?|Web\s+Search\s+Sources?):\s*\n+[\s\S]*$/i,
+      '',
+    );
+    cleaned = cleaned.replace(/\n+(?:\[\d+\]:?\s*https?:\/\/[^\s\n]+[\s\S]*)$/i, '');
+    cleaned = cleaned.replace(/\n+(?:\[\^\d+\]:?[\s\S]*)$/i, '');
 
-  // 3. Remove leading search result blocks
-  cleaned = cleaned.replace(
-    /^(?:[\s\S]*?(?:(?:Web\s+)?Search\s+results?(?:\s+for[^\n]*)?|Searching\s+the\s+web[^\n]*|Grounding\s+results?):?\s*\n+[\s\S]*?)(?=(?:<(?:thought|thinking|think|call_tool|tool_call|finish|artifact)\b|```(?:json|xml)?|\{\s*["'\u201C\u2018]?(?:thought|thinking|think|tool|call_tool|action|finish)))/i,
-    '',
-  );
+    // 2. Remove crawl / browsing / search status lines (URL-anchored)
+    cleaned = stripCrawlStatusLines(cleaned);
 
-  return cleaned.trim();
+    // 3. Remove leading search result blocks
+    cleaned = cleaned.replace(
+      /^(?:[\s\S]*?(?:(?:Web\s+)?Search\s+results?(?:\s+for[^\n]*)?|Searching\s+the\s+web[^\n]*|Grounding\s+results?):?\s*\n+[\s\S]*?)(?=(?:<(?:thought|thinking|think|call_tool|tool_call|finish|artifact)\b|```(?:json|xml)?|\{\s*["'\u201C\u2018]?(?:thought|thinking|think|tool|call_tool|action|finish)))/i,
+      '',
+    );
+
+    return cleaned;
+  };
+
+  return cleanOutsideStructuralTags(text, cleanSegment).trim();
 }

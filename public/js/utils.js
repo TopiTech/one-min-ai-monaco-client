@@ -160,35 +160,75 @@ export const PARSE_LIMITS = Object.freeze({
 });
 
 /**
+ * Applies a cleaning function only to the regions of the agent response that
+ * live OUTSIDE the structural tags (<call_tool>, <finish>, <artifact>, ...).
+ * Content inside tool parameters is the agent's raw payload (e.g. file bodies
+ * or diffs) and must never be rewritten by heuristic cleanup.
+ */
+export function cleanOutsideStructuralTags(text, cleanFn) {
+  if (typeof text !== 'string' || typeof cleanFn !== 'function') return text;
+  const pattern =
+    /<(?:call_tool|tool_call|finish|artifact)\b[\s\S]*?<\/(?:call_tool|tool_call|finish|artifact)>/g;
+  const matches = [...text.matchAll(pattern)];
+  if (matches.length === 0) return cleanFn(text);
+  let out = '';
+  let cursor = 0;
+  for (const m of matches) {
+    out += cleanFn(text.slice(cursor, m.index));
+    out += m[0]; // structural tag content is preserved verbatim
+    cursor = m.index + m[0].length;
+  }
+  out += cleanFn(text.slice(cursor));
+  return out;
+}
+
+function stripCrawlStatusLines(cleaned) {
+  // Tightened: the loose 'Searching for ...' form matched legitimate content,
+  // so bare prose is preserved now. Status-like lines are only removed when
+  // they carry a URL, except the explicit 'Searching the web' form which is
+  // always treated as a status line.
+  return cleaned.replace(
+    /(?:^|\n)[ \t]*(?:⚙\s*|[•\-*]\s*)?(?:(?:Crawling(?:\s+site)?|Crawled(?:\s+site)?|Browsing(?:\s+page|\s+site)?|Reading\s+site|Navigating\s+to|Fetching(?:\s+URL)?|Searching(?:\s+the\s+web|\s+for)?)[^\n]*https?:\/\/\S*|Searching\s+the\s+web[^\n]*)[^\n]*(?=\n|$)/gi,
+    '',
+  );
+}
+
+/**
  * Strips web search artifacts, grounding preambles, and citation footers
  * that may be injected into the LLM output by search-enabled models or 1min.ai
  * grounding features.
+ *
+ * Structural regions of agent output (<call_tool>..., <finish>..., <artifact>...)
+ * are never rewritten: their content is the agent's raw payload (file bodies,
+ * diffs), and heuristic cleanup would silently corrupt it.
  */
 export function stripSearchArtifacts(text) {
   if (typeof text !== 'string') return '';
-  let cleaned = text;
 
-  // 1. Remove trailing sources / references / citations blocks
-  cleaned = cleaned.replace(
-    /\n+(?:(?:Web\s+)?Sources?|(?:Web\s+)?References?|Citations?|External\s+[Ll]inks?|Web\s+Search\s+Sources?):\s*\n+[\s\S]*$/i,
-    '',
-  );
-  cleaned = cleaned.replace(/\n+(?:\[\d+\]:?\s*https?:\/\/[^\s\n]+[\s\S]*)$/i, '');
-  cleaned = cleaned.replace(/\n+(?:\[\^\d+\]:?[\s\S]*)$/i, '');
+  const cleanSegment = (segment) => {
+    let cleaned = segment;
 
-  // 2. Remove crawl / browsing / search status lines anywhere before or around payload
-  cleaned = cleaned.replace(
-    /(?:^|\n)[ \t]*(?:⚙\s*|[•\-*]\s*)?(?:Crawling(?:\s+site)?|Crawled(?:\s+site)?|Browsing(?:\s+page|\s+site)?|Searching(?:\s+the\s+web|\s+for)?|Navigating\s+to|Fetching(?:\s+URL)?|Reading\s+site)[^\n]*(?=\n|$)/gi,
-    '',
-  );
+    // 1. Remove trailing sources / references / citations blocks
+    cleaned = cleaned.replace(
+      /\n+(?:(?:Web\s+)?Sources?|(?:Web\s+)?References?|Citations?|External\s+[Ll]inks?|Web\s+Search\s+Sources?):\s*\n+[\s\S]*$/i,
+      '',
+    );
+    cleaned = cleaned.replace(/\n+(?:\[\d+\]:?\s*https?:\/\/[^\s\n]+[\s\S]*)$/i, '');
+    cleaned = cleaned.replace(/\n+(?:\[\^\d+\]:?[\s\S]*)$/i, '');
 
-  // 3. Remove leading search result blocks
-  cleaned = cleaned.replace(
-    /^(?:[\s\S]*?(?:(?:Web\s+)?Search\s+results?(?:\s+for[^\n]*)?|Searching\s+the\s+web[^\n]*|Grounding\s+results?):?\s*\n+[\s\S]*?)(?=(?:<(?:thought|thinking|think|call_tool|tool_call|finish|artifact)\b|```(?:json|xml)?|\{\s*["'\u201C\u2018]?(?:thought|thinking|think|tool|call_tool|action|finish)))/i,
-    '',
-  );
+    // 2. Remove crawl / browsing / search status lines (URL-anchored)
+    cleaned = stripCrawlStatusLines(cleaned);
 
-  return cleaned.trim();
+    // 3. Remove leading search result blocks
+    cleaned = cleaned.replace(
+      /^(?:[\s\S]*?(?:(?:Web\s+)?Search\s+results?(?:\s+for[^\n]*)?|Searching\s+the\s+web[^\n]*|Grounding\s+results?):?\s*\n+[\s\S]*?)(?=(?:<(?:thought|thinking|think|call_tool|tool_call|finish|artifact)\b|```(?:json|xml)?|\{\s*["'\u201C\u2018]?(?:thought|thinking|think|tool|call_tool|action|finish)))/i,
+      '',
+    );
+
+    return cleaned;
+  };
+
+  return cleanOutsideStructuralTags(text, cleanSegment).trim();
 }
 
 /**
@@ -220,17 +260,8 @@ export function repairAndParseJson(text) {
     // Continue to repair pipeline
   }
 
-  // 0. Strip web search artifacts (e.g. Sources: ..., References: ..., Search Results: ...)
-  const sanitized = stripSearchArtifacts(trimmed);
-  if (sanitized && sanitized !== trimmed) {
-    try {
-      return JSON.parse(sanitized);
-    } catch {
-      // Continue repair pipeline with sanitized candidate
-    }
-  }
+  let candidate = trimmed;
 
-  let candidate = sanitized || trimmed;
   // 1. Strip outer markdown code block if entire string is wrapped
   const fenceMatch = candidate.match(/^```(?:json|javascript|js)?\s*\n?([\s\S]*?)\n?```$/i);
   if (fenceMatch) {
@@ -242,17 +273,10 @@ export function repairAndParseJson(text) {
     }
   }
 
-  // 2. Extract embedded code block if present inside text
-  const embeddedMatch = candidate.match(/```(?:json|javascript|js)?\s*\n?([\s\S]*?)\n?```/i);
-  if (embeddedMatch) {
-    try {
-      return JSON.parse(embeddedMatch[1].trim());
-    } catch {
-      candidate = embeddedMatch[1].trim();
-    }
-  }
-
-  // 3. Search for balanced JSON candidate objects (handles trailing/leading text & search citations)
+  // 2. Structural extraction first: balanced JSON candidates are parsed from
+  // the RAW text. Heuristic sanitization is deferred until structural parsing
+  // has failed, because rewriting the payload can corrupt string values that
+  // legitimately contain e.g. "Sources:" sections inside tool parameters.
   const balancedObjects = extractBalancedObjects(candidate);
   for (const objSpan of balancedObjects) {
     if (objSpan === candidate) continue; // Already tried direct JSON.parse
@@ -267,15 +291,38 @@ export function repairAndParseJson(text) {
     }
   }
 
+  // 3. Strip web search artifacts (e.g. Sources: ..., References: ...) and retry
+  const sanitized = stripSearchArtifacts(candidate);
+  if (sanitized && sanitized !== candidate) {
+    try {
+      return JSON.parse(sanitized);
+    } catch {
+      // Continue repair pipeline with sanitized candidate
+    }
+  }
+  candidate = sanitized || candidate;
+
+  // 4. Extract embedded code block if present inside text (e.g. fenced arrays
+  // or objects wrapped in prose; balanced-object extraction above only finds
+  // top-level {…} spans).
+  const embeddedMatch = candidate.match(/```(?:json|javascript|js)?\s*\n?([\s\S]*?)\n?```/i);
+  if (embeddedMatch) {
+    try {
+      return JSON.parse(embeddedMatch[1].trim());
+    } catch {
+      candidate = embeddedMatch[1].trim();
+    }
+  }
+
   let repaired = candidate;
-  // 4. Normalize smart quotes
+  // 5. Normalize smart quotes
   repaired = repaired.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
 
-  // 5. Remove comments (single-line // and multi-line /* ... */)
+  // 6. Remove comments (single-line // and multi-line /* ... */)
   repaired = repaired.replace(/(^|[^\\])\/\*[\s\S]*?\*\//g, '$1');
   repaired = repaired.replace(/(^|[^:\\])\/\/.*$/gm, '$1');
 
-  // 6. Remove trailing commas before } or ]
+  // 7. Remove trailing commas before } or ]
   repaired = repaired.replace(/,(\s*[}\]])/g, '$1');
   try {
     return JSON.parse(repaired);
@@ -283,7 +330,7 @@ export function repairAndParseJson(text) {
     // Continue to next repair strategy
   }
 
-  // 7. Escape unescaped raw newlines/tabs inside string literals
+  // 8. Escape unescaped raw newlines/tabs inside string literals
   function escapeNewlinesInStrings(str) {
     let out = '';
     let inString = false;
@@ -341,7 +388,7 @@ export function repairAndParseJson(text) {
     // Continue to next repair strategy
   }
 
-  // 8. Handle single quotes for keys and string values
+  // 9. Handle single quotes for keys and string values
   let sqFixed = escaped.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'(\s*:)/g, '"$1"$2');
   sqFixed = sqFixed.replace(/:\s*'([^'\\]*(?:\\.[^'\\]*)*)'/g, ': "$1"');
   sqFixed = sqFixed.replace(/,(\s*[}\]])/g, '$1');
@@ -351,7 +398,7 @@ export function repairAndParseJson(text) {
     // Continue to next repair strategy
   }
 
-  // 9. Truncated JSON auto-close with stack-based bracket pairing
+  // 10. Truncated JSON auto-close with stack-based bracket pairing
   function closeTruncatedJson(str) {
     let s = str.trim();
     const stack = [];
@@ -430,7 +477,13 @@ export function parseXMLTags(text) {
     return empty;
   }
 
-  const sanitized = stripSearchArtifacts(text);
+  // Structural content (thought/finish text, tool payloads) must be extracted
+  // from the raw response BEFORE any heuristic cleanup: stripSearchArtifacts
+  // rewrites prose-like regions and would silently corrupt file contents or
+  // diffs that legitimately contain e.g. a "Sources:" section. Sanitization
+  // is applied afterwards and only to the non-structural remainder.
+  const unwrappedText = stripMarkdownCodeBlock(text);
+  const sanitized = stripSearchArtifacts(unwrappedText);
   const normalizedText = stripMarkdownCodeBlock(sanitized);
 
   const extractTag = (input, tag) => {
@@ -506,6 +559,16 @@ export function parseXMLTags(text) {
     };
   };
 
+  // 1. Verbatim pass: extract thought/finish from the raw text first so their
+  // content is never altered by heuristic cleanup.
+  let thought =
+    extractTag(unwrappedText, 'thought') ||
+    extractTag(unwrappedText, 'thinking') ||
+    extractTag(unwrappedText, 'think');
+  let finish = extractTag(unwrappedText, 'finish');
+
+  // 2. XML tool-call pass (parameters are already excluded from cleanup by
+  // stripSearchArtifacts' structural awareness).
   const toolMatch = findTag('call_tool') || findTag('tool_call');
 
   if (toolMatch) {
@@ -551,7 +614,8 @@ export function parseXMLTags(text) {
     }
   }
 
-  // Support <artifact identifier="..." type="..." title="...">...</artifact> as fallback
+  // 3. Fallback: <artifact ...>...</artifact> is treated as a write_file call.
+  // Content is taken verbatim from the raw text.
   if (!toolCall) {
     const artifactMatch = findTag('artifact');
     if (artifactMatch && artifactMatch.content) {
@@ -584,23 +648,20 @@ export function parseXMLTags(text) {
         name: 'write_file',
         params: {
           path: filePath,
-          content: artifactMatch.content,
+          content: extractTag(unwrappedText, 'artifact') || artifactMatch.content,
         },
       };
     }
   }
 
-  let thought =
-    extractTag(normalizedText, 'thought') ||
-    extractTag(normalizedText, 'thinking') ||
-    extractTag(normalizedText, 'think');
-  let finish = extractTag(normalizedText, 'finish');
-
+  // 4. JSON fallback pass. Balanced candidates are taken from the RAW text:
+  // structural parsing precedes sanitization (repairAndParseJson applies
+  // heuristics itself only when structural parsing fails).
   if (!toolCall && !finish) {
     // 1. Walk through every top-level {...} candidate so nested JSON inside
     // `params` (e.g. {"params": {"path": "."}}) still parses correctly.
     let candidates = 0;
-    for (const candidate of extractBalancedObjects(normalizedText)) {
+    for (const candidate of extractBalancedObjects(unwrappedText)) {
       // F-14: Cap the number of fallback candidates we attempt to parse.
       if (++candidates > PARSE_MAX_CANDIDATES) break;
       try {

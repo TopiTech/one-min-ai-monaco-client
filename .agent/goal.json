@@ -1,45 +1,47 @@
 {
   "version": 1,
-  "id": "goal-20260908-review",
-  "status": "active",
+  "id": "goal-20260913-review",
+  "status": "completed",
   "objective": "プロジェクト全体をコードレビューし、重大な問題を修正してテストで検証する",
   "completion_criteria": [
     "主要な処理経路（サーバ、ルート、ミドルウェア、ユーティリティ、フロントエンドJS）をレビュー済み",
     "発見した重大な問題を修正し、再発防止テストを追加",
-    "npm test / lint / type-check がすべて成功",
+    "npm test / lint / type-check / format:check がすべて成功",
     "調査範囲・発見・変更・互換性・テスト結果・未解決事項を報告"
   ],
   "constraints": ["既存動作を壊さない、無関係な変更をしない", "commit / push は行わない"],
-  "non_goals": ["大規模リファクタリング、依存関係の大幅更新"],
-  "verification": ["npm test", "npm run lint", "npm run type-check"],
+  "non_goals": ["大規模リファクタリング、依存関係の大幅更新", "UI 全面改修"],
+  "verification": ["npm test", "npm run lint", "npm run type-check", "npm run format:check", "npm audit --omit=dev", "サーバ起動Smokeテスト (/api/health, GET /)"],
   "budget": {
     "max_iterations": 20,
     "max_elapsed_minutes": null
   },
   "progress": {
-    "iteration": 9,
+    "iteration": 10,
     "completed": [
-      "ベースライン取得（456 tests green, lint/type-check clean）",
-      "バックエンド主要経路レビュー（fs-guard, server, routes, auth, security, command-runner, ai routes, sanitize, mime-guard ほか）",
-      "フロントエンド主要ファイルレビュー（app.js, chat, agent-core, editor系, explorer, settings ほか）",
-      "横断パターンスキャン（innerHTML/eval/秘密情報/同期fs/レート制限/CSP）",
-      "agent-timeline.js の i18n バイパス修正（output_truncated / output_exceeded を使用）+ ja.json の先頭改行除去",
-      "回帰テスト tests/agent-timeline-i18n.test.js 追加（3 tests, 全 green）"
+      "前回レビュー (goal-20260908-review, 2026-09-08) 以降の7コミット差分 (~2,520行) を重点レビュー",
+      "ベースライン取得 (530 tests green, lint/type-check/audit clean)",
+      "HIGH: stripSearchArtifacts がツールペイロード (<call_tool>/<finish>/<artifact> 内部) を破壊する問題を構造認識方式で修正 (utils/web-search.js + public/js/utils.js の両実装)",
+      "MED: ステータス行除去regexを厳格化 (URLアンカー必須、'Searching for ...'の誤マッチ解消)",
+      "MED: repairAndParseJson の修正順序を変更 — 構造解析をサニタイズより先に実行",
+      "回帰テスト tests/search-artifact-boundary.test.js 追加 (11 tests, 実装同期テスト含む)",
+      "全検証成功: 541 tests / lint / type-check / format:check / audit 0 / サーバSmokeテスト"
     ],
-    "remaining": ["最終報告の作成"],
-    "last_action": "全検証の再実行（npm test 459 passing, lint clean, type-check clean）",
-    "last_result": "全完了条件を満たした。最終報告のみ残る"
+    "remaining": [],
+    "last_action": "最終全検証とゴール完了判定",
+    "last_result": "全完了条件を証拠付きで満たした"
   },
   "evidence": [
-    "npm test: 459 passing (27 suites) — 修正前 456 → 修正後 459（回帰テスト3件追加）",
+    "npm test: 541 passing (32 suites) — 修正前 530 → 修正後 541 (回帰テスト11件追加)",
     "npm run lint: clean",
     "npm run type-check: clean",
+    "npm run format:check: All matched files use Prettier code style!",
     "npm audit --omit=dev: 0 vulnerabilities",
-    "public/js/agent-timeline.js: t('output_truncated') / t('output_exceeded') を使用するよう変更",
-    "public/i18n/ja.json: output_exceeded から先頭の \\\\n\\\\n を除去（コード側で付与するため二重改行だった）",
-    "tests/agent-timeline-i18n.test.js: 新規3テスト（カタログ存在確認、翻訳適用確認、ハードコード除去確認）"
+    "サーバ起動Smokeテスト: /api/health 200 (version/uptime フィールド追加確認), GET / 200",
+    "utils/web-search.js と public/js/utils.js の stripSearchArtifacts 実装が同一であることをテストで保証 (impl-sync test)",
+    "既存ピン留めテスト (agent-search-resilience.test.js 12件のストリッピングテスト) は修正後も全件 green — 互換性維持を確認"
   ],
   "blockers": [],
-  "created_at": "2026-09-08T00:00:00.000Z",
-  "updated_at": "2026-09-08T00:00:00.000Z"
+  "created_at": "2026-09-13T21:35:00.000Z",
+  "updated_at": "2026-09-13T22:20:00.000Z"
 }
