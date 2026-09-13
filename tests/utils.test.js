@@ -244,8 +244,7 @@ describe('parseXMLTags', () => {
     expect(outThinking.thought).toBe('reasoning with thinking tag');
     expect(outThinking.toolCall).toEqual({ name: 'read_file', params: { path: 'a.js' } });
 
-    const thinkXml =
-      '<think>reasoning with think tag</think><finish>done</finish>';
+    const thinkXml = '<think>reasoning with think tag</think><finish>done</finish>';
     const outThink = parseXMLTags(thinkXml);
     expect(outThink.thought).toBe('reasoning with think tag');
     expect(outThink.finish).toBe('done');

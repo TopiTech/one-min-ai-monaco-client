@@ -32,6 +32,7 @@ import { initModels, getModelSyncStatus } from './config/models.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
 
 export function shouldExposeDetails(req) {
   const isDev = process.env.NODE_ENV === 'development';
@@ -282,6 +283,8 @@ export function createApp(options = {}) {
     res.json({
       ok: true,
       service: 'one-min-ai-monaco-client',
+      version: process.env.npm_package_version || packageJson.version || '1.0.0',
+      uptime: process.uptime(),
       models: {
         // QUAL-2: `ok` is the single source of truth for model sync status.
         // `syncFailed: !ok` was redundant and could cause confusion if the two
@@ -299,11 +302,12 @@ export function createApp(options = {}) {
     // so they take precedence over the global default limit.
     app.use('/api/chat', aiChatRateLimit);
     app.use('/api/code', autocompleteRateLimit);
+    app.use('/api/agent/chat', aiChatRateLimit);
     // Global default limit for /api only — static assets and the app shell
     // are excluded so loading Monaco (100+ chunk files) does not exhaust the
     // rate limit before the user makes any API calls. Endpoints that already
-    // went through a dedicated limiter above (/api/chat, /api/code) are
-    // skipped here; otherwise every chat/autocomplete request would be
+    // went through a dedicated limiter above (/api/chat, /api/code, /api/agent/chat)
+    // are skipped here; otherwise every chat/autocomplete request would be
     // double-counted and the global limit would silently override the
     // dedicated (higher) limits.
     app.use(
@@ -311,7 +315,14 @@ export function createApp(options = {}) {
       buildRateLimit({
         skip: (req) => {
           const p = req.path;
-          return p === '/chat' || p.startsWith('/chat/') || p === '/code' || p.startsWith('/code/');
+          return (
+            p === '/chat' ||
+            p.startsWith('/chat/') ||
+            p === '/code' ||
+            p.startsWith('/code/') ||
+            p === '/agent/chat' ||
+            p.startsWith('/agent/chat/')
+          );
         },
       }),
     );

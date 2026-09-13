@@ -274,9 +274,7 @@ Sources:
       });
 
       expect(response.status).toBe(200);
-      expect(response.body.text).toBe(
-        '<thinking>Portfolio built</thinking><finish>All done</finish>',
-      );
+      expect(response.body.text).toBe('<thinking>Portfolio built</thinking><finish>All done</finish>');
     });
   });
 });

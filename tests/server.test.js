@@ -51,6 +51,8 @@ describe('Server Factory', () => {
       expect(response.status).toBe(200);
       expect(response.body.ok).toBe(true);
       expect(response.body.service).toBe('one-min-ai-monaco-client');
+      expect(typeof response.body.version).toBe('string');
+      expect(typeof response.body.uptime).toBe('number');
       expect(response.body.models).toBeDefined();
       expect(response.body.models.ok).toBe(true);
       // hasApiKey removed from health endpoint to reduce info exposure (B-5)

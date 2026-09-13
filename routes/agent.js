@@ -1090,7 +1090,8 @@ async function searchWithRg(dir, query, maxResults) {
       const [, file, lineNumStr, content] = match;
       const lineNum = Number.parseInt(lineNumStr, 10);
       try {
-        const resolvedFile = validatePath(file);
+        const targetPath = path.isAbsolute(file) ? file : path.resolve(dir, file);
+        const resolvedFile = validatePath(targetPath);
         assertNotProtectedPath(resolvedFile);
         results.push({ file: resolvedFile, line: lineNum, content: content.trim() });
       } catch {

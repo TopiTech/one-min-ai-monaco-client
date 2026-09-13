@@ -68,7 +68,7 @@ function isSearchMetadataObject(obj) {
 
 function isCrawlStatusString(str) {
   if (typeof str !== 'string') return false;
-  return /^(?:⚙\s*|[•\-\*]\s*)?(?:Crawling(?:\s+site)?|Crawled(?:\s+site)?|Browsing(?:\s+page|\s+site)?|Searching(?:\s+the\s+web|\s+for)?|Navigating\s+to|Fetching(?:\s+URL)?)[^\n]*$/i.test(
+  return /^(?:⚙\s*|[•\-*]\s*)?(?:Crawling(?:\s+site)?|Crawled(?:\s+site)?|Browsing(?:\s+page|\s+site)?|Searching(?:\s+the\s+web|\s+for)?|Navigating\s+to|Fetching(?:\s+URL)?)[^\n]*$/i.test(
     str.trim(),
   );
 }

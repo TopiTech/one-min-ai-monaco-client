@@ -829,6 +829,10 @@ function initFolderPicker() {
   };
 
   function trapFocus(e) {
+    if (e.key === 'Escape') {
+      closeFolderPicker();
+      return;
+    }
     if (e.key !== 'Tab') return;
     const focusable = modal.querySelectorAll(
       'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',

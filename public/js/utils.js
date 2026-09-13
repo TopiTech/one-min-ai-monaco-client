@@ -178,7 +178,7 @@ export function stripSearchArtifacts(text) {
 
   // 2. Remove crawl / browsing / search status lines anywhere before or around payload
   cleaned = cleaned.replace(
-    /(?:^|\n)[ \t]*(?:⚙\s*|[•\-\*]\s*)?(?:Crawling(?:\s+site)?|Crawled(?:\s+site)?|Browsing(?:\s+page|\s+site)?|Searching(?:\s+the\s+web|\s+for)?|Navigating\s+to|Fetching(?:\s+URL)?|Reading\s+site)[^\n]*(?=\n|$)/gi,
+    /(?:^|\n)[ \t]*(?:⚙\s*|[•\-*]\s*)?(?:Crawling(?:\s+site)?|Crawled(?:\s+site)?|Browsing(?:\s+page|\s+site)?|Searching(?:\s+the\s+web|\s+for)?|Navigating\s+to|Fetching(?:\s+URL)?|Reading\s+site)[^\n]*(?=\n|$)/gi,
     '',
   );
 
@@ -561,7 +561,9 @@ export function parseXMLTags(text) {
       if (idMatch) identifier = idMatch[1];
       const typeMatch = artifactMatch.startTagContent.match(/type\s*=\s*["']?([^"'\s>]+)["']?/i);
       if (typeMatch) type = typeMatch[1];
-      const pathMatch = artifactMatch.startTagContent.match(/(?:path|file|filename)\s*=\s*["']?([^"'\s>]+)["']?/i);
+      const pathMatch = artifactMatch.startTagContent.match(
+        /(?:path|file|filename)\s*=\s*["']?([^"'\s>]+)["']?/i,
+      );
 
       let filePath = pathMatch ? pathMatch[1] : '';
       if (!filePath) {
@@ -641,7 +643,10 @@ export function parseXMLTags(text) {
     // 3. Fallback: If thought/thinking was extracted and there is non-empty remaining text outside the thinking tags, treat as finish
     if (!toolCall && !finish && thought) {
       const outsideText = normalizedText
-        .replace(/<(?:thought|thinking|think)(?:\s+[^>]*)?>[\s\S]*?(?:<\/(?:thought|thinking|think)>|$)/gi, '')
+        .replace(
+          /<(?:thought|thinking|think)(?:\s+[^>]*)?>[\s\S]*?(?:<\/(?:thought|thinking|think)>|$)/gi,
+          '',
+        )
         .trim();
       if (outsideText) {
         finish = outsideText;

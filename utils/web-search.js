@@ -93,7 +93,7 @@ export function stripSearchArtifacts(text) {
 
   // 2. Remove crawl / browsing / search status lines anywhere before or around payload
   cleaned = cleaned.replace(
-    /(?:^|\n)[ \t]*(?:⚙\s*|[•\-\*]\s*)?(?:Crawling(?:\s+site)?|Crawled(?:\s+site)?|Browsing(?:\s+page|\s+site)?|Searching(?:\s+the\s+web|\s+for)?|Navigating\s+to|Fetching(?:\s+URL)?|Reading\s+site)[^\n]*(?=\n|$)/gi,
+    /(?:^|\n)[ \t]*(?:⚙\s*|[•\-*]\s*)?(?:Crawling(?:\s+site)?|Crawled(?:\s+site)?|Browsing(?:\s+page|\s+site)?|Searching(?:\s+the\s+web|\s+for)?|Navigating\s+to|Fetching(?:\s+URL)?|Reading\s+site)[^\n]*(?=\n|$)/gi,
     '',
   );
 
@@ -105,4 +105,3 @@ export function stripSearchArtifacts(text) {
 
   return cleaned.trim();
 }
-
