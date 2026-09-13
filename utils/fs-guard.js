@@ -261,7 +261,7 @@ export function isSubPath(candidatePath, basePath) {
   return normCandidate.startsWith(prefix);
 }
 
-export function validatePath(targetPath) {
+export function validatePath(targetPath, { resolveSymlinks = true } = {}) {
   if (!targetPath) {
     throw new Error('Path is required');
   }
@@ -280,6 +280,14 @@ export function validatePath(targetPath) {
   const isAbsolute = path.isAbsolute(targetPath);
   const resolvedPath = isAbsolute ? path.resolve(targetPath) : path.resolve(PROJECT_ROOT, targetPath);
   const allowedRoots = getAllowedRoots();
+
+  if (!resolveSymlinks) {
+    const isAllowed = allowedRoots.some((root) => isSubPath(resolvedPath, root));
+    if (!isAllowed) {
+      throw new ForbiddenError('Access denied: Path is outside the allowed directories');
+    }
+    return resolvedPath;
+  }
 
   // SEC-VAL-1: Validate the resolved path against allowed roots BEFORE attempting
   // realpathSync. This prevents path traversal via symlink swaps where an attacker

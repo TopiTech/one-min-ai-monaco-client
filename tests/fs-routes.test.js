@@ -237,6 +237,34 @@ describe('FS Routes', () => {
       await expect(fs.access(filePath)).rejects.toThrow();
     });
 
+    test('deletes a symlink without deleting the target directory or its contents', async () => {
+      const targetDir = path.join(tmpDir, 'symlink-target-dir');
+      await fs.mkdir(targetDir, { recursive: true });
+      const targetFile = path.join(targetDir, 'keep-me.txt');
+      await fs.writeFile(targetFile, 'do not delete');
+
+      const linkDir = path.join(tmpDir, 'symlink-to-dir');
+      try {
+        await fs.symlink(targetDir, linkDir, process.platform === 'win32' ? 'junction' : 'dir');
+      } catch {
+        // Skip if symlinks cannot be created in environment
+        return;
+      }
+
+      const res = await request(app).post('/api/fs/delete').send({ path: linkDir });
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+
+      // Link must be deleted
+      await expect(fs.lstat(linkDir)).rejects.toThrow();
+
+      // Target directory and its contents must still exist!
+      const targetStat = await fs.stat(targetDir);
+      expect(targetStat.isDirectory()).toBe(true);
+      const targetContent = await fs.readFile(targetFile, 'utf-8');
+      expect(targetContent).toBe('do not delete');
+    });
+
     test('rejects missing path', async () => {
       const res = await request(app).post('/api/fs/delete').send({});
       expect(res.status).toBe(400);
@@ -259,6 +287,34 @@ describe('FS Routes', () => {
       const content = await fs.readFile(newPath, 'utf-8');
       expect(content).toBe('rename me');
       await expect(fs.access(oldPath)).rejects.toThrow();
+    });
+
+    test('renames a symlink without moving or modifying the target directory', async () => {
+      const targetDir = path.join(tmpDir, 'rename-symlink-target');
+      await fs.mkdir(targetDir, { recursive: true });
+      const targetFile = path.join(targetDir, 'inside.txt');
+      await fs.writeFile(targetFile, 'preserve this');
+
+      const oldLink = path.join(tmpDir, 'symlink-old');
+      const newLink = path.join(tmpDir, 'symlink-new');
+      try {
+        await fs.symlink(targetDir, oldLink, process.platform === 'win32' ? 'junction' : 'dir');
+      } catch {
+        return;
+      }
+
+      const res = await request(app).post('/api/fs/rename').send({ oldPath: oldLink, newPath: newLink });
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+
+      // Old link must be gone, new link must exist
+      await expect(fs.lstat(oldLink)).rejects.toThrow();
+      const newLinkLstat = await fs.lstat(newLink);
+      expect(newLinkLstat.isSymbolicLink()).toBe(true);
+
+      // Target directory must still exist untouched
+      const targetContent = await fs.readFile(targetFile, 'utf-8');
+      expect(targetContent).toBe('preserve this');
     });
 
     test('rejects missing parameters', async () => {

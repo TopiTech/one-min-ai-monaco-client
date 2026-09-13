@@ -23,6 +23,8 @@ jest.unstable_mockModule('../utils/api-client.js', () => ({
 }));
 
 const { createApp } = await import('../server.js');
+const { parseSearchReplaceBlocks, cleanupExpiredSessions, pendingCommands } =
+  await import('../routes/agent.js');
 
 describe('Agent Directory and Patch Routes', () => {
   let app;
@@ -260,6 +262,26 @@ fin.
       expect(fileContent).not.toContain('  this has been patched successfully with diff');
       expect(fileContent).not.toContain('this is a test');
     });
+
+    test('should delete code when diff REPLACE block is empty', async () => {
+      const diffContent = `
+<<<<<<< SEARCH
+this is a test
+=======
+>>>>>>> REPLACE
+`;
+      const response = await request(app).post(`/api/agent/sessions/${sessionId}/diff`).send({
+        path: testFile,
+        diff: diffContent,
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.ok).toBe(true);
+
+      const fileContent = await fs.readFile(testFile, 'utf-8');
+      expect(fileContent).not.toContain('this is a test');
+    });
+
     test('should return 400 if search block not found', async () => {
       const diffContent = `
 <<<<<<< SEARCH
@@ -352,6 +374,23 @@ replaced
       expect(found.content).toContain('needle line here');
     });
 
+    test('should correctly parse search results when line content contains colons and numbers', async () => {
+      await fs.writeFile(
+        testSearchFile,
+        'line one\nconst apiUrl = "http://localhost:3000/api/v1";\nline three',
+        'utf-8',
+      );
+      const response = await request(app)
+        .get(`/api/agent/sessions/${sessionId}/search`)
+        .query({ query: 'http://localhost:3000' });
+
+      expect(response.status).toBe(200);
+      const found = response.body.results.find((r) => r.file.includes('temp-search-test.txt'));
+      expect(found).toBeDefined();
+      expect(found.line).toBe(2);
+      expect(found.content).toContain('http://localhost:3000/api/v1');
+    });
+
     test('should return 400 for missing query', async () => {
       const response = await request(app).get(`/api/agent/sessions/${sessionId}/search`);
 
@@ -394,6 +433,71 @@ replaced
       expect(clearRes.status).toBe(200);
       expect(clearRes.body.ok).toBe(true);
       expect(typeof clearRes.body.cleared).toBe('number');
+    });
+  });
+
+  describe('parseSearchReplaceBlocks unit tests', () => {
+    test('parses single block with replacement', () => {
+      const diff = '<<<<<<< SEARCH\nconst a = 1;\n=======\nconst a = 2;\n>>>>>>> REPLACE';
+      const blocks = parseSearchReplaceBlocks(diff);
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0].search).toBe('const a = 1;');
+      expect(blocks[0].replace).toBe('const a = 2;');
+      expect(blocks[0].searchLines).toEqual(['const a = 1;']);
+      expect(blocks[0].replaceLines).toEqual(['const a = 2;']);
+    });
+
+    test('parses empty replace block as deletion (0 replaceLines)', () => {
+      const diff = '<<<<<<< SEARCH\nconst a = 1;\n=======\n>>>>>>> REPLACE';
+      const blocks = parseSearchReplaceBlocks(diff);
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0].search).toBe('const a = 1;');
+      expect(blocks[0].replace).toBe('');
+      expect(blocks[0].searchLines).toEqual(['const a = 1;']);
+      expect(blocks[0].replaceLines).toEqual([]);
+    });
+
+    test('parses multi-block with CRLF endings', () => {
+      const diff =
+        '<<<<<<< SEARCH\r\nfoo\r\n=======\r\nbar\r\n>>>>>>> REPLACE\r\n<<<<<<< SEARCH\r\nbaz\r\n=======\r\n>>>>>>> REPLACE';
+      const blocks = parseSearchReplaceBlocks(diff);
+      expect(blocks).toHaveLength(2);
+      expect(blocks[0].search).toBe('foo');
+      expect(blocks[0].replace).toBe('bar');
+      expect(blocks[1].search).toBe('baz');
+      expect(blocks[1].replaceLines).toEqual([]);
+    });
+
+    test('ignores conversational preamble and postscript', () => {
+      const diff =
+        'Here is the diff to apply:\n<<<<<<< SEARCH\nfoo\n=======\nbar\n>>>>>>> REPLACE\nHope that helps!';
+      const blocks = parseSearchReplaceBlocks(diff);
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0].search).toBe('foo');
+      expect(blocks[0].replace).toBe('bar');
+    });
+
+    test('returns empty array for invalid input', () => {
+      expect(parseSearchReplaceBlocks(null)).toEqual([]);
+      expect(parseSearchReplaceBlocks('')).toEqual([]);
+      expect(parseSearchReplaceBlocks('no markers')).toEqual([]);
+      expect(parseSearchReplaceBlocks('<<<<<<< SEARCH\nno closing')).toEqual([]);
+    });
+  });
+
+  describe('cleanupExpiredSessions', () => {
+    test('purges expired pending commands and retains unexpired ones', () => {
+      const now = Date.now();
+      pendingCommands.set('expired-token', { createdAt: now - 6 * 60 * 1000, command: 'ls' });
+      pendingCommands.set('valid-token', { createdAt: now - 1 * 60 * 1000, command: 'pwd' });
+
+      cleanupExpiredSessions();
+
+      expect(pendingCommands.has('expired-token')).toBe(false);
+      expect(pendingCommands.has('valid-token')).toBe(true);
+
+      // Clean up
+      pendingCommands.delete('valid-token');
     });
   });
 });

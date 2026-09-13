@@ -432,10 +432,18 @@ router.post('/delete', async (req, res, next) => {
       return res.status(400).json({ error: result.error.issues[0]?.message || 'Validation error' });
     const { path: targetPath } = result.data;
 
-    const resolvedPath = validatePath(String(targetPath));
+    const resolvedPath = validatePath(String(targetPath), { resolveSymlinks: false });
     assertNotWriteProtectedPath(resolvedPath);
 
-    // Target must exist to be deleted, resolve symlinks
+    // Target must exist to be deleted.
+    // If the target is a symlink, unlink the link directly without resolving
+    // the target to avoid deleting the referenced directory or failing on broken links.
+    const lstat = await fs.lstat(resolvedPath);
+    if (lstat.isSymbolicLink()) {
+      await fs.unlink(resolvedPath);
+      return res.json({ ok: true, path: resolvedPath });
+    }
+
     const realPath = revalidateRealPath(resolvedPath);
     assertNotWriteProtectedPath(realPath);
 
@@ -470,10 +478,18 @@ router.post('/rename', async (req, res, next) => {
       return res.status(400).json({ error: result.error.issues[0]?.message || 'Validation error' });
     const { oldPath, newPath } = result.data;
 
-    const resolvedOld = validatePath(String(oldPath));
-    const resolvedNew = validatePath(String(newPath));
+    const resolvedOld = validatePath(String(oldPath), { resolveSymlinks: false });
+    const resolvedNew = validatePath(String(newPath), { resolveSymlinks: false });
     assertNotWriteProtectedPath(resolvedOld);
     assertNotWriteProtectedPath(resolvedNew);
+
+    // If resolvedOld is a symlink, move/rename the symlink itself without resolving target.
+    const lstatOld = await fs.lstat(resolvedOld);
+    if (lstatOld.isSymbolicLink()) {
+      const realNew = await getSafeRealPath(resolvedNew);
+      await fs.rename(resolvedOld, realNew);
+      return res.json({ ok: true, oldPath: resolvedOld, newPath: realNew });
+    }
 
     // Old path must exist, resolve symlinks
     const realOld = revalidateRealPath(resolvedOld);

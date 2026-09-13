@@ -447,14 +447,19 @@ function cleanupExpiredSessions() {
       changed = true;
     }
   }
+  let pendingChanged = false;
   for (const [token, pending] of pendingCommands) {
     const createdAt = Number(pending?.createdAt);
     if (!Number.isFinite(createdAt) || now - createdAt > PENDING_COMMAND_TTL_MS) {
       pendingCommands.delete(token);
+      pendingChanged = true;
     }
   }
   if (changed) {
     saveSessions();
+  }
+  if (pendingChanged) {
+    savePendingCommands();
   }
 
   // Clean up isolated temporary files (.tmp) in DATA_DIR that are older than 30 minutes
@@ -1075,11 +1080,13 @@ async function searchWithRg(dir, query, maxResults) {
     function processLine(rawLine) {
       if (results.length >= maxResults) return false;
       if (!rawLine.trim()) return true;
-      // Use the final `:<line>:<content>` boundary so Windows drive letters
-      // and colons in either filenames or matching lines are preserved.
-      const match = rawLine.match(/^(.+):(\d+):(.*)$/);
+      // Preserve Windows drive letters (e.g. C:\...) while matching the first
+      // :<line>: delimiter so colons in content (e.g. URLs or timestamps) aren't greedily captured.
+      const match = rawLine.match(/^(?:([a-zA-Z]:[^\r\n:]*)|([^\r\n:]+)):(\d+):(.*)$/);
       if (!match) return true;
-      const [, file, lineNumStr, content] = match;
+      const file = match[1] || match[2];
+      const lineNumStr = match[3];
+      const content = match[4];
       const lineNum = Number.parseInt(lineNumStr, 10);
       try {
         const targetPath = path.isAbsolute(file) ? file : path.resolve(dir, file);
@@ -1491,6 +1498,58 @@ router.get('/sessions/:id/project-info', async (req, res, next) => {
 });
 
 /**
+ * Robust line-by-line parser for SEARCH/REPLACE diff blocks.
+ * Handles deletions (empty REPLACE block), CRLF/LF line endings,
+ * whitespace around markers, and consecutive blocks without ReDoS.
+ *
+ * @param {string} diff
+ * @returns {Array<{ search: string, replace: string, searchLines: string[], replaceLines: string[] }>}
+ */
+export function parseSearchReplaceBlocks(diff) {
+  if (typeof diff !== 'string') return [];
+  const lines = diff.split(/\r?\n/);
+  const blocks = [];
+  let state = 'IDLE'; // 'IDLE' | 'SEARCH' | 'REPLACE'
+  let currentSearch = [];
+  let currentReplace = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (state === 'IDLE') {
+      if (/^<{7}\s*SEARCH\b/.test(trimmed)) {
+        state = 'SEARCH';
+        currentSearch = [];
+        currentReplace = [];
+      }
+    } else if (state === 'SEARCH') {
+      if (/^={7}\s*$/.test(trimmed)) {
+        state = 'REPLACE';
+      } else {
+        currentSearch.push(line);
+      }
+    } else if (state === 'REPLACE') {
+      if (/^>{7}\s*REPLACE\b/.test(trimmed)) {
+        if (currentSearch.length > 0) {
+          blocks.push({
+            search: currentSearch.join('\n'),
+            replace: currentReplace.join('\n'),
+            searchLines: [...currentSearch],
+            replaceLines: [...currentReplace],
+          });
+        }
+        state = 'IDLE';
+      } else {
+        currentReplace.push(line);
+      }
+    }
+  }
+
+  return blocks;
+}
+
+/**
  * Apply a SEARCH/REPLACE diff to a file within session context.
  */
 router.post('/sessions/:id/diff', async (req, res, next) => {
@@ -1522,19 +1581,9 @@ router.post('/sessions/:id/diff', async (req, res, next) => {
 
     const content = await fs.readFile(realPath, 'utf-8');
 
-    // M-13: Construct the regex inside the handler so its `lastIndex` is
-    // reset on every call. Reusing a module-level /g regex would otherwise
-    // resume from the previous invocation and silently drop blocks.
-    const blockRegex =
-      /<<<<<<< SEARCH[ \t]*\r?\n([\s\S]*?)\r?\n=======[ \t]*\r?\n([\s\S]*?)\r?\n>>>>>>> REPLACE[ \t]*/g;
-    const blocks = [];
-    let match;
-    while ((match = blockRegex.exec(diff)) !== null) {
-      blocks.push({
-        search: match[1],
-        replace: match[2],
-      });
-    }
+    // H-1: Use robust line-by-line block parser that supports deletions
+    // (empty REPLACE block) and consecutive blocks without regex backtracking.
+    const blocks = parseSearchReplaceBlocks(diff);
 
     if (blocks.length === 0) {
       return res.status(400).json({
@@ -1552,8 +1601,8 @@ router.post('/sessions/:id/diff', async (req, res, next) => {
 
     for (const block of blocks) {
       // Split search and replace blocks by line
-      const searchLines = block.search.split(/\r?\n/);
-      const replaceLines = block.replace.split(/\r?\n/);
+      const searchLines = block.searchLines;
+      const replaceLines = block.replaceLines;
 
       let matchedIndex = -1;
       let matchCount = 0;
@@ -1927,5 +1976,7 @@ export async function initAgentState() {
   logger.info('Initializing agent state from persistence...');
   await Promise.all([loadSessions(), loadPendingCommands()]);
 }
+
+export { cleanupExpiredSessions, pendingCommands, savePendingCommands };
 
 export default router;

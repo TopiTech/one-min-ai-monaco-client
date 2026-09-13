@@ -41,6 +41,9 @@ async function loadTimelineModule() {
         this.removed = true;
       },
       focus: jest.fn(),
+      click() {
+        if (typeof this.onclick === 'function') this.onclick();
+      },
     };
     elements.push(el);
     return el;
@@ -157,5 +160,56 @@ describe('agent-timeline i18n (truncation UI)', () => {
     expect(src).not.toContain('切り詰められました');
     expect(src).toMatch(/t\('output_truncated'\)/);
     expect(src).toMatch(/t\('output_exceeded'/);
+  });
+});
+
+describe('agent-timeline accessibility', () => {
+  test('pressing Enter on feedback input triggers reject with feedback text', async () => {
+    jest.useFakeTimers();
+    try {
+      const { timeline } = await loadTimelineModule();
+      const dom = { agentActivityLog: global.document.createElement('div') };
+      dom.agentActivityLog.scrollTop = 0;
+      dom.agentActivityLog.scrollHeight = 0;
+      const { addApprovalStep } = timeline.createAgentTimeline(dom);
+
+      const onApprove = jest.fn();
+      const onReject = jest.fn();
+
+      addApprovalStep('npm test', '/workspace', 'token-123', onApprove, onReject);
+
+      const allElements = [];
+      const walk = (el) => {
+        allElements.push(el);
+        (el.children || []).forEach(walk);
+      };
+      walk(dom.agentActivityLog);
+
+      const feedbackInput = allElements.find(
+        (el) => typeof el.id === 'string' && el.id.startsWith('feedback-step-approval-'),
+      );
+      const rejectBtn = allElements.find(
+        (el) => typeof el.id === 'string' && el.id.startsWith('reject-step-approval-'),
+      );
+
+      expect(feedbackInput).toBeDefined();
+      expect(rejectBtn).toBeDefined();
+
+      expect(feedbackInput.addEventListener).toHaveBeenCalledWith('keydown', expect.any(Function));
+
+      const keydownCall = feedbackInput.addEventListener.mock.calls.find((call) => call[0] === 'keydown');
+      const keydownHandler = keydownCall[1];
+
+      feedbackInput.value = 'command is dangerous';
+      const preventDefault = jest.fn();
+      keydownHandler({ key: 'Enter', preventDefault });
+
+      expect(preventDefault).toHaveBeenCalled();
+      expect(onReject).toHaveBeenCalledWith('command is dangerous');
+
+      jest.runAllTimers();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

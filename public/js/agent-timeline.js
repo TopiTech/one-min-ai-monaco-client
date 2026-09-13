@@ -211,6 +211,12 @@ export function createAgentTimeline(dom) {
     feedbackInput.className = 'approval-feedback-input';
     feedbackInput.placeholder = t('cmd_reject_reason');
     feedbackInput.setAttribute('aria-label', t('cmd_reject_reason'));
+    feedbackInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        rejectBtn.click();
+      }
+    });
 
     const actions = document.createElement('div');
     actions.className = 'approval-actions';
