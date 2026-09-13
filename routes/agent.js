@@ -22,6 +22,7 @@ import logger from '../utils/logger.js';
 import { SessionLock } from '../utils/async-lock.js';
 import { atomicWriteTextFile, readSpecificLines } from '../utils/fs-utils.js';
 import { countTokensMultiple } from '../utils/tokenizer.js';
+import { validateCodeSyntax, extractSymbols, getProjectMetadata } from '../services/code-analyzer.js';
 
 const sessionCreateSchema = z.object({
   id: z.string().max(128, 'session id is too long').optional(),
@@ -95,6 +96,29 @@ const fileDiffSchema = z.object({
   path: z.string({ message: 'path is required' }).min(1, 'path is required').max(4096, 'path is too long'),
   diff: z.string({ message: 'diff is required' }).max(500000, 'diff exceeds 500000 characters'),
   dryRun: z.boolean().optional().default(false),
+  startLine: z.preprocess(
+    (val) => (val === undefined || val === null || val === '' ? undefined : Number(val)),
+    z.number().int().min(1).optional(),
+  ),
+});
+
+const findFilesSchema = z.object({
+  pattern: z.string().max(1024, 'pattern is too long').optional().default('*'),
+  dir: z.string().max(4096, 'dir is too long').optional(),
+  maxResults: z.preprocess(
+    (val) => (val === undefined || val === '' ? undefined : Number(val)),
+    z.number().int().positive().max(200).optional().default(50),
+  ),
+});
+
+const outlineSchema = z.object({
+  path: z.string({ message: 'path is required' }).min(1, 'path is required').max(4096, 'path is too long'),
+  language: z.string().max(50).optional(),
+});
+
+const validateSchema = z.object({
+  code: z.string({ message: 'code is required' }).max(2 * 1024 * 1024, 'code exceeds 2MB'),
+  language: z.string().max(50).optional().default('javascript'),
 });
 
 const directoryQuerySchema = z.object({
@@ -1259,6 +1283,171 @@ router.get('/sessions/:id/dir', async (req, res, next) => {
 });
 
 /**
+ * Convert a glob pattern (*, **, ?) to RegExp.
+ */
+function globToPatternRegex(glob) {
+  if (!glob || glob === '*' || glob === '**/*') return /.*/;
+  const escaped = glob
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*/g, '.*')
+    .replace(/(?<!\.)\*/g, '[^/]*')
+    .replace(/\?/g, '.');
+  return new RegExp(`^${escaped}$`, 'i');
+}
+
+/**
+ * Recursively find files matching a glob pattern up to maxResults.
+ */
+async function findFilesRecursively(dir, pattern, maxResults, rootDir = dir, depth = 0) {
+  if (depth > 10 || maxResults <= 0) return [];
+  const results = [];
+  try {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    const regex = globToPatternRegex(pattern);
+
+    for (const entry of entries) {
+      if (results.length >= maxResults) break;
+      if (SKIPPED_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
+
+      const fullPath = path.join(dir, entry.name);
+      const relPath = path.relative(rootDir, fullPath).replace(/\\/g, '/');
+
+      if (entry.isDirectory()) {
+        try {
+          const revalidated = revalidateRealPath(fullPath);
+          assertNotProtectedPath(revalidated);
+          const sub = await findFilesRecursively(revalidated, pattern, maxResults - results.length, rootDir, depth + 1);
+          results.push(...sub);
+        } catch {
+          // Skip directories that fail validation or access
+        }
+      } else if (entry.isFile()) {
+        if (!pattern || pattern === '*' || pattern === '**/*' || regex.test(relPath) || regex.test(entry.name)) {
+          results.push({
+            name: entry.name,
+            path: fullPath,
+            relativePath: relPath,
+          });
+        }
+      }
+    }
+  } catch {
+    // Skip inaccessible directories
+  }
+  return results;
+}
+
+/**
+ * Find files matching a glob pattern within session context.
+ */
+router.get('/sessions/:id/find-files', async (req, res, next) => {
+  try {
+    const session = getSession(req, res);
+    if (!session) return;
+
+    const resultQuery = findFilesSchema.safeParse(req.query);
+    if (!resultQuery.success) {
+      return res.status(400).json({ error: resultQuery.error.issues[0]?.message || 'Validation error' });
+    }
+    const { pattern, dir, maxResults } = resultQuery.data;
+    const searchDir = dir || session.cwd;
+    const resolvedDir = validatePath(resolveAgentPath(searchDir, session.cwd));
+    assertNotProtectedPath(resolvedDir);
+
+    const files = await findFilesRecursively(resolvedDir, pattern, maxResults, resolvedDir);
+    res.json({
+      dir: resolvedDir,
+      pattern,
+      count: files.length,
+      files,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Extract outline symbols (functions, classes, exports) from a file.
+ */
+router.get('/sessions/:id/outline', async (req, res, next) => {
+  try {
+    const session = getSession(req, res);
+    if (!session) return;
+
+    const resultQuery = outlineSchema.safeParse(req.query);
+    if (!resultQuery.success) {
+      return res.status(400).json({ error: resultQuery.error.issues[0]?.message || 'Validation error' });
+    }
+    const { path: filePath, language } = resultQuery.data;
+    const resolvedPath = validatePath(resolveAgentPath(filePath, session.cwd));
+    assertNotProtectedPath(resolvedPath);
+    const realPath = revalidateRealPath(resolvedPath);
+    assertNotProtectedPath(realPath);
+
+    const stat = await fs.stat(realPath);
+    if (!stat.isFile()) {
+      return res.status(400).json({ error: 'Specified path is not a file' });
+    }
+    if (stat.size > serverConfig.agentMaxReadSize) {
+      return res.status(413).json({ error: 'File size exceeds maximum read size' });
+    }
+
+    const content = await fs.readFile(realPath, 'utf-8');
+    const ext = path.extname(realPath).replace('.', '');
+    const lang = language || ext || 'javascript';
+    const symbols = extractSymbols(content, lang);
+
+    res.json({
+      path: realPath,
+      language: lang,
+      count: symbols.length,
+      symbols,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Validate syntax of code in-memory without executing it.
+ */
+router.post('/sessions/:id/validate', async (req, res, next) => {
+  try {
+    const session = getSession(req, res);
+    if (!session) return;
+
+    const resultBody = validateSchema.safeParse(req.body);
+    if (!resultBody.success) {
+      return res.status(400).json({ error: resultBody.error.issues[0]?.message || 'Validation error' });
+    }
+    const { code, language } = resultBody.data;
+    const result = validateCodeSyntax(code, language);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Get project metadata (package.json, tech stack, test command) for the workspace.
+ */
+router.get('/sessions/:id/project-info', async (req, res, next) => {
+  try {
+    const session = getSession(req, res);
+    if (!session) return;
+
+    const metadata = await getProjectMetadata(session.cwd);
+    res.json({
+      sessionId: session.id,
+      cwd: session.cwd,
+      project: metadata,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * Apply a SEARCH/REPLACE diff to a file within session context.
  */
 router.post('/sessions/:id/diff', async (req, res, next) => {
@@ -1325,6 +1514,7 @@ router.post('/sessions/:id/diff', async (req, res, next) => {
 
       let matchedIndex = -1;
       let matchCount = 0;
+      const candidateMatches = [];
 
       // 1. Try Exact Match (preserving exact indentation and trailing spaces)
       for (let i = 0; i <= fileLines.length - searchLines.length; i++) {
@@ -1336,13 +1526,12 @@ router.post('/sessions/:id/diff', async (req, res, next) => {
           }
         }
         if (match) {
-          matchedIndex = i;
-          matchCount++;
+          candidateMatches.push(i);
         }
       }
 
       // 2. Try Normalized Match (ignore trailing spaces) if exact match fails
-      if (matchCount === 0) {
+      if (candidateMatches.length === 0) {
         const normFileLines = fileLines.map((l) => l.replace(/[ \t]+$/g, ''));
         const normSearchLines = searchLines.map((l) => l.replace(/[ \t]+$/g, ''));
 
@@ -1355,14 +1544,13 @@ router.post('/sessions/:id/diff', async (req, res, next) => {
             }
           }
           if (match) {
-            matchedIndex = i;
-            matchCount++;
+            candidateMatches.push(i);
           }
         }
       }
 
       // 3. Try Indentation-Insensitive Match (ignore leading and trailing spaces) if normalized match fails
-      if (matchCount === 0) {
+      if (candidateMatches.length === 0) {
         const cleanFileLines = fileLines.map((l) => l.trim());
         const cleanSearchLines = searchLines.map((l) => l.trim());
 
@@ -1375,15 +1563,86 @@ router.post('/sessions/:id/diff', async (req, res, next) => {
             }
           }
           if (match) {
-            matchedIndex = i;
-            matchCount++;
+            candidateMatches.push(i);
           }
         }
       }
 
+      // 4. Try Fuzzy Anchor Matching if searchLines has at least 3 lines
+      if (candidateMatches.length === 0 && searchLines.length >= 3) {
+        const firstIdx = searchLines.findIndex((l) => l.trim().length > 0);
+        const lastIdx =
+          searchLines.length - 1 - [...searchLines].reverse().findIndex((l) => l.trim().length > 0);
+        if (firstIdx !== -1 && lastIdx > firstIdx) {
+          const firstTrim = searchLines[firstIdx].trim();
+          const lastTrim = searchLines[lastIdx].trim();
+
+          for (let i = 0; i <= fileLines.length - searchLines.length; i++) {
+            if (
+              fileLines[i + firstIdx]?.trim() === firstTrim &&
+              fileLines[i + lastIdx]?.trim() === lastTrim
+            ) {
+              let matchingCount = 0;
+              for (let j = 0; j < searchLines.length; j++) {
+                if (fileLines[i + j]?.trim() === searchLines[j]?.trim()) {
+                  matchingCount++;
+                }
+              }
+              if (matchingCount / searchLines.length >= 0.75) {
+                candidateMatches.push(i);
+              }
+            }
+          }
+        }
+      }
+
+      // Disambiguation via startLine hint if multiple matches exist
+      if (candidateMatches.length > 1 && resultBody.data.startLine) {
+        const targetLineIdx = resultBody.data.startLine - 1;
+        matchedIndex = candidateMatches.reduce((best, curr) =>
+          Math.abs(curr - targetLineIdx) < Math.abs(best - targetLineIdx) ? curr : best,
+        );
+        matchCount = 1;
+      } else if (candidateMatches.length === 1) {
+        matchedIndex = candidateMatches[0];
+        matchCount = 1;
+      } else {
+        matchCount = candidateMatches.length;
+      }
+
       // Check results
       if (matchCount === 0) {
-        // Try to find a "fuzzy" match to provide a better error hint
+        const cleanSearchLines = searchLines.map((l) => l.trim());
+        const cleanFileLines = fileLines.map((l) => l.trim());
+        let bestIndex = -1;
+        let bestScore = 0;
+
+        const computeLineSimilarity = (s1, s2) => {
+          if (s1 === s2) return 1.0;
+          if (!s1 || !s2) return 0;
+          if (s1.includes(s2) || s2.includes(s1)) return 0.8;
+          const t1 = s1.split(/[^A-Za-z0-9_$]+/).filter(Boolean);
+          const t2 = s2.split(/[^A-Za-z0-9_$]+/).filter(Boolean);
+          if (t1.length === 0 || t2.length === 0) return 0;
+          const set2 = new Set(t2);
+          let matches = 0;
+          for (const t of t1) {
+            if (set2.has(t)) matches++;
+          }
+          return matches / Math.max(t1.length, t2.length);
+        };
+
+        for (let i = 0; i <= fileLines.length - searchLines.length; i++) {
+          let score = 0;
+          for (let j = 0; j < searchLines.length; j++) {
+            score += computeLineSimilarity(cleanFileLines[i + j], cleanSearchLines[j]);
+          }
+          if (score > bestScore) {
+            bestScore = score;
+            bestIndex = i;
+          }
+        }
+
         const cleanSearch = searchLines.map((l) => l.trim()).join('');
         const cleanFile = fileLines.map((l) => l.trim()).join('');
         const isFuzzyMatch = cleanFile.includes(cleanSearch);
@@ -1391,10 +1650,25 @@ router.post('/sessions/:id/diff', async (req, res, next) => {
         let errorMsg = `置換対象の SEARCH ブロックのコードが見つかりません。インデントや改行が既存ファイルの内容と完全に一致している必要があります。`;
         if (isFuzzyMatch) {
           errorMsg += `\nヒント: コードの内容は似ていますが、インデントや不可視文字（タブ/スペース）が異なっている可能性があります。`;
+        } else if (bestIndex !== -1 && bestScore > 0.2) {
+          const candidateSnippet = fileLines
+            .slice(bestIndex, bestIndex + searchLines.length)
+            .join('\n');
+          errorMsg += `\n\n【ヒント: ファイル内の最も近い該当箇所 (行 ${bestIndex + 1}〜${bestIndex + searchLines.length})】:\n${candidateSnippet}`;
         }
         errorMsg += `\n\n対象のコード:\n${block.search}`;
 
-        return res.status(400).json({ error: errorMsg });
+        return res.status(400).json({
+          error: errorMsg,
+          hint:
+            bestIndex !== -1 && bestScore > 0.2
+              ? {
+                  startLine: bestIndex + 1,
+                  endLine: bestIndex + searchLines.length,
+                  snippet: fileLines.slice(bestIndex, bestIndex + searchLines.length).join('\n'),
+                }
+              : undefined,
+        });
       }
 
       if (matchCount > 1) {

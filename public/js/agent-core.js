@@ -8,12 +8,22 @@ const FILE_LIST_CACHE_MAX = 20;
 
 function buildAgentPromptInstructions() {
   return [
-    'IMPORTANT: Your response MUST be output in valid XML format ONLY.',
-    'The allowed top-level tags are ONLY <thought>, <call_tool>, and <finish>.',
-    'Do NOT output any explanatory text, Markdown, bullet points, or code fences outside tags.',
-    'XML special characters (&, <, >) MUST be properly XML-escaped (&amp;, &lt;, &gt;).',
-    'When invoking a tool, properly close <call_tool name="..."> and <parameter name="..."> tags.',
-    'If unsure, use <finish> to concisely return completion.',
+    'IMPORTANT PROTOCOL INSTRUCTIONS:',
+    'You can format your response in EITHER valid XML tags OR a single valid JSON object.',
+    'Format Option 1 (XML):',
+    '<thought>your reasoning</thought><call_tool name="tool_name"><parameter name="param_name">value</parameter></call_tool>',
+    'Or to complete:',
+    '<thought>summary of actions</thought><finish>concise conclusion</finish>',
+    '',
+    'Format Option 2 (JSON):',
+    '{"thought": "your reasoning", "tool": "tool_name", "params": {"param_name": "value"}}',
+    'Or to complete:',
+    '{"thought": "summary of actions", "finish": "concise conclusion"}',
+    '',
+    'Rules:',
+    '- Do NOT output conversational chit-chat outside the tags/JSON object.',
+    '- In XML parameter values, escape XML metacharacters (&, <, >) or wrap in <![CDATA[...]]>.',
+    '- In JSON values, escape double quotes and newlines properly.',
   ].join('\n');
 }
 
@@ -158,11 +168,24 @@ async function trimAgentHistory(apiFn, history, t, creditSaving, maxTokens) {
   for (let i = history.length - 1; i >= 0; i--) {
     totalTokens += counts[i];
     if (totalTokens > limit && i > 0) {
-      const removed = history.splice(0, i);
-      history.unshift({
-        role: 'user',
-        content: t('context_omitted', { count: removed.length }),
-      });
+      if (history.length > 1) {
+        // Keep initial instruction at history[0] to prevent goal amnesia
+        const removed = history.splice(1, i);
+        history.splice(1, 0, {
+          role: 'user',
+          content:
+            t('context_omitted', { count: removed.length }) ||
+            `【過去の経緯省略 (${removed.length}件のステップを圧縮)】`,
+        });
+      } else {
+        const removed = history.splice(0, i);
+        history.unshift({
+          role: 'user',
+          content:
+            t('context_omitted', { count: removed.length }) ||
+            `【過去の経緯省略 (${removed.length}件のステップを圧縮)】`,
+        });
+      }
       return;
     }
   }
@@ -236,75 +259,81 @@ async function processCommandStream(res, stepId, t) {
   return finalResult;
 }
 
-function buildSystemPrompt({ workspaceFilesText, activeFilePath }) {
+function buildSystemPrompt({ workspaceFilesText, activeFilePath, projectInfoText }) {
   return `You are an exceptionally talented software engineer AI agent.
 Your objective is to achieve the user's instructions accurately and safely.
-You are currently in a privileged session where you can directly operate on files within an isolated workspace.
+You are in a privileged session where you can inspect and modify files within an isolated workspace.
 
-[REQUIRED XML OUTPUT SCHEMA]
-Every turn MUST output strictly in the following format ONLY. Markdown code blocks, JSON, and free-form explanatory text outside tags are strictly prohibited.
-<thought>...</thought><call_tool name="tool_name"><parameter name="parameter_name">value</parameter></call_tool>
+${projectInfoText ? `[PROJECT ENVIRONMENT]\n${projectInfoText}\n\n` : ''}[SUPPORTED RESPONSE FORMATS]
+You can format your response in EITHER valid XML tags OR a single valid JSON object.
+
+Format Option 1 (XML):
+<thought>Brief thought process</thought><call_tool name="tool_name"><parameter name="param_name">value</parameter></call_tool>
+Or to finish:
+<thought>Summary</thought><finish>All tasks completed successfully</finish>
+
+Format Option 2 (JSON):
+{"thought": "Brief thought process", "tool": "tool_name", "params": {"param_name": "value"}}
+Or to finish:
+{"thought": "Summary", "finish": "All tasks completed successfully"}
+
+[AVAILABLE TOOLS]
 
 1. read_file
-   - Parameters: { "path": "file path", "startLine": line number (optional, 1-based), "endLine": line number (optional, 1-based) }
-   - Purpose: Read contents of specified file. For large files or specific sections, range lines can be specified via startLine and endLine to read in chunks.
-   <call_tool name="read_file"><parameter name="path">utils/helper.js</parameter><parameter name="startLine">10</parameter><parameter name="endLine">30</parameter></call_tool>
+   - Parameters: { "path": "file path", "startLine": number (optional, 1-based), "endLine": number (optional, 1-based) }
+   - Purpose: Read file contents. Specify startLine and endLine for large files.
+   <call_tool name="read_file"><parameter name="path">src/app.js</parameter><parameter name="startLine">1</parameter><parameter name="endLine">50</parameter></call_tool>
 
 2. write_file
    - Parameters: { "path": "file path", "content": "complete file content" }
-   - Purpose: Create a new file or propose replacing an entire existing file. User confirmation is required before actual application.
-   - Important notes:
-     - Prefer apply_diff over write_file for partial edits to existing files.
-     - The "content" parameter must NEVER contain markdown code fences (e.g. \`\`\`js ... \`\`\`); write ONLY raw program code text directly.
-     - Escape XML metacharacters (& to &amp;, < to &lt;, > to &gt;) properly inside XML parameters.
-     - Output complete contents without truncating or skipping code (e.g. do NOT use "// ... rest of code ...").
-   <call_tool name="write_file"><parameter name="path">utils/helper.js</parameter><parameter name="content">export const add = (a, b) =&gt; a + b;</parameter></call_tool>
+   - Purpose: Create a new file or propose replacing an entire existing file. User confirmation is required.
+   - Important: Prefer apply_diff for modifying existing files. Never include markdown code fences in content.
 
 3. apply_diff
-   - Parameters: { "path": "file path", "diff": "SEARCH/REPLACE block format diff" }
-   - Purpose: Replace (edit) specific sections of a file. Safer and lighter than write_file for editing existing files. Multiple SEARCH/REPLACE blocks can be included in a single call.
-   - Important notes:
-     - The "diff" parameter must NEVER contain markdown code fences (e.g. \`\`\`diff ... \`\`\`), and must follow the SEARCH/REPLACE block format below.
-     - The SEARCH block content must match the target code in the file (including indentation and line breaks) exactly. Provide enough surrounding context to uniquely identify the location.
-     - Format example:
+   - Parameters: { "path": "file path", "diff": "SEARCH/REPLACE block format diff", "startLine": number (optional line hint) }
+   - Purpose: Surgically edit specific sections of a file.
+   - Format:
 <<<<<<< SEARCH
-[Original code before replacement]
+[Original code in file]
 =======
-[New code after replacement]
+[New replacement code]
 >>>>>>> REPLACE
-   <call_tool name="apply_diff"><parameter name="path">utils/helper.js</parameter><parameter name="diff">&lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH
-export const add = (a, b) =&gt; a + b;
-=======
-export const add = (a, b) =&gt; {
-  return a + b;
-};
-&gt;&gt;&gt;&gt;&gt;&gt;&gt; REPLACE</parameter></call_tool>
 
-4. list_directory
+4. find_files
+   - Parameters: { "pattern": "glob pattern like **/*.js or tests/*.test.js", "dir": "optional dir", "maxResults": 50 }
+   - Purpose: Rapidly find files matching a glob pattern across the project without listing every directory.
+   <call_tool name="find_files"><parameter name="pattern">**/*.test.js</parameter></call_tool>
+
+5. get_file_outline
+   - Parameters: { "path": "file path", "language": "optional language" }
+   - Purpose: Extract functions, classes, methods, and exports with line numbers from large files before reading or editing.
+   <call_tool name="get_file_outline"><parameter name="path">server.js</parameter></call_tool>
+
+6. list_directory
    - Parameters: { "path": "directory path" }
-   - Purpose: List files and subdirectories directly under the specified directory path. Use first when exploring directory layout or contents.
+   - Purpose: List immediate contents of a directory.
    <call_tool name="list_directory"><parameter name="path">src</parameter></call_tool>
 
-5. search_files
-   - Parameters: { "query": "search query string" }
-   - Purpose: Search for specific symbols or text patterns across the entire project.
+7. search_files
+   - Parameters: { "query": "search query string", "dir": "optional dir" }
+   - Purpose: Search for specific symbols or text patterns across the entire project with ripgrep/grep.
    <call_tool name="search_files"><parameter name="query">app.listen</parameter></call_tool>
 
-6. run_command
+8. validate_code
+   - Parameters: { "code": "source code string", "language": "javascript/json/typescript/css" }
+   - Purpose: Check code for syntax errors in memory before saving or proposing diffs.
+   <call_tool name="validate_code"><parameter name="language">javascript</parameter><parameter name="code">const x = 1;</parameter></call_tool>
+
+9. run_command
    - Parameters: { "command": "shell command" }
-   - Purpose: Execute test suites, check dependencies, etc. Avoid destructive operations, expecting user approval prior to execution.
+   - Purpose: Execute test suites (npm test), type checks, etc. Requires user approval.
    <call_tool name="run_command"><parameter name="command">npm test</parameter></call_tool>
 
-[COMPLETION REPORTING]
-When the goal is fully accomplished, use the <finish>summary</finish> tag instead of a tool call to briefly report what was done.
-
-[IMPORTANT RULES]
-- Output MUST strictly consist of a <thought> tag paired with either a <call_tool> or <finish> tag.
-- Do NOT include any extra greetings, markdown code blocks, or commentary text outside the tags.
-- In parameter values (especially content and diff), ensure XML metacharacters (&, <, >) are properly XML-escaped (&amp;, &lt;, &gt;).
-- In diff SEARCH/REPLACE markers (<<<<<<<, =======, >>>>>>>), XML-escape them inside the XML as &lt;&lt;&lt;&lt;&lt;&lt;&lt;, &gt;&gt;&gt;&gt;&gt;&gt;&gt;.
-- Do NOT use markdown code block backticks within parameter values.
-- When modifying existing files, always read the current file contents using read_file or inspect directory structure with search_files / list_directory first.
+[BEST PRACTICES & CODING DISCIPLINE]
+1. Investigate first: Always inspect files using find_files, get_file_outline, search_files, or read_file before proposing changes.
+2. Minimal surgical edits: Prefer apply_diff for existing files to keep modifications clear and minimize breakage.
+3. Self-verification: Validate syntax using validate_code or run tests using run_command before finishing.
+4. When finished, report concise summary with <finish>summary</finish> or {"finish": "summary"}.
 
 Current workspace structure:
 ${workspaceFilesText}
@@ -436,7 +465,7 @@ export function createAgentRuntime({
       });
     },
     apply_diff: async ({ sessionId, workspaceRoot, params }) => {
-      const { path: filePath, diff } = params;
+      const { path: filePath, diff, startLine } = params;
       if (!filePath) throw new Error('path パラメータが必要です');
       if (diff === undefined) throw new Error('diff パラメータが必要です');
       const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
@@ -447,19 +476,46 @@ export function createAgentRuntime({
       const preview = await api(`/api/agent/sessions/${sessionId}/diff`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: fullPath, diff, dryRun: true }),
+        body: JSON.stringify({ path: fullPath, diff, dryRun: true, startLine }),
       });
 
       if (await showDiffDialogEvent(filePath, current.content, preview.newContent || current.content)) {
         const res = await api(`/api/agent/sessions/${sessionId}/diff`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: fullPath, diff }),
+          body: JSON.stringify({ path: fullPath, diff, startLine }),
         });
         await openFileEvent(fullPath);
         return { text: res.message || '置換成功', success: true };
       }
       return { text: 'ユーザーによって拒否されました', success: false };
+    },
+    find_files: async ({ sessionId, workspaceRoot, params }) => {
+      const pattern = params.pattern || params.query || '*';
+      const dir = params.dir || '';
+      const fullDir = resolvePathRelativeToWorkspace(workspaceRoot, dir);
+      let url = `/api/agent/sessions/${sessionId}/find-files?pattern=${encodeURIComponent(pattern)}`;
+      if (dir) url += `&dir=${encodeURIComponent(fullDir)}`;
+      if (params.maxResults) url += `&maxResults=${params.maxResults}`;
+      const data = await api(url);
+      const text = data.files?.length
+        ? `Found ${data.files.length} matching files:\n` +
+          data.files.map((f) => `- ${f.relativePath}`).join('\n')
+        : '一致するファイルは見つかりませんでした。';
+      return { text, success: true };
+    },
+    get_file_outline: async ({ sessionId, workspaceRoot, params }) => {
+      const filePath = params.path;
+      if (!filePath) throw new Error('path パラメータが必要です');
+      const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
+      let url = `/api/agent/sessions/${sessionId}/outline?path=${encodeURIComponent(fullPath)}`;
+      if (params.language) url += `&language=${encodeURIComponent(params.language)}`;
+      const data = await api(url);
+      const text = data.symbols?.length
+        ? `Outline for ${filePath} (${data.symbols.length} symbols):\n` +
+          data.symbols.map((s) => `• [L${s.line}] (${s.type}) ${s.signature || s.name}`).join('\n')
+        : `No top-level symbols detected in ${filePath}`;
+      return { text, success: true };
     },
     list_directory: async ({ sessionId, workspaceRoot, params }) => {
       const dirPath = params.path || '';
@@ -478,6 +534,20 @@ export function createAgentRuntime({
         ? data.results.map((r) => `${r.file}:${r.line}: ${r.content}`).join('\n')
         : '検索結果なし';
       return { text, success: true };
+    },
+    validate_code: async ({ sessionId, params }) => {
+      const { code, language } = params;
+      if (typeof code !== 'string') throw new Error('code パラメータが必要です');
+      const data = await api(`/api/agent/sessions/${sessionId}/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, language: language || 'javascript' }),
+      });
+      if (data.valid) {
+        return { text: '構文チェック合格: エラーはありません。', success: true };
+      }
+      const loc = data.line ? ` (Line ${data.line}${data.column ? `, Col ${data.column}` : ''})` : '';
+      return { text: `構文エラー検出${loc}: ${data.error}`, success: false };
     },
     run_command: async ({ sessionId, workspaceRoot, params }) => {
       const { command } = params;
@@ -631,6 +701,18 @@ export function createAgentRuntime({
       // Use default
     }
 
+    // Retrieve workspace project metadata once per loop session
+    let projectInfoText = '';
+    try {
+      const projRes = await api(`/api/agent/sessions/${sessionId}/project-info`);
+      if (projRes?.project?.hasPackageJson) {
+        const p = projRes.project;
+        projectInfoText = `Project: ${p.projectName || 'unnamed'} (${p.projectType}) | Test Command: ${p.testCommand || 'none'} | Configs: ${p.configFiles?.join(', ') || 'none'}`;
+      }
+    } catch {
+      // project info is optional enhancement
+    }
+
     while (state.agent.active && loopCount < maxLoops) {
       loopCount++;
       setAgentStatus('思考中...', 'thinking');
@@ -648,6 +730,7 @@ export function createAgentRuntime({
         workspaceRoot,
         workspaceFilesText,
         activeFilePath: state.editor.activeFilePath,
+        projectInfoText,
       });
 
       // Prepend fresh system prompt before the conversation history
@@ -779,12 +862,12 @@ export function createAgentRuntime({
       } else {
         consecutiveParseErrors++;
         console.warn(
-          `[Code Generator Agent] XML parse failed on AI response (attempt ${consecutiveParseErrors}/${maxParseFailures}). Raw response:\n`,
+          `[Code Generator Agent] Format parse failed on AI response (attempt ${consecutiveParseErrors}/${maxParseFailures}). Raw response:\n`,
           aiText,
         );
         const repairPrompt = buildXmlRepairPrompt({
           aiText,
-          errorReason: 'XML tag missing or closing tag mismatch.',
+          errorReason: 'Output did not match XML tags (<thought>, <call_tool>, <finish>) or valid JSON tool call format.',
         });
         const shouldRetryRepair = consecutiveParseErrors <= Math.floor(maxParseFailures / 2);
         if (consecutiveParseErrors >= maxParseFailures) {
@@ -799,11 +882,11 @@ export function createAgentRuntime({
         }
 
         const errMsg =
-          'Error: Failed to parse XML format. Please output again using <thought>, <call_tool>, or <finish>.';
+          'Error: Failed to parse response. Please output valid XML (<thought>, <call_tool>, or <finish>) or a valid JSON object {"thought": "...", "tool": "...", "params": {...}}.';
         addAgentTimelineStep(
           'error',
           'パース失敗',
-          'AIが定義されたXMLフォーマットに準拠していません。自動修正指示を送信します。',
+          'AIの出力フォーマットを解析できませんでした。自動修正指示を送信します。',
           aiText,
         );
 

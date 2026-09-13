@@ -160,13 +160,247 @@ export const PARSE_LIMITS = Object.freeze({
 });
 
 /**
- * Parse the agent's XML-style output (<thought>, <call_tool>, <finish>)
- * into a structured object. Falls back to a JSON-shaped fragment when
- * the model returns JSON instead of XML, so the agent loop can keep
- * working across providers.
+ * Progressive JSON repair & parser.
+ * Recovers valid objects from noisy, malformed, single-quoted, or markdown-wrapped LLM outputs.
+ *
+ * Handles:
+ * - Markdown fences (```json ... ```)
+ * - Trailing commas before } and ]
+ * - Single-quoted keys/strings (e.g. {'tool': 'read_file'})
+ * - Smart/curly quotes (“ ” ‘ ’)
+ * - Unescaped raw newlines/tabs inside string literals
+ * - JavaScript comments (// and /* ... *\/)
+ * - Truncated JSON structures (auto-closing unclosed strings, braces, brackets)
+ */
+export function repairAndParseJson(text) {
+  if (typeof text !== 'string') {
+    throw new Error('Invalid JSON input: expected string');
+  }
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error('Empty JSON input');
+  }
+
+  // Fast path: standard JSON.parse
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // Continue to repair pipeline
+  }
+
+  let candidate = trimmed;
+  // 1. Strip outer markdown code block if entire string is wrapped
+  const fenceMatch = candidate.match(/^```(?:json|javascript|js)?\s*\n?([\s\S]*?)\n?```$/i);
+  if (fenceMatch) {
+    candidate = fenceMatch[1].trim();
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // Continue to next repair strategy
+    }
+  }
+
+  // 2. Extract embedded code block if present inside text
+  const embeddedMatch = candidate.match(/```(?:json|javascript|js)?\s*\n?([\s\S]*?)\n?```/i);
+  if (embeddedMatch) {
+    try {
+      return JSON.parse(embeddedMatch[1].trim());
+    } catch {
+      candidate = embeddedMatch[1].trim();
+    }
+  }
+
+  // 3. If text does not start with JSON delimiter, search for balanced object
+  if (!candidate.startsWith('{') && !candidate.startsWith('[')) {
+    const firstBrace = candidate.indexOf('{');
+    if (firstBrace !== -1) {
+      let depth = 0;
+      let inStr = false;
+      let esc = false;
+      let start = -1;
+      for (let i = 0; i < candidate.length; i++) {
+        const ch = candidate[i];
+        if (esc) {
+          esc = false;
+          continue;
+        }
+        if (ch === '\\') {
+          esc = true;
+          continue;
+        }
+        if (ch === '"') {
+          inStr = !inStr;
+          continue;
+        }
+        if (!inStr) {
+          if (ch === '{') {
+            if (depth === 0) start = i;
+            depth++;
+          } else if (ch === '}') {
+            if (depth > 0) depth--;
+            if (depth === 0 && start !== -1) {
+              const span = candidate.substring(start, i + 1);
+              try {
+                return repairAndParseJson(span);
+              } catch {
+                // Continue scanning candidates
+              }
+              start = -1;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  let repaired = candidate;
+  // 4. Normalize smart quotes
+  repaired = repaired.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
+
+  // 5. Remove comments (single-line // and multi-line /* ... */)
+  repaired = repaired.replace(/(^|[^\\])\/\*[\s\S]*?\*\//g, '$1');
+  repaired = repaired.replace(/(^|[^:\\])\/\/.*$/gm, '$1');
+
+  // 6. Remove trailing commas before } or ]
+  repaired = repaired.replace(/,(\s*[}\]])/g, '$1');
+  try {
+    return JSON.parse(repaired);
+  } catch {
+    // Continue to next repair strategy
+  }
+
+  // 7. Escape unescaped raw newlines/tabs inside string literals
+  function escapeNewlinesInStrings(str) {
+    let out = '';
+    let inString = false;
+    let quoteChar = '';
+    let escape = false;
+    for (let i = 0; i < str.length; i++) {
+      const ch = str[i];
+      if (escape) {
+        escape = false;
+        out += ch;
+        continue;
+      }
+      if (ch === '\\') {
+        escape = true;
+        out += ch;
+        continue;
+      }
+      if (!inString && (ch === '"' || ch === "'")) {
+        inString = true;
+        quoteChar = ch;
+        out += ch;
+        continue;
+      }
+      if (inString && ch === quoteChar) {
+        inString = false;
+        quoteChar = '';
+        out += ch;
+        continue;
+      }
+      if (inString) {
+        if (ch === '\n') {
+          out += '\\n';
+          continue;
+        }
+        if (ch === '\r') {
+          out += '\\r';
+          continue;
+        }
+        if (ch === '\t') {
+          out += '\\t';
+          continue;
+        }
+      }
+      out += ch;
+    }
+    if (inString) out += quoteChar || '"';
+    return out;
+  }
+
+  let escaped = escapeNewlinesInStrings(repaired);
+  escaped = escaped.replace(/,(\s*[}\]])/g, '$1');
+  try {
+    return JSON.parse(escaped);
+  } catch {
+    // Continue to next repair strategy
+  }
+
+  // 8. Handle single quotes for keys and string values
+  let sqFixed = escaped.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'(\s*:)/g, '"$1"$2');
+  sqFixed = sqFixed.replace(/:\s*'([^'\\]*(?:\\.[^'\\]*)*)'/g, ': "$1"');
+  sqFixed = sqFixed.replace(/,(\s*[}\]])/g, '$1');
+  try {
+    return JSON.parse(sqFixed);
+  } catch {
+    // Continue to next repair strategy
+  }
+
+  // 9. Truncated JSON auto-close
+  function closeTruncatedJson(str) {
+    let s = str.trim();
+    let braceCount = 0;
+    let bracketCount = 0;
+    let inStr = false;
+    let esc = false;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (esc) {
+        esc = false;
+        continue;
+      }
+      if (ch === '\\') {
+        esc = true;
+        continue;
+      }
+      if (ch === '"') {
+        inStr = !inStr;
+        continue;
+      }
+      if (!inStr) {
+        if (ch === '{') braceCount++;
+        else if (ch === '}') braceCount = Math.max(0, braceCount - 1);
+        else if (ch === '[') bracketCount++;
+        else if (ch === ']') bracketCount = Math.max(0, bracketCount - 1);
+      }
+    }
+    if (inStr) s += '"';
+    s = s.replace(/,\s*$/, '');
+    while (bracketCount > 0) {
+      s += ']';
+      bracketCount--;
+    }
+    while (braceCount > 0) {
+      s += '}';
+      braceCount--;
+    }
+    return s;
+  }
+
+  const closed = closeTruncatedJson(sqFixed);
+  return JSON.parse(closed);
+}
+
+/**
+ * Unwrap CDATA content if present, or fall back to standard XML entity unescaping.
+ */
+function unwrapCdataOrUnescape(val) {
+  if (typeof val !== 'string') return '';
+  const cdataMatch = val.match(/^\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*$/);
+  if (cdataMatch) {
+    return cdataMatch[1];
+  }
+  return unescapeXmlText(val.trim());
+}
+
+/**
+ * Parse the agent's output into a structured object ({ thought, finish, toolCall }).
+ * Seamlessly supports both XML markup (<thought>, <call_tool>, <finish>)
+ * and JSON-shaped tool calls (with automatic JSON self-repair).
  *
  * Hard caps on input length and JSON-fallback candidate count prevent
- * trivial denial-of-service via oversized or pathological payloads.
+ * denial-of-service via oversized or pathological payloads.
  */
 export function parseXMLTags(text) {
   const empty = { thought: null, finish: null, toolCall: null };
@@ -191,16 +425,19 @@ export function parseXMLTags(text) {
     const contentStart = startMatch.index + startMatch[0].length;
     const endMatch = input.substring(contentStart).match(endRegex);
 
+    let rawVal;
     if (endMatch) {
-      return input.substring(contentStart, contentStart + endMatch.index).trim();
+      rawVal = input.substring(contentStart, contentStart + endMatch.index).trim();
     } else {
-      const nextTagRegex = /<(?:call_tool|parameter|finish|thought)/i;
+      const nextTagRegex = /<(?:call_tool|tool_call|parameter|finish|thought)/i;
       const nextTagMatch = input.substring(contentStart).match(nextTagRegex);
       if (nextTagMatch) {
-        return input.substring(contentStart, contentStart + nextTagMatch.index).trim();
+        rawVal = input.substring(contentStart, contentStart + nextTagMatch.index).trim();
+      } else {
+        rawVal = input.substring(contentStart).trim();
       }
-      return input.substring(contentStart).trim();
     }
+    return unwrapCdataOrUnescape(rawVal);
   };
 
   let toolCall = null;
@@ -231,7 +468,7 @@ export function parseXMLTags(text) {
       // Fallback: till the next <tag> or end of string
       const nextTagMatch = lowerText
         .substring(endOfStartIdx + 1)
-        .search(/<(?:call_tool|parameter|finish|thought)/);
+        .search(/<(?:call_tool|tool_call|parameter|finish|thought)/);
       if (nextTagMatch !== -1) {
         closeIdx = endOfStartIdx + 1 + nextTagMatch;
       } else {
@@ -251,7 +488,7 @@ export function parseXMLTags(text) {
     };
   };
 
-  const toolMatch = findTag('call_tool');
+  const toolMatch = findTag('call_tool') || findTag('tool_call');
 
   if (toolMatch) {
     const params = {};
@@ -289,40 +526,63 @@ export function parseXMLTags(text) {
       } else {
         rawVal = searchSpace;
       }
-      params[current.name] = unescapeXmlText(rawVal.trim());
+      params[current.name] = unwrapCdataOrUnescape(rawVal);
     }
     if (toolName) {
       toolCall = { name: toolName, params };
     }
   }
 
-  const thought = extractTag(normalizedText, 'thought');
-  const finish = extractTag(normalizedText, 'finish');
+  let thought = extractTag(normalizedText, 'thought');
+  let finish = extractTag(normalizedText, 'finish');
 
   if (!toolCall && !finish) {
-    // Walk through every top-level {...} candidate so nested JSON inside
+    // 1. Walk through every top-level {...} candidate so nested JSON inside
     // `params` (e.g. {"params": {"path": "."}}) still parses correctly.
     let candidates = 0;
     for (const candidate of extractBalancedObjects(normalizedText)) {
       // F-14: Cap the number of fallback candidates we attempt to parse.
       if (++candidates > PARSE_MAX_CANDIDATES) break;
       try {
-        const data = JSON.parse(candidate);
-        const jsonTool = data.tool || data.toolName || data.call_tool || data.toolCall?.name || data.action;
+        const data = repairAndParseJson(candidate);
+        const jsonTool =
+          data.tool || data.toolName || data.call_tool || data.toolCall?.name || data.action || data.name;
         const jsonParams =
           data.parameters || data.params || data.toolCall?.params || data.arguments || data.args;
-        if (jsonTool) toolCall = { name: String(jsonTool), params: jsonParams || {} };
-        if (data.thought && !thought) return { thought: data.thought, finish: data.finish || null, toolCall };
-        if (data.finish && !finish) return { thought, finish: data.finish, toolCall };
-        if (toolCall) break;
+        if (jsonTool && typeof jsonTool === 'string') {
+          toolCall = { name: String(jsonTool), params: jsonParams || {} };
+        }
+        if (data.thought && !thought) thought = data.thought;
+        if (data.finish && !finish) finish = data.finish;
+        if (toolCall || finish) break;
       } catch {
         /* try the next candidate */
+      }
+    }
+
+    // 2. Direct JSON fallback on whole normalizedText if no candidate succeeded
+    if (!toolCall && !finish && (normalizedText.includes('{') || normalizedText.includes('```'))) {
+      try {
+        const data = repairAndParseJson(normalizedText);
+        const jsonTool =
+          data.tool || data.toolName || data.call_tool || data.toolCall?.name || data.action || data.name;
+        const jsonParams =
+          data.parameters || data.params || data.toolCall?.params || data.arguments || data.args;
+        if (jsonTool && typeof jsonTool === 'string') {
+          toolCall = { name: String(jsonTool), params: jsonParams || {} };
+        }
+        if (data.thought && !thought) thought = data.thought;
+        if (data.finish && !finish) finish = data.finish;
+      } catch {
+        // Ignore fallback error
       }
     }
   }
 
   return { thought, finish, toolCall };
 }
+
+export const parseAgentResponse = parseXMLTags;
 
 // eslint-disable-next-line no-control-regex
 const XML_CONTROL_CHAR_PATTERN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/gu;
@@ -345,15 +605,19 @@ export function buildXmlRepairPrompt({
   const safeReason = sanitizeXmlText(typeof errorReason === 'string' ? errorReason : 'XML parse failed');
 
   return [
-    'Your previous output did not adhere to the defined XML format.',
+    'Your previous output did not adhere to the defined XML format (or valid JSON tool call format).',
     `Issue: ${safeReason}`,
-    `Required tags: ${expectedTags}`,
-    'Strictly follow these rules and re-output the content in valid XML:',
-    '1. Output XML ONLY. No introductory text, bullet points, code fences, or Markdown outside tags.',
-    '2. Top-level element MUST start with <thought> followed by <call_tool> or <finish>.',
-    '3. Character entities (&, <, >) inside tag values MUST be properly XML-escaped.',
-    '4. When using <call_tool>, do not forget to close <parameter name="..."> tags.',
-    '5. If unsure, return only a summary inside <finish>.',
+    `Required format: Valid XML with ${expectedTags} OR a valid JSON object.`,
+    'Strictly follow these rules and re-output the response:',
+    'Option A (XML):',
+    '1. Top-level element MUST start with <thought> followed by <call_tool> or <finish>.',
+    '2. When using <call_tool name="...">, include <parameter name="...">value</parameter>.',
+    '3. Character entities (&, <, >) inside tag values MUST be XML-escaped (&amp;, &lt;, &gt;) or wrapped in <![CDATA[...]]>.',
+    '',
+    'Option B (JSON):',
+    '{"thought": "reasoning...", "tool": "tool_name", "params": {"param1": "value"}}',
+    'OR if finished:',
+    '{"thought": "reasoning...", "finish": "task summary"}',
     '',
     'Previous output (reference only, repair and re-send):',
     safeAiText || '(empty)',
