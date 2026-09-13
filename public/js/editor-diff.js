@@ -124,6 +124,12 @@ export function createDiffDialog({ t, getThemeName }) {
 
       pathLabel.textContent = t('diff_file_label', { path: filePath });
       setModalVisible(modal, true);
+      const previousActiveElement = document.activeElement;
+      setTimeout(() => {
+        if (cancelButton && typeof cancelButton.focus === 'function') {
+          cancelButton.focus();
+        }
+      }, 0);
 
       const isInline = localStorage.getItem('diffRenderInline') === 'true';
       if (inlineToggle) {
@@ -212,6 +218,10 @@ export function createDiffDialog({ t, getThemeName }) {
         if (container) {
           container.style.minHeight = '';
         }
+
+        if (previousActiveElement && typeof previousActiveElement.focus === 'function') {
+          previousActiveElement.focus();
+        }
       };
 
       return await new Promise((resolve) => {
@@ -227,6 +237,23 @@ export function createDiffDialog({ t, getThemeName }) {
         onKeyDown = (event) => {
           if (event.key === 'Escape' && modal && !modal.classList.contains('u-hidden')) {
             settle(false);
+            return;
+          }
+          if (event.key === 'Tab' && modal && !modal.classList.contains('u-hidden')) {
+            const focusable = modal.querySelectorAll(
+              'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+            );
+            if (focusable.length > 0) {
+              const first = focusable[0];
+              const last = focusable[focusable.length - 1];
+              if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+              } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+              }
+            }
           }
         };
 

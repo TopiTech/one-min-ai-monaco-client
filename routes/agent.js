@@ -1284,26 +1284,59 @@ router.get('/sessions/:id/dir', async (req, res, next) => {
 
 /**
  * Convert a glob pattern (*, **, ?) to RegExp.
+ * Supports standard glob semantics where ** matches zero or more directory levels.
  */
 function globToPatternRegex(glob) {
   if (!glob || glob === '*' || glob === '**/*') return /.*/;
-  const escaped = glob
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*\*/g, '.*')
-    .replace(/(?<!\.)\*/g, '[^/]*')
-    .replace(/\?/g, '.');
-  return new RegExp(`^${escaped}$`, 'i');
+  const normalized = glob.replace(/\\/g, '/');
+  let regexStr = '';
+  let i = 0;
+  while (i < normalized.length) {
+    const c = normalized[i];
+    if (c === '*') {
+      if (normalized[i + 1] === '*') {
+        if (normalized[i + 2] === '/') {
+          regexStr += '(?:.*/)?';
+          i += 3;
+        } else {
+          regexStr += '.*';
+          i += 2;
+        }
+      } else {
+        regexStr += '[^/]*';
+        i += 1;
+      }
+    } else if (c === '?') {
+      regexStr += '[^/]';
+      i += 1;
+    } else if (/[.+^${}()|[\]\\]/.test(c)) {
+      regexStr += '\\' + c;
+      i += 1;
+    } else {
+      regexStr += c;
+      i += 1;
+    }
+  }
+  return new RegExp(`^${regexStr}$`, 'i');
 }
 
 /**
  * Recursively find files matching a glob pattern up to maxResults.
  */
-async function findFilesRecursively(dir, pattern, maxResults, rootDir = dir, depth = 0) {
+async function findFilesRecursively(
+  dir,
+  pattern,
+  maxResults,
+  rootDir = dir,
+  depth = 0,
+  compiledRegex = null,
+  visited = new Set(),
+) {
   if (depth > 10 || maxResults <= 0) return [];
   const results = [];
   try {
     const entries = await fs.readdir(dir, { withFileTypes: true });
-    const regex = globToPatternRegex(pattern);
+    const regex = compiledRegex || globToPatternRegex(pattern);
 
     for (const entry of entries) {
       if (results.length >= maxResults) break;
@@ -1316,13 +1349,29 @@ async function findFilesRecursively(dir, pattern, maxResults, rootDir = dir, dep
         try {
           const revalidated = revalidateRealPath(fullPath);
           assertNotProtectedPath(revalidated);
-          const sub = await findFilesRecursively(revalidated, pattern, maxResults - results.length, rootDir, depth + 1);
+          if (visited.has(revalidated)) continue;
+          visited.add(revalidated);
+          const sub = await findFilesRecursively(
+            revalidated,
+            pattern,
+            maxResults - results.length,
+            rootDir,
+            depth + 1,
+            regex,
+            visited,
+          );
           results.push(...sub);
         } catch {
           // Skip directories that fail validation or access
         }
       } else if (entry.isFile()) {
-        if (!pattern || pattern === '*' || pattern === '**/*' || regex.test(relPath) || regex.test(entry.name)) {
+        if (
+          !pattern ||
+          pattern === '*' ||
+          pattern === '**/*' ||
+          regex.test(relPath) ||
+          regex.test(entry.name)
+        ) {
           results.push({
             name: entry.name,
             path: fullPath,
@@ -1354,7 +1403,8 @@ router.get('/sessions/:id/find-files', async (req, res, next) => {
     const resolvedDir = validatePath(resolveAgentPath(searchDir, session.cwd));
     assertNotProtectedPath(resolvedDir);
 
-    const files = await findFilesRecursively(resolvedDir, pattern, maxResults, resolvedDir);
+    const regex = globToPatternRegex(pattern);
+    const files = await findFilesRecursively(resolvedDir, pattern, maxResults, resolvedDir, 0, regex);
     res.json({
       dir: resolvedDir,
       pattern,
@@ -1651,9 +1701,7 @@ router.post('/sessions/:id/diff', async (req, res, next) => {
         if (isFuzzyMatch) {
           errorMsg += `\nヒント: コードの内容は似ていますが、インデントや不可視文字（タブ/スペース）が異なっている可能性があります。`;
         } else if (bestIndex !== -1 && bestScore > 0.2) {
-          const candidateSnippet = fileLines
-            .slice(bestIndex, bestIndex + searchLines.length)
-            .join('\n');
+          const candidateSnippet = fileLines.slice(bestIndex, bestIndex + searchLines.length).join('\n');
           errorMsg += `\n\n【ヒント: ファイル内の最も近い該当箇所 (行 ${bestIndex + 1}〜${bestIndex + searchLines.length})】:\n${candidateSnippet}`;
         }
         errorMsg += `\n\n対象のコード:\n${block.search}`;

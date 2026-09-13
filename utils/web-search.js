@@ -99,4 +99,3 @@ export function stripSearchArtifacts(text) {
 
   return cleaned.trim();
 }
-

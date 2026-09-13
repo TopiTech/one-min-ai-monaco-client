@@ -869,7 +869,8 @@ export function createAgentRuntime({
         );
         const repairPrompt = buildXmlRepairPrompt({
           aiText,
-          errorReason: 'Output did not match XML tags (<thought>, <call_tool>, <finish>) or valid JSON tool call format.',
+          errorReason:
+            'Output did not match XML tags (<thought>, <call_tool>, <finish>) or valid JSON tool call format.',
         });
         const shouldRetryRepair = consecutiveParseErrors <= Math.floor(maxParseFailures / 2);
         if (consecutiveParseErrors >= maxParseFailures) {

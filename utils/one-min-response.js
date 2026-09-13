@@ -40,11 +40,18 @@ function isSearchMetadataObject(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
   const t = String(obj.type || '').toLowerCase();
   if (t === 'web_search' || t === 'search_results' || t === 'grounding') return true;
-  if ('searchResults' in obj || 'search_results' in obj || 'groundingMetadata' in obj || 'webSearchObject' in obj) {
+  if (
+    'searchResults' in obj ||
+    'search_results' in obj ||
+    'groundingMetadata' in obj ||
+    'webSearchObject' in obj
+  ) {
     return true;
   }
-  if ('sources' in obj && Array.isArray(obj.sources) && !('thought' in obj) && !('content' in obj)) return true;
-  if ('citations' in obj && Array.isArray(obj.citations) && !('thought' in obj) && !('content' in obj)) return true;
+  if ('sources' in obj && Array.isArray(obj.sources) && !('thought' in obj) && !('content' in obj))
+    return true;
+  if ('citations' in obj && Array.isArray(obj.citations) && !('thought' in obj) && !('content' in obj))
+    return true;
   return false;
 }
 

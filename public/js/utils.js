@@ -345,12 +345,12 @@ export function repairAndParseJson(text) {
     // Continue to next repair strategy
   }
 
-  // 9. Truncated JSON auto-close
+  // 9. Truncated JSON auto-close with stack-based bracket pairing
   function closeTruncatedJson(str) {
     let s = str.trim();
-    let braceCount = 0;
-    let bracketCount = 0;
+    const stack = [];
     let inStr = false;
+    let quoteChar = '"';
     let esc = false;
     for (let i = 0; i < s.length; i++) {
       const ch = s[i];
@@ -362,26 +362,29 @@ export function repairAndParseJson(text) {
         esc = true;
         continue;
       }
-      if (ch === '"') {
-        inStr = !inStr;
+      if (inStr) {
+        if (ch === quoteChar) {
+          inStr = false;
+        }
         continue;
       }
-      if (!inStr) {
-        if (ch === '{') braceCount++;
-        else if (ch === '}') braceCount = Math.max(0, braceCount - 1);
-        else if (ch === '[') bracketCount++;
-        else if (ch === ']') bracketCount = Math.max(0, bracketCount - 1);
+      if (ch === '"' || ch === "'") {
+        inStr = true;
+        quoteChar = ch;
+        continue;
+      }
+      if (ch === '{') stack.push('}');
+      else if (ch === '[') stack.push(']');
+      else if (ch === '}' || ch === ']') {
+        if (stack.length > 0 && stack[stack.length - 1] === ch) {
+          stack.pop();
+        }
       }
     }
-    if (inStr) s += '"';
+    if (inStr) s += quoteChar;
     s = s.replace(/,\s*$/, '');
-    while (bracketCount > 0) {
-      s += ']';
-      bracketCount--;
-    }
-    while (braceCount > 0) {
-      s += '}';
-      braceCount--;
+    while (stack.length > 0) {
+      s += stack.pop();
     }
     return s;
   }

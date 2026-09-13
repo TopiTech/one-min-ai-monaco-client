@@ -22,9 +22,8 @@ jest.unstable_mockModule('../utils/api-client.js', () => ({
 
 const { createApp } = await import('../server.js');
 const { buildCodePayload } = await import('../utils/web-search.js');
-const { stripSearchArtifacts, repairAndParseJson, parseXMLTags, parseAgentResponse } = await import(
-  '../public/js/utils.js'
-);
+const { stripSearchArtifacts, repairAndParseJson, parseXMLTags, parseAgentResponse } =
+  await import('../public/js/utils.js');
 const { extractTextFromOneMinResponse } = await import('../utils/one-min-response.js');
 const { callOneMin } = await import('../utils/api-client.js');
 

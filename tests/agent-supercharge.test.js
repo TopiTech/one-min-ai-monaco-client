@@ -24,9 +24,8 @@ jest.unstable_mockModule('../utils/api-client.js', () => ({
 
 const { createApp } = await import('../server.js');
 const { repairAndParseJson, parseXMLTags, parseAgentResponse } = await import('../public/js/utils.js');
-const { validateCodeSyntax, extractSymbols, getProjectMetadata } = await import(
-  '../services/code-analyzer.js'
-);
+const { validateCodeSyntax, extractSymbols, getProjectMetadata } =
+  await import('../services/code-analyzer.js');
 
 describe('Agent Supercharge: Parser Robustness & JSON Self-Repair', () => {
   test('repairAndParseJson parses standard JSON directly', () => {
@@ -48,7 +47,8 @@ describe('Agent Supercharge: Parser Robustness & JSON Self-Repair', () => {
   });
 
   test('repairAndParseJson normalizes smart/curly quotes', () => {
-    const input = '{\u201Ctool\u201D: \u201Cread_file\u201D, \u201Cparams\u201D: {\u201Cpath\u201D: \u201Cmain.py\u201D}}';
+    const input =
+      '{\u201Ctool\u201D: \u201Cread_file\u201D, \u201Cparams\u201D: {\u201Cpath\u201D: \u201Cmain.py\u201D}}';
     expect(repairAndParseJson(input)).toEqual({
       tool: 'read_file',
       params: { path: 'main.py' },
@@ -71,7 +71,8 @@ describe('Agent Supercharge: Parser Robustness & JSON Self-Repair', () => {
   });
 
   test('repairAndParseJson extracts and parses markdown code fences', () => {
-    const input = '```json\n{"thought": "exploring", "tool": "search_files", "params": {"query": "api"}}\n```';
+    const input =
+      '```json\n{"thought": "exploring", "tool": "search_files", "params": {"query": "api"}}\n```';
     expect(repairAndParseJson(input)).toEqual({
       thought: 'exploring',
       tool: 'search_files',
@@ -80,7 +81,8 @@ describe('Agent Supercharge: Parser Robustness & JSON Self-Repair', () => {
   });
 
   test('repairAndParseJson extracts JSON embedded within conversational text', () => {
-    const input = 'I will inspect the workspace.\n```json\n{"tool": "find_files", "params": {"pattern": "*.js"}}\n```\nLet me know if you need more.';
+    const input =
+      'I will inspect the workspace.\n```json\n{"tool": "find_files", "params": {"pattern": "*.js"}}\n```\nLet me know if you need more.';
     expect(repairAndParseJson(input)).toEqual({
       tool: 'find_files',
       params: { pattern: '*.js' },
@@ -88,22 +90,32 @@ describe('Agent Supercharge: Parser Robustness & JSON Self-Repair', () => {
   });
 
   test('repairAndParseJson auto-closes truncated JSON objects', () => {
-    const input = '{"thought": "writing", "tool": "write_file", "params": {"path": "out.js", "content": "const a = 1;';
+    const input =
+      '{"thought": "writing", "tool": "write_file", "params": {"path": "out.js", "content": "const a = 1;';
     const result = repairAndParseJson(input);
     expect(result.tool).toBe('write_file');
     expect(result.params.path).toBe('out.js');
     expect(result.params.content).toBe('const a = 1;');
   });
 
+  test('repairAndParseJson accurately auto-closes nested objects and arrays', () => {
+    const input = '{"thought": "exploring", "tool": "apply_diff", "params": {"files": [{"name": "server.js"';
+    const result = repairAndParseJson(input);
+    expect(result.tool).toBe('apply_diff');
+    expect(result.params.files).toEqual([{ name: 'server.js' }]);
+  });
+
   test('parseXMLTags and parseAgentResponse handle dual protocol (XML & JSON)', () => {
     // Pure XML
-    const xml = '<thought>checking</thought><call_tool name="read_file"><parameter name="path">a.js</parameter></call_tool>';
+    const xml =
+      '<thought>checking</thought><call_tool name="read_file"><parameter name="path">a.js</parameter></call_tool>';
     const parsedXml = parseAgentResponse(xml);
     expect(parsedXml.thought).toBe('checking');
     expect(parsedXml.toolCall).toEqual({ name: 'read_file', params: { path: 'a.js' } });
 
     // XML with CDATA
-    const xmlCdata = '<thought><![CDATA[thinking <deeply>]]></thought><call_tool name="validate_code"><parameter name="code"><![CDATA[if (a < b && c > d) {}]]></parameter></call_tool>';
+    const xmlCdata =
+      '<thought><![CDATA[thinking <deeply>]]></thought><call_tool name="validate_code"><parameter name="code"><![CDATA[if (a < b && c > d) {}]]></parameter></call_tool>';
     const parsedCdata = parseXMLTags(xmlCdata);
     expect(parsedCdata.thought).toBe('thinking <deeply>');
     expect(parsedCdata.toolCall.params.code).toBe('if (a < b && c > d) {}');
@@ -115,7 +127,8 @@ describe('Agent Supercharge: Parser Robustness & JSON Self-Repair', () => {
     expect(parsedJson.finish).toBe('Refactoring complete.');
 
     // Malformed JSON tool call with trailing commas and unescaped line breaks
-    const malformedJson = '{"thought": "fixing", "tool": "apply_diff", "params": {"path": "index.js", "diff": "line1\nline2",},}';
+    const malformedJson =
+      '{"thought": "fixing", "tool": "apply_diff", "params": {"path": "index.js", "diff": "line1\nline2",},}';
     const parsedMalformed = parseXMLTags(malformedJson);
     expect(parsedMalformed.thought).toBe('fixing');
     expect(parsedMalformed.toolCall.name).toBe('apply_diff');
@@ -130,11 +143,32 @@ describe('Code Analyzer Service: Syntax Validation & Symbols', () => {
     expect(result.valid).toBe(true);
   });
 
+  test('validateCodeSyntax accurately validates multiline ESM imports and top-level await', () => {
+    const multilineEsm = `
+import {
+  foo,
+  bar
+} from './baz.js';
+
+await Promise.resolve(42);
+export const x = 1;
+`;
+    const result = validateCodeSyntax(multilineEsm, 'javascript');
+    expect(result.valid).toBe(true);
+  });
+
+  test('validateCodeSyntax validates CommonJS top-level return scripts', () => {
+    const cjs = 'return 42;';
+    const result = validateCodeSyntax(cjs, 'javascript');
+    expect(result.valid).toBe(true);
+  });
+
   test('validateCodeSyntax catches syntax errors with line numbers', () => {
     const invalidJs = 'function broken( { return 1;';
     const result = validateCodeSyntax(invalidJs, 'javascript');
     expect(result.valid).toBe(false);
     expect(result.error).toBeDefined();
+    expect(result.line).toBe(1);
   });
 
   test('validateCodeSyntax validates valid and invalid JSON', () => {
@@ -144,13 +178,36 @@ describe('Code Analyzer Service: Syntax Validation & Symbols', () => {
     expect(invalidJson.error).toBeDefined();
   });
 
-  test('extractSymbols extracts function and class outlines', () => {
+  test('validateCodeSyntax handles TypeScript comments, unclosed strings, and template literals', () => {
+    const tsWithComments = `
+/*
+  if (foo) {
+*/
+// don't break {
+const x: number = 100;
+const s: string = \`val: \${x + 1}\`;
+`;
+    expect(validateCodeSyntax(tsWithComments, 'typescript').valid).toBe(true);
+
+    const tsUnclosed = 'const s: string = "unclosed;';
+    const invalidResult = validateCodeSyntax(tsUnclosed, 'typescript');
+    expect(invalidResult.valid).toBe(false);
+    expect(invalidResult.error).toContain('string literal');
+  });
+
+  test('extractSymbols extracts function, class, multiline definitions, and methods', () => {
     const code = `
 export class UserService {
-  constructor() {}
+  constructor(opts) {}
+  async fetchProfile(id) {
+    return id;
+  }
 }
 
-export function findUser(id) {
+export function findUser(
+  id,
+  options
+) {
   return null;
 }
 
@@ -159,8 +216,10 @@ export const deleteUser = async (id) => {
 };
 `;
     const symbols = extractSymbols(code, 'javascript');
-    expect(symbols.length).toBe(3);
+    expect(symbols.length).toBeGreaterThanOrEqual(4);
     expect(symbols.some((s) => s.name === 'UserService' && s.type === 'class')).toBe(true);
+    expect(symbols.some((s) => s.name === 'constructor' && s.type === 'method')).toBe(true);
+    expect(symbols.some((s) => s.name === 'fetchProfile' && s.type === 'method')).toBe(true);
     expect(symbols.some((s) => s.name === 'findUser' && s.type === 'function')).toBe(true);
     expect(symbols.some((s) => s.name === 'deleteUser' && s.type === 'function')).toBe(true);
   });
@@ -193,10 +252,10 @@ describe('Agent New Endpoints & apply_diff Enhancements', () => {
     delete process.env.NODE_ENV;
   });
 
-  test('GET /sessions/:id/find-files finds files matching glob pattern', async () => {
+  test('GET /sessions/:id/find-files finds files matching glob pattern including **/*.js matching root files', async () => {
     const res = await request(app)
       .get(`/api/agent/sessions/${sessionId}/find-files`)
-      .query({ pattern: 'server.js' });
+      .query({ pattern: '**/*.js' });
 
     expect(res.status).toBe(200);
     expect(res.body.count).toBeGreaterThanOrEqual(1);

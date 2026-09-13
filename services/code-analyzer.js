@@ -1,6 +1,27 @@
 import vm from 'node:vm';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+
+function parseNodeCheckError(stderr) {
+  if (!stderr) return { error: 'Unknown syntax error' };
+  let line = undefined;
+  let col = undefined;
+  let errorMsg = 'Syntax error';
+
+  const lineMatch = stderr.match(/\[stdin\]:(\d+)(?::(\d+))?/);
+  if (lineMatch) {
+    line = Number(lineMatch[1]);
+    if (lineMatch[2]) col = Number(lineMatch[2]);
+  }
+
+  const errMatch = stderr.match(/SyntaxError:\s*([^\r\n]+)/);
+  if (errMatch) {
+    errorMsg = errMatch[1].trim();
+  }
+
+  return { error: errorMsg, line, column: col };
+}
 
 /**
  * Validate syntax of code in supported languages without executing it.
@@ -35,31 +56,53 @@ export function validateCodeSyntax(code, language = 'javascript') {
     }
   }
 
-  // JavaScript Validation (ES module or script parsing via vm.Script)
+  // JavaScript Validation (ES module and script parsing via Node V8 AST check without executing)
   if (['javascript', 'js', 'mjs', 'cjs', 'node'].includes(lang)) {
     try {
-      // Check as ES Module syntax if it has import/export statements
-      const hasEsModule = /^\s*(import|export)\b/m.test(code);
-      if (hasEsModule) {
-        // Wrap in dynamic import or module constructor check
-        // vm.Script accepts ES6 if wrapped inside an async function or module context
-        new vm.Script(`(async () => {\n${code.replace(/^\s*import\b.*$/gm, '// $&').replace(/^\s*export\b\s*(?:default\s*)?/gm, '')}\n})()`, {
-          filename: 'syntax_check.js',
+      const res = spawnSync(process.execPath, ['--input-type=module', '--check'], {
+        input: code,
+        encoding: 'utf-8',
+        timeout: 2000,
+        windowsHide: true,
+      });
+
+      if (res.status === 0) {
+        return { valid: true };
+      }
+
+      // If failed due to CommonJS top-level return, check as CommonJS script
+      if (res.stderr && res.stderr.includes('Illegal return statement')) {
+        const cjsRes = spawnSync(process.execPath, ['--check'], {
+          input: code,
+          encoding: 'utf-8',
+          timeout: 2000,
+          windowsHide: true,
         });
-      } else {
+        if (cjsRes.status === 0) {
+          return { valid: true };
+        }
+        const parsed = parseNodeCheckError(cjsRes.stderr);
+        return { valid: false, ...parsed };
+      }
+
+      const parsed = parseNodeCheckError(res.stderr);
+      return { valid: false, ...parsed };
+    } catch {
+      // In-memory fallback via vm.Script if process spawn fails
+      try {
         new vm.Script(code, { filename: 'syntax_check.js' });
+        return { valid: true };
+      } catch (err) {
+        let line = undefined;
+        let col = undefined;
+        const stack = err.stack || '';
+        const match = stack.match(/syntax_check\.js:(\d+)(?::(\d+))?/);
+        if (match) {
+          line = Number(match[1]);
+          col = match[2] ? Number(match[2]) : undefined;
+        }
+        return { valid: false, error: err.message, line, column: col };
       }
-      return { valid: true };
-    } catch (err) {
-      let line = undefined;
-      let col = undefined;
-      const stack = err.stack || '';
-      const match = stack.match(/syntax_check\.js:(\d+)(?::(\d+))?/);
-      if (match) {
-        line = Number(match[1]);
-        col = match[2] ? Number(match[2]) : undefined;
-      }
-      return { valid: false, error: err.message, line, column: col };
     }
   }
 
@@ -86,63 +129,135 @@ export function validateCodeSyntax(code, language = 'javascript') {
 }
 
 /**
- * Check balanced pairs of braces, brackets, and parentheses.
+ * Check balanced pairs of braces, brackets, and parentheses with full state tracking
+ * for strings, template literals with ${...}, and single-line/block comments.
  */
 function checkBracketsBalance(code) {
   const stack = [];
   const pairs = { '}': '{', ']': '[', ')': '(' };
-  let inString = false;
-  let quote = '';
+  let state = 'code'; // 'code' | 'line_comment' | 'block_comment' | 'single_quote' | 'double_quote' | 'template'
+  let stringStart = null;
   let escape = false;
 
-  const lines = code.split(/\r?\n/);
-  for (let l = 0; l < lines.length; l++) {
-    const line = lines[l];
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (escape) {
-        escape = false;
+  let line = 1;
+  let col = 0;
+
+  for (let i = 0; i < code.length; i++) {
+    const ch = code[i];
+    col++;
+
+    if (ch === '\n') {
+      line++;
+      col = 0;
+      if (state === 'line_comment') {
+        state = 'code';
+      } else if ((state === 'single_quote' || state === 'double_quote') && !escape) {
+        // Raw newline in single/double quoted string without backslash escape is a syntax error
+        return `Unterminated string literal at line ${stringStart.line}, column ${stringStart.col}`;
+      }
+      escape = false;
+      continue;
+    }
+
+    if (escape) {
+      escape = false;
+      continue;
+    }
+
+    if (ch === '\\' && (state === 'single_quote' || state === 'double_quote' || state === 'template')) {
+      escape = true;
+      continue;
+    }
+
+    if (state === 'code') {
+      if (ch === '/' && code[i + 1] === '/') {
+        state = 'line_comment';
+        i++;
+        col++;
         continue;
       }
-      if (ch === '\\') {
-        escape = true;
+      if (ch === '/' && code[i + 1] === '*') {
+        state = 'block_comment';
+        stringStart = { line, col };
+        i++;
+        col++;
         continue;
       }
-      if (inString) {
-        if (ch === quote) inString = false;
+      if (ch === "'") {
+        state = 'single_quote';
+        stringStart = { line, col };
         continue;
       }
-      if (ch === '"' || ch === "'" || ch === '`') {
-        inString = true;
-        quote = ch;
+      if (ch === '"') {
+        state = 'double_quote';
+        stringStart = { line, col };
         continue;
       }
-      if (ch === '/' && line[i + 1] === '/') {
-        break; // skip rest of single-line comment
+      if (ch === '`') {
+        state = 'template';
+        stringStart = { line, col };
+        continue;
       }
 
       if (ch === '{' || ch === '[' || ch === '(') {
-        stack.push({ ch, line: l + 1, col: i + 1 });
+        stack.push({ ch, line, col });
       } else if (ch === '}' || ch === ']' || ch === ')') {
-        const expected = pairs[ch];
         const last = stack.pop();
-        if (!last || last.ch !== expected) {
-          return `Unmatched closing '${ch}' at line ${l + 1}, column ${i + 1}`;
+        if (!last) {
+          return `Unmatched closing '${ch}' at line ${line}, column ${col}`;
         }
+        if (last.ch === '${' && ch === '}') {
+          state = last.prevState || 'template';
+          continue;
+        }
+        if (last.ch !== pairs[ch]) {
+          return `Unmatched closing '${ch}' at line ${line}, column ${col}`;
+        }
+      }
+    } else if (state === 'block_comment') {
+      if (ch === '*' && code[i + 1] === '/') {
+        state = 'code';
+        i++;
+        col++;
+      }
+    } else if (state === 'single_quote') {
+      if (ch === "'") {
+        state = 'code';
+      }
+    } else if (state === 'double_quote') {
+      if (ch === '"') {
+        state = 'code';
+      }
+    } else if (state === 'template') {
+      if (ch === '`') {
+        state = 'code';
+      } else if (ch === '$' && code[i + 1] === '{') {
+        stack.push({ ch: '${', line, col, prevState: 'template' });
+        i++;
+        col++;
+        state = 'code';
       }
     }
   }
 
+  if (state === 'block_comment') {
+    return `Unclosed block comment started at line ${stringStart.line}, column ${stringStart.col}`;
+  }
+  if (state === 'single_quote' || state === 'double_quote' || state === 'template') {
+    return `Unclosed string literal started at line ${stringStart.line}, column ${stringStart.col}`;
+  }
+
   if (stack.length > 0) {
     const unclosed = stack.pop();
-    return `Unclosed '${unclosed.ch}' opened at line ${unclosed.line}, column ${unclosed.col}`;
+    const symbol = unclosed.ch === '${' ? '${' : unclosed.ch;
+    return `Unclosed '${symbol}' opened at line ${unclosed.line}, column ${unclosed.col}`;
   }
 
   return null;
 }
 
 /**
- * Extract outline symbols (functions, classes, exports, interfaces) from code.
+ * Extract outline symbols (functions, classes, exports, interfaces, methods) from code.
  *
  * @param {string} code - Source code string.
  * @param {string} language - Target language.
@@ -153,6 +268,8 @@ export function extractSymbols(code, language = 'javascript') {
   const symbols = [];
   const lines = code.split(/\r?\n/);
   const lang = String(language).toLowerCase();
+
+  const KEYWORDS = new Set(['if', 'for', 'while', 'switch', 'catch', 'function', 'return']);
 
   for (let i = 0; i < lines.length; i++) {
     const lineNum = i + 1;
@@ -165,20 +282,26 @@ export function extractSymbols(code, language = 'javascript') {
     }
 
     if (['javascript', 'js', 'typescript', 'ts', 'jsx', 'tsx'].includes(lang)) {
-      // 1. Function declarations: function foo(...)
-      const fnMatch = line.match(/(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s*([A-Za-z0-9_$]+)?\s*\(([^)]*)\)/);
-      if (fnMatch) {
+      // 1. Function declarations (including generator, async, and multiline parameter definitions)
+      const fnMatch = line.match(
+        /(?:export\s+(?:default\s+)?)?(?:async\s+)?function(?:\s*\*|\s+)\s*([A-Za-z0-9_$]+)?(?:\s*\(([^)]*)\))?/,
+      );
+      if (fnMatch && (fnMatch[1] || line.includes('('))) {
+        const name = fnMatch[1] || '(anonymous function)';
+        const params = fnMatch[2] !== undefined ? fnMatch[2] : '...';
         symbols.push({
-          name: fnMatch[1] || '(anonymous function)',
+          name,
           type: 'function',
           line: lineNum,
-          signature: `function ${fnMatch[1] || ''}(${fnMatch[2] || ''})`,
+          signature: `function ${name}(${params})`,
         });
         continue;
       }
 
       // 2. Class declarations: class Foo ...
-      const classMatch = line.match(/(?:export\s+(?:default\s+)?)?class\s+([A-Za-z0-9_$]+)(?:\s+extends\s+([A-Za-z0-9_$]+))?/);
+      const classMatch = line.match(
+        /(?:export\s+(?:default\s+)?)?class\s+([A-Za-z0-9_$]+)(?:\s+extends\s+([A-Za-z0-9_$]+))?/,
+      );
       if (classMatch) {
         symbols.push({
           name: classMatch[1],
@@ -191,7 +314,7 @@ export function extractSymbols(code, language = 'javascript') {
 
       // 3. Arrow functions / Variable functions: const foo = (...) => ...
       const varFnMatch = line.match(
-        /(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?(?:\(([^)]*)\)|[A-Za-z0-9_$]+)\s*=>/,
+        /(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?(?:\(([^)]*)\)|[A-Za-z0-9_$]+)?\s*=>/,
       );
       if (varFnMatch) {
         symbols.push({
@@ -223,6 +346,20 @@ export function extractSymbols(code, language = 'javascript') {
           type: 'export',
           line: lineNum,
           signature: trimmed,
+        });
+        continue;
+      }
+
+      // 6. Class methods: e.g. constructor(...) or async myMethod(...) {
+      const methodMatch = line.match(
+        /^\s*(?:(?:public|private|protected|static|async)\s+)*([A-Za-z0-9_$]+)\s*\(([^)]*)\)\s*(?::\s*[^;{]+)?\s*\{/,
+      );
+      if (methodMatch && !KEYWORDS.has(methodMatch[1])) {
+        symbols.push({
+          name: methodMatch[1],
+          type: 'method',
+          line: lineNum,
+          signature: `${methodMatch[1]}(${methodMatch[2] || ''})`,
         });
       }
     } else if (lang === 'python' || lang === 'py') {
