@@ -237,6 +237,55 @@ describe('parseXMLTags', () => {
     expect(Number(out.toolCall.params.i)).toBeLessThan(64);
   });
 
+  test('extracts thought from <thinking> and <think> tags', () => {
+    const thinkingXml =
+      '<thinking>reasoning with thinking tag</thinking><call_tool name="read_file"><parameter name="path">a.js</parameter></call_tool>';
+    const outThinking = parseXMLTags(thinkingXml);
+    expect(outThinking.thought).toBe('reasoning with thinking tag');
+    expect(outThinking.toolCall).toEqual({ name: 'read_file', params: { path: 'a.js' } });
+
+    const thinkXml =
+      '<think>reasoning with think tag</think><finish>done</finish>';
+    const outThink = parseXMLTags(thinkXml);
+    expect(outThink.thought).toBe('reasoning with think tag');
+    expect(outThink.finish).toBe('done');
+  });
+
+  test('converts <artifact> tag into write_file toolCall when no call_tool is present', () => {
+    const artifactXml =
+      '<thinking>Building 3D portfolio</thinking>\n<artifact identifier="threejs-scroll-portfolio" type="text/html" title="Scroll-Synced 3D Portfolio">\n<!DOCTYPE html><html><body><h1>Portfolio</h1></body></html>\n</artifact>';
+    const out = parseXMLTags(artifactXml);
+    expect(out.thought).toBe('Building 3D portfolio');
+    expect(out.toolCall).toEqual({
+      name: 'write_file',
+      params: {
+        path: 'threejs-scroll-portfolio.html',
+        content: '<!DOCTYPE html><html><body><h1>Portfolio</h1></body></html>',
+      },
+    });
+  });
+
+  test('converts <artifact> with file extension in identifier into write_file toolCall', () => {
+    const artifactXml =
+      '<artifact identifier="src/app.js" type="application/javascript">\nconsole.log(1);\n</artifact>';
+    const out = parseXMLTags(artifactXml);
+    expect(out.toolCall).toEqual({
+      name: 'write_file',
+      params: {
+        path: 'src/app.js',
+        content: 'console.log(1);',
+      },
+    });
+  });
+
+  test('treats non-thought text outside <thinking> as finish if no toolCall or finish tag exists', () => {
+    const xml = '<thinking>I have checked everything.</thinking>\nAll tests pass and the code is clean.';
+    const out = parseXMLTags(xml);
+    expect(out.thought).toBe('I have checked everything.');
+    expect(out.finish).toBe('All tests pass and the code is clean.');
+    expect(out.toolCall).toBeNull();
+  });
+
   test('sanitizeXmlText escapes XML metacharacters and strips control chars', () => {
     expect(sanitizeXmlText('a & b < c > d\u0001')).toBe('a &amp; b &lt; c &gt; d');
   });

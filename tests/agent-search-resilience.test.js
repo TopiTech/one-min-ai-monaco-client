@@ -96,6 +96,28 @@ describe('Agent Web Search Resilience & Forceful Intervention Prevention', () =>
         '{"thought": "Found docs", "tool": "read_file", "params": {"path": "package.json"}}',
       );
     });
+
+    test('strips gear crawling status lines preceding artifact tags', () => {
+      const input = `⚙ Crawling site https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js\n<artifact identifier="threejs-scroll-portfolio" type="text/html" title="Portfolio">\n<!DOCTYPE html><html></html>\n</artifact>`;
+      const cleaned = stripSearchArtifacts(input);
+      expect(cleaned).toBe(
+        '<artifact identifier="threejs-scroll-portfolio" type="text/html" title="Portfolio">\n<!DOCTYPE html><html></html>\n</artifact>',
+      );
+    });
+
+    test('strips gear crawling status lines preceding thinking tags', () => {
+      const input = `⚙ Crawling site https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js\n<thinking>Three.js portfolio</thinking><call_tool name="write_file"><parameter name="path">index.html</parameter></call_tool>`;
+      const cleaned = stripSearchArtifacts(input);
+      expect(cleaned).toBe(
+        '<thinking>Three.js portfolio</thinking><call_tool name="write_file"><parameter name="path">index.html</parameter></call_tool>',
+      );
+    });
+
+    test('strips multiple crawling, browsing, and search status lines', () => {
+      const input = `⚙ Crawling site https://a.com\nCrawled site https://b.com\n⚙ Browsing page https://c.com\nSearching the web for threejs\n<thinking>Done</thinking><finish>All good</finish>`;
+      const cleaned = stripSearchArtifacts(input);
+      expect(cleaned).toBe('<thinking>Done</thinking><finish>All good</finish>');
+    });
   });
 
   describe('Parser Resilience against Injected Search Results', () => {
@@ -173,6 +195,19 @@ Sources:
         params: { path: 'a.js' },
       });
     });
+
+    test('parseAgentResponse extracts action and thought when crawling noise precedes thinking and artifact tags', () => {
+      const input = `⚙ Crawling site https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js\n<thinking>Three.js portfolio</thinking>\n<artifact identifier="threejs-scroll-portfolio" type="text/html" title="Portfolio">\n<!DOCTYPE html><html><body><h1>Portfolio</h1></body></html>\n</artifact>`;
+      const result = parseAgentResponse(input);
+      expect(result.thought).toBe('Three.js portfolio');
+      expect(result.toolCall).toEqual({
+        name: 'write_file',
+        params: {
+          path: 'threejs-scroll-portfolio.html',
+          content: '<!DOCTYPE html><html><body><h1>Portfolio</h1></body></html>',
+        },
+      });
+    });
   });
 
   describe('one-min-response text extractor with search metadata', () => {
@@ -191,6 +226,22 @@ Sources:
       const extracted = extractTextFromOneMinResponse(mockResponse);
       expect(extracted).toBe('{"thought": "Actual AI completion", "finish": "done"}');
     });
+
+    test('filters out standalone crawling status strings from resultObject arrays', () => {
+      const mockResponse = {
+        aiRecord: {
+          aiRecordDetail: {
+            resultObject: [
+              '⚙ Crawling site https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js',
+              '<thinking>Done</thinking><finish>Completed</finish>',
+            ],
+          },
+        },
+      };
+
+      const extracted = extractTextFromOneMinResponse(mockResponse);
+      expect(extracted).toBe('<thinking>Done</thinking><finish>Completed</finish>');
+    });
   });
 
   describe('POST /api/agent/chat search artifact sanitization', () => {
@@ -208,6 +259,23 @@ Sources:
       expect(response.status).toBe(200);
       expect(response.body.text).toBe(
         '{"thought": "Fixing code", "tool": "read_file", "params": {"path": "index.js"}}',
+      );
+    });
+
+    test('sanitizes gear crawling status line returned by upstream on 2nd turn', async () => {
+      callOneMin.mockResolvedValueOnce({
+        result: `⚙ Crawling site https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js\n<thinking>Portfolio built</thinking><finish>All done</finish>`,
+      });
+
+      const response = await request(app).post('/api/agent/chat').send({
+        prompt: 'Repair output',
+        model: 'deepseek-v4-flash',
+        webSearch: false,
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.text).toBe(
+        '<thinking>Portfolio built</thinking><finish>All done</finish>',
       );
     });
   });

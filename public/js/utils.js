@@ -176,9 +176,15 @@ export function stripSearchArtifacts(text) {
   cleaned = cleaned.replace(/\n+(?:\[\d+\]:?\s*https?:\/\/[^\s\n]+[\s\S]*)$/i, '');
   cleaned = cleaned.replace(/\n+(?:\[\^\d+\]:?[\s\S]*)$/i, '');
 
-  // 2. Remove leading search result blocks
+  // 2. Remove crawl / browsing / search status lines anywhere before or around payload
   cleaned = cleaned.replace(
-    /^(?:[\s\S]*?(?:(?:Web\s+)?Search\s+results?(?:\s+for[^\n]*)?|Searching\s+the\s+web[^\n]*|Grounding\s+results?):\s*\n+[\s\S]*?)(?=(?:<thought>|<call_tool>|<finish>|```(?:json|xml)?|\{\s*["'\u201C\u2018]?(?:thought|tool|call_tool|action|finish)))/i,
+    /(?:^|\n)[ \t]*(?:⚙\s*|[•\-\*]\s*)?(?:Crawling(?:\s+site)?|Crawled(?:\s+site)?|Browsing(?:\s+page|\s+site)?|Searching(?:\s+the\s+web|\s+for)?|Navigating\s+to|Fetching(?:\s+URL)?|Reading\s+site)[^\n]*(?=\n|$)/gi,
+    '',
+  );
+
+  // 3. Remove leading search result blocks
+  cleaned = cleaned.replace(
+    /^(?:[\s\S]*?(?:(?:Web\s+)?Search\s+results?(?:\s+for[^\n]*)?|Searching\s+the\s+web[^\n]*|Grounding\s+results?):?\s*\n+[\s\S]*?)(?=(?:<(?:thought|thinking|think|call_tool|tool_call|finish|artifact)\b|```(?:json|xml)?|\{\s*["'\u201C\u2018]?(?:thought|thinking|think|tool|call_tool|action|finish)))/i,
     '',
   );
 
@@ -441,7 +447,7 @@ export function parseXMLTags(text) {
     if (endMatch) {
       rawVal = input.substring(contentStart, contentStart + endMatch.index).trim();
     } else {
-      const nextTagRegex = /<(?:call_tool|tool_call|parameter|finish|thought)/i;
+      const nextTagRegex = /<(?:call_tool|tool_call|parameter|finish|thought|thinking|think|artifact)/i;
       const nextTagMatch = input.substring(contentStart).match(nextTagRegex);
       if (nextTagMatch) {
         rawVal = input.substring(contentStart, contentStart + nextTagMatch.index).trim();
@@ -480,7 +486,7 @@ export function parseXMLTags(text) {
       // Fallback: till the next <tag> or end of string
       const nextTagMatch = lowerText
         .substring(endOfStartIdx + 1)
-        .search(/<(?:call_tool|tool_call|parameter|finish|thought)/);
+        .search(/<(?:call_tool|tool_call|parameter|finish|thought|thinking|think|artifact)/);
       if (nextTagMatch !== -1) {
         closeIdx = endOfStartIdx + 1 + nextTagMatch;
       } else {
@@ -545,7 +551,47 @@ export function parseXMLTags(text) {
     }
   }
 
-  let thought = extractTag(normalizedText, 'thought');
+  // Support <artifact identifier="..." type="..." title="...">...</artifact> as fallback
+  if (!toolCall) {
+    const artifactMatch = findTag('artifact');
+    if (artifactMatch && artifactMatch.content) {
+      let identifier = '';
+      let type = '';
+      const idMatch = artifactMatch.startTagContent.match(/identifier\s*=\s*["']?([^"'\s>]+)["']?/i);
+      if (idMatch) identifier = idMatch[1];
+      const typeMatch = artifactMatch.startTagContent.match(/type\s*=\s*["']?([^"'\s>]+)["']?/i);
+      if (typeMatch) type = typeMatch[1];
+      const pathMatch = artifactMatch.startTagContent.match(/(?:path|file|filename)\s*=\s*["']?([^"'\s>]+)["']?/i);
+
+      let filePath = pathMatch ? pathMatch[1] : '';
+      if (!filePath) {
+        if (identifier && /\.[a-z0-9]+$/i.test(identifier)) {
+          filePath = identifier;
+        } else {
+          let ext = '.html';
+          if (/javascript|js/i.test(type)) ext = '.js';
+          else if (/typescript|ts/i.test(type)) ext = '.ts';
+          else if (/css/i.test(type)) ext = '.css';
+          else if (/json/i.test(type)) ext = '.json';
+          else if (/markdown|md/i.test(type)) ext = '.md';
+          else if (/python|py/i.test(type)) ext = '.py';
+          filePath = identifier ? `${identifier}${ext}` : `index${ext}`;
+        }
+      }
+      toolCall = {
+        name: 'write_file',
+        params: {
+          path: filePath,
+          content: artifactMatch.content,
+        },
+      };
+    }
+  }
+
+  let thought =
+    extractTag(normalizedText, 'thought') ||
+    extractTag(normalizedText, 'thinking') ||
+    extractTag(normalizedText, 'think');
   let finish = extractTag(normalizedText, 'finish');
 
   if (!toolCall && !finish) {
@@ -564,7 +610,8 @@ export function parseXMLTags(text) {
         if (jsonTool && typeof jsonTool === 'string') {
           toolCall = { name: String(jsonTool), params: jsonParams || {} };
         }
-        if (data.thought && !thought) thought = data.thought;
+        const jsonThought = data.thought || data.thinking || data.think;
+        if (jsonThought && !thought) thought = jsonThought;
         if (data.finish && !finish) finish = data.finish;
         if (toolCall || finish) break;
       } catch {
@@ -583,10 +630,21 @@ export function parseXMLTags(text) {
         if (jsonTool && typeof jsonTool === 'string') {
           toolCall = { name: String(jsonTool), params: jsonParams || {} };
         }
-        if (data.thought && !thought) thought = data.thought;
+        const jsonThought = data.thought || data.thinking || data.think;
+        if (jsonThought && !thought) thought = jsonThought;
         if (data.finish && !finish) finish = data.finish;
       } catch {
         // Ignore fallback error
+      }
+    }
+
+    // 3. Fallback: If thought/thinking was extracted and there is non-empty remaining text outside the thinking tags, treat as finish
+    if (!toolCall && !finish && thought) {
+      const outsideText = normalizedText
+        .replace(/<(?:thought|thinking|think)(?:\s+[^>]*)?>[\s\S]*?(?:<\/(?:thought|thinking|think)>|$)/gi, '')
+        .trim();
+      if (outsideText) {
+        finish = outsideText;
       }
     }
   }
@@ -613,7 +671,8 @@ export function buildXmlRepairPrompt({
   errorReason,
   expectedTags = '<thought>, <call_tool>, <finish>',
 } = {}) {
-  const safeAiText = sanitizeXmlText(typeof aiText === 'string' ? aiText : '');
+  const sanitizedText = stripSearchArtifacts(typeof aiText === 'string' ? aiText : '');
+  const safeAiText = sanitizeXmlText(sanitizedText);
   const safeReason = sanitizeXmlText(typeof errorReason === 'string' ? errorReason : 'XML parse failed');
 
   return [
@@ -622,14 +681,17 @@ export function buildXmlRepairPrompt({
     `Required format: Valid XML with ${expectedTags} OR a valid JSON object.`,
     'Strictly follow these rules and re-output the response:',
     'Option A (XML):',
-    '1. Top-level element MUST start with <thought> followed by <call_tool> or <finish>.',
+    '1. Top-level element MUST start with <thought> (or <thinking>) followed by <call_tool> or <finish>.',
     '2. When using <call_tool name="...">, include <parameter name="...">value</parameter>.',
-    '3. Character entities (&, <, >) inside tag values MUST be XML-escaped (&amp;, &lt;, &gt;) or wrapped in <![CDATA[...]]>.',
+    '3. To create or write files, use <call_tool name="write_file"><parameter name="path">...</parameter><parameter name="content">...</parameter></call_tool>. Do NOT output raw <artifact> tags.',
+    '4. Character entities (&, <, >) inside tag values MUST be XML-escaped (&amp;, &lt;, &gt;) or wrapped in <![CDATA[...]]>.',
     '',
     'Option B (JSON):',
     '{"thought": "reasoning...", "tool": "tool_name", "params": {"param1": "value"}}',
     'OR if finished:',
     '{"thought": "reasoning...", "finish": "task summary"}',
+    '',
+    'IMPORTANT: Strictly do NOT perform web searches, URL crawling, or browsing. Output ONLY the valid format.',
     '',
     'Previous output (reference only, repair and re-send):',
     safeAiText || '(empty)',
@@ -685,7 +747,7 @@ function extractBalancedObjects(text) {
           // If this span looks like a top-level candidate or contains agent keys, record it
           if (
             openStack.length === 0 ||
-            /["'\u201C\u2018]?(?:thought|tool|call_tool|toolName|action|finish)["'\u201D\u2019]?\s*:/i.test(
+            /["'\u201C\u2018]?(?:thought|thinking|think|tool|call_tool|toolName|action|finish)["'\u201D\u2019]?\s*:/i.test(
               candidate,
             )
           ) {

@@ -1,4 +1,4 @@
-import { buildXmlRepairPrompt } from './utils.js';
+import { buildXmlRepairPrompt, stripSearchArtifacts } from './utils.js';
 
 // Cache for workspace file lists to avoid redundant API calls during agent loops.
 // Capped at 20 entries to prevent unbounded memory growth when switching workspaces.
@@ -21,11 +21,13 @@ function buildAgentPromptInstructions() {
     '{"thought": "summary of actions", "finish": "concise conclusion"}',
     '',
     'Rules:',
+    '- You may use <thought> or <thinking> for your thought process.',
     '- Do NOT output conversational chit-chat outside the tags/JSON object.',
+    '- To create, write, or replace files, you MUST use <call_tool name="write_file"><parameter name="path">...</parameter><parameter name="content">...</parameter></call_tool> or <call_tool name="apply_diff">. Do NOT output raw <artifact> tags.',
     '- In XML parameter values, escape XML metacharacters (&, <, >) or wrap in <![CDATA[...]]>.',
     '- In JSON values, escape double quotes and newlines properly.',
-    '- Do NOT perform web searches, browsing, or search grounding under any circumstances.',
-    '- Do NOT output web search results, source URLs, citations, or references.',
+    '- Strictly do NOT perform web searches, URL crawling, browsing, or search grounding under any circumstances.',
+    '- Strictly do NOT output crawling status (e.g. "⚙ Crawling site ...") or web search results, source URLs, citations, or references.',
   ].join('\n');
 }
 
@@ -271,6 +273,7 @@ You can format your response in EITHER valid XML tags OR a single valid JSON obj
 
 Format Option 1 (XML):
 <thought>Brief thought process</thought><call_tool name="tool_name"><parameter name="param_name">value</parameter></call_tool>
+(Note: <thinking>...</thinking> is also accepted for the thought process. To create files, use <call_tool name="write_file">, never raw <artifact> tags.)
 Or to finish:
 <thought>Summary</thought><finish>All tasks completed successfully</finish>
 
@@ -790,8 +793,6 @@ export function createAgentRuntime({
 
       if (parsed.thought) {
         addAgentTimelineStep('thought', '思考プロセス', parsed.thought);
-      } else {
-        addAgentTimelineStep('thought', '思考プロセス', aiText);
       }
 
       if (parsed.finish) {
@@ -858,7 +859,7 @@ export function createAgentRuntime({
 
         const feedbackMsg = `<tool_response>\n${toolResultText}\n</tool_response>`;
 
-        state.agent.history.push({ role: 'assistant', content: aiText });
+        state.agent.history.push({ role: 'assistant', content: stripSearchArtifacts(aiText) });
         state.agent.history.push({ role: 'user', content: feedbackMsg });
         await trimHistory(state.agent.history);
       } else {
@@ -867,10 +868,11 @@ export function createAgentRuntime({
           `[Code Generator Agent] Format parse failed on AI response (attempt ${consecutiveParseErrors}/${maxParseFailures}). Raw response:\n`,
           aiText,
         );
+        const cleanedAiText = stripSearchArtifacts(aiText);
         const repairPrompt = buildXmlRepairPrompt({
-          aiText,
+          aiText: cleanedAiText,
           errorReason:
-            'Output did not match XML tags (<thought>, <call_tool>, <finish>) or valid JSON tool call format.',
+            'Output did not match XML tags (<thought>/<thinking>, <call_tool>, <finish>) or valid JSON tool call format.',
         });
         const shouldRetryRepair = consecutiveParseErrors <= Math.floor(maxParseFailures / 2);
         if (consecutiveParseErrors >= maxParseFailures) {
@@ -878,22 +880,22 @@ export function createAgentRuntime({
             'error',
             'パースエラー',
             `AIがフォーマットに従わない状態が ${maxParseFailures} 回連続したため、安全のためにエージェントを強制停止します。`,
-            aiText,
+            cleanedAiText,
           );
           setAgentStatus(t('status_error'), 'error');
           break;
         }
 
         const errMsg =
-          'Error: Failed to parse response. Please output valid XML (<thought>, <call_tool>, or <finish>) or a valid JSON object {"thought": "...", "tool": "...", "params": {...}}.';
+          'Error: Failed to parse response. Please output valid XML (<thought> or <thinking>, <call_tool>, or <finish>) or a valid JSON object {"thought": "...", "tool": "...", "params": {...}}. Do not perform web searches or crawl URLs.';
         addAgentTimelineStep(
           'error',
           'パース失敗',
           'AIの出力フォーマットを解析できませんでした。自動修正指示を送信します。',
-          aiText,
+          cleanedAiText,
         );
 
-        state.agent.history.push({ role: 'assistant', content: aiText });
+        state.agent.history.push({ role: 'assistant', content: cleanedAiText });
         state.agent.history.push({ role: 'user', content: shouldRetryRepair ? repairPrompt : errMsg });
         await trimHistory(state.agent.history);
 

@@ -91,11 +91,18 @@ export function stripSearchArtifacts(text) {
   cleaned = cleaned.replace(/\n+(?:\[\d+\]:?\s*https?:\/\/[^\s\n]+[\s\S]*)$/i, '');
   cleaned = cleaned.replace(/\n+(?:\[\^\d+\]:?[\s\S]*)$/i, '');
 
-  // 2. Remove leading search result blocks
+  // 2. Remove crawl / browsing / search status lines anywhere before or around payload
   cleaned = cleaned.replace(
-    /^(?:[\s\S]*?(?:(?:Web\s+)?Search\s+results?(?:\s+for[^\n]*)?|Searching\s+the\s+web[^\n]*|Grounding\s+results?):\s*\n+[\s\S]*?)(?=(?:<thought>|<call_tool>|<finish>|```(?:json|xml)?|\{\s*["'\u201C\u2018]?(?:thought|tool|call_tool|action|finish)))/i,
+    /(?:^|\n)[ \t]*(?:⚙\s*|[•\-\*]\s*)?(?:Crawling(?:\s+site)?|Crawled(?:\s+site)?|Browsing(?:\s+page|\s+site)?|Searching(?:\s+the\s+web|\s+for)?|Navigating\s+to|Fetching(?:\s+URL)?|Reading\s+site)[^\n]*(?=\n|$)/gi,
+    '',
+  );
+
+  // 3. Remove leading search result blocks
+  cleaned = cleaned.replace(
+    /^(?:[\s\S]*?(?:(?:Web\s+)?Search\s+results?(?:\s+for[^\n]*)?|Searching\s+the\s+web[^\n]*|Grounding\s+results?):?\s*\n+[\s\S]*?)(?=(?:<(?:thought|thinking|think|call_tool|tool_call|finish|artifact)\b|```(?:json|xml)?|\{\s*["'\u201C\u2018]?(?:thought|thinking|think|tool|call_tool|action|finish)))/i,
     '',
   );
 
   return cleaned.trim();
 }
+

@@ -39,12 +39,23 @@ function isEmptyPlainObject(value) {
 function isSearchMetadataObject(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
   const t = String(obj.type || '').toLowerCase();
-  if (t === 'web_search' || t === 'search_results' || t === 'grounding') return true;
+  if (
+    t === 'web_search' ||
+    t === 'search_results' ||
+    t === 'grounding' ||
+    t === 'crawling' ||
+    t === 'crawl' ||
+    t === 'browse'
+  ) {
+    return true;
+  }
   if (
     'searchResults' in obj ||
     'search_results' in obj ||
     'groundingMetadata' in obj ||
-    'webSearchObject' in obj
+    'webSearchObject' in obj ||
+    'crawling' in obj ||
+    'crawlResults' in obj
   ) {
     return true;
   }
@@ -53,6 +64,13 @@ function isSearchMetadataObject(obj) {
   if ('citations' in obj && Array.isArray(obj.citations) && !('thought' in obj) && !('content' in obj))
     return true;
   return false;
+}
+
+function isCrawlStatusString(str) {
+  if (typeof str !== 'string') return false;
+  return /^(?:⚙\s*|[•\-\*]\s*)?(?:Crawling(?:\s+site)?|Crawled(?:\s+site)?|Browsing(?:\s+page|\s+site)?|Searching(?:\s+the\s+web|\s+for)?|Navigating\s+to|Fetching(?:\s+URL)?)[^\n]*$/i.test(
+    str.trim(),
+  );
 }
 
 function normalizeTextValue(value, seen = new WeakSet(), { stringifyObjects = false } = {}) {
@@ -65,7 +83,7 @@ function normalizeTextValue(value, seen = new WeakSet(), { stringifyObjects = fa
     return String(value);
   }
   if (Array.isArray(value)) {
-    const nonSearch = value.filter((item) => !isSearchMetadataObject(item));
+    const nonSearch = value.filter((item) => !isSearchMetadataObject(item) && !isCrawlStatusString(item));
     const target = nonSearch.length > 0 ? nonSearch : value;
     const parts = target.map((item) => normalizeTextValue(item, seen, { stringifyObjects })).filter(Boolean);
     return parts.length > 0 ? parts.join('\n') : undefined;
