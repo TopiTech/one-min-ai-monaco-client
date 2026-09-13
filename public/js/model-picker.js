@@ -499,9 +499,19 @@ export function initModelPickers() {
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         navigatePickerItems('up');
-      } else if (e.key === 'Enter' && isPickerItem) {
-        e.preventDefault();
-        e.target.click();
+      } else if (e.key === 'Enter') {
+        if (isPickerItem) {
+          e.preventDefault();
+          e.target.click();
+        } else if (e.target?.id === 'modelPickerSearch') {
+          e.preventDefault();
+          const selectedOrFirst =
+            document.querySelector('#modelPickerList .model-picker-item.selected') ||
+            document.querySelector('#modelPickerList .model-picker-item');
+          if (selectedOrFirst) {
+            selectedOrFirst.click();
+          }
+        }
       }
     }
   });

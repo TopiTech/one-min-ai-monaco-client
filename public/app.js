@@ -784,6 +784,8 @@ function initFolderPicker() {
         nameSpan.className = 'folder-picker-item-name';
         nameSpan.textContent = item.name;
         row.appendChild(nameSpan);
+        row.setAttribute('role', 'button');
+        row.setAttribute('aria-label', item.name);
         row.onclick = () => {
           pathInput.value = item.path;
           body
@@ -793,6 +795,15 @@ function initFolderPicker() {
           row.focus();
         };
         row.ondblclick = () => renderFolderPickerList(item.path);
+        row.onkeydown = (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            renderFolderPickerList(item.path);
+          } else if (e.key === ' ') {
+            e.preventDefault();
+            row.click();
+          }
+        };
         body.appendChild(row);
       });
     } catch (err) {

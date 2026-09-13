@@ -211,6 +211,36 @@ function hasWindowsReservedName(targetPath) {
   return false;
 }
 
+/**
+ * Checks whether candidatePath is equal to or inside basePath.
+ * Accurately handles filesystem and drive roots (e.g. C:\ or /) where
+ * basePath already ends in a directory separator.
+ *
+ * @param {string} candidatePath
+ * @param {string} basePath
+ * @returns {boolean}
+ */
+export function isSubPath(candidatePath, basePath) {
+  if (!candidatePath || !basePath) return false;
+  let normCandidate =
+    process.platform === 'win32' ? candidatePath.replace(/\//g, '\\').toLowerCase() : candidatePath;
+  let normBase = process.platform === 'win32' ? basePath.replace(/\//g, '\\').toLowerCase() : basePath;
+
+  const sep = process.platform === 'win32' ? '\\' : '/';
+  const isRoot = (p) => p === sep || (process.platform === 'win32' && /^[a-z]:\\$/i.test(p));
+
+  if (!isRoot(normCandidate) && normCandidate.endsWith(sep)) {
+    normCandidate = normCandidate.slice(0, -1);
+  }
+  if (!isRoot(normBase) && normBase.endsWith(sep)) {
+    normBase = normBase.slice(0, -1);
+  }
+
+  if (normCandidate === normBase) return true;
+  const prefix = isRoot(normBase) ? normBase : normBase + sep;
+  return normCandidate.startsWith(prefix);
+}
+
 export function validatePath(targetPath) {
   if (!targetPath) {
     throw new Error('Path is required');
@@ -270,12 +300,7 @@ export function validatePath(targetPath) {
     }
   });
 
-  // Case-insensitive comparison for Windows drive letters (c: vs C:)
-  const normalizedRealPath = process.platform === 'win32' ? realPath.toLowerCase() : realPath;
-  const isAllowed = realRoots.some((root) => {
-    const normalizedRoot = process.platform === 'win32' ? root.toLowerCase() : root;
-    return normalizedRealPath === normalizedRoot || normalizedRealPath.startsWith(normalizedRoot + path.sep);
-  });
+  const isAllowed = realRoots.some((root) => isSubPath(realPath, root));
 
   if (!isAllowed) {
     throw new ForbiddenError('Access denied: Path is outside the allowed directories');
@@ -407,12 +432,7 @@ function isPathProtectedByRoot(resolvedPath, root, patterns) {
     realRoot = root;
   }
 
-  const normalizedResolvedPath = process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath;
-  const normalizedRealRoot = process.platform === 'win32' ? realRoot.toLowerCase() : realRoot;
-  const isSubPath =
-    normalizedResolvedPath === normalizedRealRoot ||
-    normalizedResolvedPath.startsWith(normalizedRealRoot + path.sep);
-  if (!isSubPath) {
+  if (!isSubPath(resolvedPath, realRoot)) {
     return false;
   }
 
@@ -525,15 +545,38 @@ export function revalidateRealPath(resolvedPath) {
       return root;
     }
   });
-  const normalizedReal = process.platform === 'win32' ? real.toLowerCase() : real;
-  const isAllowed = realRoots.some((root) => {
-    const normalizedRoot = process.platform === 'win32' ? root.toLowerCase() : root;
-    return normalizedReal === normalizedRoot || normalizedReal.startsWith(normalizedRoot + path.sep);
-  });
+  const isAllowed = realRoots.some((root) => isSubPath(real, root));
   if (!isAllowed) {
     throw new ForbiddenError('Access denied: Path is outside the allowed directories');
   }
   return real;
+}
+
+/**
+ * Safely resolves the real path of an existing target, or validates non-existent
+ * paths against allowed roots, mitigating TOCTOU (Time-of-Check to Time-of-Use)
+ * and symlink swap attacks.
+ *
+ * @param {string} resolvedPath Validated target path.
+ * @returns {Promise<string>} Safely validated real path.
+ */
+export async function getSafeRealPath(resolvedPath) {
+  let realPath = resolvedPath;
+  try {
+    const stat = await fs.promises.lstat(resolvedPath);
+    if (stat.isFile() || stat.isDirectory() || stat.isSymbolicLink()) {
+      realPath = revalidateRealPath(resolvedPath);
+      assertNotWriteProtectedPath(realPath);
+    }
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+    const allowedRoots = getAllowedRoots();
+    const isWithinRoots = allowedRoots.some((root) => isSubPath(resolvedPath, root));
+    if (!isWithinRoots) {
+      throw new ForbiddenError('Access denied: Path is outside the allowed directories');
+    }
+  }
+  return realPath;
 }
 
 /**

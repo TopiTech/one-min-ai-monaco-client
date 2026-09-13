@@ -8,6 +8,7 @@ import { detectBinaryContent } from '../utils/mime-guard.js';
 import {
   validatePath,
   revalidateRealPath,
+  getSafeRealPath,
   assertNotProtectedPath,
   assertNotWriteProtectedPath,
   getAllowedRoots,
@@ -967,17 +968,8 @@ router.post('/sessions/:id/files', async (req, res, next) => {
     const resolvedPath = validatePath(resolveAgentPath(filePath, session.cwd));
     assertNotWriteProtectedPath(resolvedPath);
 
-    // TOCTOU mitigation: if file already exists, re-verify real path before overwrite
-    let realPath = resolvedPath;
-    try {
-      const stat = await fs.stat(resolvedPath);
-      if (stat.isFile()) {
-        realPath = revalidateRealPath(resolvedPath);
-        assertNotWriteProtectedPath(realPath);
-      }
-    } catch (err) {
-      if (err.code !== 'ENOENT') throw err;
-    }
+    // TOCTOU mitigation: safely resolve real path and verify write protection
+    const realPath = await getSafeRealPath(resolvedPath);
 
     const dir = path.dirname(realPath);
     await fs.mkdir(dir, { recursive: true });
@@ -1860,25 +1852,27 @@ router.delete('/sessions/:id', async (req, res, next) => {
     const session = getSession(req, res);
     if (!session) return;
 
-    if (session.status === 'running') {
-      return res.status(409).json({
-        error: 'Cannot delete a running session',
-      });
-    }
-
-    const sessionId = session.id;
-    sessions.delete(sessionId);
-
-    for (const [token, pending] of pendingCommands) {
-      if (pending.sessionId === sessionId) {
-        pendingCommands.delete(token);
+    const result = await sessionLock.acquire(session.id, async () => {
+      if (session.status === 'running') {
+        return { status: 409, body: { error: 'Cannot delete a running session' } };
       }
-    }
 
-    await saveSessions();
-    savePendingCommands();
-    logger.info('Session deleted', { sessionId });
-    res.json({ ok: true, message: `Session ${sessionId} deleted` });
+      const sessionId = session.id;
+      sessions.delete(sessionId);
+
+      for (const [token, pending] of pendingCommands) {
+        if (pending.sessionId === sessionId) {
+          pendingCommands.delete(token);
+        }
+      }
+
+      await saveSessions();
+      savePendingCommands();
+      logger.info('Session deleted', { sessionId });
+      return { status: 200, body: { ok: true, message: `Session ${sessionId} deleted` } };
+    });
+
+    res.status(result.status).json(result.body);
   } catch (err) {
     next(err);
   }

@@ -5,6 +5,7 @@ import { z } from 'zod';
 import {
   validatePath,
   revalidateRealPath,
+  getSafeRealPath,
   PROJECT_ROOT,
   getAllowedRoots,
   getDefaultRoot,
@@ -13,7 +14,6 @@ import {
   canWritePath,
   isProtectedPathForListing,
 } from '../utils/fs-guard.js';
-import { ForbiddenError } from '../utils/errors.js';
 import { detectBinaryContent } from '../utils/mime-guard.js';
 import { atomicWriteTextFile, readSpecificLines } from '../utils/fs-utils.js';
 import { serverConfig } from '../config/server.js';
@@ -85,43 +85,6 @@ const renameSchema = z.object({
   oldPath: z.string().min(1, 'oldPath is required'),
   newPath: z.string().min(1, 'newPath is required'),
 });
-
-/**
- * Internal helper to safely resolve the real path of an existing target
- * to mitigate TOCTOU (Time-of-Check to Time-of-Use) attacks.
- *
- * SEC-TOCTOU-1: For non-existent paths (ENOENT), we still validate that the
- * resolved path is within allowed roots. This prevents a race where an attacker
- * could create a symlink at a non-existent path that resolves outside allowed
- * roots between validatePath() and the actual filesystem operation.
- */
-async function getSafeRealPath(resolvedPath) {
-  let realPath = resolvedPath;
-  try {
-    const stat = await fs.lstat(resolvedPath);
-    if (stat.isFile() || stat.isDirectory() || stat.isSymbolicLink()) {
-      realPath = revalidateRealPath(resolvedPath);
-      assertNotWriteProtectedPath(realPath);
-    }
-  } catch (err) {
-    if (err.code !== 'ENOENT') throw err;
-    // SEC-TOCTOU-2: Path does not exist. Re-validate the resolved path is
-    // still within allowed roots to prevent symlink-swap attacks where an
-    // attacker creates a malicious symlink at this location after our check.
-    const allowedRoots = getAllowedRoots();
-    const normalizedResolved = process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath;
-    const isWithinRoots = allowedRoots.some((root) => {
-      const normalizedRoot = process.platform === 'win32' ? root.toLowerCase() : root;
-      return (
-        normalizedResolved === normalizedRoot || normalizedResolved.startsWith(normalizedRoot + path.sep)
-      );
-    });
-    if (!isWithinRoots) {
-      throw new ForbiddenError('Access denied: Path is outside the allowed directories');
-    }
-  }
-  return realPath;
-}
 
 /**
  * Get allowed roots from environment and resolve them.

@@ -210,6 +210,7 @@ export function createAgentTimeline(dom) {
     feedbackInput.id = `feedback-${stepId}`;
     feedbackInput.className = 'approval-feedback-input';
     feedbackInput.placeholder = t('cmd_reject_reason');
+    feedbackInput.setAttribute('aria-label', t('cmd_reject_reason'));
 
     const actions = document.createElement('div');
     actions.className = 'approval-actions';
