@@ -62,6 +62,48 @@ describe('Code Review Hardening: isSubPath & Root Path Validation', () => {
     expect(isSubPath('C:\\project', '')).toBe(false);
     expect(isSubPath('D:\\other\\file', 'C:\\project')).toBe(false);
   });
+
+  describe('Cross-Platform Platform Simulation for isSubPath', () => {
+    const origPlatform = process.platform;
+
+    afterEach(() => {
+      Object.defineProperty(process, 'platform', { value: origPlatform, configurable: true });
+    });
+
+    ['win32', 'linux', 'darwin'].forEach((simulatedPlatform) => {
+      describe(`Platform: ${simulatedPlatform}`, () => {
+        beforeEach(() => {
+          Object.defineProperty(process, 'platform', { value: simulatedPlatform, configurable: true });
+        });
+
+        test('Windows drive root containment', () => {
+          expect(isSubPath('C:\\test.txt', 'C:\\')).toBe(true);
+          expect(isSubPath('c:\\test.txt', 'C:\\')).toBe(true);
+          expect(isSubPath('C:\\dir\\sub.js', 'C:\\')).toBe(true);
+          expect(isSubPath('C:\\', 'C:\\')).toBe(true);
+          expect(isSubPath('C:/test.txt', 'C:\\')).toBe(true);
+          expect(isSubPath('c:/test.txt', 'C:/')).toBe(true);
+        });
+
+        test('Windows subdirectory containment and trailing slash handling', () => {
+          expect(isSubPath('C:\\project\\src\\index.js', 'C:\\project')).toBe(true);
+          expect(isSubPath('C:\\project\\src\\index.js', 'C:\\project\\')).toBe(true);
+          expect(isSubPath('C:/project/src/index.js', 'C:\\project')).toBe(true);
+          expect(isSubPath('C:\\project-evil\\index.js', 'C:\\project')).toBe(false);
+          expect(isSubPath('D:\\other\\file', 'C:\\project')).toBe(false);
+        });
+
+        test('POSIX root and path containment', () => {
+          expect(isSubPath('/etc/hosts', '/')).toBe(true);
+          expect(isSubPath('/app/server.js', '/')).toBe(true);
+          expect(isSubPath('/', '/')).toBe(true);
+          expect(isSubPath('/var/app/index.js', '/var/app')).toBe(true);
+          expect(isSubPath('/var/app/index.js', '/var/app/')).toBe(true);
+          expect(isSubPath('/var/app-evil/index.js', '/var/app')).toBe(false);
+        });
+      });
+    });
+  });
 });
 
 describe('Code Review Hardening: getSafeRealPath', () => {

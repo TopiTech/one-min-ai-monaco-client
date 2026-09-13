@@ -5,6 +5,7 @@ import { jest } from '@jest/globals';
 import request from 'supertest';
 import fs from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 // Mock the API client to prevent calling actual 1min.ai APIs
 jest.unstable_mockModule('../utils/api-client.js', () => ({
@@ -29,11 +30,8 @@ describe('Hardening Improvements Tests', () => {
   describe('globToRegExp Directory Matching Fix', () => {
     test('scripts/** matches parent directory and its children', () => {
       // Resolve path to scripts dir and scripts file
-      const currentFile = new URL(import.meta.url).pathname;
-      // Normalize Windows absolute path format if needed (e.g. /C:/... -> C:/...)
-      const cleanFile =
-        process.platform === 'win32' && currentFile.startsWith('/') ? currentFile.substring(1) : currentFile;
-      const projectRoot = path.resolve(cleanFile, '../../');
+      const currentFile = fileURLToPath(import.meta.url);
+      const projectRoot = path.resolve(currentFile, '../../');
       const scriptsDir = path.join(projectRoot, 'scripts');
       const scriptsFile = path.join(projectRoot, 'scripts', 'copy-monaco.js');
 
@@ -80,12 +78,8 @@ describe('Hardening Improvements Tests', () => {
         });
 
         // Resolve path above project root to guarantee it is outside allowed roots on any platform
-        const currentFile = new URL(import.meta.url).pathname;
-        const cleanFile =
-          process.platform === 'win32' && currentFile.startsWith('/')
-            ? currentFile.substring(1)
-            : currentFile;
-        const projectRoot = path.resolve(cleanFile, '../../');
+        const currentFile = fileURLToPath(import.meta.url);
+        const projectRoot = path.resolve(currentFile, '../../');
         const outsideFile = path.resolve(projectRoot, '../some-outside-file.py');
 
         // Target path outside allowed roots

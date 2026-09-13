@@ -222,22 +222,42 @@ function hasWindowsReservedName(targetPath) {
  */
 export function isSubPath(candidatePath, basePath) {
   if (!candidatePath || !basePath) return false;
-  let normCandidate =
-    process.platform === 'win32' ? candidatePath.replace(/\//g, '\\').toLowerCase() : candidatePath;
-  let normBase = process.platform === 'win32' ? basePath.replace(/\//g, '\\').toLowerCase() : basePath;
+  if (typeof candidatePath !== 'string' || typeof basePath !== 'string') return false;
 
-  const sep = process.platform === 'win32' ? '\\' : '/';
-  const isRoot = (p) => p === sep || (process.platform === 'win32' && /^[a-z]:\\$/i.test(p));
+  // Determine whether paths should follow Windows semantics (case-insensitive, drive letter roots)
+  const isWindows =
+    process.platform === 'win32' ||
+    /^[a-zA-Z]:([/\\]|$)/.test(candidatePath) ||
+    /^[a-zA-Z]:([/\\]|$)/.test(basePath);
 
-  if (!isRoot(normCandidate) && normCandidate.endsWith(sep)) {
+  let normCandidate = candidatePath.replace(/\\/g, '/');
+  let normBase = basePath.replace(/\\/g, '/');
+
+  if (isWindows) {
+    normCandidate = normCandidate.toLowerCase();
+    normBase = normBase.toLowerCase();
+  }
+
+  const isRoot = (p) => p === '/' || (isWindows && /^[a-z]:\/$/i.test(p));
+
+  // If basePath or candidatePath is a drive letter without slash (e.g. "C:"), treat root as "c:/"
+  if (isWindows && /^[a-z]:$/i.test(normBase)) {
+    normBase += '/';
+  }
+  if (isWindows && /^[a-z]:$/i.test(normCandidate)) {
+    normCandidate += '/';
+  }
+
+  // Strip trailing slash unless it's a root
+  if (!isRoot(normCandidate) && normCandidate.endsWith('/')) {
     normCandidate = normCandidate.slice(0, -1);
   }
-  if (!isRoot(normBase) && normBase.endsWith(sep)) {
+  if (!isRoot(normBase) && normBase.endsWith('/')) {
     normBase = normBase.slice(0, -1);
   }
 
   if (normCandidate === normBase) return true;
-  const prefix = isRoot(normBase) ? normBase : normBase + sep;
+  const prefix = isRoot(normBase) ? normBase : normBase + '/';
   return normCandidate.startsWith(prefix);
 }
 
@@ -461,17 +481,17 @@ export function isProtectedPath(resolvedPath) {
  * @returns {boolean} True if the path is protected from destructive operations.
  */
 export function isWriteProtectedPath(resolvedPath) {
-  const normalizedResolvedPath = process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath;
+  const isWindows = process.platform === 'win32' || /^[a-zA-Z]:([/\\]|$)/.test(resolvedPath);
+  const normalizedResolvedPath = isWindows ? resolvedPath.toLowerCase() : resolvedPath;
   if (
     getAllowedRoots().some((root) => {
       try {
         const realRoot = fs.realpathSync(root);
-        const normalizedRealRoot = process.platform === 'win32' ? realRoot.toLowerCase() : realRoot;
+        const normalizedRealRoot = isWindows ? realRoot.toLowerCase() : realRoot;
         return normalizedRealRoot === normalizedResolvedPath;
       } catch {
         const resolvedRoot = path.resolve(root);
-        const normalizedResolvedRoot =
-          process.platform === 'win32' ? resolvedRoot.toLowerCase() : resolvedRoot;
+        const normalizedResolvedRoot = isWindows ? resolvedRoot.toLowerCase() : resolvedRoot;
         return normalizedResolvedRoot === normalizedResolvedPath;
       }
     })
