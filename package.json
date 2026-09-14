@@ -28,7 +28,7 @@
     "marked": "^18.0.11",
     "monaco-editor": "^0.56.0",
     "multer": "^2.3.0",
-    "zod": "^4.5.4"
+    "zod": "^4.6.2"
   },
   "overrides": {
     "dompurify": "^3.4.15",
