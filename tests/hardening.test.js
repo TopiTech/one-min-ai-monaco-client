@@ -19,7 +19,7 @@ jest.unstable_mockModule('../utils/api-client.js', () => ({
 }));
 
 const { createApp } = await import('../server.js');
-const { isWriteProtectedPath, clearAllowedRootsCache } = await import('../utils/fs-guard.js');
+const { isWriteProtectedPath, clearAllowedRootsCache, PROJECT_ROOT } = await import('../utils/fs-guard.js');
 const { serverConfig } = await import('../config/server.js');
 
 describe('Hardening Improvements Tests', () => {
@@ -250,6 +250,33 @@ describe('Hardening Improvements Tests', () => {
 
         expect(res.status).toBe(200);
         expect(res.body.ok).toBe(true);
+      } finally {
+        serverConfig.enableCodeRun = prevVal;
+      }
+    });
+
+    test('executes code snippet with cwd defaulting to PROJECT_ROOT when no filePath is provided', async () => {
+      const prevVal = serverConfig.enableCodeRun;
+      serverConfig.enableCodeRun = true;
+
+      try {
+        const app = createApp({
+          requireLocalAuth: false,
+          enableRateLimit: false,
+        });
+
+        const res = await request(app).post('/api/code/run').send({
+          code: 'console.log("CWD=" + process.cwd());',
+          language: 'javascript',
+          extension: 'js',
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.body.ok).toBe(true);
+        expect(res.body.exitCode).toBe(0);
+        const normalizedStdout = (res.body.stdout || '').replace(/\\/g, '/').toLowerCase();
+        const normalizedRoot = path.resolve(PROJECT_ROOT).replace(/\\/g, '/').toLowerCase();
+        expect(normalizedStdout).toContain('cwd=' + normalizedRoot);
       } finally {
         serverConfig.enableCodeRun = prevVal;
       }

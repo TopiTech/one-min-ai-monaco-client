@@ -648,7 +648,7 @@ export function createAgentRuntime({
 
   async function runAgentLoop(initialInstruction) {
     const workspaceRoot = dom.explorerPath.value || '';
-    setAgentStatus('初期化中...', 'thinking');
+    setAgentStatus(t('agent_status_initializing', '初期化中...'), 'thinking');
     addAgentTimelineStep('user', '指示', initialInstruction);
 
     if (!state.agent.sessionId) {
@@ -669,7 +669,7 @@ export function createAgentRuntime({
         );
       } catch (e) {
         addAgentTimelineStep('error', 'セッション作成失敗', `セッションの初期化に失敗しました: ${e.message}`);
-        setAgentStatus('エラー', 'error');
+        setAgentStatus(t('status_error', 'エラー'), 'error');
         return;
       }
     } else {
@@ -720,7 +720,7 @@ export function createAgentRuntime({
 
     while (state.agent.active && loopCount < maxLoops) {
       loopCount++;
-      setAgentStatus('思考中...', 'thinking');
+      setAgentStatus(t('agent_status_thinking', '思考中...'), 'thinking');
 
       // Re-inject a fresh system prompt on every iteration so the model
       // always sees the current workspace state and active file, even
@@ -774,7 +774,7 @@ export function createAgentRuntime({
             await new Promise((resolve) => setTimeout(resolve, 3000));
           } else {
             addAgentTimelineStep('error', 'AI通信失敗', `AIとの通信に失敗しました: ${e.message}`);
-            setAgentStatus('エラー', 'error');
+            setAgentStatus(t('status_error', 'エラー'), 'error');
             break;
           }
         }

@@ -617,49 +617,12 @@
 }
 
 @media (max-width: 768px) {
-  #app {
-    grid-template-columns: 1fr;
-    height: auto;
-    overflow-y: auto;
-  }
-
-  .sidebar {
-    border-right: none;
-    border-bottom: 1px solid var(--glass-border);
-    height: auto;
-    padding: 16px 20px;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
-
-  .brand {
-    margin-bottom: 0;
-  }
-
-  .sidebar .nav {
-    width: auto;
-    margin: 0;
-    padding: 8px 12px;
-    font-size: 0.85rem;
-  }
-
-  .sidebar .hint,
-  .sidebar .credit-save-box,
-  .sidebar .theme-toggle {
-    display: none;
-  }
-
   .main {
-    height: auto;
+    padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
   }
 
   .view {
-    padding: 16px 20px;
-    height: auto;
-    overflow-y: visible;
+    padding: 16px 12px;
   }
 
   .panel.two {

@@ -444,7 +444,7 @@ router.post('/run', async (req, res, next) => {
       return res.status(400).json({ error: 'No file path or code provided.' });
     }
 
-    const cwd = resolvedFilePath ? pathPkg.dirname(resolvedFilePath) : process.cwd();
+    const cwd = resolvedFilePath ? pathPkg.dirname(resolvedFilePath) : PROJECT_ROOT;
 
     const safeEnv = getSafeEnv();
 

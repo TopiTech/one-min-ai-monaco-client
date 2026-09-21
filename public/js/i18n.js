@@ -115,18 +115,28 @@ function applyTranslations() {
 }
 
 /**
- * Translate a key. If translation is missing, returns the key itself.
+ * Translate a key. If translation is missing, returns the fallback (if provided) or the key itself.
  * Supports simple {placeholder} interpolation.
  *
  * @param {string} key
- * @param {Record<string, string|number>} [params]
+ * @param {Record<string, string|number>|string} [params] Optional params object or fallback string
+ * @param {string} [fallback] Optional fallback string if params is an object
  * @returns {string}
  */
-export function t(key, params) {
+export function t(key, params, fallback) {
+  let actualParams = params;
+  let actualFallback = fallback;
+  if (typeof params === 'string' && fallback === undefined) {
+    actualFallback = params;
+    actualParams = undefined;
+  }
+
   let val = deepGet(_translations, key);
-  if (val === undefined) val = key;
-  if (params && typeof val === 'string') {
-    for (const [k, v] of Object.entries(params)) {
+  if (val === undefined) {
+    val = actualFallback !== undefined ? actualFallback : key;
+  }
+  if (actualParams && typeof val === 'string' && typeof actualParams === 'object') {
+    for (const [k, v] of Object.entries(actualParams)) {
       const safeKey = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       val = val.replace(new RegExp(`\\{${safeKey}\\}`, 'g'), v);
     }

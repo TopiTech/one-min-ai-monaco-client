@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import fs from 'fs/promises';
 
 function createMockElement(attributes = {}) {
   const el = {
@@ -255,5 +256,47 @@ describe('i18n utility module', () => {
 
     expect(elHtml.textContent).toBe('ネスト');
     expect(elHtml.innerHTML).toBe('');
+  });
+
+  test('t() supports optional fallback string for missing keys', async () => {
+    const { t, initI18n } = await loadI18nModule();
+    await initI18n();
+
+    // Fallback string as second argument
+    expect(t('missing_sample_key', 'Fallback string')).toBe('Fallback string');
+    // Fallback string with parameter interpolation
+    expect(t('missing_sample_key_param', { count: 42 }, 'Count is {count}')).toBe('Count is 42');
+    // Existing keys use translated value even when fallback is provided
+    expect(t('status_done', 'Fallback string')).toBe('完了');
+    // Missing key without fallback returns key name
+    expect(t('missing_sample_key')).toBe('missing_sample_key');
+  });
+
+  test('public i18n catalogues ja.json and en.json maintain exact key parity', async () => {
+    const [jaContent, enContent] = await Promise.all([
+      fs.readFile(new URL('../public/i18n/ja.json', import.meta.url), 'utf-8'),
+      fs.readFile(new URL('../public/i18n/en.json', import.meta.url), 'utf-8'),
+    ]);
+
+    const jaObj = JSON.parse(jaContent);
+    const enObj = JSON.parse(enContent);
+
+    const jaKeys = Object.keys(jaObj).sort();
+    const enKeys = Object.keys(enObj).sort();
+
+    const missingInEn = jaKeys.filter((k) => !(k in enObj));
+    const missingInJa = enKeys.filter((k) => !(k in jaObj));
+
+    expect(missingInEn).toEqual([]);
+    expect(missingInJa).toEqual([]);
+    expect(jaKeys.length).toBe(enKeys.length);
+
+    // Verify each key has a non-empty string value
+    for (const key of jaKeys) {
+      expect(typeof jaObj[key]).toBe('string');
+      expect(jaObj[key].trim().length).toBeGreaterThan(0);
+      expect(typeof enObj[key]).toBe('string');
+      expect(enObj[key].trim().length).toBeGreaterThan(0);
+    }
   });
 });
