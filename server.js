@@ -28,7 +28,7 @@ import aiRoutes from './routes/ai/index.js';
 import fsRoutes from './routes/fs.js';
 import agentRoutes, { flushPendingWriters, initAgentState, killAllSearchProcesses } from './routes/agent.js';
 import agentChatRoutes from './routes/agent-chat.js';
-import { initModels, getModelSyncStatus } from './config/models.js';
+import { initModels, getModelSyncStatus, stopModelSync } from './config/models.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -619,6 +619,13 @@ if (process.env.NODE_ENV !== 'test') {
             error: err.message,
           });
         }
+        try {
+          stopModelSync();
+        } catch (err) {
+          logger.error('Failed to stop model sync during shutdown', {
+            error: err.message,
+          });
+        }
         flushPendingWriters()
           .catch((err) => {
             logger.error('Failed to flush pending writers during shutdown', {
@@ -626,6 +633,7 @@ if (process.env.NODE_ENV !== 'test') {
             });
           })
           .finally(() => {
+            server.closeIdleConnections?.();
             server.close((err) => {
               if (err) {
                 logger.error('Error closing HTTP server during shutdown', {

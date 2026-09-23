@@ -271,6 +271,14 @@ export function validatePath(targetPath, { resolveSymlinks = true } = {}) {
     throw new ForbiddenError('Access denied: Invalid path (null byte detected)');
   }
 
+  // Block Alternate Data Streams (ADS) and unauthorized colons.
+  // On Windows, colons are permitted only as part of a drive specifier at the start (e.g. C:\).
+  // Any colon elsewhere is an alternate data stream or invalid path character.
+  const pathWithoutDrive = targetPath.replace(/^[a-zA-Z]:[\\/]/, '');
+  if (pathWithoutDrive.includes(':')) {
+    throw new ForbiddenError('Access denied: Path contains an alternate data stream or illegal colon');
+  }
+
   // Block Windows reserved device names (CON, NUL, AUX, etc.) to prevent
   // redirection to system devices or OS-level errors.
   if (hasWindowsReservedName(targetPath)) {
@@ -423,6 +431,14 @@ const DYNAMIC_WRITE_PROTECTED_PATTERNS = [...DYNAMIC_PROTECTED_PATTERNS];
 
 function isProtectedByPatterns(relativePath, patterns) {
   const normalized = normalizePathForMatching(relativePath);
+
+  // If path contains an Alternate Data Stream (colon), strip stream name and verify base path
+  if (normalized.includes(':')) {
+    const baseWithoutAds = normalized.split(':')[0];
+    if (baseWithoutAds && isProtectedByPatterns(baseWithoutAds, patterns)) {
+      return true;
+    }
+  }
 
   const isStandard = patterns === PROTECTED_PATTERNS;
   const isWrite = patterns === WRITE_PROTECTED_PATTERNS;

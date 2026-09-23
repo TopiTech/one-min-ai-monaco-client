@@ -165,9 +165,21 @@ export function getModelSyncStatus() {
   return lastFetchStatus;
 }
 
+let syncInterval = null;
+
 export async function initModels() {
   await fetchModels();
-  setInterval(fetchModels, 30 * 60 * 1000).unref();
+  if (!syncInterval) {
+    syncInterval = setInterval(fetchModels, 30 * 60 * 1000);
+    syncInterval.unref();
+  }
+}
+
+export function stopModelSync() {
+  if (syncInterval) {
+    clearInterval(syncInterval);
+    syncInterval = null;
+  }
 }
 
 export { fetchModels };

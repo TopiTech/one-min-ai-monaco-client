@@ -153,6 +153,9 @@ function getSession(req, res) {
   return session;
 }
 
+// --- Session Per-Key Lock ---
+const sessionLock = new SessionLock();
+
 /**
  * Atomically transition a session to running. The status check must be
  * serialized with the transition; a plain check followed by assignment lets
@@ -186,10 +189,6 @@ const pendingCommands = new Map();
 // rg processes spawned by /sessions/:id/search. Tracked separately from
 // command-runner's activeProcesses so shutdown can terminate stragglers.
 const activeSearchProcesses = new Set();
-
-// --- Session Per-Key Lock ---
-
-const sessionLock = new SessionLock();
 
 // --- Debounced File Writer ---
 
@@ -1563,292 +1562,319 @@ router.post('/sessions/:id/diff', async (req, res, next) => {
     }
     const { path: filePath, diff, dryRun } = resultBody.data;
 
-    const agentPath = resolveAgentPath(filePath, session.cwd);
-    const resolvedPath = validatePath(agentPath);
-    assertNotWriteProtectedPath(resolvedPath);
-    const realPath = revalidateRealPath(resolvedPath);
-    assertNotWriteProtectedPath(realPath);
+    const responsePayload = await sessionLock.acquire(session.id, async () => {
+      const agentPath = resolveAgentPath(filePath, session.cwd);
+      const resolvedPath = validatePath(agentPath);
+      assertNotWriteProtectedPath(resolvedPath);
+      const realPath = revalidateRealPath(resolvedPath);
+      assertNotWriteProtectedPath(realPath);
 
-    const stat = await fs.stat(realPath);
-    if (!stat.isFile()) {
-      return res.status(400).json({ error: 'Specified path is not a file' });
-    }
-    if (stat.size > serverConfig.agentMaxReadSize) {
-      return res.status(413).json({
-        error: `File size (${stat.size} bytes) exceeds maximum read size (${serverConfig.agentMaxReadSize} bytes)`,
-      });
-    }
+      const stat = await fs.stat(realPath);
+      if (!stat.isFile()) {
+        return { status: 400, body: { error: 'Specified path is not a file' } };
+      }
+      if (stat.size > serverConfig.agentMaxReadSize) {
+        return {
+          status: 413,
+          body: {
+            error: `File size (${stat.size} bytes) exceeds maximum read size (${serverConfig.agentMaxReadSize} bytes)`,
+          },
+        };
+      }
 
-    const content = await fs.readFile(realPath, 'utf-8');
+      const content = await fs.readFile(realPath, 'utf-8');
 
-    // H-1: Use robust line-by-line block parser that supports deletions
-    // (empty REPLACE block) and consecutive blocks without regex backtracking.
-    const blocks = parseSearchReplaceBlocks(diff);
+      // H-1: Use robust line-by-line block parser that supports deletions
+      // (empty REPLACE block) and consecutive blocks without regex backtracking.
+      const blocks = parseSearchReplaceBlocks(diff);
 
-    if (blocks.length === 0) {
-      return res.status(400).json({
-        error:
-          '有効な SEARCH/REPLACE ブロックが見つかりませんでした。フォーマット（<<<<<<< SEARCH、=======、>>>>>>> REPLACE）を確認してください。',
-      });
-    }
+      if (blocks.length === 0) {
+        return {
+          status: 400,
+          body: {
+            error:
+              '有効な SEARCH/REPLACE ブロックが見つかりませんでした。フォーマット（<<<<<<< SEARCH、=======、>>>>>>> REPLACE）を確認してください。',
+          },
+        };
+      }
 
-    // Determine the original EOL format to preserve it
-    const hasCarriageReturn = content.includes('\r\n');
-    const eol = hasCarriageReturn ? '\r\n' : '\n';
-    let fileLines = content.split(/\r?\n/);
+      // Determine the original EOL format to preserve it
+      const hasCarriageReturn = content.includes('\r\n');
+      const eol = hasCarriageReturn ? '\r\n' : '\n';
+      let fileLines = content.split(/\r?\n/);
 
-    const processedBlocks = [];
+      const processedBlocks = [];
 
-    for (const block of blocks) {
-      // Split search and replace blocks by line
-      const searchLines = block.searchLines;
-      const replaceLines = block.replaceLines;
+      for (const block of blocks) {
+        // Split search and replace blocks by line
+        const searchLines = block.searchLines;
+        const replaceLines = block.replaceLines;
 
-      let matchedIndex = -1;
-      let matchCount = 0;
-      const candidateMatches = [];
+        let matchedIndex = -1;
+        let matchCount;
+        const candidateMatches = [];
 
-      // 1. Try Exact Match (preserving exact indentation and trailing spaces)
-      for (let i = 0; i <= fileLines.length - searchLines.length; i++) {
-        let match = true;
+        // 1. Try Exact Match (preserving exact indentation and trailing spaces)
+        for (let i = 0; i <= fileLines.length - searchLines.length; i++) {
+          let match = true;
+          for (let j = 0; j < searchLines.length; j++) {
+            if (fileLines[i + j] !== searchLines[j]) {
+              match = false;
+              break;
+            }
+          }
+          if (match) {
+            candidateMatches.push(i);
+          }
+        }
+
+        // 2. Try Normalized Match (ignore trailing spaces) if exact match fails
+        if (candidateMatches.length === 0) {
+          const normFileLines = fileLines.map((l) => l.replace(/[ \t]+$/g, ''));
+          const normSearchLines = searchLines.map((l) => l.replace(/[ \t]+$/g, ''));
+
+          for (let i = 0; i <= normFileLines.length - normSearchLines.length; i++) {
+            let match = true;
+            for (let j = 0; j < normSearchLines.length; j++) {
+              if (normFileLines[i + j] !== normSearchLines[j]) {
+                match = false;
+                break;
+              }
+            }
+            if (match) {
+              candidateMatches.push(i);
+            }
+          }
+        }
+
+        // 3. Try Indentation-Insensitive Match (ignore leading and trailing spaces) if normalized match fails
+        if (candidateMatches.length === 0) {
+          const cleanFileLines = fileLines.map((l) => l.trim());
+          const cleanSearchLines = searchLines.map((l) => l.trim());
+
+          for (let i = 0; i <= cleanFileLines.length - cleanSearchLines.length; i++) {
+            let match = true;
+            for (let j = 0; j < cleanSearchLines.length; j++) {
+              if (cleanFileLines[i + j] !== cleanSearchLines[j]) {
+                match = false;
+                break;
+              }
+            }
+            if (match) {
+              candidateMatches.push(i);
+            }
+          }
+        }
+
+        // 4. Try Fuzzy Anchor Matching if searchLines has at least 3 lines
+        if (candidateMatches.length === 0 && searchLines.length >= 3) {
+          const firstIdx = searchLines.findIndex((l) => l.trim().length > 0);
+          const lastIdx =
+            searchLines.length - 1 - [...searchLines].reverse().findIndex((l) => l.trim().length > 0);
+          if (firstIdx !== -1 && lastIdx > firstIdx) {
+            const firstTrim = searchLines[firstIdx].trim();
+            const lastTrim = searchLines[lastIdx].trim();
+
+            for (let i = 0; i <= fileLines.length - searchLines.length; i++) {
+              if (
+                fileLines[i + firstIdx]?.trim() === firstTrim &&
+                fileLines[i + lastIdx]?.trim() === lastTrim
+              ) {
+                let matchingCount = 0;
+                for (let j = 0; j < searchLines.length; j++) {
+                  if (fileLines[i + j]?.trim() === searchLines[j]?.trim()) {
+                    matchingCount++;
+                  }
+                }
+                if (matchingCount / searchLines.length >= 0.75) {
+                  candidateMatches.push(i);
+                }
+              }
+            }
+          }
+        }
+
+        // Disambiguation via startLine hint if multiple matches exist
+        if (candidateMatches.length > 1 && resultBody.data.startLine) {
+          const targetLineIdx = resultBody.data.startLine - 1;
+          matchedIndex = candidateMatches.reduce((best, curr) =>
+            Math.abs(curr - targetLineIdx) < Math.abs(best - targetLineIdx) ? curr : best,
+          );
+          matchCount = 1;
+        } else if (candidateMatches.length === 1) {
+          matchedIndex = candidateMatches[0];
+          matchCount = 1;
+        } else {
+          matchCount = candidateMatches.length;
+        }
+
+        // Check results
+        if (matchCount === 0) {
+          const cleanSearchLines = searchLines.map((l) => l.trim());
+          const cleanFileLines = fileLines.map((l) => l.trim());
+          let bestIndex = -1;
+          let bestScore = 0;
+
+          const computeLineSimilarity = (s1, s2) => {
+            if (s1 === s2) return 1.0;
+            if (!s1 || !s2) return 0;
+            if (s1.includes(s2) || s2.includes(s1)) return 0.8;
+            const t1 = s1.split(/[^A-Za-z0-9_$]+/).filter(Boolean);
+            const t2 = s2.split(/[^A-Za-z0-9_$]+/).filter(Boolean);
+            if (t1.length === 0 || t2.length === 0) return 0;
+            const set2 = new Set(t2);
+            let matches = 0;
+            for (const t of t1) {
+              if (set2.has(t)) matches++;
+            }
+            return matches / Math.max(t1.length, t2.length);
+          };
+
+          for (let i = 0; i <= fileLines.length - searchLines.length; i++) {
+            let score = 0;
+            for (let j = 0; j < searchLines.length; j++) {
+              score += computeLineSimilarity(cleanFileLines[i + j], cleanSearchLines[j]);
+            }
+            if (score > bestScore) {
+              bestScore = score;
+              bestIndex = i;
+            }
+          }
+
+          const cleanSearch = searchLines.map((l) => l.trim()).join('');
+          const cleanFile = fileLines.map((l) => l.trim()).join('');
+          const isFuzzyMatch = cleanFile.includes(cleanSearch);
+
+          let errorMsg = `置換対象の SEARCH ブロックのコードが見つかりません。インデントや改行が既存ファイルの内容と完全に一致している必要があります。`;
+          if (isFuzzyMatch) {
+            errorMsg += `\nヒント: コードの内容は似ていますが、インデントや不可視文字（タブ/スペース）が異なっている可能性があります。`;
+          } else if (bestIndex !== -1 && bestScore > 0.2) {
+            const candidateSnippet = fileLines.slice(bestIndex, bestIndex + searchLines.length).join('\n');
+            errorMsg += `\n\n【ヒント: ファイル内の最も近い該当箇所 (行 ${bestIndex + 1}〜${bestIndex + searchLines.length})】:\n${candidateSnippet}`;
+          }
+          errorMsg += `\n\n対象のコード:\n${block.search}`;
+
+          return {
+            status: 400,
+            body: {
+              error: errorMsg,
+              hint:
+                bestIndex !== -1 && bestScore > 0.2
+                  ? {
+                      startLine: bestIndex + 1,
+                      endLine: bestIndex + searchLines.length,
+                      snippet: fileLines.slice(bestIndex, bestIndex + searchLines.length).join('\n'),
+                    }
+                  : undefined,
+            },
+          };
+        }
+
+        if (matchCount > 1) {
+          logger.warn(
+            `SEARCH block matched ${matchCount} times in ${resolvedPath}; requiring disambiguation`,
+            {
+              searchLines: searchLines.length,
+            },
+          );
+          return {
+            status: 400,
+            body: {
+              error: `置換対象の SEARCH ブロックのコードがファイル内に複数存在するため、一意に特定できません。前後の行も含めて指定してください：\n${block.search}`,
+            },
+          };
+        }
+
+        // Determine indentation mapping from the first non-empty matched line
+        let fileIndent = '';
+        let searchIndent = '';
+        let foundIndentLine = false;
+
         for (let j = 0; j < searchLines.length; j++) {
-          if (fileLines[i + j] !== searchLines[j]) {
-            match = false;
+          if (searchLines[j].trim() !== '') {
+            fileIndent = fileLines[matchedIndex + j].match(/^\s*/)[0];
+            searchIndent = searchLines[j].match(/^\s*/)[0];
+            foundIndentLine = true;
             break;
           }
         }
-        if (match) {
-          candidateMatches.push(i);
-        }
-      }
 
-      // 2. Try Normalized Match (ignore trailing spaces) if exact match fails
-      if (candidateMatches.length === 0) {
-        const normFileLines = fileLines.map((l) => l.replace(/[ \t]+$/g, ''));
-        const normSearchLines = searchLines.map((l) => l.replace(/[ \t]+$/g, ''));
-
-        for (let i = 0; i <= normFileLines.length - normSearchLines.length; i++) {
-          let match = true;
-          for (let j = 0; j < normSearchLines.length; j++) {
-            if (normFileLines[i + j] !== normSearchLines[j]) {
-              match = false;
-              break;
-            }
-          }
-          if (match) {
-            candidateMatches.push(i);
-          }
-        }
-      }
-
-      // 3. Try Indentation-Insensitive Match (ignore leading and trailing spaces) if normalized match fails
-      if (candidateMatches.length === 0) {
-        const cleanFileLines = fileLines.map((l) => l.trim());
-        const cleanSearchLines = searchLines.map((l) => l.trim());
-
-        for (let i = 0; i <= cleanFileLines.length - cleanSearchLines.length; i++) {
-          let match = true;
-          for (let j = 0; j < cleanSearchLines.length; j++) {
-            if (cleanFileLines[i + j] !== cleanSearchLines[j]) {
-              match = false;
-              break;
-            }
-          }
-          if (match) {
-            candidateMatches.push(i);
-          }
-        }
-      }
-
-      // 4. Try Fuzzy Anchor Matching if searchLines has at least 3 lines
-      if (candidateMatches.length === 0 && searchLines.length >= 3) {
-        const firstIdx = searchLines.findIndex((l) => l.trim().length > 0);
-        const lastIdx =
-          searchLines.length - 1 - [...searchLines].reverse().findIndex((l) => l.trim().length > 0);
-        if (firstIdx !== -1 && lastIdx > firstIdx) {
-          const firstTrim = searchLines[firstIdx].trim();
-          const lastTrim = searchLines[lastIdx].trim();
-
-          for (let i = 0; i <= fileLines.length - searchLines.length; i++) {
-            if (
-              fileLines[i + firstIdx]?.trim() === firstTrim &&
-              fileLines[i + lastIdx]?.trim() === lastTrim
-            ) {
-              let matchingCount = 0;
-              for (let j = 0; j < searchLines.length; j++) {
-                if (fileLines[i + j]?.trim() === searchLines[j]?.trim()) {
-                  matchingCount++;
-                }
-              }
-              if (matchingCount / searchLines.length >= 0.75) {
-                candidateMatches.push(i);
-              }
-            }
-          }
-        }
-      }
-
-      // Disambiguation via startLine hint if multiple matches exist
-      if (candidateMatches.length > 1 && resultBody.data.startLine) {
-        const targetLineIdx = resultBody.data.startLine - 1;
-        matchedIndex = candidateMatches.reduce((best, curr) =>
-          Math.abs(curr - targetLineIdx) < Math.abs(best - targetLineIdx) ? curr : best,
-        );
-        matchCount = 1;
-      } else if (candidateMatches.length === 1) {
-        matchedIndex = candidateMatches[0];
-        matchCount = 1;
-      } else {
-        matchCount = candidateMatches.length;
-      }
-
-      // Check results
-      if (matchCount === 0) {
-        const cleanSearchLines = searchLines.map((l) => l.trim());
-        const cleanFileLines = fileLines.map((l) => l.trim());
-        let bestIndex = -1;
-        let bestScore = 0;
-
-        const computeLineSimilarity = (s1, s2) => {
-          if (s1 === s2) return 1.0;
-          if (!s1 || !s2) return 0;
-          if (s1.includes(s2) || s2.includes(s1)) return 0.8;
-          const t1 = s1.split(/[^A-Za-z0-9_$]+/).filter(Boolean);
-          const t2 = s2.split(/[^A-Za-z0-9_$]+/).filter(Boolean);
-          if (t1.length === 0 || t2.length === 0) return 0;
-          const set2 = new Set(t2);
-          let matches = 0;
-          for (const t of t1) {
-            if (set2.has(t)) matches++;
-          }
-          return matches / Math.max(t1.length, t2.length);
-        };
-
-        for (let i = 0; i <= fileLines.length - searchLines.length; i++) {
-          let score = 0;
-          for (let j = 0; j < searchLines.length; j++) {
-            score += computeLineSimilarity(cleanFileLines[i + j], cleanSearchLines[j]);
-          }
-          if (score > bestScore) {
-            bestScore = score;
-            bestIndex = i;
-          }
+        if (!foundIndentLine) {
+          fileIndent = fileLines[matchedIndex].match(/^\s*/)[0];
+          searchIndent = searchLines[0].match(/^\s*/)[0];
         }
 
-        const cleanSearch = searchLines.map((l) => l.trim()).join('');
-        const cleanFile = fileLines.map((l) => l.trim()).join('');
-        const isFuzzyMatch = cleanFile.includes(cleanSearch);
+        // Adjust replacement lines to match the file's indentation level
+        const adjustedReplaceLines = replaceLines.map((line) => {
+          if (line.trim() === '') return '';
+          if (searchIndent && line.startsWith(searchIndent)) {
+            return fileIndent + line.slice(searchIndent.length);
+          }
+          if (!searchIndent && fileIndent) {
+            return fileIndent + line;
+          }
+          return line;
+        });
 
-        let errorMsg = `置換対象の SEARCH ブロックのコードが見つかりません。インデントや改行が既存ファイルの内容と完全に一致している必要があります。`;
-        if (isFuzzyMatch) {
-          errorMsg += `\nヒント: コードの内容は似ていますが、インデントや不可視文字（タブ/スペース）が異なっている可能性があります。`;
-        } else if (bestIndex !== -1 && bestScore > 0.2) {
-          const candidateSnippet = fileLines.slice(bestIndex, bestIndex + searchLines.length).join('\n');
-          errorMsg += `\n\n【ヒント: ファイル内の最も近い該当箇所 (行 ${bestIndex + 1}〜${bestIndex + searchLines.length})】:\n${candidateSnippet}`;
-        }
-        errorMsg += `\n\n対象のコード:\n${block.search}`;
-
-        return res.status(400).json({
-          error: errorMsg,
-          hint:
-            bestIndex !== -1 && bestScore > 0.2
-              ? {
-                  startLine: bestIndex + 1,
-                  endLine: bestIndex + searchLines.length,
-                  snippet: fileLines.slice(bestIndex, bestIndex + searchLines.length).join('\n'),
-                }
-              : undefined,
+        processedBlocks.push({
+          matchedIndex,
+          length: searchLines.length,
+          lines: adjustedReplaceLines,
+          searchBlock: block.search,
         });
       }
 
-      if (matchCount > 1) {
-        logger.warn(`SEARCH block matched ${matchCount} times in ${resolvedPath}; requiring disambiguation`, {
-          searchLines: searchLines.length,
-        });
-        return res.status(400).json({
-          error: `置換対象の SEARCH ブロックのコードがファイル内に複数存在するため、一意に特定できません。前後の行も含めて指定してください：\n${block.search}`,
-        });
-      }
+      // Sort blocks descending by their starting line index
+      processedBlocks.sort((a, b) => b.matchedIndex - a.matchedIndex);
 
-      // Determine indentation mapping from the first non-empty matched line
-      let fileIndent = '';
-      let searchIndent = '';
-      let foundIndentLine = false;
-
-      for (let j = 0; j < searchLines.length; j++) {
-        if (searchLines[j].trim() !== '') {
-          fileIndent = fileLines[matchedIndex + j].match(/^\s*/)[0];
-          searchIndent = searchLines[j].match(/^\s*/)[0];
-          foundIndentLine = true;
-          break;
+      // Check for overlapping blocks
+      for (let i = 0; i < processedBlocks.length - 1; i++) {
+        const current = processedBlocks[i];
+        const next = processedBlocks[i + 1]; // next is visually ABOVE current in the file
+        if (next.matchedIndex + next.length > current.matchedIndex) {
+          return {
+            status: 400,
+            body: {
+              error:
+                '複数の SEARCH ブロックの対象範囲が重複しています。競合を避けるため別々の箇所を指定するか、1つの大きなブロックにまとめてください。',
+            },
+          };
         }
       }
 
-      if (!foundIndentLine) {
-        fileIndent = fileLines[matchedIndex].match(/^\s*/)[0];
-        searchIndent = searchLines[0].match(/^\s*/)[0];
+      // Apply replacements bottom-up
+      for (const pb of processedBlocks) {
+        fileLines.splice(pb.matchedIndex, pb.length, ...pb.lines);
       }
 
-      // Adjust replacement lines to match the file's indentation level
-      const adjustedReplaceLines = replaceLines.map((line) => {
-        if (line.trim() === '') return '';
-        if (searchIndent && line.startsWith(searchIndent)) {
-          return fileIndent + line.slice(searchIndent.length);
-        }
-        if (!searchIndent && fileIndent) {
-          return fileIndent + line;
-        }
-        return line;
-      });
+      const newContent = fileLines.join(eol);
 
-      processedBlocks.push({
-        matchedIndex,
-        length: searchLines.length,
-        lines: adjustedReplaceLines,
-        searchBlock: block.search,
-      });
-    }
+      if (!dryRun) {
+        await atomicWriteTextFile(realPath, newContent);
 
-    // Sort blocks descending by their starting line index
-    processedBlocks.sort((a, b) => b.matchedIndex - a.matchedIndex);
-
-    // Check for overlapping blocks
-    for (let i = 0; i < processedBlocks.length - 1; i++) {
-      const current = processedBlocks[i];
-      const next = processedBlocks[i + 1]; // next is visually ABOVE current in the file
-      if (next.matchedIndex + next.length > current.matchedIndex) {
-        return res.status(400).json({
-          error:
-            '複数の SEARCH ブロックの対象範囲が重複しています。競合を避けるため別々の箇所を指定するか、1つの大きなブロックにまとめてください。',
+        await addHistoryEntry(session, {
+          type: 'diff',
+          path: realPath,
+          timestamp: new Date().toISOString(),
         });
       }
-    }
 
-    // Apply replacements bottom-up
-    for (const pb of processedBlocks) {
-      fileLines.splice(pb.matchedIndex, pb.length, ...pb.lines);
-    }
-
-    const newContent = fileLines.join(eol);
-
-    if (!dryRun) {
-      await atomicWriteTextFile(realPath, newContent);
-
-      await addHistoryEntry(session, {
-        type: 'diff',
-        path: realPath,
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    res.json({
-      ok: true,
-      path: realPath,
-      // M-5: Only return newContent on dryRun to avoid sending large file contents
-      // unnecessarily when the write has already been committed to disk.
-      ...(dryRun ? { newContent } : {}),
-      message: dryRun ? 'プレビューを生成しました。' : `${blocks.length}個のブロックの置換に成功しました。`,
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          path: realPath,
+          // M-5: Only return newContent on dryRun to avoid sending large file contents
+          // unnecessarily when the write has already been committed to disk.
+          ...(dryRun ? { newContent } : {}),
+          message: dryRun
+            ? 'プレビューを生成しました。'
+            : `${blocks.length}個のブロックの置換に成功しました。`,
+        },
+      };
     });
+
+    res.status(responsePayload.status).json(responsePayload.body);
   } catch (err) {
     next(err);
   }

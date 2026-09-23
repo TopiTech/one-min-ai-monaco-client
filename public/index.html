@@ -68,6 +68,8 @@
           type="text"
           placeholder="モデルを検索..."
           data-i18n-placeholder="search_models"
+          aria-label="モデルを検索..."
+          data-i18n-aria="search_models"
           autocomplete="off"
           role="combobox"
           aria-autocomplete="list"
@@ -146,7 +148,6 @@
           type="button"
           class="nav active"
           data-view="chat"
-          role="button"
           aria-label="通常チャット"
           title="通常チャット"
           data-i18n-aria="nav_chat"
@@ -161,7 +162,6 @@
           type="button"
           class="nav"
           data-view="image"
-          role="button"
           aria-label="画像生成 / テキスト編集"
           title="画像生成 / テキスト編集"
           data-i18n-aria="nav_image"
@@ -178,7 +178,6 @@
           type="button"
           class="nav"
           data-view="coding"
-          role="button"
           aria-label="コーディング"
           title="コーディング"
           data-i18n-aria="nav_coding"
@@ -195,7 +194,6 @@
           type="button"
           class="nav"
           data-view="settings"
-          role="button"
           aria-label="設定"
           title="設定"
           data-i18n-aria="nav_settings"
@@ -342,6 +340,8 @@
                   id="chatImageInput"
                   accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.csv,.json,.xml,.md"
                   multiple
+                  aria-label="ファイルを添付"
+                  data-i18n-aria="attach_file"
                   class="u-hidden"
                 />
               </div>
@@ -520,6 +520,8 @@
                     type="file"
                     accept="image/*,video/*,audio/*,application/pdf,text/*,application/json,application/xml,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     class="u-flex-2"
+                    aria-label="画像ファイルを選択してください"
+                    data-i18n-aria="select_image_file"
                   />
                   <button type="button" id="uploadAsset" class="u-flex-1" data-i18n="btn_upload">
                     アップロード
@@ -530,7 +532,9 @@
                     id="editorImageUrl"
                     placeholder="直接 asset key または画像 URL を入力..."
                     class="u-flex-1"
+                    aria-label="直接 asset key または画像 URL を入力..."
                     data-i18n-placeholder="asset_key_placeholder"
+                    data-i18n-aria="asset_key_placeholder"
                   />
                   <button type="button" id="clearImageBtn" class="ghost small u-hidden" data-i18n="btn_clear">
                     クリア
@@ -593,7 +597,9 @@
                   <h4 class="sub-h4" data-i18n="text_to_image_settings">テキストから生成用の設定</h4>
                   <div class="row">
                     <div class="u-flex-1">
-                      <label class="label-muted-sm" data-i18n="aspect_ratio">アスペクト比</label>
+                      <label for="aspectRatio" class="label-muted-sm" data-i18n="aspect_ratio"
+                        >アスペクト比</label
+                      >
                       <select id="aspectRatio" class="u-w-full">
                         <option>1:1</option>
                         <option>16:9</option>
@@ -603,7 +609,7 @@
                       </select>
                     </div>
                     <div class="u-flex-1">
-                      <label class="label-muted-sm" data-i18n="num_outputs">生成枚数</label>
+                      <label for="numOutputs" class="label-muted-sm" data-i18n="num_outputs">生成枚数</label>
                       <input id="numOutputs" type="number" min="1" max="4" value="1" class="u-w-full" />
                     </div>
                   </div>
@@ -615,11 +621,13 @@
 
                   <div class="row u-mb-10">
                     <div class="u-flex-2">
-                      <label class="label-muted-sm" data-i18n="output_size">出力サイズ</label>
+                      <label for="editorSize" class="label-muted-sm" data-i18n="output_size"
+                        >出力サイズ</label
+                      >
                       <input id="editorSize" value="1024x1024" placeholder="1024x1024" />
                     </div>
                     <div class="u-flex-1">
-                      <label class="label-muted-sm" data-i18n="quality">品質</label>
+                      <label for="editorQuality" class="label-muted-sm" data-i18n="quality">品質</label>
                       <select id="editorQuality" class="u-w-full">
                         <option value="low">low</option>
                         <option value="medium" selected>medium</option>
@@ -630,11 +638,13 @@
 
                   <div class="row u-mb-10">
                     <div class="u-flex-1">
-                      <label class="label-muted-sm" data-i18n="num_outputs">生成枚数</label>
+                      <label for="editorN" class="label-muted-sm" data-i18n="num_outputs">生成枚数</label>
                       <input id="editorN" type="number" min="1" max="10" value="1" class="u-w-full" />
                     </div>
                     <div class="u-flex-2">
-                      <label class="label-muted-sm" data-i18n="background_processing">背景処理</label>
+                      <label for="editorBackground" class="label-muted-sm" data-i18n="background_processing"
+                        >背景処理</label
+                      >
                       <select id="editorBackground" class="u-w-full">
                         <option value="auto" selected>auto</option>
                         <option value="transparent">transparent</option>
@@ -645,7 +655,9 @@
 
                   <div class="row">
                     <div class="u-flex-1">
-                      <label class="label-muted-sm" data-i18n="format">フォーマット</label>
+                      <label for="editorOutputFormat" class="label-muted-sm" data-i18n="format"
+                        >フォーマット</label
+                      >
                       <select id="editorOutputFormat" class="u-w-full">
                         <option value="webp" selected>webp</option>
                         <option value="png">png</option>
@@ -653,7 +665,9 @@
                       </select>
                     </div>
                     <div class="u-flex-1">
-                      <label class="label-muted-sm" data-i18n="compression_rate">圧縮率 (0-100)</label>
+                      <label for="editorOutputCompression" class="label-muted-sm" data-i18n="compression_rate"
+                        >圧縮率 (0-100)</label
+                      >
                       <input
                         id="editorOutputCompression"
                         type="number"
@@ -787,6 +801,8 @@
                   type="text"
                   placeholder="絶対パス"
                   data-i18n-placeholder="absolute_path"
+                  aria-label="絶対パス"
+                  data-i18n-aria="absolute_path"
                 />
                 <button
                   type="button"
@@ -829,6 +845,8 @@
                   type="text"
                   placeholder="ファイルを検索..."
                   data-i18n-placeholder="file_search_placeholder"
+                  aria-label="ファイルを検索..."
+                  data-i18n-aria="file_search_placeholder"
                   autocomplete="off"
                 />
                 <button type="button" id="fileSearchClear" class="file-search-clear u-hidden" title="クリア">
@@ -1155,6 +1173,8 @@
                   placeholder="指示を入力してエージェントを開始..."
                   class="agent-instruction-textarea"
                   data-i18n-placeholder="agent_instruction_placeholder"
+                  aria-label="指示を入力してエージェントを開始..."
+                  data-i18n-aria="agent_instruction_placeholder"
                 ></textarea>
                 <div class="agent-action-buttons">
                   <button type="button" id="startAgentBtn" class="agent-btn agent-btn--primary">
@@ -1336,6 +1356,8 @@
             type="text"
             placeholder="フォルダの絶対パス"
             data-i18n-placeholder="folder_path_placeholder"
+            aria-label="フォルダの絶対パス"
+            data-i18n-aria="folder_path_placeholder"
           />
         </div>
 

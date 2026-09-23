@@ -23,9 +23,9 @@ import { serverConfig } from '../config/server.js';
 
 const router = express.Router();
 const CODE_GENERATOR_FEATURE_ENDPOINT = '/api/features?isStreaming=true';
-const MAX_AGENT_PROMPT_CHARS = 200000;
-const MAX_AGENT_MESSAGES = 100;
-const MAX_AGENT_MESSAGE_CHARS = 50000;
+export const MAX_AGENT_PROMPT_CHARS = 200000;
+export const MAX_AGENT_MESSAGES = 100;
+export const MAX_AGENT_MESSAGE_CHARS = 50000;
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -52,9 +52,12 @@ function flattenMessages(messages) {
     .join('\n\n');
 }
 
-const agentChatSchema = z
+export const agentChatSchema = z
   .object({
-    prompt: z.string().max(50000, 'prompt exceeds 50000 characters').optional(),
+    prompt: z
+      .string()
+      .max(MAX_AGENT_MESSAGE_CHARS, `prompt exceeds ${MAX_AGENT_MESSAGE_CHARS} characters`)
+      .optional(),
     messages: z
       .array(
         z.object({
