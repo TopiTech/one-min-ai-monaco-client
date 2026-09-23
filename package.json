@@ -25,7 +25,7 @@
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
     "js-tiktoken": "^1.0.21",
-    "marked": "^18.0.11",
+    "marked": "^18.0.12",
     "monaco-editor": "^0.56.0",
     "multer": "^2.3.0",
     "zod": "^4.6.5"
