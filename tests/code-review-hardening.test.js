@@ -136,7 +136,11 @@ describe('Code Review Hardening: getSafeRealPath', () => {
     await fs.writeFile(tmpFile, 'test');
     try {
       const real = await getSafeRealPath(tmpFile);
-      expect(real.toLowerCase()).toBe((await fs.realpath(tmpFile)).toLowerCase());
+      // Windows can report the same file through an 8.3 short name (e.g. RUNNER~1)
+      // in one realpath call and its long form in another, so canonicalize both
+      // sides with the same API before comparing.
+      const expected = await fs.realpath(tmpFile);
+      expect((await fs.realpath(real)).toLowerCase()).toBe(expected.toLowerCase());
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
