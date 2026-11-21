@@ -561,7 +561,7 @@ export function createAgentRuntime({
       const data = await api(url);
       const text = data.files?.length
         ? `Found ${data.files.length} matching files:\n` +
-          data.files.map((f) => `- ${f.relativePath}`).join('\n')
+        data.files.map((f) => `- ${f.relativePath}`).join('\n')
         : '一致するファイルは見つかりませんでした。';
       return { text, success: true };
     },
@@ -574,7 +574,7 @@ export function createAgentRuntime({
       const data = await api(url);
       const text = data.symbols?.length
         ? `Outline for ${filePath} (${data.symbols.length} symbols):\n` +
-          data.symbols.map((s) => `• [L${s.line}] (${s.type}) ${s.signature || s.name}`).join('\n')
+        data.symbols.map((s) => `• [L${s.line}] (${s.type}) ${s.signature || s.name}`).join('\n')
         : `No top-level symbols detected in ${filePath}`;
       return { text, success: true };
     },
@@ -749,11 +749,7 @@ export function createAgentRuntime({
           );
         } catch (e) {
           if (e?.name === 'AbortError') return;
-          addAgentTimelineStep(
-            'error',
-            'セッション作成失敗',
-            `セッションの初期化に失敗しました: ${e.message}`,
-          );
+          addAgentTimelineStep('error', 'セッション作成失敗', `セッションの初期化に失敗しました: ${e.message}`);
           setAgentStatus(t('status_error', 'エラー'), 'error');
           return;
         }
@@ -1022,7 +1018,7 @@ export function createAgentRuntime({
           'error',
           t('agent_status_limit_reached') || '制限到達',
           t('agent_status_limit_desc', { max: maxLoops }) ||
-            `実行ステップ数が上限 (${maxLoops}) に達したため、安全のために停止しました。`,
+          `実行ステップ数が上限 (${maxLoops}) に達したため、安全のために停止しました。`,
         );
         setAgentStatus(t('status_error'), 'error');
       }
@@ -1037,10 +1033,7 @@ export function createAgentRuntime({
         dom.stopAgentBtn.classList.remove('is-shown');
         dom.resetAgentBtn.classList.remove('is-hidden');
         dom.agentInstruction.placeholder = t('agent_instruction_placeholder');
-        if (
-          !dom.agentStatus.classList.contains('completed') &&
-          !dom.agentStatus.classList.contains('error')
-        ) {
+        if (!dom.agentStatus.classList.contains('completed') && !dom.agentStatus.classList.contains('error')) {
           setAgentStatus(t('agent_status_idle'), 'idle');
         }
       }
