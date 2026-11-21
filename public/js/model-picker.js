@@ -185,7 +185,7 @@ function syncPickerSelectionsToCatalog(providerId = getActiveProvider()) {
 
 export async function loadModels() {
   try {
-    const [data, health] = await Promise.all([api('/api/models'), api('/api/health').catch(() => null)]);
+    const data = await api('/api/models');
 
     if (data?.providers) {
       _providerCatalogs = {
@@ -213,8 +213,9 @@ export async function loadModels() {
       syncPickerSelectionsToCatalog(activeProvider);
     }
 
-    if (health?.models?.source === 'fallback') {
-      console.info(health.models.error || t('model_fetch_warning'));
+    const activeSync = _providerCatalogs[activeProvider]?.sync;
+    if (activeSync?.source === 'fallback') {
+      console.info(activeSync.error || t('model_fetch_warning'));
     }
   } catch (e) {
     console.warn(t('model_fetch_failed'), e);
@@ -491,12 +492,12 @@ function openModelPicker(btn, type) {
   let topPx;
   let maxHeightPx;
   if (spaceBelow >= Math.min(dropH, 240) || spaceBelow >= spaceAbove) {
-    topPx = rect.bottom + 6 + window.scrollY;
+    topPx = rect.bottom + 6;
     maxHeightPx = Math.max(spaceBelow - 4, 120);
   } else {
     const availH = Math.max(spaceAbove - 4, 120);
     maxHeightPx = availH;
-    topPx = rect.top + window.scrollY - Math.min(dropH, availH) - 6;
+    topPx = Math.max(8, rect.top - Math.min(dropH, availH) - 6);
   }
 
   const leftPx = Math.max(8, Math.min(rect.left, window.innerWidth - dropW - 8));
@@ -623,8 +624,16 @@ function navigatePickerItems(direction) {
   items[nextIdx].scrollIntoView({ block: 'nearest' });
 }
 
+const _boundPickerWindows = typeof WeakSet === 'function' ? new WeakSet() : null;
+const _boundPickerDocuments = typeof WeakSet === 'function' ? new WeakSet() : null;
+
 export function initModelPickers() {
-  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  if (
+    typeof window !== 'undefined' &&
+    typeof window.addEventListener === 'function' &&
+    (!_boundPickerWindows || !_boundPickerWindows.has(window))
+  ) {
+    _boundPickerWindows?.add(window);
     window.addEventListener('provider-changed', (e) => {
       const nextProvider = e?.detail?.provider || getActiveProvider();
       applyActiveProviderCatalog(nextProvider);
@@ -644,6 +653,8 @@ export function initModelPickers() {
   }
 
   document.querySelectorAll('.model-picker-btn').forEach((btn) => {
+    if (btn.dataset?.pickerBound === 'true') return;
+    if (btn.dataset) btn.dataset.pickerBound = 'true';
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const dropdown = document.getElementById('modelPickerDropdown');
@@ -655,34 +666,41 @@ export function initModelPickers() {
       }
     });
   });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && _activePickerType) {
-      closeModelPicker();
-    }
-    if (_activePickerType) {
-      const tag = e.target?.tagName;
-      const isPickerItem = e.target?.classList?.contains('model-picker-item');
-      if (tag === 'TEXTAREA' || (tag === 'BUTTON' && !isPickerItem)) return;
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        navigatePickerItems('down');
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        navigatePickerItems('up');
-      } else if (e.key === 'Enter') {
-        if (isPickerItem) {
+  if (
+    typeof document !== 'undefined' &&
+    typeof document.addEventListener === 'function' &&
+    (!_boundPickerDocuments || !_boundPickerDocuments.has(document))
+  ) {
+    _boundPickerDocuments?.add(document);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && _activePickerType) {
+        closeModelPicker();
+      }
+      if (_activePickerType) {
+        const tag = e.target?.tagName;
+        const isPickerItem = e.target?.classList?.contains('model-picker-item');
+        if (tag === 'TEXTAREA' || (tag === 'BUTTON' && !isPickerItem)) return;
+        if (e.key === 'ArrowDown') {
           e.preventDefault();
-          e.target.click();
-        } else if (e.target?.id === 'modelPickerSearch') {
+          navigatePickerItems('down');
+        } else if (e.key === 'ArrowUp') {
           e.preventDefault();
-          const selectedOrFirst =
-            document.querySelector('#modelPickerList .model-picker-item.selected') ||
-            document.querySelector('#modelPickerList .model-picker-item');
-          if (selectedOrFirst) {
-            selectedOrFirst.click();
+          navigatePickerItems('up');
+        } else if (e.key === 'Enter') {
+          if (isPickerItem) {
+            e.preventDefault();
+            e.target.click();
+          } else if (e.target?.id === 'modelPickerSearch') {
+            e.preventDefault();
+            const selectedOrFirst =
+              document.querySelector('#modelPickerList .model-picker-item.selected') ||
+              document.querySelector('#modelPickerList .model-picker-item');
+            if (selectedOrFirst) {
+              selectedOrFirst.click();
+            }
           }
         }
       }
-    }
-  });
+    });
+  }
 }

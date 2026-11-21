@@ -327,8 +327,16 @@ function normalizeOneForAllModel(rawModel, kind) {
   if (rawModel.credits_at_defaults != null) meta.credits = rawModel.credits_at_defaults;
   else if (rawModel.credits_per_output_token != null)
     meta.creditsPerOutputToken = rawModel.credits_per_output_token;
-  if (rawModel.min_max_tokens != null) meta.minMaxTokens = Number(rawModel.min_max_tokens);
-  if (rawModel.default_max_tokens != null) meta.defaultMaxTokens = Number(rawModel.default_max_tokens);
+  if (rawModel.min_max_tokens != null && rawModel.min_max_tokens !== '') {
+    const parsedMinMax = Number(rawModel.min_max_tokens);
+    if (Number.isFinite(parsedMinMax) && parsedMinMax > 0) meta.minMaxTokens = parsedMinMax;
+  }
+  if (rawModel.default_max_tokens != null && rawModel.default_max_tokens !== '') {
+    const parsedDefaultMax = Number(rawModel.default_max_tokens);
+    if (Number.isFinite(parsedDefaultMax) && parsedDefaultMax > 0) {
+      meta.defaultMaxTokens = parsedDefaultMax;
+    }
+  }
   if (mode) meta.mode = mode;
 
   return {
@@ -340,7 +348,36 @@ function normalizeOneForAllModel(rawModel, kind) {
   };
 }
 
+function dedupeNormalizedModels(models) {
+  const unique = new Map();
+  for (const model of models) {
+    if (model && !unique.has(model.id)) {
+      unique.set(model.id, model);
+    }
+  }
+  return [...unique.values()];
+}
+
+let _oneMinFetchInFlight = null;
+let _oneMinFetchInFlightExtended = false;
+let _oneForAllFetchInFlight = null;
+
 async function fetchOneForAllModels() {
+  if (_oneForAllFetchInFlight) {
+    return _oneForAllFetchInFlight;
+  }
+  const promise = _runFetchOneForAllModels();
+  _oneForAllFetchInFlight = promise;
+  try {
+    await promise;
+  } finally {
+    if (_oneForAllFetchInFlight === promise) {
+      _oneForAllFetchInFlight = null;
+    }
+  }
+}
+
+async function _runFetchOneForAllModels() {
   if (!hasApiKey('1forall')) {
     lastOneForAllFetchStatus = {
       ok: true,
@@ -368,8 +405,10 @@ async function fetchOneForAllModels() {
 
   // LLM catalog
   if (results[0].status === 'fulfilled' && Array.isArray(results[0].value)) {
-    const llmModels = results[0].value.map((m) => normalizeOneForAllModel(m, 'chat')).filter(Boolean);
-    const codeModels = results[0].value.map((m) => normalizeOneForAllModel(m, 'code')).filter(Boolean);
+    const llmModels = dedupeNormalizedModels(results[0].value.map((m) => normalizeOneForAllModel(m, 'chat')));
+    const codeModels = dedupeNormalizedModels(
+      results[0].value.map((m) => normalizeOneForAllModel(m, 'code')),
+    );
     if (llmModels.length > 0) {
       _oneForAllChatModels = llmModels;
       _oneForAllCodeModels = codeModels;
@@ -382,7 +421,9 @@ async function fetchOneForAllModels() {
 
   // Image catalog
   if (results[1].status === 'fulfilled' && Array.isArray(results[1].value)) {
-    const imgModels = results[1].value.map((m) => normalizeOneForAllModel(m, 'image')).filter(Boolean);
+    const imgModels = dedupeNormalizedModels(
+      results[1].value.map((m) => normalizeOneForAllModel(m, 'image')),
+    );
     if (imgModels.length > 0) {
       _oneForAllImageModels = imgModels;
       updated++;
@@ -393,7 +434,9 @@ async function fetchOneForAllModels() {
 
   // Video catalog
   if (results[2].status === 'fulfilled' && Array.isArray(results[2].value)) {
-    const vidModels = results[2].value.map((m) => normalizeOneForAllModel(m, 'video')).filter(Boolean);
+    const vidModels = dedupeNormalizedModels(
+      results[2].value.map((m) => normalizeOneForAllModel(m, 'video')),
+    );
     if (vidModels.length > 0) {
       _oneForAllVideoModels = vidModels;
       updated++;
@@ -416,10 +459,41 @@ async function fetchOneForAllModels() {
     logger.warn('Failed to fetch some or all 1forall.ai models; using fallback where needed.', {
       error: lastOneForAllFetchStatus.error,
     });
+  } else {
+    lastOneForAllFetchStatus = {
+      ok: true,
+      lastSync: now,
+      error: 'No active 1forall.ai models were returned; using built-in fallbacks.',
+      source: 'fallback',
+    };
+    logger.debug('1forall.ai model discovery returned no active models. Using fallbacks.');
   }
 }
 
 async function fetchOneMinModels({ includeExtended = false } = {}) {
+  if (_oneMinFetchInFlight) {
+    if (!includeExtended || _oneMinFetchInFlightExtended) {
+      return _oneMinFetchInFlight;
+    }
+    await _oneMinFetchInFlight.catch(() => {});
+    if (_oneMinFetchInFlight && _oneMinFetchInFlightExtended) {
+      return _oneMinFetchInFlight;
+    }
+  }
+  const promise = _runFetchOneMinModels({ includeExtended });
+  _oneMinFetchInFlight = promise;
+  _oneMinFetchInFlightExtended = Boolean(includeExtended);
+  try {
+    await promise;
+  } finally {
+    if (_oneMinFetchInFlight === promise) {
+      _oneMinFetchInFlight = null;
+      _oneMinFetchInFlightExtended = false;
+    }
+  }
+}
+
+async function _runFetchOneMinModels({ includeExtended = false } = {}) {
   if (!hasApiKey('1min')) {
     lastFetchStatus = {
       ok: true,
@@ -504,7 +578,7 @@ async function fetchOneMinModels({ includeExtended = false } = {}) {
       ok: false,
       lastSync: now,
       error: failures.map((error) => error?.message || String(error)).join('; '),
-      source: 'fallback',
+      source: 'remote',
     };
     logger.error('Partially failed to fetch models dynamically from 1min.ai API.', {
       error: lastFetchStatus.error,

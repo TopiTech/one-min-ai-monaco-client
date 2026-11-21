@@ -176,7 +176,7 @@ const SESSIONS_FILE = path.join(DATA_DIR, 'agent_sessions.json');
 // server restart (within their 5-minute expiry window).
 const PENDING_COMMANDS_FILE = path.join(DATA_DIR, 'pending_commands.json');
 const isTestMode = process.env.NODE_ENV === 'test';
-const shouldPersistSessions = !isTestMode && serverConfig.persistAgentSessions;
+const shouldPersistSessions = () => !isTestMode && serverConfig.persistAgentSessions;
 
 let sessions = new Map();
 const pendingCommands = new Map();
@@ -259,7 +259,7 @@ const PENDING_COMMAND_TTL_MS = 5 * 60 * 1000;
 let _pendingLoadReady = null;
 
 async function loadPendingCommands() {
-  if (!shouldPersistSessions) return;
+  if (!shouldPersistSessions()) return;
   if (_pendingLoadReady) return _pendingLoadReady;
   _pendingLoadReady = (async () => {
     try {
@@ -290,14 +290,14 @@ const pendingWriter = createDebouncedFileWriter(
 );
 
 function savePendingCommands() {
-  if (!shouldPersistSessions) return;
+  if (!shouldPersistSessions()) return;
   pendingWriter.save();
 }
 
 // Cache the mkdir promise so it only runs once across concurrent calls.
 let _dirReady = null;
 async function ensureDataDir() {
-  if (!shouldPersistSessions) return;
+  if (!shouldPersistSessions()) return;
   if (_dirReady) return _dirReady;
   migrateLegacyDataSync();
   _dirReady = fs.mkdir(DATA_DIR, { recursive: true }).catch((err) => {
@@ -311,7 +311,7 @@ async function ensureDataDir() {
 // Awaiting explicit initialization via initAgentState()
 
 async function loadSessions() {
-  if (!shouldPersistSessions) return;
+  if (!shouldPersistSessions()) return;
   try {
     await ensureDataDir();
     const data = await fs.readFile(SESSIONS_FILE, 'utf-8');
@@ -364,28 +364,24 @@ const sessionWriter = createDebouncedFileWriter(
  * are committed to disk before returning, preventing data loss on crash.
  */
 async function saveSessions() {
-  if (!shouldPersistSessions) return;
+  if (!shouldPersistSessions()) return;
   await sessionWriter.flush();
 }
 
 // Awaiting explicit initialization via initAgentState()
 
-const MAX_HISTORY_ENTRIES = serverConfig.agentMaxHistoryEntries;
-const MAX_HISTORY_RESULT_SIZE = serverConfig.agentMaxHistoryResultSize;
-
-const MAX_PENDING_COMMANDS = serverConfig.agentMaxPendingCommands;
-
 async function addHistoryEntry(session, entry) {
-  if (!serverConfig.persistAgentSessions) return;
+  const maxResultSize = serverConfig.agentMaxHistoryResultSize;
+  const maxHistoryEntries = serverConfig.agentMaxHistoryEntries;
   if (entry.result) {
     const stdoutRaw = entry.result.stdout || '';
     const stderrRaw = entry.result.stderr || '';
-    const stdoutTruncated = stdoutRaw.length > MAX_HISTORY_RESULT_SIZE;
-    const stderrTruncated = stderrRaw.length > MAX_HISTORY_RESULT_SIZE;
+    const stdoutTruncated = stdoutRaw.length > maxResultSize;
+    const stderrTruncated = stderrRaw.length > maxResultSize;
     entry.result = {
       ...entry.result,
-      stdout: stdoutRaw ? stdoutRaw.slice(0, MAX_HISTORY_RESULT_SIZE) : '',
-      stderr: stderrRaw ? stderrRaw.slice(0, MAX_HISTORY_RESULT_SIZE) : '',
+      stdout: stdoutRaw ? stdoutRaw.slice(0, maxResultSize) : '',
+      stderr: stderrRaw ? stderrRaw.slice(0, maxResultSize) : '',
       truncated: stdoutTruncated || stderrTruncated,
       stdoutTruncated,
       stderrTruncated,
@@ -393,7 +389,7 @@ async function addHistoryEntry(session, entry) {
   }
   await sessionLock.acquire(session.id, async () => {
     session.history.push(entry);
-    if (session.history.length > MAX_HISTORY_ENTRIES) {
+    while (session.history.length > maxHistoryEntries) {
       session.history.shift();
     }
   });
@@ -401,8 +397,6 @@ async function addHistoryEntry(session, entry) {
 }
 
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-
-const ZOMBIE_GRACE_MS = serverConfig.agentZombieGraceMs;
 
 function purgePendingCommandsForSession(sessionId) {
   let removed = false;
@@ -427,7 +421,7 @@ function cleanupExpiredSessions() {
       // This handles cases where the client crashed or disconnected
       // without cleanly stopping the agent.
       const runningSince = session.runningSince || session.lastAccessedAt;
-      const maxRunningMs = (serverConfig.commandTimeoutMs || 30_000) + ZOMBIE_GRACE_MS;
+      const maxRunningMs = (serverConfig.commandTimeoutMs || 30_000) + serverConfig.agentZombieGraceMs;
       if (now - runningSince > maxRunningMs) {
         logger.warn('Zombie running session detected, force-resetting to idle', { sessionId: id });
         session.status = 'idle';
@@ -501,10 +495,6 @@ router.post('/sessions', async (req, res, next) => {
     const { id, cwd, task } = result.data;
     const sessionId = id || crypto.randomUUID();
 
-    if (sessions.has(sessionId)) {
-      return res.status(409).json({ error: 'Session ID already exists' });
-    }
-
     let validatedCwd;
     if (cwd) {
       try {
@@ -527,30 +517,42 @@ router.post('/sessions', async (req, res, next) => {
       lastAccessedAt: Date.now(),
     };
 
-    const MAX_SESSIONS = serverConfig.agentMaxSessions;
-    if (sessions.size >= MAX_SESSIONS) {
-      // M-5: Never evict a session that is actively running a command —
-      // killing it would orphan the spawned child process. Prefer evicting
-      // the oldest idle/non-running session instead.
-      const evictableEntries = Array.from(sessions.entries()).filter(([, s]) => s.status !== 'running');
-      if (evictableEntries.length === 0) {
-        return res.status(503).json({
-          error:
-            'Maximum concurrent sessions reached and all sessions are currently running. Try again later.',
-        });
+    const creationOutcome = await sessionLock.acquire('system:sessions-create', async () => {
+      if (sessions.has(sessionId)) {
+        return { errorStatus: 409, error: 'Session ID already exists' };
       }
-      const oldestId = evictableEntries.reduce((a, b) =>
-        a[1].lastAccessedAt < b[1].lastAccessedAt ? a : b,
-      )[0];
-      sessions.delete(oldestId);
-      if (purgePendingCommandsForSession(oldestId)) {
-        savePendingCommands();
-      }
-    }
 
-    await sessionLock.acquire(sessionId, async () => {
+      const maxSessions = serverConfig.agentMaxSessions;
+      let evictedPending = false;
+      if (sessions.size >= maxSessions) {
+        // M-5: Never evict a session that is actively running a command —
+        // killing it would orphan the spawned child process. Prefer evicting
+        // the oldest idle/non-running session instead.
+        const evictableEntries = Array.from(sessions.entries()).filter(([, s]) => s.status !== 'running');
+        if (evictableEntries.length === 0) {
+          return {
+            errorStatus: 503,
+            error:
+              'Maximum concurrent sessions reached and all sessions are currently running. Try again later.',
+          };
+        }
+        const oldestId = evictableEntries.reduce((a, b) =>
+          a[1].lastAccessedAt < b[1].lastAccessedAt ? a : b,
+        )[0];
+        sessions.delete(oldestId);
+        evictedPending = purgePendingCommandsForSession(oldestId);
+      }
+
       sessions.set(sessionId, session);
+      return { errorStatus: null, evictedPending };
     });
+
+    if (creationOutcome.errorStatus) {
+      return res.status(creationOutcome.errorStatus).json({ error: creationOutcome.error });
+    }
+    if (creationOutcome.evictedPending) {
+      savePendingCommands();
+    }
     await saveSessions();
     res.json({ session });
   } catch (err) {
@@ -656,7 +658,7 @@ router.post('/sessions/:id/commands', async (req, res, next) => {
     if (effectiveRequireApproval) {
       // Enforce size cap to prevent unbounded memory growth from
       // a runaway LLM loop generating thousands of pending commands.
-      if (pendingCommands.size >= MAX_PENDING_COMMANDS) {
+      if (pendingCommands.size >= serverConfig.agentMaxPendingCommands) {
         const oldestToken = pendingCommands.keys().next().value;
         pendingCommands.delete(oldestToken);
         savePendingCommands();
@@ -789,52 +791,53 @@ router.post('/sessions/:id/approve', async (req, res, next) => {
     const { approvalToken, timeoutMs } = resultBody.data;
 
     const isStream = req.query.stream === 'true';
-    const pending = pendingCommands.get(approvalToken);
-    if (!pending) {
-      return res.status(400).json({ error: 'Invalid or expired approval token' });
-    }
+    const outcome = await sessionLock.acquire(session.id, async () => {
+      const pending = pendingCommands.get(approvalToken);
+      if (!pending) {
+        return { errorStatus: 400, error: 'Invalid or expired approval token' };
+      }
 
-    const createdAt = Number(pending.createdAt);
-    if (!Number.isFinite(createdAt) || Date.now() - createdAt > PENDING_COMMAND_TTL_MS) {
-      pendingCommands.delete(approvalToken);
-      savePendingCommands();
-      return res.status(400).json({ error: 'Invalid or expired approval token' });
-    }
+      const createdAt = Number(pending.createdAt);
+      if (!Number.isFinite(createdAt) || Date.now() - createdAt > PENDING_COMMAND_TTL_MS) {
+        pendingCommands.delete(approvalToken);
+        savePendingCommands();
+        return { errorStatus: 400, error: 'Invalid or expired approval token' };
+      }
 
-    // Verify session ID matches
-    if (pending.sessionId !== req.params.id) {
-      return res.status(403).json({ error: 'Session ID mismatch' });
-    }
+      // Verify session ID matches
+      if (pending.sessionId !== req.params.id) {
+        return { errorStatus: 403, error: 'Session ID mismatch' };
+      }
 
-    // Do not consume a valid approval token while another command is active;
-    // the caller can retry after that command finishes.
-    if (session.status === 'running') {
-      return res.status(409).json({ error: 'A command is already running in this session.' });
-    }
+      // Do not consume a valid approval token while another command is active;
+      // the caller can retry after that command finishes.
+      if (session.status === 'running') {
+        return { errorStatus: 409, error: 'A command is already running in this session.' };
+      }
 
-    // Re-verify safety before execution
-    const safety = checkCommandSafety(pending.command);
-    if (!safety.safe) {
-      return res.status(400).json({
-        error: `Command blocked: ${safety.reason}`,
-        safety,
-      });
-    }
+      // Re-verify safety before execution
+      const safety = checkCommandSafety(pending.command);
+      if (!safety.safe) {
+        return {
+          errorStatus: 400,
+          body: { error: `Command blocked: ${safety.reason}`, safety },
+        };
+      }
 
-    const workingDir = path.resolve(resolveAgentPath(pending.cwd, session.cwd));
-    const validatedWorkingDir = validatePath(workingDir);
-    assertNotProtectedPath(validatedWorkingDir);
+      const workingDir = path.resolve(resolveAgentPath(pending.cwd, session.cwd));
+      const validatedWorkingDir = validatePath(workingDir);
+      assertNotProtectedPath(validatedWorkingDir);
 
-    const started = await sessionLock.acquire(session.id, async () => {
-      if (session.status === 'running') return false;
       pendingCommands.delete(approvalToken);
       session.status = 'running';
       session.runningSince = Date.now();
-      return true;
+      return { errorStatus: null, pending, validatedWorkingDir };
     });
-    if (!started) {
-      return res.status(409).json({ error: 'A command is already running in this session.' });
+
+    if (outcome.errorStatus) {
+      return res.status(outcome.errorStatus).json(outcome.body || { error: outcome.error });
     }
+    const { pending, validatedWorkingDir } = outcome;
     savePendingCommands();
     logger.info(`Executing approved command`, {
       sessionId: req.params.id,
@@ -1068,6 +1071,7 @@ async function searchWithRg(dir, query, maxResults) {
       env: getSafeEnv(),
       stdio: ['ignore', 'pipe', 'ignore'],
       windowsHide: true,
+      detached: process.platform !== 'win32',
     });
     // Bound the search so a huge tree or slow filesystem cannot hold the
     // request open forever; matches command-runner's timeout policy and
@@ -1107,13 +1111,11 @@ async function searchWithRg(dir, query, maxResults) {
     function processLine(rawLine) {
       if (results.length >= maxResults) return false;
       if (!rawLine.trim()) return true;
-      // Preserve Windows drive letters (e.g. C:\...) while matching the first
-      // :<line>: delimiter so colons in content (e.g. URLs or timestamps) aren't greedily captured.
-      const match = rawLine.match(/^(?:([a-zA-Z]:[^\r\n:]*)|([^\r\n:]+)):(\d+):(.*)$/);
+      // Non-greedy file capture preserves Windows drive letters (C:\...) and
+      // POSIX filenames containing colons while stopping at the first :<line>: delimiter.
+      const match = rawLine.match(/^(.+?):(\d+):(.*)$/);
       if (!match) return true;
-      const file = match[1] || match[2];
-      const lineNumStr = match[3];
-      const content = match[4];
+      const [, file, lineNumStr, content] = match;
       const lineNum = Number.parseInt(lineNumStr, 10);
       try {
         const targetPath = path.isAbsolute(file) ? file : path.resolve(dir, file);

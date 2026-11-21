@@ -294,4 +294,82 @@ describe('config/models.js', () => {
       }
     });
   });
+
+  describe('1forall normalization, empty responses, and concurrent fetch coalescing', () => {
+    test('deduplicates 1forall models, omits non-finite max_tokens, and updates status on empty catalogs', async () => {
+      const prevKey = process.env.ONE_FOR_ALL_API_KEY;
+      process.env.ONE_FOR_ALL_API_KEY = 'test-1forall-key';
+
+      try {
+        globalThis.fetch = jest.fn(async (url) => {
+          if (String(url).includes('/v1/external/llm/models/')) {
+            return new Response(
+              JSON.stringify([
+                {
+                  code: 'dup-llm',
+                  name: 'First',
+                  min_max_tokens: 'bad',
+                  default_max_tokens: '2048',
+                },
+                { code: 'dup-llm', name: 'Second' },
+              ]),
+              { status: 200, headers: { 'Content-Type': 'application/json' } },
+            );
+          }
+          return new Response(JSON.stringify([]), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        });
+
+        const { fetchModels, getChatModels, getModelSyncStatus } = await import('../config/models.js');
+        await fetchModels({ provider: '1forall' });
+
+        const chatModels = getChatModels('1forall');
+        expect(chatModels).toHaveLength(1);
+        expect(chatModels[0].meta?.minMaxTokens).toBeUndefined();
+        expect(chatModels[0].meta?.defaultMaxTokens).toBe(2048);
+
+        // Now all 3 endpoints return empty arrays -> lastOneForAllFetchStatus should reflect fallback update
+        globalThis.fetch = jest.fn(
+          async () =>
+            new Response(JSON.stringify([]), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+        );
+        await fetchModels({ provider: '1forall' });
+        const emptyStatus = getModelSyncStatus('1forall');
+        expect(emptyStatus.ok).toBe(true);
+        expect(emptyStatus.source).toBe('fallback');
+        expect(emptyStatus.error).toContain('No active 1forall.ai models');
+      } finally {
+        if (prevKey === undefined) {
+          delete process.env.ONE_FOR_ALL_API_KEY;
+        } else {
+          process.env.ONE_FOR_ALL_API_KEY = prevKey;
+        }
+      }
+    });
+
+    test('coalesces concurrent fetchModels calls per provider', async () => {
+      const prevKey = process.env.ONE_MIN_AI_API_KEY;
+      process.env.ONE_MIN_AI_API_KEY = 'test-1min-key';
+
+      try {
+        mockFetchJson({
+          models: [{ type: 'CHAT', id: 'coalesced-chat', label: 'Coalesced Chat' }],
+        });
+        const { fetchModels } = await import('../config/models.js');
+        await Promise.all([fetchModels({ provider: '1min' }), fetchModels({ provider: '1min' })]);
+        expect(globalThis.fetch).toHaveBeenCalledTimes(4);
+      } finally {
+        if (prevKey === undefined) {
+          delete process.env.ONE_MIN_AI_API_KEY;
+        } else {
+          process.env.ONE_MIN_AI_API_KEY = prevKey;
+        }
+      }
+    });
+  });
 });

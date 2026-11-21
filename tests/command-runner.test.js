@@ -3,6 +3,9 @@
  */
 
 import { EventEmitter } from 'events';
+import fs from 'fs/promises';
+import os from 'os';
+import path from 'path';
 import {
   checkCommandSafety,
   collectProcessOutput,
@@ -99,10 +102,15 @@ describe('command-runner', () => {
     });
 
     test('should handle command timeout', async () => {
-      const isWindows = process.platform === 'win32';
-      const cmd = isWindows ? 'ping -n 10 127.0.0.1' : 'sleep 10';
-      const result = await executeCommand(cmd, { timeoutMs: 200 });
-      expect(result.timedOut).toBe(true);
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cmd-timeout-'));
+      const sleepScript = path.join(tmpDir, 'sleep.js');
+      await fs.writeFile(sleepScript, 'setTimeout(() => {}, 15000);', 'utf8');
+      try {
+        const result = await executeCommand('node sleep.js', { cwd: tmpDir, timeoutMs: 1000 });
+        expect(result.timedOut).toBe(true);
+      } finally {
+        await fs.rm(tmpDir, { recursive: true, force: true });
+      }
     }, 10000);
 
     test('should block dangerous commands', async () => {

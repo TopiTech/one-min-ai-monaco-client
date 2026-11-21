@@ -93,11 +93,23 @@ describe('Code Review Hardening V2: Model Sync Teardown', () => {
     stopModelSync();
   });
 
-  test('stopModelSync is idempotent and cleans up recurring sync interval', () => {
-    expect(() => stopModelSync()).not.toThrow();
-    initModels();
-    expect(() => stopModelSync()).not.toThrow();
-    expect(() => stopModelSync()).not.toThrow();
+  test('stopModelSync is idempotent and cleans up recurring sync interval', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ models: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+    try {
+      expect(() => stopModelSync()).not.toThrow();
+      await initModels();
+      expect(() => stopModelSync()).not.toThrow();
+      expect(() => stopModelSync()).not.toThrow();
+    } finally {
+      globalThis.fetch = originalFetch;
+      stopModelSync();
+    }
   });
 });
 

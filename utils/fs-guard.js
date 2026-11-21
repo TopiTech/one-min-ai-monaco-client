@@ -562,6 +562,25 @@ export function isProtectedPathForListing(resolvedPath) {
   return isProtectedPath(resolvedPath);
 }
 
+function getRelativeProtectedPath(resolvedPath) {
+  for (const root of getAllowedRoots()) {
+    let realRoot;
+    try {
+      realRoot = fs.realpathSync(root);
+    } catch {
+      realRoot = path.resolve(root);
+    }
+    if (isSubPath(resolvedPath, realRoot)) {
+      return path.relative(realRoot, resolvedPath).replace(/\\/g, '/') || '.';
+    }
+    const resolvedRoot = path.resolve(root);
+    if (isSubPath(resolvedPath, resolvedRoot)) {
+      return path.relative(resolvedRoot, resolvedPath).replace(/\\/g, '/') || '.';
+    }
+  }
+  return path.relative(PROJECT_ROOT, resolvedPath).replace(/\\/g, '/') || '.';
+}
+
 /**
  * Ensures a validated path is not protected from all filesystem operations.
  * @param {string} resolvedPath The resolved absolute path to check.
@@ -569,7 +588,7 @@ export function isProtectedPathForListing(resolvedPath) {
  */
 export function assertNotProtectedPath(resolvedPath) {
   if (isProtectedPath(resolvedPath)) {
-    const relativePath = path.relative(PROJECT_ROOT, resolvedPath).replace(/\\/g, '/');
+    const relativePath = getRelativeProtectedPath(resolvedPath);
     throw new ForbiddenError(`Access denied: Path is protected: ${relativePath}`);
   }
 }
@@ -581,7 +600,7 @@ export function assertNotProtectedPath(resolvedPath) {
  */
 export function assertNotWriteProtectedPath(resolvedPath) {
   if (isWriteProtectedPath(resolvedPath)) {
-    const relativePath = path.relative(PROJECT_ROOT, resolvedPath).replace(/\\/g, '/');
+    const relativePath = getRelativeProtectedPath(resolvedPath);
     throw new ForbiddenError(`Access denied: Path is protected from write operations: ${relativePath}`);
   }
 }

@@ -1,7 +1,9 @@
 import { jest } from '@jest/globals';
 import request from 'supertest';
 import path from 'path';
+import os from 'os';
 import fs from 'fs/promises';
+import { clearAllowedRootsCache } from '../utils/fs-guard.js';
 
 // Mock API client for server testing
 jest.unstable_mockModule('../utils/api-client.js', () => ({
@@ -320,10 +322,17 @@ describe('Agent New Endpoints & apply_diff Enhancements', () => {
   });
 
   test('POST /sessions/:id/diff returns actionable diagnostic hints when matching fails', async () => {
-    const tempFile = path.join(process.cwd(), 'temp-hint-test.txt');
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-supercharge-hint-'));
+    const prevRoots = process.env.ALLOWED_ROOTS;
+    process.env.ALLOWED_ROOTS = tmpDir;
+    clearAllowedRootsCache();
+    const tempFile = path.join(tmpDir, 'temp-hint-test.txt');
     await fs.writeFile(tempFile, 'line 1\nconst myTargetVariable = 100;\nline 3', 'utf-8');
 
     try {
+      const localSession = await request(app).post('/api/agent/sessions').send({ cwd: tmpDir });
+      const localSessionId = localSession.body.session.id;
+
       const diffContent = `<<<<<<< SEARCH
 const myTargetVariable = 999;
 =======
@@ -331,7 +340,7 @@ const myTargetVariable = 200;
 >>>>>>> REPLACE`;
 
       const res = await request(app)
-        .post(`/api/agent/sessions/${sessionId}/diff`)
+        .post(`/api/agent/sessions/${localSessionId}/diff`)
         .send({ path: tempFile, diff: diffContent });
 
       expect(res.status).toBe(400);
@@ -340,15 +349,25 @@ const myTargetVariable = 200;
       expect(res.body.hint).toBeDefined();
       expect(res.body.hint.snippet).toContain('const myTargetVariable = 100;');
     } finally {
-      await fs.unlink(tempFile).catch(() => {});
+      if (prevRoots === undefined) delete process.env.ALLOWED_ROOTS;
+      else process.env.ALLOWED_ROOTS = prevRoots;
+      clearAllowedRootsCache();
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
   });
 
   test('POST /sessions/:id/diff supports startLine disambiguation when multiple matches exist', async () => {
-    const tempFile = path.join(process.cwd(), 'temp-startline-test.txt');
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-supercharge-startline-'));
+    const prevRoots = process.env.ALLOWED_ROOTS;
+    process.env.ALLOWED_ROOTS = tmpDir;
+    clearAllowedRootsCache();
+    const tempFile = path.join(tmpDir, 'temp-startline-test.txt');
     await fs.writeFile(tempFile, 'block_a\nrepeat\nblock_b\nrepeat\nblock_c', 'utf-8');
 
     try {
+      const localSession = await request(app).post('/api/agent/sessions').send({ cwd: tmpDir });
+      const localSessionId = localSession.body.session.id;
+
       const diffContent = `<<<<<<< SEARCH
 repeat
 =======
@@ -357,7 +376,7 @@ replaced_second
 
       // Pass startLine = 4 to disambiguate the 2nd 'repeat'
       const res = await request(app)
-        .post(`/api/agent/sessions/${sessionId}/diff`)
+        .post(`/api/agent/sessions/${localSessionId}/diff`)
         .send({ path: tempFile, diff: diffContent, startLine: 4 });
 
       expect(res.status).toBe(200);
@@ -366,7 +385,10 @@ replaced_second
       const updated = await fs.readFile(tempFile, 'utf-8');
       expect(updated).toContain('block_a\nrepeat\nblock_b\nreplaced_second\nblock_c');
     } finally {
-      await fs.unlink(tempFile).catch(() => {});
+      if (prevRoots === undefined) delete process.env.ALLOWED_ROOTS;
+      else process.env.ALLOWED_ROOTS = prevRoots;
+      clearAllowedRootsCache();
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
   });
 });

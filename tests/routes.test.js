@@ -811,5 +811,43 @@ describe('AI Routes Integration Tests', () => {
       });
       expect(badEditorFormat.status).toBe(400);
     });
+
+    test('defers event: done until after event: final-result and emits final-result on non-streaming fallback', async () => {
+      const encoder = new TextEncoder();
+      const chunks = [
+        'event: content\ndata: {"content":"chunk"}\n\n',
+        'event: done\ndata: {}\n\n',
+        'event: result\ndata: {"aiRecord":{"aiRecordDetail":{"resultObject":"done-text"}}}\n\n',
+      ];
+      callOneMin.mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers({ 'content-type': 'text/event-stream' }),
+        body: new ReadableStream({
+          start(controller) {
+            for (const c of chunks) controller.enqueue(encoder.encode(c));
+            controller.close();
+          },
+        }),
+      });
+
+      const sseRes = await request(app).post('/api/chat/stream').send(testPayloads.chat);
+      expect(sseRes.status).toBe(200);
+      const finalIdx = sseRes.text.indexOf('event: final-result');
+      const doneIdx = sseRes.text.indexOf('event: done');
+      expect(finalIdx).toBeGreaterThan(-1);
+      expect(doneIdx).toBeGreaterThan(finalIdx);
+
+      callOneMin.mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => ({
+          aiRecord: { aiRecordDetail: { resultObject: ['json fallback text'] } },
+        }),
+      });
+      const jsonFallbackRes = await request(app).post('/api/chat/stream').send(testPayloads.chat);
+      expect(jsonFallbackRes.status).toBe(200);
+      expect(jsonFallbackRes.text).toContain('event: final-result');
+      expect(jsonFallbackRes.text).not.toContain('event: result\n');
+    });
   });
 });

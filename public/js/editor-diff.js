@@ -137,7 +137,8 @@ export function createDiffDialog({ t, getThemeName }) {
       pathLabel.textContent = t('diff_file_label', { path: filePath });
       setModalVisible(modal, true);
       const previousActiveElement = document.activeElement;
-      setTimeout(() => {
+      let focusTimerId = setTimeout(() => {
+        focusTimerId = null;
         if (cancelButton && typeof cancelButton.focus === 'function') {
           cancelButton.focus();
         }
@@ -194,6 +195,10 @@ export function createDiffDialog({ t, getThemeName }) {
       }, 200);
 
       cleanupSession = () => {
+        if (focusTimerId !== null) {
+          clearTimeout(focusTimerId);
+          focusTimerId = null;
+        }
         if (fallbackLayoutTimer !== null) {
           clearTimeout(fallbackLayoutTimer);
           fallbackLayoutTimer = null;

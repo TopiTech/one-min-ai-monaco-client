@@ -39,12 +39,16 @@ const langSelector = $('langSelector');
 if (langSelector) {
   langSelector.addEventListener('change', async () => {
     await setLanguage(langSelector.value);
+    const activeNav = document.querySelector('.nav.active');
+    if (activeNav && $('viewTitle')) {
+      $('viewTitle').textContent = activeNav.textContent.trim();
+    }
   });
 }
 
-// Initialize Model Pickers
+// Initialize Model Pickers with fallback catalogs immediately, then hydrate from backend
+initModelPickers();
 loadModels().then(() => {
-  initModelPickers();
   applyCreditSavingMode();
 });
 
@@ -193,11 +197,13 @@ $('healthBtn').onclick = async () => {
   btn.disabled = true;
   try {
     const data = await api('/api/health');
+    const activeProvider = getActiveProvider();
+    const providerModels = data.providers?.[activeProvider]?.models || data.models;
     const details = [
       `Status: ${data.ok ? 'OK 🟢' : 'Error 🔴'}`,
       `Version: ${data.version || 'N/A'}`,
       `Uptime: ${data.uptime ? Math.round(data.uptime) + 's' : 'N/A'}`,
-      `Models: ${data.models?.ok ? 'Synced 🟢' : 'Error 🔴'}`,
+      `Models (${activeProvider}): ${providerModels?.ok ? 'Synced 🟢' : 'Error 🔴'}`,
     ].join('\n');
     toast.success(`システム状態:\n${details}`, { duration: 8000 });
   } catch (e) {
@@ -219,7 +225,7 @@ const imageManager = createImageManager(dom);
 const editorManager = createEditorManager(editorState);
 
 // Create tab and inline-chat managers
-const tabManager = createEditorTabManager(editorState, editorManager, dom);
+const tabManager = createEditorTabManager(editorState, editorManager, dom, { setStatus });
 const inlineChatManager = createInlineChatManager(editorState, editorManager, dom);
 const explorerManager = createExplorerManager(dom, (filePath) => tabManager.openFile(filePath), {
   onDeletePath: (deletedPath) => tabManager.handlePathDeleted(deletedPath),
@@ -320,18 +326,18 @@ if (dom.chatImageInput) {
 async function checkHealth() {
   try {
     const data = await api('/api/health');
+    const activeProvider = getActiveProvider();
+    const modelsStatus = data?.providers?.[activeProvider]?.models || data?.models;
     if (!data?.ok) {
       toast.error(t('health_check_failed', { error: '' }), {
         duration: 10000,
       });
       setStatus(t('health_check_failed', { error: '' }), 'err');
-    } else if (data.models) {
-      if (!data.models.ok) {
-        console.warn('Model sync failure:', data.models.error);
-        toast.warning(`モデル情報の同期に失敗しています。以前のデータを使用します: ${data.models.error}`, {
-          duration: 8000,
-        });
-      }
+    } else if (modelsStatus && !modelsStatus.ok) {
+      console.warn('Model sync failure:', modelsStatus.error);
+      toast.warning(`モデル情報の同期に失敗しています。以前のデータを使用します: ${modelsStatus.error}`, {
+        duration: 8000,
+      });
     }
   } catch (e) {
     console.error('Health check failed:', e);
@@ -695,7 +701,12 @@ async function initWorkspace() {
       };
     }
 
-    loadWorkspace(config.defaultRoot || config.root);
+    const initialRoot = config.defaultRoot || config.root;
+    if (rootSelector && initialRoot && [...rootSelector.options].some((opt) => opt.value === initialRoot)) {
+      rootSelector.value = initialRoot;
+    }
+
+    loadWorkspace(initialRoot);
   } catch (e) {
     console.error('Failed to load initial config', e);
     loadWorkspace();
@@ -776,7 +787,11 @@ function initFolderPicker() {
     });
   };
 
+  let folderPickerReqSeq = 0;
+  let folderPickerFocusTimerId = null;
+
   const renderFolderPickerList = async (dir) => {
+    const reqSeq = ++folderPickerReqSeq;
     folderPickerCurrentPath = dir;
     currentPath.textContent = dir;
     pathInput.value = dir;
@@ -786,6 +801,7 @@ function initFolderPicker() {
 
     try {
       const data = await api(`/api/fs/list?dir=${encodeURIComponent(dir)}`);
+      if (reqSeq !== folderPickerReqSeq) return;
       body.textContent = '';
 
       const directories = data.items.filter((item) => item.isDirectory);
@@ -833,6 +849,7 @@ function initFolderPicker() {
         body.appendChild(row);
       });
     } catch (err) {
+      if (reqSeq !== folderPickerReqSeq) return;
       body.textContent = '';
       const error = document.createElement('div');
       error.className = 'folder-picker-error-text';
@@ -849,13 +866,24 @@ function initFolderPicker() {
     modal.classList.remove('is-hidden');
     renderDrives();
     renderFolderPickerList(initial);
-    setTimeout(() => pathInput.focus(), 0);
+    if (folderPickerFocusTimerId !== null) {
+      clearTimeout(folderPickerFocusTimerId);
+    }
+    folderPickerFocusTimerId = setTimeout(() => {
+      folderPickerFocusTimerId = null;
+      pathInput.focus();
+    }, 0);
 
     modal._previousFocus = document.activeElement;
     modal.addEventListener('keydown', trapFocus);
   };
 
   closeFolderPicker = () => {
+    folderPickerReqSeq++;
+    if (folderPickerFocusTimerId !== null) {
+      clearTimeout(folderPickerFocusTimerId);
+      folderPickerFocusTimerId = null;
+    }
     modal.classList.add('u-hidden');
     modal.classList.add('is-hidden');
     hideError();

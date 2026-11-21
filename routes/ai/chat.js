@@ -394,7 +394,7 @@ router.post('/stream', async (req, res, next) => {
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
-        res.write(`event: result\ndata: ${JSON.stringify(jsonData)}\n\n`);
+        res.write(`event: final-result\ndata: ${JSON.stringify(jsonData)}\n\n`);
         res.write('data: [DONE]\n\n');
         res.end();
       }
@@ -417,8 +417,8 @@ router.post('/stream', async (req, res, next) => {
     }, 15_000);
     heartbeatInterval.unref?.();
 
-    let resultBlocks = [];
-    let sawDoneBlock = false;
+    const resultBlocks = [];
+    const doneBlocks = [];
     let carry = '';
     let totalStreamBytes = 0;
     let streamLimitExceeded = false;
@@ -453,11 +453,14 @@ router.post('/stream', async (req, res, next) => {
         }
       }
 
-      if (eventName === 'result') {
+      if (eventName === 'result' || eventName === 'final-result') {
         return { type: 'result', block: trimmedBlock };
       }
-      if (eventName === 'message' && dataLines.length === 1 && dataLines[0] === '[DONE]') {
-        return { type: 'done', block: 'data: [DONE]' };
+      if (
+        eventName === 'done' ||
+        (eventName === 'message' && dataLines.length === 1 && dataLines[0] === '[DONE]')
+      ) {
+        return { type: 'done', block: trimmedBlock };
       }
 
       return {
@@ -491,7 +494,7 @@ router.post('/stream', async (req, res, next) => {
             continue;
           }
           if (classified.type === 'done') {
-            sawDoneBlock = true;
+            doneBlocks.push(classified.block);
             continue;
           }
           if (classified.type === 'forward' && !res.writableEnded && !res.destroyed) {
@@ -509,7 +512,7 @@ router.post('/stream', async (req, res, next) => {
         if (classified.type === 'result') {
           resultBlocks.push(classified.block);
         } else if (classified.type === 'done') {
-          sawDoneBlock = true;
+          doneBlocks.push(classified.block);
         } else if (classified.type === 'forward' && !res.writableEnded && !res.destroyed) {
           res.write(classified.block + '\n\n');
           flushRes(res);
@@ -522,8 +525,10 @@ router.post('/stream', async (req, res, next) => {
         }
         flushRes(res);
       }
-      if (sawDoneBlock && !res.writableEnded && !res.destroyed) {
-        res.write('data: [DONE]\n\n');
+      if (doneBlocks.length > 0 && !res.writableEnded && !res.destroyed) {
+        for (const doneBlock of doneBlocks) {
+          res.write(doneBlock + '\n\n');
+        }
         flushRes(res);
       }
     } catch (streamErr) {

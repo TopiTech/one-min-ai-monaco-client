@@ -92,26 +92,41 @@ describe('Agent Directory and Patch Routes', () => {
   });
 
   describe('GET/POST /api/agent/sessions/:id/files', () => {
-    const testFile = path.join(process.cwd(), 'temp-agent-file-test.txt');
+    let localTmpDir;
+    let localSessionId;
+    let testFile;
+    let prevRoots;
+
+    beforeEach(async () => {
+      prevRoots = process.env.ALLOWED_ROOTS;
+      localTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-files-test-'));
+      process.env.ALLOWED_ROOTS = localTmpDir;
+      clearAllowedRootsCache();
+      testFile = path.join(localTmpDir, 'temp-agent-file-test.txt');
+
+      const res = await request(app)
+        .post('/api/agent/sessions')
+        .send({ cwd: localTmpDir, task: 'Files test' });
+      localSessionId = res.body.session.id;
+    });
 
     afterEach(async () => {
-      try {
-        await fs.unlink(testFile);
-      } catch {
-        // ignore
-      }
+      if (prevRoots === undefined) delete process.env.ALLOWED_ROOTS;
+      else process.env.ALLOWED_ROOTS = prevRoots;
+      clearAllowedRootsCache();
+      await fs.rm(localTmpDir, { recursive: true, force: true }).catch(() => {});
     });
 
     test('should write and read back a file in session context', async () => {
       const writeResponse = await request(app)
-        .post(`/api/agent/sessions/${sessionId}/files`)
+        .post(`/api/agent/sessions/${localSessionId}/files`)
         .send({ path: testFile, content: 'hello agent\n' });
 
       expect(writeResponse.status).toBe(200);
       expect(writeResponse.body.ok).toBe(true);
 
       const readResponse = await request(app)
-        .get(`/api/agent/sessions/${sessionId}/files`)
+        .get(`/api/agent/sessions/${localSessionId}/files`)
         .query({ path: testFile });
 
       expect(readResponse.status).toBe(200);
@@ -119,12 +134,12 @@ describe('Agent Directory and Patch Routes', () => {
     });
 
     test('should block reading protected agent persistence paths in session context', async () => {
-      const protectedFile = path.join(process.cwd(), '.onemin-ai', 'data', 'agent_sessions.json');
+      const protectedFile = path.join(localTmpDir, '.onemin-ai', 'data', 'agent_sessions.json');
       await fs.mkdir(path.dirname(protectedFile), { recursive: true });
       await fs.writeFile(protectedFile, '{}', 'utf-8');
 
       const response = await request(app)
-        .get(`/api/agent/sessions/${sessionId}/files`)
+        .get(`/api/agent/sessions/${localSessionId}/files`)
         .query({ path: protectedFile });
 
       expect(response.status).toBe(403);
@@ -136,7 +151,7 @@ describe('Agent Directory and Patch Routes', () => {
 
       // both startLine and endLine
       let readResponse = await request(app)
-        .get(`/api/agent/sessions/${sessionId}/files`)
+        .get(`/api/agent/sessions/${localSessionId}/files`)
         .query({ path: testFile, startLine: 2, endLine: 4 });
 
       expect(readResponse.status).toBe(200);
@@ -144,7 +159,7 @@ describe('Agent Directory and Patch Routes', () => {
 
       // startLine only
       readResponse = await request(app)
-        .get(`/api/agent/sessions/${sessionId}/files`)
+        .get(`/api/agent/sessions/${localSessionId}/files`)
         .query({ path: testFile, startLine: 3 });
 
       expect(readResponse.status).toBe(200);
@@ -152,7 +167,7 @@ describe('Agent Directory and Patch Routes', () => {
 
       // endLine only
       readResponse = await request(app)
-        .get(`/api/agent/sessions/${sessionId}/files`)
+        .get(`/api/agent/sessions/${localSessionId}/files`)
         .query({ path: testFile, endLine: 2 });
 
       expect(readResponse.status).toBe(200);
@@ -164,31 +179,43 @@ describe('Agent Directory and Patch Routes', () => {
 
       // startLine > endLine
       let response = await request(app)
-        .get(`/api/agent/sessions/${sessionId}/files`)
+        .get(`/api/agent/sessions/${localSessionId}/files`)
         .query({ path: testFile, startLine: 2, endLine: 1 });
       expect(response.status).toBe(400);
 
       // startLine 0
       response = await request(app)
-        .get(`/api/agent/sessions/${sessionId}/files`)
+        .get(`/api/agent/sessions/${localSessionId}/files`)
         .query({ path: testFile, startLine: 0 });
       expect(response.status).toBe(400);
     });
   });
 
   describe('POST /api/agent/sessions/:id/diff', () => {
-    const testFile = path.join(process.cwd(), 'temp-diff-test.txt');
+    let localTmpDir;
+    let localSessionId;
+    let testFile;
+    let prevRoots;
 
     beforeEach(async () => {
+      prevRoots = process.env.ALLOWED_ROOTS;
+      localTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-diff-test-'));
+      process.env.ALLOWED_ROOTS = localTmpDir;
+      clearAllowedRootsCache();
+      testFile = path.join(localTmpDir, 'temp-diff-test.txt');
       await fs.writeFile(testFile, 'hello world\nthis is a test\nend of file', 'utf-8');
+
+      const res = await request(app)
+        .post('/api/agent/sessions')
+        .send({ cwd: localTmpDir, task: 'Diff test' });
+      localSessionId = res.body.session.id;
     });
 
     afterEach(async () => {
-      try {
-        await fs.unlink(testFile);
-      } catch {
-        // ignore
-      }
+      if (prevRoots === undefined) delete process.env.ALLOWED_ROOTS;
+      else process.env.ALLOWED_ROOTS = prevRoots;
+      clearAllowedRootsCache();
+      await fs.rm(localTmpDir, { recursive: true, force: true }).catch(() => {});
     });
 
     test('should apply diff with search-and-replace block', async () => {
@@ -199,7 +226,7 @@ this is a test
 this has been patched successfully with diff
 >>>>>>> REPLACE
 `;
-      const response = await request(app).post(`/api/agent/sessions/${sessionId}/diff`).send({
+      const response = await request(app).post(`/api/agent/sessions/${localSessionId}/diff`).send({
         path: testFile,
         diff: diffContent,
       });
@@ -227,7 +254,7 @@ end of file
 fin.
 >>>>>>> REPLACE
 `;
-      const response = await request(app).post(`/api/agent/sessions/${sessionId}/diff`).send({
+      const response = await request(app).post(`/api/agent/sessions/${localSessionId}/diff`).send({
         path: testFile,
         diff: diffContent,
       });
@@ -251,7 +278,7 @@ fin.
   this has been patched successfully with diff
 >>>>>>> REPLACE
 `;
-      const response = await request(app).post(`/api/agent/sessions/${sessionId}/diff`).send({
+      const response = await request(app).post(`/api/agent/sessions/${localSessionId}/diff`).send({
         path: testFile,
         diff: diffContent,
       });
@@ -272,7 +299,7 @@ this is a test
 =======
 >>>>>>> REPLACE
 `;
-      const response = await request(app).post(`/api/agent/sessions/${sessionId}/diff`).send({
+      const response = await request(app).post(`/api/agent/sessions/${localSessionId}/diff`).send({
         path: testFile,
         diff: diffContent,
       });
@@ -292,7 +319,7 @@ nonexistent-string
 something
 >>>>>>> REPLACE
 `;
-      const response = await request(app).post(`/api/agent/sessions/${sessionId}/diff`).send({
+      const response = await request(app).post(`/api/agent/sessions/${localSessionId}/diff`).send({
         path: testFile,
         diff: diffContent,
       });
@@ -312,7 +339,7 @@ dup
 replaced
 >>>>>>> REPLACE
 `;
-      const response = await request(app).post(`/api/agent/sessions/${sessionId}/diff`).send({
+      const response = await request(app).post(`/api/agent/sessions/${localSessionId}/diff`).send({
         path: testFile,
         diff: diffContent,
       });
@@ -324,7 +351,7 @@ replaced
     });
 
     test('should return 400 if no valid SEARCH/REPLACE blocks found', async () => {
-      const response = await request(app).post(`/api/agent/sessions/${sessionId}/diff`).send({
+      const response = await request(app).post(`/api/agent/sessions/${localSessionId}/diff`).send({
         path: testFile,
         diff: 'invalid diff format',
       });
@@ -335,7 +362,7 @@ replaced
 
     test('should reject an oversized diff before reading the target file', async () => {
       const response = await request(app)
-        .post(`/api/agent/sessions/${sessionId}/diff`)
+        .post(`/api/agent/sessions/${localSessionId}/diff`)
         .send({
           path: testFile,
           diff: 'x'.repeat(500001),
@@ -347,23 +374,35 @@ replaced
   });
 
   describe('GET /api/agent/sessions/:id/search', () => {
-    const testSearchFile = path.join(process.cwd(), 'temp-search-test.txt');
+    let localTmpDir;
+    let localSessionId;
+    let testSearchFile;
+    let prevRoots;
 
     beforeEach(async () => {
+      prevRoots = process.env.ALLOWED_ROOTS;
+      localTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-search-test-'));
+      process.env.ALLOWED_ROOTS = localTmpDir;
+      clearAllowedRootsCache();
+      testSearchFile = path.join(localTmpDir, 'temp-search-test.txt');
       await fs.writeFile(testSearchFile, 'line one\nneedle line here\nline three', 'utf-8');
+
+      const res = await request(app)
+        .post('/api/agent/sessions')
+        .send({ cwd: localTmpDir, task: 'Search test' });
+      localSessionId = res.body.session.id;
     });
 
     afterEach(async () => {
-      try {
-        await fs.unlink(testSearchFile);
-      } catch {
-        // ignore
-      }
+      if (prevRoots === undefined) delete process.env.ALLOWED_ROOTS;
+      else process.env.ALLOWED_ROOTS = prevRoots;
+      clearAllowedRootsCache();
+      await fs.rm(localTmpDir, { recursive: true, force: true }).catch(() => {});
     });
 
     test('should find query in test file', async () => {
       const response = await request(app)
-        .get(`/api/agent/sessions/${sessionId}/search`)
+        .get(`/api/agent/sessions/${localSessionId}/search`)
         .query({ query: 'needle' });
 
       expect(response.status).toBe(200);
@@ -383,7 +422,7 @@ replaced
         'utf-8',
       );
       const response = await request(app)
-        .get(`/api/agent/sessions/${sessionId}/search`)
+        .get(`/api/agent/sessions/${localSessionId}/search`)
         .query({ query: 'http://localhost:3000' });
 
       expect(response.status).toBe(200);
@@ -394,7 +433,7 @@ replaced
     });
 
     test('should return 400 for missing query', async () => {
-      const response = await request(app).get(`/api/agent/sessions/${sessionId}/search`);
+      const response = await request(app).get(`/api/agent/sessions/${localSessionId}/search`);
 
       expect(response.status).toBe(400);
       expect(response.body.error).toMatch(/Invalid input|query is required|Validation error/i);
@@ -402,7 +441,7 @@ replaced
 
     test('should return 403 for protected search directory', async () => {
       const response = await request(app)
-        .get(`/api/agent/sessions/${sessionId}/search`)
+        .get(`/api/agent/sessions/${localSessionId}/search`)
         .query({ query: 'dummy', dir: '.env' });
 
       expect(response.status).toBe(403);
@@ -641,6 +680,60 @@ replaced
         clearAllowedRootsCache();
         await fs.rm(localTmpDir, { recursive: true, force: true });
         await fs.rm(outsideDir, { recursive: true, force: true });
+      }
+    });
+
+    test('concurrent session creation enforces agentMaxSessions and retains in-memory history without disk persistence', async () => {
+      const { serverConfig } = await import('../config/server.js');
+      const prevMax = serverConfig.agentMaxSessions;
+      const prevPersist = serverConfig.persistAgentSessions;
+      const prevAutoApprove = serverConfig.agentAutoApprove;
+      const prevExec = serverConfig.enableCommandExecution;
+      const prevRoots = process.env.ALLOWED_ROOTS;
+      const localTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-lock-hist-'));
+      process.env.ALLOWED_ROOTS = localTmpDir;
+      clearAllowedRootsCache();
+
+      try {
+        const listRes = await request(app).get('/api/agent/sessions');
+        await Promise.all(
+          (listRes.body.sessions || []).map((s) => request(app).delete(`/api/agent/sessions/${s.id}`)),
+        );
+
+        serverConfig.agentMaxSessions = 2;
+        const created = await Promise.all([
+          request(app).post('/api/agent/sessions').send({ cwd: localTmpDir, task: 'c1' }),
+          request(app).post('/api/agent/sessions').send({ cwd: localTmpDir, task: 'c2' }),
+          request(app).post('/api/agent/sessions').send({ cwd: localTmpDir, task: 'c3' }),
+          request(app).post('/api/agent/sessions').send({ cwd: localTmpDir, task: 'c4' }),
+        ]);
+        expect(created.every((r) => r.status === 200)).toBe(true);
+        const afterList = await request(app).get('/api/agent/sessions');
+        expect(afterList.body.sessions.length).toBeLessThanOrEqual(2);
+
+        serverConfig.persistAgentSessions = false;
+        serverConfig.agentAutoApprove = true;
+        serverConfig.enableCommandExecution = true;
+        const targetSessionId = created[0].body.session.id;
+        // Pick the surviving session in case created[0] was evicted during concurrent burst
+        const survivorId = afterList.body.sessions[0]?.id || targetSessionId;
+        const cmdRes = await request(app)
+          .post(`/api/agent/sessions/${survivorId}/commands`)
+          .send({ command: 'node --version' });
+        expect(cmdRes.status).toBe(200);
+
+        const sessionInfo = await request(app).get(`/api/agent/sessions/${survivorId}`);
+        expect(sessionInfo.status).toBe(200);
+        expect(sessionInfo.body.session.history.length).toBeGreaterThanOrEqual(1);
+      } finally {
+        serverConfig.agentMaxSessions = prevMax;
+        serverConfig.persistAgentSessions = prevPersist;
+        serverConfig.agentAutoApprove = prevAutoApprove;
+        serverConfig.enableCommandExecution = prevExec;
+        if (prevRoots === undefined) delete process.env.ALLOWED_ROOTS;
+        else process.env.ALLOWED_ROOTS = prevRoots;
+        clearAllowedRootsCache();
+        await fs.rm(localTmpDir, { recursive: true, force: true });
       }
     });
   });

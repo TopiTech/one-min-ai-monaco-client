@@ -554,4 +554,257 @@ describe('agent-core raw command error handling', () => {
     await expect(runtime.runAgentLoop('run and abort')).resolves.toBeUndefined();
     expect(state.agent.active).toBe(false);
   });
+
+  test('does not retry deterministic 4xx client errors in runAgentLoop and caps oversized tool messages', async () => {
+    const { createAgentRuntime } = await import('../public/js/agent-core.js');
+    const dom = {
+      explorerPath: makeElement('input'),
+      agentStatus: makeElement('span'),
+      agentActivityLog: makeElement('div'),
+      startAgentBtn: makeElement('button'),
+      sendAgentFeedbackBtn: makeElement('button'),
+      stopAgentBtn: makeElement('button'),
+      resetAgentBtn: makeElement('button'),
+      agentInstruction: makeElement('textarea'),
+    };
+    dom.explorerPath.value = '/workspace';
+
+    let chatCalls = 0;
+    const state = {
+      agent: { active: true, sessionId: null, history: [], abortController: null },
+      editor: { activeFilePath: null },
+    };
+
+    const failFastRuntime = createAgentRuntime({
+      dom,
+      state,
+      api: (url) => {
+        if (url === '/api/agent/sessions') return Promise.resolve({ session: { id: 'sess-4xx' } });
+        if (url === '/api/agent/config') return Promise.resolve({ maxLoops: 3 });
+        if (url.endsWith('/project-info')) return Promise.resolve({ project: null });
+        if (url.startsWith('/api/fs/list')) return Promise.resolve({ dir: '/workspace', items: [] });
+        if (url === '/api/agent/chat') {
+          chatCalls += 1;
+          const err = new Error('Bad request');
+          err.status = 400;
+          return Promise.reject(err);
+        }
+        return Promise.resolve({});
+      },
+      t: (key, vars) => (typeof vars === 'string' ? vars : key),
+      parseXMLTags: () => ({}),
+      setAgentStatus: () => {},
+      addAgentTimelineStep: () => {},
+      addAgentApprovalStep: () => {},
+    });
+
+    await failFastRuntime.runAgentLoop('fail fast on 400');
+    expect(chatCalls).toBe(1);
+
+    // Oversized tool output + newest message preservation in trimHistory
+    let secondTurnMessages = null;
+    const bigText = 'X'.repeat(60000);
+    let turn = 0;
+    const trimRuntime = createAgentRuntime({
+      dom,
+      state: {
+        agent: { active: true, sessionId: null, history: [], abortController: null },
+        editor: { activeFilePath: null },
+      },
+      api: (url, opts) => {
+        if (url === '/api/agent/sessions') return Promise.resolve({ session: { id: 'sess-big' } });
+        if (url === '/api/agent/config') return Promise.resolve({ maxLoops: 4, maxContextTokens: 100 });
+        if (url.endsWith('/project-info')) return Promise.resolve({ project: null });
+        if (url.startsWith('/api/fs/list')) return Promise.resolve({ dir: '/workspace', items: [] });
+        if (url.includes('/files?path=')) return Promise.resolve({ content: bigText });
+        if (url === '/api/agent/tokenize') {
+          const texts = JSON.parse(opts.body).texts;
+          return Promise.resolve({ counts: texts.map(() => 200) });
+        }
+        if (url === '/api/agent/chat') {
+          turn += 1;
+          const payload = JSON.parse(opts.body);
+          if (turn === 1) {
+            return Promise.resolve({
+              text: '<call_tool name="read_file"><parameter name="path">big.txt</parameter></call_tool>',
+            });
+          }
+          secondTurnMessages = payload.messages;
+          return Promise.resolve({ text: '<finish>done</finish>' });
+        }
+        return Promise.resolve({});
+      },
+      t: (key, vars) => (typeof vars === 'string' ? vars : key),
+      parseXMLTags: (txt) => {
+        if (txt.includes('read_file'))
+          return { toolCall: { name: 'read_file', params: { path: 'big.txt' } } };
+        if (txt.includes('<finish>')) return { finish: 'done' };
+        return {};
+      },
+      setAgentStatus: () => {},
+      addAgentTimelineStep: () => {},
+      addAgentApprovalStep: () => {},
+    });
+
+    await trimRuntime.runAgentLoop('read huge file');
+    const latestToolFeedback = secondTurnMessages[secondTurnMessages.length - 1];
+    expect(latestToolFeedback.content).toContain('<tool_response>');
+    expect(latestToolFeedback.content.length).toBeLessThanOrEqual(48000);
+  });
+
+  test('run_command executes auto-approved SSE stream and aborts cleanly mid-stream', async () => {
+    const { createAgentRuntime } = await import('../public/js/agent-core.js');
+    const dom = {
+      explorerPath: makeElement('input'),
+      agentStatus: makeElement('span'),
+      agentActivityLog: makeElement('div'),
+      startAgentBtn: makeElement('button'),
+      sendAgentFeedbackBtn: makeElement('button'),
+      stopAgentBtn: makeElement('button'),
+      resetAgentBtn: makeElement('button'),
+      agentInstruction: makeElement('textarea'),
+    };
+    dom.explorerPath.value = '/workspace';
+
+    const encoder = new TextEncoder();
+    let chatTurn = 0;
+    let secondTurnMessages = null;
+    const state = {
+      agent: { active: true, sessionId: null, history: [], abortController: null },
+      editor: { activeFilePath: null },
+    };
+
+    const sseRuntime = createAgentRuntime({
+      dom,
+      state,
+      api: (url, opts) => {
+        if (url === '/api/agent/sessions') return Promise.resolve({ session: { id: 'sess-sse-cmd' } });
+        if (url === '/api/agent/config') return Promise.resolve({ maxLoops: 3 });
+        if (url.endsWith('/project-info')) return Promise.resolve({ project: null });
+        if (url.startsWith('/api/fs/list')) return Promise.resolve({ dir: '/workspace', items: [] });
+        if (url === '/api/agent/tokenize') return Promise.resolve({ counts: [], total: 0 });
+        if (url.includes('/commands?stream=true')) {
+          return Promise.resolve(
+            new Response(
+              new ReadableStream({
+                start(controller) {
+                  controller.enqueue(encoder.encode('event: stdout\ndata: {"text":"hi"}\n\n'));
+                  controller.enqueue(
+                    encoder.encode('event: done\ndata: {"exitCode":0,"stdout":"hi","stderr":""}\n\n'),
+                  );
+                  controller.close();
+                },
+              }),
+              { status: 200, headers: { 'content-type': 'text/event-stream' } },
+            ),
+          );
+        }
+        if (url === '/api/agent/chat') {
+          chatTurn += 1;
+          const payload = JSON.parse(opts.body);
+          if (chatTurn === 1) {
+            return Promise.resolve({
+              text: '<call_tool name="run_command"><parameter name="command">node --version</parameter></call_tool>',
+            });
+          }
+          secondTurnMessages = payload.messages;
+          return Promise.resolve({ text: '<finish>done</finish>' });
+        }
+        return Promise.resolve({});
+      },
+      t: (key, vars) => (typeof vars === 'string' ? vars : key),
+      parseXMLTags: (txt) => {
+        if (txt.includes('run_command'))
+          return { toolCall: { name: 'run_command', params: { command: 'node --version' } } };
+        if (txt.includes('<finish>')) return { finish: 'done' };
+        return {};
+      },
+      setAgentStatus: () => {},
+      addAgentTimelineStep: () => 'step-1',
+      addAgentApprovalStep: () => {},
+    });
+
+    await sseRuntime.runAgentLoop('run auto-approved sse command');
+    expect(secondTurnMessages.at(-1).content).toContain('Exit Code: 0');
+  });
+
+  test('invalidates workspace file list cache after write_file executes', async () => {
+    const prevDoc = global.document;
+    const prevAddListener = global.document?.addEventListener;
+    global.document = {
+      dispatchEvent: (evt) => {
+        if (evt.type === 'editor:show-diff') {
+          evt.detail.resolve(true);
+        }
+      },
+      querySelectorAll: () => [],
+      addEventListener: prevAddListener || (() => {}),
+    };
+
+    try {
+      const { createAgentRuntime } = await import('../public/js/agent-core.js');
+      const dom = {
+        explorerPath: makeElement('input'),
+        agentStatus: makeElement('span'),
+        agentActivityLog: makeElement('div'),
+        startAgentBtn: makeElement('button'),
+        sendAgentFeedbackBtn: makeElement('button'),
+        stopAgentBtn: makeElement('button'),
+        resetAgentBtn: makeElement('button'),
+        agentInstruction: makeElement('textarea'),
+      };
+      dom.explorerPath.value = '/workspace-cache-test';
+
+      let listCalls = 0;
+      let runTurn = 0;
+      const runtime = createAgentRuntime({
+        dom,
+        state: {
+          agent: { active: true, sessionId: null, history: [], abortController: null },
+          editor: { activeFilePath: null },
+        },
+        api: (url) => {
+          if (url === '/api/agent/sessions') return Promise.resolve({ session: { id: 'sess-cache' } });
+          if (url === '/api/agent/config') return Promise.resolve({ maxLoops: 3 });
+          if (url.endsWith('/project-info')) return Promise.resolve({ project: null });
+          if (url.startsWith('/api/fs/list')) {
+            listCalls += 1;
+            return Promise.resolve({ dir: '/workspace-cache-test', items: [] });
+          }
+          if (url.includes('/files?path=')) {
+            return Promise.resolve(new Response('', { status: 404 }));
+          }
+          if (url.endsWith('/files')) return Promise.resolve({ ok: true });
+          if (url === '/api/agent/tokenize') return Promise.resolve({ counts: [], total: 0 });
+          if (url === '/api/agent/chat') {
+            runTurn += 1;
+            if (runTurn === 1) {
+              return Promise.resolve({
+                text: '<call_tool name="write_file"><parameter name="path">new.js</parameter><parameter name="content">1</parameter></call_tool>',
+              });
+            }
+            return Promise.resolve({ text: '<finish>done</finish>' });
+          }
+          return Promise.resolve({});
+        },
+        t: (key, vars) => (typeof vars === 'string' ? vars : key),
+        parseXMLTags: (txt) => {
+          if (txt.includes('write_file')) {
+            return { toolCall: { name: 'write_file', params: { path: 'new.js', content: '1' } } };
+          }
+          if (txt.includes('<finish>')) return { finish: 'done' };
+          return {};
+        },
+        setAgentStatus: () => {},
+        addAgentTimelineStep: () => {},
+        addAgentApprovalStep: () => {},
+      });
+
+      await runtime.runAgentLoop('create new.js');
+      await runtime.runAgentLoop('check fresh listing');
+      expect(listCalls).toBe(2);
+    } finally {
+      global.document = prevDoc;
+    }
+  });
 });

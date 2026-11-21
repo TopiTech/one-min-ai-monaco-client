@@ -468,6 +468,9 @@ export function createChatManager(dom, state) {
             throw error;
           }
 
+          if (!response.body) {
+            throw new Error(t('chat_stream_empty_body', 'Stream response body is empty'));
+          }
           reader = response.body.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
@@ -557,7 +560,6 @@ export function createChatManager(dom, state) {
               }
 
               if (currentEvent === 'done') {
-                streamDone = true;
                 return;
               }
 
@@ -621,7 +623,10 @@ export function createChatManager(dom, state) {
               const tail = decoder.decode();
               if (tail) buffer += tail;
               if (buffer.trim()) {
-                processSseLine(buffer);
+                for (const line of buffer.split(/\r?\n/)) {
+                  processSseLine(line);
+                  if (streamDone) break;
+                }
               }
               break;
             }

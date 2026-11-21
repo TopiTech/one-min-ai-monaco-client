@@ -300,5 +300,28 @@ describe('Agent Approval Flow', () => {
       expect(tokRes.status).toBe(200);
       expect(tokRes.body).toHaveProperty('total');
     });
+
+    test('concurrent /approve requests with the same approvalToken execute only once', async () => {
+      const cmdRes = await request(app)
+        .post(`/api/agent/sessions/${sessionId}/commands`)
+        .send({ command: 'echo concurrent-once' });
+      const token = cmdRes.body.approvalToken;
+      expect(token).toBeTruthy();
+
+      mockExecuteCommand.mockClear();
+      mockExecuteCommand.mockImplementation(async () => {
+        await new Promise((r) => setTimeout(r, 15));
+        return { exitCode: 0, stdout: 'once', stderr: '', timedOut: false };
+      });
+
+      const [resA, resB] = await Promise.all([
+        request(app).post(`/api/agent/sessions/${sessionId}/approve`).send({ approvalToken: token }),
+        request(app).post(`/api/agent/sessions/${sessionId}/approve`).send({ approvalToken: token }),
+      ]);
+
+      const statuses = [resA.status, resB.status].sort();
+      expect(statuses).toEqual([200, 400]);
+      expect(mockExecuteCommand).toHaveBeenCalledTimes(1);
+    });
   });
 });

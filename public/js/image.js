@@ -355,8 +355,21 @@ export function createImageManager(dom) {
     }
 
     let cancelled = false;
+    let pollTimerId = null;
+    let resolvePollSleep = null;
+    const pollAbortController = typeof AbortController === 'function' ? new AbortController() : null;
     cancelBtn.onclick = () => {
       cancelled = true;
+      if (pollTimerId !== null) {
+        clearTimeout(pollTimerId);
+        pollTimerId = null;
+      }
+      if (resolvePollSleep) {
+        const wake = resolvePollSleep;
+        resolvePollSleep = null;
+        wake();
+      }
+      pollAbortController?.abort();
       progressCard.remove();
     };
 
@@ -370,12 +383,28 @@ export function createImageManager(dom) {
           throw new Error(t('job_polling_timeout'));
         }
 
-        await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
+        await new Promise((resolve) => {
+          resolvePollSleep = resolve;
+          pollTimerId = setTimeout(() => {
+            pollTimerId = null;
+            resolvePollSleep = null;
+            resolve();
+          }, JOB_POLL_INTERVAL_MS);
+        });
         if (cancelled) break;
 
-        const job = await api(
-          `/api/jobs/${encodeURIComponent(provider)}/${encodeURIComponent(kind)}/${encodeURIComponent(jobId)}`,
-        );
+        let job;
+        try {
+          job = await api(
+            `/api/jobs/${encodeURIComponent(provider)}/${encodeURIComponent(kind)}/${encodeURIComponent(jobId)}`,
+            { signal: pollAbortController?.signal },
+          );
+        } catch (pollErr) {
+          if (cancelled || pollAbortController?.signal?.aborted) {
+            break;
+          }
+          throw pollErr;
+        }
         // The request may complete after the user pressed Cancel. Re-check
         // before acting on the payload so a cancelled job is not rendered.
         if (cancelled) break;

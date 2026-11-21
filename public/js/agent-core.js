@@ -54,6 +54,14 @@ async function fetchWorkspaceFiles(apiFn, workspaceRoot) {
   return text;
 }
 
+function invalidateFileListCache(workspaceRoot) {
+  if (workspaceRoot) {
+    _fileListCache.delete(workspaceRoot);
+  } else {
+    _fileListCache.clear();
+  }
+}
+
 function resolvePathRelativeToWorkspace(workspaceRoot, filePath) {
   if (/^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith('/') || filePath.startsWith('\\')) {
     return filePath;
@@ -188,19 +196,46 @@ async function estimateTokensBatch(apiFn, texts) {
   return results;
 }
 
+const MAX_AGENT_HISTORY_MESSAGE_CHARS = 48000;
+
+function capAgentMessageContent(content, maxChars = MAX_AGENT_HISTORY_MESSAGE_CHARS) {
+  if (typeof content !== 'string' || content.length <= maxChars) {
+    return content;
+  }
+  const omitted = content.length - maxChars;
+  const notice = `\n\n...[出力が大きすぎるため ${omitted} 文字を省略しました]...\n\n`;
+  const keepBudget = Math.max(200, maxChars - notice.length);
+  const headLen = Math.floor(keepBudget * 0.7);
+  const tailLen = keepBudget - headLen;
+  return `${content.slice(0, headLen)}${notice}${content.slice(content.length - tailLen)}`;
+}
+
 async function trimAgentHistory(apiFn, history, t, creditSaving, maxTokens) {
   const limit = maxTokens === undefined ? (creditSaving ? 12000 : 40000) : maxTokens;
+
+  for (let i = 0; i < history.length; i++) {
+    if (
+      typeof history[i]?.content === 'string' &&
+      history[i].content.length > MAX_AGENT_HISTORY_MESSAGE_CHARS
+    ) {
+      history[i] = {
+        ...history[i],
+        content: capAgentMessageContent(history[i].content, MAX_AGENT_HISTORY_MESSAGE_CHARS),
+      };
+    }
+  }
 
   // Batch estimate all messages in history
   const contents = history.map((h) => h.content || '');
   const counts = await estimateTokensBatch(apiFn, contents);
 
-  // Reserve initial instruction budget (history[0]) when preserving it to prevent context overflow
-  let totalTokens = history.length > 1 ? counts[0] || 0 : 0;
-  for (let i = history.length - 1; i >= 1; i--) {
+  // Reserve initial instruction (history[0]) and newest message (history[history.length - 1])
+  // when trimming intermediate steps to prevent both goal amnesia and dropping latest tool output.
+  if (history.length <= 2) return;
+  let totalTokens = (counts[0] || 0) + (counts[history.length - 1] || 0);
+  for (let i = history.length - 2; i >= 1; i--) {
     totalTokens += counts[i] || 0;
     if (totalTokens > limit) {
-      // Keep initial instruction at history[0] to prevent goal amnesia
       const removed = history.splice(1, i);
       history.splice(1, 0, {
         role: 'user',
@@ -463,12 +498,12 @@ export function createAgentRuntime({
     document.querySelectorAll('.agent-step.approval').forEach((el) => el.__finalizeApproval?.());
   }
 
-  async function previewFullFileWrite({ sessionId, fullPath, displayPath, content }) {
+  async function previewFullFileWrite({ sessionId, workspaceRoot, fullPath, displayPath, content, signal }) {
     const readUrl = `/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`;
     let oldContent = '';
     let existed = false;
 
-    const currentRes = await api(readUrl, { raw: true, signal: state.agent.abortController?.signal });
+    const currentRes = await api(readUrl, { raw: true, signal });
     if (currentRes.ok) {
       const currentData = await currentRes.json().catch(() => ({}));
       oldContent = typeof currentData?.content === 'string' ? currentData.content : '';
@@ -489,9 +524,10 @@ export function createAgentRuntime({
     await api(`/api/agent/sessions/${sessionId}/files`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      signal: state.agent.abortController?.signal,
+      signal,
       body: JSON.stringify({ path: fullPath, content }),
     });
+    invalidateFileListCache(workspaceRoot);
     await openFileEvent(fullPath);
 
     return {
@@ -503,35 +539,36 @@ export function createAgentRuntime({
   }
 
   const agentToolHandlers = {
-    read_file: async ({ sessionId, workspaceRoot, params }) => {
+    read_file: async ({ sessionId, workspaceRoot, params, signal }) => {
       const { path: filePath, startLine, endLine } = params;
       if (!filePath) throw new Error('path パラメータが必要です');
       const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
       let url = `/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`;
       if (startLine !== undefined) url += `&startLine=${startLine}`;
       if (endLine !== undefined) url += `&endLine=${endLine}`;
-      const data = await api(url, { signal: state.agent.abortController?.signal });
+      const data = await api(url, { signal });
       await openFileEvent(fullPath);
       return { text: data.content, success: true };
     },
-    write_file: async ({ sessionId, workspaceRoot, params }) => {
+    write_file: async ({ sessionId, workspaceRoot, params, signal }) => {
       const { path: filePath, content } = params;
       if (!filePath) throw new Error('path パラメータが必要です');
       if (typeof content !== 'string') throw new Error('content パラメータが必要です');
       const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
       return previewFullFileWrite({
         sessionId,
+        workspaceRoot,
         fullPath,
         displayPath: filePath,
         content,
+        signal,
       });
     },
-    apply_diff: async ({ sessionId, workspaceRoot, params }) => {
+    apply_diff: async ({ sessionId, workspaceRoot, params, signal }) => {
       const { path: filePath, diff, startLine } = params;
       if (!filePath) throw new Error('path パラメータが必要です');
       if (diff === undefined) throw new Error('diff パラメータが必要です');
       const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
-      const signal = state.agent.abortController?.signal;
 
       const current = await api(
         `/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`,
@@ -548,15 +585,16 @@ export function createAgentRuntime({
         const res = await api(`/api/agent/sessions/${sessionId}/diff`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          signal: state.agent.abortController?.signal,
+          signal,
           body: JSON.stringify({ path: fullPath, diff, startLine }),
         });
+        invalidateFileListCache(workspaceRoot);
         await openFileEvent(fullPath);
         return { text: res.message || '置換成功', success: true };
       }
       return { text: 'ユーザーによって拒否されました', success: false };
     },
-    find_files: async ({ sessionId, workspaceRoot, params }) => {
+    find_files: async ({ sessionId, workspaceRoot, params, signal }) => {
       const pattern = params.pattern || params.query || '*';
       const dir = params.dir || '';
       const fullDir = resolvePathRelativeToWorkspace(workspaceRoot, dir);
@@ -565,38 +603,38 @@ export function createAgentRuntime({
       if (params.maxResults !== undefined && params.maxResults !== null && params.maxResults !== '') {
         url += `&maxResults=${encodeURIComponent(params.maxResults)}`;
       }
-      const data = await api(url, { signal: state.agent.abortController?.signal });
+      const data = await api(url, { signal });
       const text = data.files?.length
         ? `Found ${data.files.length} matching files:\n` +
           data.files.map((f) => `- ${f.relativePath}`).join('\n')
         : '一致するファイルは見つかりませんでした。';
       return { text, success: true };
     },
-    get_file_outline: async ({ sessionId, workspaceRoot, params }) => {
+    get_file_outline: async ({ sessionId, workspaceRoot, params, signal }) => {
       const filePath = params.path;
       if (!filePath) throw new Error('path パラメータが必要です');
       const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
       let url = `/api/agent/sessions/${sessionId}/outline?path=${encodeURIComponent(fullPath)}`;
       if (params.language) url += `&language=${encodeURIComponent(params.language)}`;
-      const data = await api(url, { signal: state.agent.abortController?.signal });
+      const data = await api(url, { signal });
       const text = data.symbols?.length
         ? `Outline for ${filePath} (${data.symbols.length} symbols):\n` +
           data.symbols.map((s) => `• [L${s.line}] (${s.type}) ${s.signature || s.name}`).join('\n')
         : `No top-level symbols detected in ${filePath}`;
       return { text, success: true };
     },
-    list_directory: async ({ sessionId, workspaceRoot, params }) => {
+    list_directory: async ({ sessionId, workspaceRoot, params, signal }) => {
       const dirPath = params.path || '';
       const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, dirPath);
       const data = await api(`/api/agent/sessions/${sessionId}/dir?path=${encodeURIComponent(fullPath)}`, {
-        signal: state.agent.abortController?.signal,
+        signal,
       });
       const text = data.items?.length
         ? data.items.map((i) => `- ${i.isDirectory ? '[Dir] ' : '[File] '}${i.name}`).join('\n')
         : 'ディレクトリは空または存在しません。';
       return { text, success: true };
     },
-    search_files: async ({ sessionId, workspaceRoot, params }) => {
+    search_files: async ({ sessionId, workspaceRoot, params, signal }) => {
       const { query, dir, maxResults } = params;
       if (!query) throw new Error('query パラメータが必要です');
       let url = `/api/agent/sessions/${sessionId}/search?query=${encodeURIComponent(query)}`;
@@ -608,20 +646,20 @@ export function createAgentRuntime({
         url += `&maxResults=${encodeURIComponent(maxResults)}`;
       }
       const data = await api(url, {
-        signal: state.agent.abortController?.signal,
+        signal,
       });
       const text = data.results?.length
         ? data.results.map((r) => `${r.file}:${r.line}: ${r.content}`).join('\n')
         : '検索結果なし';
       return { text, success: true };
     },
-    validate_code: async ({ sessionId, params }) => {
+    validate_code: async ({ sessionId, params, signal }) => {
       const { code, language } = params;
       if (typeof code !== 'string') throw new Error('code パラメータが必要です');
       const data = await api(`/api/agent/sessions/${sessionId}/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: state.agent.abortController?.signal,
+        signal,
         body: JSON.stringify({ code, language: language || 'javascript' }),
       });
       if (data.valid) {
@@ -630,7 +668,7 @@ export function createAgentRuntime({
       const loc = data.line ? ` (Line ${data.line}${data.column ? `, Col ${data.column}` : ''})` : '';
       return { text: `構文エラー検出${loc}: ${data.error}`, success: false };
     },
-    run_command: async ({ sessionId, workspaceRoot, params }) => {
+    run_command: async ({ sessionId, workspaceRoot, params, signal }) => {
       const { command } = params;
       if (!command) throw new Error('command パラメータが必要です');
 
@@ -642,7 +680,6 @@ export function createAgentRuntime({
         };
       }
 
-      const signal = state.agent.abortController?.signal;
       setAgentStatus(t('agent_status_awaiting') || '承認待ち...', 'awaiting_approval');
       const runResRaw = await api(`/api/agent/sessions/${sessionId}/commands?stream=true`, {
         method: 'POST',
@@ -674,10 +711,14 @@ export function createAgentRuntime({
       }
 
       if (!runRes) {
+        if (signal?.aborted) {
+          return { text: 'ABORTED', success: false, abort: true };
+        }
         return { text: 'コマンドの実行結果を取得できませんでした。', success: false };
       }
 
       if (!runRes.requiresApproval) {
+        invalidateFileListCache();
         return {
           text: `Exit Code: ${runRes.exitCode}\n\nSTDOUT:\n${runRes.stdout}\n\nSTDERR:\n${runRes.stderr}`,
           success: runRes.exitCode === 0,
@@ -706,12 +747,11 @@ export function createAgentRuntime({
           async () => {
             setAgentStatus(t('agent_status_executing') || '実行中...', 'executing');
             try {
-              const approveSignal = state.agent.abortController?.signal;
               const resRaw = await api(`/api/agent/sessions/${sessionId}/approve?stream=true`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ approvalToken: runRes.approvalToken }),
-                signal: approveSignal,
+                signal,
                 raw: true,
               });
               if (!resRaw.ok) {
@@ -729,7 +769,7 @@ export function createAgentRuntime({
                   '実行を開始します...',
                   '',
                 );
-                res = await processCommandStream(resRaw, stepId, t, approveSignal);
+                res = await processCommandStream(resRaw, stepId, t, signal);
               }
               settle({ approved: true, result: res });
             } catch (e) {
@@ -741,7 +781,7 @@ export function createAgentRuntime({
       });
 
       state.agent.resolver = null;
-      if (approvalResult.abort) return { text: 'ABORTED', success: false, abort: true };
+      if (approvalResult.abort || signal?.aborted) return { text: 'ABORTED', success: false, abort: true };
       if (!approvalResult.approved)
         return { text: t('cmd_reject_prefix', { reason: approvalResult.reason }), success: false };
       if (approvalResult.error) return { text: `エラー: ${approvalResult.error.message}`, success: false };
@@ -750,6 +790,7 @@ export function createAgentRuntime({
       if (!result) {
         return { text: '承認されたコマンドの実行結果を取得できませんでした。', success: false };
       }
+      invalidateFileListCache();
       return {
         text: `Exit Code: ${result.exitCode}\n\nSTDOUT:\n${result.stdout}\n\nSTDERR:\n${result.stderr}`,
         success: result.exitCode === 0,
@@ -899,6 +940,19 @@ export function createAgentRuntime({
               chatRes = null;
               break;
             }
+            const status = Number(e?.status);
+            if (
+              Number.isFinite(status) &&
+              status >= 400 &&
+              status < 500 &&
+              status !== 408 &&
+              status !== 429
+            ) {
+              addAgentTimelineStep('error', 'AI通信失敗', `AIとの通信に失敗しました: ${e.message}`);
+              setAgentStatus(t('status_error', 'エラー'), 'error');
+              chatRes = null;
+              break;
+            }
             networkRetryCount++;
             if (networkRetryCount < maxNetworkRetries) {
               addAgentTimelineStep(
@@ -967,15 +1021,16 @@ export function createAgentRuntime({
               sessionId,
               workspaceRoot,
               params,
+              signal: loopSignal,
             });
 
             if (result.abort) break;
 
             if (result.retryable) {
-              state.agent.history.push({ role: 'assistant', content: aiText });
+              state.agent.history.push({ role: 'assistant', content: capAgentMessageContent(aiText) });
               state.agent.history.push({
                 role: 'user',
-                content: `<tool_response>\n${result.text}\n</tool_response>`,
+                content: capAgentMessageContent(`<tool_response>\n${result.text}\n</tool_response>`),
               });
               await trimHistory(state.agent.history);
               loopCount = Math.max(0, loopCount - 1);
@@ -1001,9 +1056,12 @@ export function createAgentRuntime({
             toolResultText,
           );
 
-          const feedbackMsg = `<tool_response>\n${toolResultText}\n</tool_response>`;
+          const feedbackMsg = capAgentMessageContent(`<tool_response>\n${toolResultText}\n</tool_response>`);
 
-          state.agent.history.push({ role: 'assistant', content: stripSearchArtifacts(aiText) });
+          state.agent.history.push({
+            role: 'assistant',
+            content: capAgentMessageContent(stripSearchArtifacts(aiText)),
+          });
           state.agent.history.push({ role: 'user', content: feedbackMsg });
           await trimHistory(state.agent.history);
         } else {

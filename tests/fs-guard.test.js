@@ -449,5 +449,20 @@ describe('fs-guard', () => {
       });
       await expect(getSafeRealPath(unresolvedNew)).rejects.toThrow('Access denied');
     });
+
+    test('assertNotProtectedPath and assertNotWriteProtectedPath do not leak server paths for custom ALLOWED_ROOTS', () => {
+      process.env.ALLOWED_ROOTS = tmpDir;
+      clearAllowedRootsCache();
+
+      expect(() => assertNotProtectedPath(path.join(tmpDir, '.env'))).toThrow(
+        'Access denied: Path is protected: .env',
+      );
+      expect(() => assertNotWriteProtectedPath(path.join(tmpDir, 'server.js'))).toThrow(
+        'Access denied: Path is protected from write operations: server.js',
+      );
+      expect(() => assertNotWriteProtectedPath(tmpDir)).toThrow(
+        'Access denied: Path is protected from write operations: .',
+      );
+    });
   });
 });

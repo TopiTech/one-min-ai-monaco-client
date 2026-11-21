@@ -1,4 +1,4 @@
-import { spawn, exec } from 'child_process';
+import { spawn, execFile } from 'child_process';
 import { platform } from 'os';
 import { StringDecoder } from 'string_decoder';
 import { serverConfig } from '../config/server.js';
@@ -669,22 +669,36 @@ export function killProcessTree(childProcess, force = false) {
     if (platform() === 'win32') {
       // SEC-KILL-1: Handle taskkill errors to detect zombie processes.
       // The /T flag terminates the process tree, /F forces termination.
-      // Log errors but don't throw — this is best-effort cleanup during shutdown.
-      exec(`taskkill /PID ${pid} /T /F`, (err) => {
-        if (!err) return;
-        // Check if the process already exited (not an error during cleanup/shutdown).
-        // On Windows, taskkill returns exit code 128 or 1 when process was not found,
-        // and message contains "not found" or similar. Node's exec returns numeric code or errno string.
-        const msg = err.message || '';
-        const isNotFound =
-          err.code === 'ESRCH' ||
-          err.code === 128 ||
-          (err.code === 1 && /not found/i.test(msg)) ||
-          /not found/i.test(msg);
-        if (!isNotFound) {
-          logger.warn(`Failed to kill process tree (PID ${pid}): ${msg}`);
-        }
-      });
+      // Fall back to direct childProcess.kill() if taskkill is blocked or errors
+      // (for example inside restricted sandboxes) so processes do not linger.
+      const tkProc = execFile(
+        'taskkill',
+        ['/PID', String(pid), '/T', '/F'],
+        { windowsHide: true, timeout: 1500, killSignal: 'SIGKILL' },
+        (err) => {
+          if (!err) return;
+          // Check if the process already exited (not an error during cleanup/shutdown).
+          // On Windows, taskkill returns exit code 128 or 1 when process was not found,
+          // and message contains "not found" or similar. Node's exec returns numeric code or errno string.
+          const msg = err.message || '';
+          const isNotFound =
+            err.code === 'ESRCH' ||
+            err.code === 128 ||
+            (err.code === 1 && /not found/i.test(msg)) ||
+            /not found/i.test(msg);
+          if (!isNotFound) {
+            logger.warn(`Failed to kill process tree (PID ${pid}): ${msg}`);
+            try {
+              if (typeof childProcess.kill === 'function' && childProcess.exitCode === null) {
+                childProcess.kill(force ? 'SIGKILL' : 'SIGTERM');
+              }
+            } catch {
+              // Ignore secondary kill failures
+            }
+          }
+        },
+      );
+      tkProc.unref?.();
     } else {
       process.kill(-pid, force ? 'SIGKILL' : 'SIGTERM');
     }

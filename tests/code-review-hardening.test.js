@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import request from 'supertest';
 import path from 'path';
+import os from 'os';
 import fs from 'fs/promises';
 import { isSubPath, getSafeRealPath, PROJECT_ROOT, clearAllowedRootsCache } from '../utils/fs-guard.js';
 import { ForbiddenError } from '../utils/errors.js';
@@ -128,8 +129,9 @@ describe('Code Review Hardening: getSafeRealPath', () => {
     // Note: package.json is protected from write operations
     await expect(getSafeRealPath(validFile)).rejects.toThrow(ForbiddenError);
 
-    const tmpDir = path.join(PROJECT_ROOT, `test_tmp_${Date.now()}`);
-    await fs.mkdir(tmpDir, { recursive: true });
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'code-review-safe-'));
+    process.env.ALLOWED_ROOTS = tmpDir;
+    clearAllowedRootsCache();
     const tmpFile = path.join(tmpDir, 'test_safe.txt');
     await fs.writeFile(tmpFile, 'test');
     try {

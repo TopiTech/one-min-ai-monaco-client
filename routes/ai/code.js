@@ -7,6 +7,7 @@ import { extractText } from '../../utils/api-client.js';
 import { parseWebSearchParams } from '../../utils/web-search.js';
 import { assertCapability, getProvider, resolveProviderId } from '../../providers/index.js';
 import fsPkg from 'fs/promises';
+import osPkg from 'os';
 import pathPkg from 'path';
 import cryptoPkg from 'crypto';
 import { validatePath, assertNotProtectedPath, PROJECT_ROOT } from '../../utils/fs-guard.js';
@@ -354,15 +355,17 @@ router.post('/run', async (req, res, next) => {
     }
     const ext = extension || (resolvedFilePath ? pathPkg.extname(resolvedFilePath).replace('.', '') : '');
 
+    const isPython = ext === 'py' || language === 'python';
+    const isJavascript = ext === 'js' || ext === 'mjs' || ext === 'cjs' || language === 'javascript';
     let runner = null;
-    if (ext === 'py' || language === 'python') {
+    if (isPython) {
       runner = process.platform === 'win32' ? 'python' : 'python3';
-    } else if (ext === 'js' || ext === 'mjs' || ext === 'cjs' || language === 'javascript') {
+    } else if (isJavascript) {
       // Note: `typescript` is intentionally not mapped to node — plain Node
       // cannot execute .ts sources directly on supported LTS runtimes, and
       // running them would surface a confusing SyntaxError instead of a
       // clear "unsupported language" response.
-      runner = 'node';
+      runner = process.execPath;
     }
 
     if (!runner) {
@@ -377,20 +380,37 @@ router.post('/run', async (req, res, next) => {
     targetPath = resolvedFilePath;
 
     if (code) {
-      const tmpDir = pathPkg.resolve(TMP_DIR);
-      await fsPkg.mkdir(tmpDir, { recursive: true });
       // SEC-5: Defense-in-depth. The schema already restricts `extension` to
       // alphanumeric, but sanitize again and assert the resolved tmp path stays
       // inside tmpDir before writing anything to disk.
+      const defaultExt = isPython ? 'py' : 'js';
       const safeExt =
-        String(ext || 'js')
+        String(ext || defaultExt)
           .replace(/[^a-zA-Z0-9]/g, '')
-          .slice(0, 10) || 'js';
-      const tmpFile = pathPkg.join(tmpDir, `code_run_${cryptoPkg.randomBytes(6).toString('hex')}.${safeExt}`);
-      if (!pathPkg.resolve(tmpFile).startsWith(tmpDir + pathPkg.sep)) {
-        throw new HttpError(400, 'Invalid extension', 'INVALID_EXTENSION');
+          .slice(0, 10) || defaultExt;
+      const writeSnippet = async (dir) => {
+        const tmpDir = pathPkg.resolve(dir);
+        await fsPkg.mkdir(tmpDir, { recursive: true });
+        const candidate = pathPkg.join(
+          tmpDir,
+          `code_run_${cryptoPkg.randomBytes(6).toString('hex')}.${safeExt}`,
+        );
+        if (!pathPkg.resolve(candidate).startsWith(tmpDir + pathPkg.sep)) {
+          throw new HttpError(400, 'Invalid extension', 'INVALID_EXTENSION');
+        }
+        await fsPkg.writeFile(candidate, code, 'utf-8');
+        return candidate;
+      };
+      let tmpFile;
+      try {
+        tmpFile = await writeSnippet(TMP_DIR);
+      } catch (tmpErr) {
+        if (tmpErr?.code === 'EPERM' || tmpErr?.code === 'EACCES' || tmpErr?.code === 'EROFS') {
+          tmpFile = await writeSnippet(pathPkg.join(osPkg.tmpdir(), 'one-min-ai-code-run'));
+        } else {
+          throw tmpErr;
+        }
       }
-      await fsPkg.writeFile(tmpFile, code, 'utf-8');
       targetPath = tmpFile;
       temporaryTargetPath = tmpFile;
     }

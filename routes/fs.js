@@ -19,11 +19,7 @@ import { atomicWriteTextFile, readSpecificLines } from '../utils/fs-utils.js';
 import { serverConfig } from '../config/server.js';
 import { BadRequestError, ForbiddenError, NotFoundError } from '../utils/errors.js';
 
-// File size read limits evaluated dynamically via serverConfig.maxFileReadSize
-// SAFETY: list/delete caps are configurable via serverConfig so operators
-// can tune without code changes; defaults preserve prior hard-coded values.
-const MAX_LIST_ENTRIES = serverConfig.fsMaxListEntries;
-const MAX_DELETE_ENTRIES = serverConfig.fsMaxDeleteEntries; // Safety cap for recursive directory deletion
+// File size read limits and list/delete caps are evaluated dynamically via serverConfig
 // L-9: Use the server-configured JSON body limit as the upper bound on
 // editable file size so ops can tune it without code changes.
 const BINARY_EXTENSIONS = new Set([
@@ -258,6 +254,7 @@ router.get('/list', async (req, res, next) => {
     let entry;
     let truncated = false;
 
+    const maxListEntries = serverConfig.fsMaxListEntries;
     try {
       while ((entry = await dir.read()) !== null) {
         const fullPath = path.join(dirPath, entry.name);
@@ -269,7 +266,7 @@ router.get('/list', async (req, res, next) => {
           path: fullPath,
           isDirectory: entry.isDirectory(),
         });
-        if (items.length >= MAX_LIST_ENTRIES) {
+        if (items.length >= maxListEntries) {
           // Peek at the next entry to determine if truncation occurred.
           // We intentionally discard this entry — the contract is that
           // `truncated: true` signals the client to refine the query rather
@@ -438,7 +435,7 @@ async function assertNoProtectedChildren(dirPath, maxDepth = 20) {
   }
 }
 
-async function countDirectoryEntries(dirPath, maxDepth = 20, limit = MAX_DELETE_ENTRIES) {
+async function countDirectoryEntries(dirPath, maxDepth = 20, limit = serverConfig.fsMaxDeleteEntries) {
   if (maxDepth <= 0 || limit <= 0) return 0;
   let count = 0;
   const entries = await fs.readdir(dirPath, { withFileTypes: true });
@@ -485,10 +482,11 @@ router.post('/delete', async (req, res, next) => {
     if (stat.isDirectory()) {
       // Recursively verify no protected paths exist within before deleting
       await assertNoProtectedChildren(realPath);
-      const entryCount = await countDirectoryEntries(realPath);
-      if (entryCount > MAX_DELETE_ENTRIES) {
+      const maxDeleteEntries = serverConfig.fsMaxDeleteEntries;
+      const entryCount = await countDirectoryEntries(realPath, 20, maxDeleteEntries);
+      if (entryCount > maxDeleteEntries) {
         return res.status(413).json({
-          error: `Directory contains ${entryCount} entries, exceeding the safety limit of ${MAX_DELETE_ENTRIES}. Delete subdirectories individually.`,
+          error: `Directory contains ${entryCount} entries, exceeding the safety limit of ${maxDeleteEntries}. Delete subdirectories individually.`,
         });
       }
       await fs.rm(realPath, { recursive: true });

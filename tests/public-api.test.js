@@ -330,6 +330,32 @@ describe('public api wrapper', () => {
       }),
     );
     const { api } = await loadApiModule({ cookie: '' });
-    await expect(api('/api/test')).rejects.toMatchObject({ message: 'Rate limited' });
+    await expect(api('/api/test')).rejects.toMatchObject({
+      message: 'Rate limited',
+      status: 429,
+      code: 'LIMIT',
+    });
+  });
+
+  test('extractImages skips empty candidates and extracts temporaryUrl and url_file', async () => {
+    const { extractImages } = await loadApiModule();
+
+    expect(
+      extractImages({
+        aiRecord: {
+          aiRecordDetail: { resultObject: [] },
+          output: [{ temporaryUrl: 'https://cdn.example.com/temp.png' }],
+        },
+      }),
+    ).toEqual(['https://cdn.example.com/temp.png']);
+
+    expect(
+      extractImages({
+        aiRecord: {
+          aiRecordDetail: { resultObject: '' },
+        },
+        images: [{ url_file: 'https://cdn.example.com/file.png' }],
+      }),
+    ).toEqual(['https://cdn.example.com/file.png']);
   });
 });

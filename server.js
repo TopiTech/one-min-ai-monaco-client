@@ -178,13 +178,20 @@ async function handleAssetUpload(req, res, next) {
     let safeName = path
       .basename(originalName)
       .replace(/[^\p{L}\p{N}._-]/gu, '_')
-      .substring(0, 255);
+      .replace(/^\.+/, '');
 
-    const ext = path.extname(safeName);
-    if (!safeName || !ext) {
-      const fallbackExt = getExtensionFromMimeType(req.file.mimetype);
-      const base = safeName || 'upload';
-      safeName = base + fallbackExt;
+    let ext = path.extname(safeName);
+    if (!ext || ext === '.') {
+      safeName = safeName.replace(/\.+$/, '');
+      ext = getExtensionFromMimeType(req.file.mimetype);
+      const maxBaseLen = Math.max(1, 255 - ext.length);
+      const base = (safeName || 'upload').slice(0, maxBaseLen);
+      safeName = base + ext;
+    } else if (safeName.length > 255) {
+      const safeExt = ext.slice(0, 50);
+      const maxBaseLen = Math.max(1, 255 - safeExt.length);
+      const stem = safeName.slice(0, safeName.length - ext.length).slice(0, maxBaseLen) || 'upload';
+      safeName = stem + safeExt;
     }
 
     // A-1: Stream the file directly from disk into FormData using openAsBlob

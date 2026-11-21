@@ -53,7 +53,13 @@ export function createCombinedSignal(a, b) {
  */
 export async function fetchWithTimeout(url, options = {}, timeoutMs = serverConfig.apiTimeout) {
   const { signal: callerSignal, ...fetchOpts } = options;
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const fallbackTimeoutMs =
+    Number.isFinite(serverConfig.apiTimeout) && serverConfig.apiTimeout > 0
+      ? Math.max(1, Math.round(serverConfig.apiTimeout))
+      : 30_000;
+  const effectiveTimeoutMs =
+    Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.max(1, Math.round(timeoutMs)) : fallbackTimeoutMs;
+  const timeoutSignal = AbortSignal.timeout(effectiveTimeoutMs);
   const combinedSignal =
     typeof AbortSignal.any === 'function'
       ? AbortSignal.any(callerSignal ? [callerSignal, timeoutSignal] : [timeoutSignal])
@@ -70,7 +76,7 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs = serverConf
         err.name = 'AbortError';
         throw err;
       }
-      throw new HttpError(408, `Request timeout after ${timeoutMs}ms`);
+      throw new HttpError(408, `Request timeout after ${effectiveTimeoutMs}ms`);
     }
     throw error;
   }

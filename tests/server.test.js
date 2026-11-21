@@ -288,6 +288,33 @@ describe('Server Factory', () => {
       expect(response.status).toBe(400);
       expect(response.body.error).toMatch(/asset file is required|Unexpected field/);
     });
+
+    test('should cap upload filename at 255 chars with extension and strip leading dots', async () => {
+      callOneMin.mockResolvedValue({ asset: { key: 'images/norm.png' } });
+      const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+      const longRes = await request(app)
+        .post('/api/assets/upload')
+        .attach('asset', pngSignature, {
+          filename: `${'a'.repeat(260)}.png`,
+          contentType: 'image/png',
+        });
+      expect(longRes.status).toBe(200);
+      const longForm = callOneMin.mock.calls[0][1].body;
+      const longUploadedName = longForm.get('asset').name;
+      expect(longUploadedName.length).toBeLessThanOrEqual(255);
+      expect(longUploadedName.endsWith('.png')).toBe(true);
+
+      const dotRes = await request(app).post('/api/assets/upload').attach('asset', pngSignature, {
+        filename: '.png',
+        contentType: 'image/png',
+      });
+      expect(dotRes.status).toBe(200);
+      const dotForm = callOneMin.mock.calls[1][1].body;
+      const dotUploadedName = dotForm.get('asset').name;
+      expect(dotUploadedName.startsWith('.')).toBe(false);
+      expect(dotUploadedName.endsWith('.png')).toBe(true);
+    });
   });
 
   describe('Error handler', () => {

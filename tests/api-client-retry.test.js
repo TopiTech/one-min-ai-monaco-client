@@ -534,4 +534,18 @@ describe('normalizeOneMinResponse', () => {
     const res = await client('/status', { method: 'GET' });
     expect(res).toEqual({ title: 'Structured JSON' });
   });
+
+  test('fetchWithTimeout falls back to default timeout when timeoutMs is invalid or non-positive', async () => {
+    const { fetchWithTimeout } = await import('../utils/http-client.js');
+    globalThis.fetch = jest.fn(async (_url, init) => {
+      expect(init.signal).toBeDefined();
+      expect(init.signal.aborted).toBe(false);
+      return new Response('ok', { status: 200 });
+    });
+
+    await expect(fetchWithTimeout('https://example.invalid', {}, NaN)).resolves.toBeInstanceOf(Response);
+    await expect(fetchWithTimeout('https://example.invalid', {}, -10)).resolves.toBeInstanceOf(Response);
+    await expect(fetchWithTimeout('https://example.invalid', {}, 0)).resolves.toBeInstanceOf(Response);
+    await expect(fetchWithTimeout('https://example.invalid', {}, Infinity)).resolves.toBeInstanceOf(Response);
+  });
 });

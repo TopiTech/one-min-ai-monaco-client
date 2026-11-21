@@ -14,7 +14,7 @@ import { toast } from './toast.js';
  * @param {object} editorState - Reference to state.editor
  * @param {object} editorManager - The editor manager instance
  * @param {object} dom - DOM element references
- * @param {{ renderTabs: () => void }} callbacks - optional callbacks
+ * @param {{ setStatus?: (text: string, level?: string) => void }} [callbacks] - optional callbacks
  * @returns {{
  *   renderTabs: () => void,
  *   switchToTab: (filePath: string) => Promise<void>,
@@ -26,7 +26,8 @@ import { toast } from './toast.js';
  *   handlePathRenamed: (oldPath: string, newPath: string) => void
  * }}
  */
-export function createEditorTabManager(editorState, editorManager, dom) {
+export function createEditorTabManager(editorState, editorManager, dom, callbacks = {}) {
+  const setStatus = typeof callbacks?.setStatus === 'function' ? callbacks.setStatus : null;
   let _saveStatusTimer = null;
   let _openFileSeq = 0;
 
@@ -231,7 +232,6 @@ export function createEditorTabManager(editorState, editorManager, dom) {
       return;
     }
     const content = editorManager.instance.getValue();
-    const setStatus = window.__bootstrapSetStatus;
     try {
       if (setStatus) setStatus(t('saving'), 'warn');
       await api('/api/fs/write', {

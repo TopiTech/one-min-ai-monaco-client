@@ -47,7 +47,11 @@ async function api(path, options = {}) {
     const data = await parseJsonOrTextResponse(res);
     if (!res.ok) {
       outcome = 'err';
-      throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
+      const err = new Error(data?.error || data?.message || `HTTP ${res.status}`);
+      err.status = res.status;
+      if (data?.code !== undefined) err.code = data.code;
+      err.payload = data;
+      throw err;
     }
 
     return data;
@@ -161,6 +165,39 @@ function assetUrl(path) {
 
 export { api, assetUrl, extractImages };
 
+function extractUrlFromImageItem(item) {
+  if (typeof item === 'string') {
+    const trimmed = item.trim();
+    return trimmed || null;
+  }
+  if (item && typeof item === 'object') {
+    return item.url || item.temporaryUrl || item.url_file || item.path || item.key || item.location || null;
+  }
+  return null;
+}
+
+function extractUrlsFromCandidate(candidate) {
+  if (candidate == null) return [];
+  if (typeof candidate === 'string') {
+    const single = extractUrlFromImageItem(candidate);
+    return single ? [single] : [];
+  }
+  if (Array.isArray(candidate)) {
+    return candidate.map(extractUrlFromImageItem).filter(Boolean);
+  }
+  if (typeof candidate === 'object') {
+    for (const key of ['images', 'output', 'urls']) {
+      if (Array.isArray(candidate[key])) {
+        const nested = candidate[key].map(extractUrlFromImageItem).filter(Boolean);
+        if (nested.length > 0) return nested;
+      }
+    }
+    const direct = extractUrlFromImageItem(candidate);
+    return direct ? [direct] : [];
+  }
+  return [];
+}
+
 function extractImages(data) {
   // 1min.ai: resultObject is a string[] of URLs (most providers), but some
   // Google/Flow providers wrap them in { images: [...] } or { output: [...] }.
@@ -172,43 +209,14 @@ function extractImages(data) {
     data?.aiRecord?.resultObject,
     data?.resultObject,
     data?.result,
+    data?.images,
+    data?.urls,
   ];
-  let raw = null;
-  for (const c of candidates) {
-    if (c == null) continue;
-    if (typeof c === 'string' || Array.isArray(c)) {
-      raw = c;
-      break;
-    }
-    if (c && typeof c === 'object') {
-      if (Array.isArray(c.images)) {
-        raw = c.images;
-        break;
-      }
-      if (Array.isArray(c.output)) {
-        raw = c.output;
-        break;
-      }
-      if (Array.isArray(c.urls)) {
-        raw = c.urls;
-        break;
-      }
-    }
+  for (const candidate of candidates) {
+    const urls = extractUrlsFromCandidate(candidate);
+    if (urls.length > 0) return urls;
   }
-  if (raw == null && Array.isArray(data?.images)) raw = data.images;
-  if (raw == null && Array.isArray(data?.urls)) raw = data.urls;
-
-  const arr = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
-
-  return arr
-    .map((x) => {
-      if (typeof x === 'string') return x;
-      if (x && typeof x === 'object') {
-        return x.url || x.path || x.key || x.location || null;
-      }
-      return null;
-    })
-    .filter(Boolean);
+  return [];
 }
 
 function getCookie(name) {

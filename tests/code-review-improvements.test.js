@@ -1601,5 +1601,283 @@ describe('Code Review Improvements', () => {
         global.fetch = prevFetch;
       }
     });
+
+    test('editor-tabs invokes injected setStatus callback on save without relying on globals', async () => {
+      const prevDoc = global.document;
+      const prevWin = global.window;
+      const prevFetch = global.fetch;
+      const { makeEl, documentMock } = createRichMockDom();
+      const saveFileBtn = makeEl('button', 'saveFileBtn');
+      const currentFileName = makeEl('span', 'currentFileName');
+      const editorTabsBar = makeEl('div', 'editorTabsBar');
+      const statusEl = makeEl('span', 'status');
+
+      global.document = documentMock;
+      global.window = {};
+      global.fetch = () =>
+        Promise.resolve(
+          new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        );
+
+      const { toast } = await import('../public/js/toast.js');
+      const successSpy = jest.spyOn(toast, 'success').mockImplementation(() => {});
+      const errorSpy = jest.spyOn(toast, 'error').mockImplementation(() => {});
+      jest.useFakeTimers();
+
+      try {
+        const { createEditorTabManager } = await import('../public/js/editor-tabs.js');
+        const statusHistory = [];
+        const editorState = {
+          activeFilePath: '/ws/demo.js',
+          openFiles: new Map([['/ws/demo.js', { model: {}, dirty: true }]]),
+          readOnlyFiles: {},
+        };
+        const editorManager = {
+          instance: { getValue: () => 'const x = 1;' },
+          markClean: () => {},
+        };
+        const tabs = createEditorTabManager(
+          editorState,
+          editorManager,
+          { saveFileBtn, currentFileName, editorTabsBar },
+          {
+            setStatus: (text, cls) => {
+              statusEl.textContent = text;
+              statusHistory.push({ text, cls });
+            },
+          },
+        );
+
+        await tabs.saveFile();
+        expect(errorSpy).not.toHaveBeenCalled();
+        expect(successSpy).toHaveBeenCalledTimes(1);
+        expect(statusHistory.length).toBeGreaterThanOrEqual(2);
+        expect(statusHistory[1].cls).toBe('ok');
+
+        // Advance past the 2000ms status-reset timer so it fires and leaves zero pending timers
+        jest.advanceTimersByTime(2100);
+        expect(statusHistory.at(-1).cls).toBeUndefined();
+      } finally {
+        jest.useRealTimers();
+        successSpy.mockRestore();
+        errorSpy.mockRestore();
+        global.document = prevDoc;
+        global.window = prevWin;
+        global.fetch = prevFetch;
+      }
+    });
+
+    test('chat SSE waits past event: done until event: final-result and parses multiline EOF frames', async () => {
+      const prevDoc = global.document;
+      const prevWin = global.window;
+      const prevFetch = global.fetch;
+      const { makeEl, documentMock } = createRichMockDom();
+      const chatLog = makeEl('div', 'chatLog');
+      const chatPrompt = makeEl('textarea', 'chatPrompt');
+      const sendChatBtn = makeEl('button', 'sendChat');
+      const abortChatBtn = makeEl('button', 'abortChat');
+      const chatModel = makeEl('input', 'chatModel');
+      chatModel.value = 'gpt-4o';
+      const conversationId = makeEl('input', 'conversationId');
+      const webSearch = makeEl('input', 'webSearch');
+      const chatNumOfSite = makeEl('input', 'chatNumOfSite');
+      const chatMaxWord = makeEl('input', 'chatMaxWord');
+      const withMemories = makeEl('input', 'withMemories');
+      const isMixed = makeEl('input', 'isMixed');
+      const brandVoiceId = makeEl('input', 'brandVoiceId');
+      const chatAttachments = makeEl('div', 'chatAttachments');
+      const attachmentPreviews = makeEl('div', 'attachmentPreviews');
+      const encoder = new TextEncoder();
+
+      global.document = documentMock;
+      global.window = { DOMPurify: { sanitize: (h) => h }, marked: { parse: (m) => m } };
+      global.fetch = () =>
+        Promise.resolve(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(encoder.encode('event: done\ndata: {}\n\n'));
+                controller.enqueue(
+                  encoder.encode(
+                    'event: final-result\ndata: {"aiRecord":{"aiRecordDetail":{"resultObject":["final from eof"]}}}',
+                  ),
+                );
+                controller.close();
+              },
+            }),
+            { status: 200, headers: { 'content-type': 'text/event-stream' } },
+          ),
+        );
+
+      try {
+        const { createChatManager, createChatState } = await import('../public/js/chat.js');
+        chatPrompt.value = 'hi';
+        const manager = createChatManager(
+          {
+            chatLog,
+            chatPrompt,
+            sendChatBtn,
+            abortChatBtn,
+            chatModel,
+            conversationId,
+            webSearch,
+            chatNumOfSite,
+            chatMaxWord,
+            withMemories,
+            isMixed,
+            brandVoiceId,
+            chatAttachments,
+            attachmentPreviews,
+          },
+          { chat: createChatState() },
+        );
+        await manager.sendChat(() => {});
+        const aiDiv = chatLog.children.at(-1).children[1];
+        expect(aiDiv.innerHTML).toContain('final from eof');
+      } finally {
+        global.document = prevDoc;
+        global.window = prevWin;
+        global.fetch = prevFetch;
+      }
+    });
+
+    test('model-picker positions fixed dropdown without window.scrollY and skips redundant health call', async () => {
+      const prevDoc = global.document;
+      const prevWin = global.window;
+      const prevFetch = global.fetch;
+      const { makeEl, documentMock } = createRichMockDom();
+      const dropdown = makeEl('div', 'modelPickerDropdown');
+      dropdown.classList.add('u-hidden');
+      dropdown.offsetHeight = 300;
+      const pickerSearch = makeEl('input', 'modelPickerSearch');
+      const pickerList = makeEl('div', 'modelPickerList');
+      const pickerEmpty = makeEl('div', 'modelPickerEmpty');
+      const chatModel = makeEl('input', 'chatModel');
+      const chatModelLabel = makeEl('span', 'chatModelLabel');
+      const btn = makeEl('button', '', 'model-picker-btn');
+      btn.dataset = { modelType: 'chat', targetInput: 'chatModel' };
+      btn.getBoundingClientRect = () => ({ left: 100, top: 100, bottom: 130, width: 200 });
+
+      const fetchedUrls = [];
+      global.document = documentMock;
+      global.window = {
+        scrollY: 500,
+        innerWidth: 1200,
+        innerHeight: 800,
+        addEventListener: () => {},
+        dispatchEvent: () => {},
+      };
+      global.fetch = (url) => {
+        fetchedUrls.push(String(url));
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              chatModels: [{ id: 'gpt-4o', label: 'GPT-4o', provider: 'OpenAI', tags: [] }],
+              codeModels: [],
+              imageModels: [],
+              videoModels: [],
+              providers: {
+                '1min': {
+                  chatModels: [{ id: 'gpt-4o', label: 'GPT-4o', provider: 'OpenAI', tags: [] }],
+                  codeModels: [],
+                  imageModels: [],
+                  videoModels: [],
+                  sync: { ok: true, source: 'remote' },
+                },
+              },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+        );
+      };
+
+      try {
+        const { initModelPickers, loadModels } = await import('../public/js/model-picker.js');
+        await loadModels();
+        expect(fetchedUrls).toEqual(['/api/models']);
+        initModelPickers();
+        btn.click();
+        expect(dropdown.style.top).toBe('136px');
+        expect(pickerSearch).toBeDefined();
+        expect(pickerList).toBeDefined();
+        expect(pickerEmpty).toBeDefined();
+        expect(chatModel).toBeDefined();
+        expect(chatModelLabel).toBeDefined();
+        documentMock.dispatchEvent({ type: 'keydown', key: 'Escape' });
+      } finally {
+        global.document = prevDoc;
+        global.window = prevWin;
+        global.fetch = prevFetch;
+      }
+    });
+
+    test('image pollJobUntilComplete cancels pending sleep cleanly without deadlocking', async () => {
+      const prevDoc = global.document;
+      const prevWin = global.window;
+      const prevFetch = global.fetch;
+      const { makeEl, documentMock } = createRichMockDom();
+      const imagePrompt = makeEl('textarea', 'imagePrompt');
+      imagePrompt.value = 'a cat';
+      const imageModel = makeEl('input', 'imageModel');
+      imageModel.value = 'gpt-image-2';
+      const imageGallery = makeEl('div', 'imageGallery');
+      const assetResult = makeEl('pre', 'assetResult');
+      const editorImageUrl = makeEl('input', 'editorImageUrl');
+      const generateImageBtn = makeEl('button', 'generateImage');
+
+      global.document = documentMock;
+      global.window = { addEventListener: () => {}, dispatchEvent: () => {} };
+      global.fetch = (url) => {
+        if (String(url).includes('/api/images/generate')) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ status: 'PROCESSING', jobId: 'job-1' }), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            }),
+          );
+        }
+        return Promise.resolve(
+          new Response(JSON.stringify({ status: 'processing' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        );
+      };
+
+      const { toast } = await import('../public/js/toast.js');
+      const infoSpy = jest.spyOn(toast, 'info').mockImplementation(() => {});
+      const errorSpy = jest.spyOn(toast, 'error').mockImplementation(() => {});
+
+      try {
+        const { createImageManager } = await import('../public/js/image.js');
+        const manager = createImageManager({
+          imagePrompt,
+          imageModel,
+          imageGallery,
+          assetResult,
+          editorImageUrl,
+          generateImage: generateImageBtn,
+        });
+
+        const runPromise = manager.generateImage();
+        await new Promise((r) => setTimeout(r, 20));
+        const cancelBtn = imageGallery.querySelectorAll('button').at(-1);
+        expect(cancelBtn).toBeDefined();
+        cancelBtn.click();
+
+        await runPromise;
+        expect(generateImageBtn.disabled).toBe(false);
+        expect(errorSpy).toHaveBeenCalled();
+      } finally {
+        infoSpy.mockRestore();
+        errorSpy.mockRestore();
+        global.document = prevDoc;
+        global.window = prevWin;
+        global.fetch = prevFetch;
+      }
+    });
   });
 });
