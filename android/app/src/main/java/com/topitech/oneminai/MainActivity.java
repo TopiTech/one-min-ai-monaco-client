@@ -25,7 +25,9 @@ public class MainActivity extends BridgeActivity {
     private static final String PREFS_NAME = "nodejs_mobile_prefs";
     private static final String PREF_LAST_UPDATE_TIME = "last_update_time";
     private static final String ASSET_NODE_DIR = "nodejs-project";
-    private static final String PRESERVED_DATA_DIR = ".mimocode";
+    // `.mimocode` is kept only so the Node app can migrate existing data on
+    // upgrade; the app itself stores everything under `.onemin-ai`.
+    private static final String[] PRESERVED_DATA_DIRS = { ".onemin-ai", ".mimocode" };
     private static final int BFF_PORT = 38517;
     private static final String BFF_ROOT_URL = "http://127.0.0.1:" + BFF_PORT + "/";
     private static final String BFF_HEALTH_URL = BFF_ROOT_URL + "api/health";
@@ -203,7 +205,7 @@ public class MainActivity extends BridgeActivity {
         }
 
         if (nodeProjectDir.exists()) {
-            deleteDirectoryPreserving(nodeProjectDir, PRESERVED_DATA_DIR);
+            deleteDirectoryPreserving(nodeProjectDir, PRESERVED_DATA_DIRS);
         }
         if (!nodeProjectDir.exists() && !nodeProjectDir.mkdirs()) {
             throw new IOException("Failed to create Node project directory: " + nodeProjectDir);
@@ -224,16 +226,22 @@ public class MainActivity extends BridgeActivity {
         return info.lastUpdateTime;
     }
 
-    private static void deleteDirectoryPreserving(File dir, String preservedChildName) throws IOException {
+    private static void deleteDirectoryPreserving(File dir, String... preservedChildNames) throws IOException {
         File[] children = dir.listFiles();
         if (children == null) {
             return;
         }
         for (File child : children) {
-            if (preservedChildName != null && preservedChildName.equals(child.getName())) {
-                continue;
+            boolean preserved = false;
+            for (String name : preservedChildNames) {
+                if (name != null && name.equals(child.getName())) {
+                    preserved = true;
+                    break;
+                }
             }
-            deleteRecursively(child);
+            if (!preserved) {
+                deleteRecursively(child);
+            }
         }
     }
 

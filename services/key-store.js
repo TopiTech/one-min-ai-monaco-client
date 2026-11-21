@@ -2,14 +2,12 @@ import fs from 'fs';
 import fsp from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
-import { fileURLToPath } from 'url';
 import { SessionLock } from '../utils/async-lock.js';
 import { HttpError } from '../utils/errors.js';
 import logger from '../utils/logger.js';
+import { DATA_DIR, migrateLegacyDataSync } from '../config/paths.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, '..');
-const DEFAULT_KEYS_FILE = path.join(PROJECT_ROOT, '.mimocode', 'data', 'api_keys.json');
+const DEFAULT_KEYS_FILE = path.join(DATA_DIR, 'api_keys.json');
 const keyStoreLock = new SessionLock();
 
 export const SUPPORTED_PROVIDERS = Object.freeze(/** @type {const} */ (['1min', '1forall']));
@@ -73,6 +71,7 @@ function getEffectiveFilePath() {
   // In test environment without an explicit custom path, keep UI keys in-memory only
   // so unit tests that manipulate process.env are never affected by local disk state.
   if (process.env.NODE_ENV === 'test') return '';
+  migrateLegacyDataSync();
   return DEFAULT_KEYS_FILE;
 }
 
@@ -264,7 +263,7 @@ export function hasApiKey(providerId = '1min') {
 }
 
 /**
- * Saves an API key for a provider (persisted to .mimocode/data/api_keys.json).
+ * Saves an API key for a provider (persisted to .onemin-ai/data/api_keys.json).
  * @param {'1min'|'1forall'} providerId
  * @param {string} rawKey
  */

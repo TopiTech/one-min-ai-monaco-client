@@ -14,6 +14,7 @@ export default defineConfig([
       'node_modules/**',
       '.github/**',
       '.mimocode/**',
+      '.onemin-ai/**',
       '.commandcode/**',
       'docs/**',
       'android/**',

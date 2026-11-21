@@ -108,13 +108,13 @@ describe('Android platform mode (APP_PLATFORM=android)', () => {
       await expect(assertNoSecretsInStagedDir(tmpDir)).resolves.toBeUndefined();
     });
 
-    test('rejects .env, .mimocode, and public/vs in staged directory', async () => {
+    test('rejects .env, .onemin-ai, and public/vs in staged directory', async () => {
       await fs.writeFile(path.join(tmpDir, '.env'), 'ONE_MIN_AI_API_KEY=secret');
-      await fs.mkdir(path.join(tmpDir, '.mimocode', 'data'), { recursive: true });
+      await fs.mkdir(path.join(tmpDir, '.onemin-ai', 'data'), { recursive: true });
       await fs.mkdir(path.join(tmpDir, 'public', 'vs'), { recursive: true });
 
       await expect(assertNoSecretsInStagedDir(tmpDir)).rejects.toThrow(
-        /Forbidden files\/directories found in Android bundle: .*\.env.*\.mimocode.*public\/vs/s,
+        /Forbidden files\/directories found in Android bundle: .*\.env.*\.onemin-ai.*public\/vs/s,
       );
     });
   });

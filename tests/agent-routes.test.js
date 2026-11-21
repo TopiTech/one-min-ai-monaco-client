@@ -119,7 +119,7 @@ describe('Agent Directory and Patch Routes', () => {
     });
 
     test('should block reading protected agent persistence paths in session context', async () => {
-      const protectedFile = path.join(process.cwd(), '.mimocode', 'data', 'agent_sessions.json');
+      const protectedFile = path.join(process.cwd(), '.onemin-ai', 'data', 'agent_sessions.json');
       await fs.mkdir(path.dirname(protectedFile), { recursive: true });
       await fs.writeFile(protectedFile, '{}', 'utf-8');
 

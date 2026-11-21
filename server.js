@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { callOneMin, normalizeAssetResponse } from './utils/api-client.js';
 import { serverConfig, isAndroidPlatform } from './config/server.js';
+import { DATA_DIR, TMP_DIR, migrateLegacyDataSync } from './config/paths.js';
 import logger, { initLogger, sanitizeUrlForLogging } from './utils/logger.js';
 import { validateBufferMimeType, getExtensionFromMimeType } from './utils/mime-guard.js';
 import fs from 'fs';
@@ -270,8 +271,9 @@ async function handleAssetUpload(req, res, next) {
 // sanitizePayload has been extracted to utils/sanitize.js
 
 function getOrCreatePersistentAuthToken() {
-  const tokenFile = path.join(__dirname, '.mimocode', 'data', 'bff_session.token');
+  const tokenFile = path.join(DATA_DIR, 'bff_session.token');
   try {
+    if (process.env.NODE_ENV !== 'test') migrateLegacyDataSync();
     const token = fs.readFileSync(tokenFile, 'utf8').trim();
     // An existing-but-empty (or truncated) token file would otherwise yield ''
     // and crash localBffAuth on every start; regenerate instead.
@@ -638,7 +640,7 @@ function validateEnvironment() {
   if (!process.env.LOCAL_BFF_AUTH_TOKEN) {
     logger.info(
       'LOCAL_BFF_AUTH_TOKEN not set. A random token was generated and persisted to ' +
-        '.mimocode/data/bff_session.token; browser sessions survive restarts. ' +
+        '.onemin-ai/data/bff_session.token; browser sessions survive restarts. ' +
         'Set LOCAL_BFF_AUTH_TOKEN in .env to control the token explicitly.',
     );
   }
@@ -646,7 +648,7 @@ function validateEnvironment() {
 
 if (process.env.NODE_ENV !== 'test') {
   validateEnvironment();
-  const CODE_RUN_TMP_DIR = path.join(__dirname, '.mimocode', 'tmp');
+  const CODE_RUN_TMP_DIR = TMP_DIR;
   fs.mkdirSync(CODE_RUN_TMP_DIR, { recursive: true });
 
   // E-1: Startup cleanup to remove orphaned temporary files from previous runs

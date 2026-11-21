@@ -282,7 +282,7 @@
   "job_failed_generic": "Job failed",
   "job_cancelled": "Job polling cancelled",
   "api_key_management_title": "Provider & API Key Management",
-  "api_key_management_desc": "API keys are stored securely on the local server (.mimocode/data/api_keys.json) and are never sent back to the browser.",
+  "api_key_management_desc": "API keys are stored securely on the local server (.onemin-ai/data/api_keys.json) and are never sent back to the browser.",
   "active_provider_label": "Active Provider",
   "key_verify_on_save": "Verify API key on save",
   "key_status_ui": "Configured (UI)",

@@ -24,6 +24,8 @@ const PROTECTED_PATH_GLOBS = [
   'node_modules/**',
   '.mimocode',
   '.mimocode/**',
+  '.onemin-ai',
+  '.onemin-ai/**',
   '.commandcode',
   '.commandcode/**',
   'package.json',
@@ -370,7 +372,14 @@ const PROTECTED_PATTERNS = PROTECTED_PATH_GLOBS.map(globToRegExp);
 const WRITE_PROTECTED_PATTERNS = WRITE_PROTECTED_PATH_GLOBS.map(globToRegExp);
 
 // Static paths sets for O(1) lookup speedup
-const STATIC_PROTECTED_PREFIXES = new Set(['.git', '.venv', 'node_modules', '.mimocode', '.commandcode']);
+const STATIC_PROTECTED_PREFIXES = new Set([
+  '.git',
+  '.venv',
+  'node_modules',
+  '.mimocode',
+  '.onemin-ai',
+  '.commandcode',
+]);
 
 const STATIC_WRITE_PROTECTED_PREFIXES = new Set([
   ...STATIC_PROTECTED_PREFIXES,

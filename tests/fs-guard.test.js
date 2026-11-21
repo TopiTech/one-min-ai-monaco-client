@@ -140,6 +140,7 @@ describe('fs-guard', () => {
       expect(isProtectedPath(path.join(customRoot, 'npm', '.npmrc'))).toBe(true);
       expect(isProtectedPath(path.join(customRoot, 'id_rsa'))).toBe(true);
       expect(isProtectedPath(path.join(customRoot, '.mimocode', 'data', 'agent_sessions.json'))).toBe(true);
+      expect(isProtectedPath(path.join(customRoot, '.onemin-ai', 'data', 'agent_sessions.json'))).toBe(true);
       expect(isProtectedPath(path.join(customRoot, '.commandcode', 'state.json'))).toBe(true);
       // Should not be protected
       expect(isProtectedPath(path.join(customRoot, 'src', 'app.js'))).toBe(false);
@@ -165,6 +166,9 @@ describe('fs-guard', () => {
       expect(isWriteProtectedPath(path.join(customRoot, 'config', 'credentials.json'))).toBe(true);
       expect(isWriteProtectedPath(path.join(customRoot, 'id_rsa'))).toBe(true);
       expect(isWriteProtectedPath(path.join(customRoot, '.mimocode', 'data', 'pending_commands.json'))).toBe(
+        true,
+      );
+      expect(isWriteProtectedPath(path.join(customRoot, '.onemin-ai', 'data', 'pending_commands.json'))).toBe(
         true,
       );
       expect(isWriteProtectedPath(path.join(customRoot, '.commandcode', 'state.json'))).toBe(true);

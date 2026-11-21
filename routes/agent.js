@@ -16,9 +16,9 @@ import {
   assertNotWriteProtectedPath,
   getAllowedRoots,
   getDefaultRoot,
-  PROJECT_ROOT,
 } from '../utils/fs-guard.js';
 import { serverConfig } from '../config/server.js';
+import { DATA_DIR, migrateLegacyDataSync } from '../config/paths.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { z } from 'zod';
@@ -168,10 +168,9 @@ async function beginSessionCommand(session) {
 
 const router = express.Router();
 
-// Persistent session storage
-// Anchor to the project root (not process.cwd()) so launching from another
+// Persistent session storage. Uses the app-owned `.onemin-ai/` data directory
+// (anchored to the project root, not process.cwd()) so launching from another
 // directory cannot fork persistence into an unprotected location.
-const DATA_DIR = path.join(PROJECT_ROOT, '.mimocode', 'data');
 const SESSIONS_FILE = path.join(DATA_DIR, 'agent_sessions.json');
 // Pending commands also persist to disk so approval tokens survive a
 // server restart (within their 5-minute expiry window).
@@ -300,6 +299,7 @@ let _dirReady = null;
 async function ensureDataDir() {
   if (!shouldPersistSessions) return;
   if (_dirReady) return _dirReady;
+  migrateLegacyDataSync();
   _dirReady = fs.mkdir(DATA_DIR, { recursive: true }).catch((err) => {
     // Reset so a future call can retry (e.g. after a transient fs error).
     _dirReady = null;

@@ -6,6 +6,7 @@ node_modules
 npm-debug.log*
 logs/
 .mimocode/
+.onemin-ai/
 temp_diff.txt
 test-output.log
 test-output.txt

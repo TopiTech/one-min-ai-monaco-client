@@ -7,7 +7,7 @@
 - **ランタイム**: 端末内バックグラウンドスレッドで `libnode.so`（Node.js v18.20.4）を起動し、`127.0.0.1:38517` で Express BFF を待ち受けます。
 - **WebView**: 起動ローダー（`mobile/loader/index.html`）から `/api/health` の応答を確認後、`http://127.0.0.1:38517/` に遷移します。
 - **ネットワーク保護**: `network_security_config.xml` により平文 HTTP は `127.0.0.1` / `localhost` のみに限定され、外部通信は HTTPS のみ許可されます。
-- **データ永続化**: API キーやローカル BFF セッション トークンは端末内のアプリ専用ディレクトリ（`filesDir/nodejs-project/.mimocode/data/`）に保存され、`android:allowBackup="false"` によりクラウド自動バックアップの対象外となります。
+- **データ永続化**: API キーやローカル BFF セッション トークンは端末内のアプリ専用ディレクトリ（`filesDir/nodejs-project/.onemin-ai/data/`）に保存され、`android:allowBackup="false"` によりクラウド自動バックアップの対象外となります。
 
 ## 利用できる機能・制約事項
 
@@ -46,7 +46,7 @@ npm run android:sync
 
 1. `public/vendor/` への DOMPurify / marked コピー
 2. `nodejs-mobile` v18.20.4 Android バイナリ（`arm64-v8a` / `x86_64`）のダウンロードと SHA-256 検証・展開（`android/app/libnode/`）
-3. `android/app/src/main/assets/nodejs-project/` への最小ファイル群コピー（`public/vs`、`.env`、`.mimocode`、`logs`、`tests` は除外）
+3. `android/app/src/main/assets/nodejs-project/` への最小ファイル群コピー（`public/vs`、`.env`、`.onemin-ai`、`logs`、`tests` は除外）
 4. 本番依存パッケージのインストール（`monaco-editor` は容量削減のため削除）と秘密情報非混入チェック
 
 ### 2. Debug APK のビルド

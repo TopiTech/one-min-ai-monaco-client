@@ -336,11 +336,11 @@ describe('FS Routes', () => {
     });
 
     test('read blocks protected agent persistence paths', async () => {
-      const mimocodeFile = path.join(tmpDir, '.mimocode', 'data', 'agent_sessions.json');
-      await fs.mkdir(path.dirname(mimocodeFile), { recursive: true });
-      await fs.writeFile(mimocodeFile, '{}', 'utf-8');
+      const appDataFile = path.join(tmpDir, '.onemin-ai', 'data', 'agent_sessions.json');
+      await fs.mkdir(path.dirname(appDataFile), { recursive: true });
+      await fs.writeFile(appDataFile, '{}', 'utf-8');
 
-      const res = await request(app).get('/api/fs/read').query({ path: mimocodeFile });
+      const res = await request(app).get('/api/fs/read').query({ path: appDataFile });
       expect(res.status).toBe(403);
     });
 

@@ -17,13 +17,13 @@ API キーをフロントエンドに露出せず Express サーバーを BFF �
 ## 主な機能
 
 - マルチプロバイダ対応（トップバーから `1min.ai` / `1forall.ai` を即座に切り替え可能）
-- Settings 画面からの API キー登録・疎通検証・削除（`.mimocode/data/api_keys.json` へ安全に永続化、`.env` キー未設定でも起動可能）
+- Settings 画面からの API キー登録・疎通検証・削除（`.onemin-ai/data/api_keys.json` へ安全に永続化、`.env` キー未設定でも起動可能）
 - 通常チャット（1min.ai 会話履歴 / Web Search / ハイブリッド OpenAI 互換ルーティング、1forall.ai 履歴付き SSE ストリーミング）
 - モデルピッカーのカテゴリ分け＆プロバイダ別動的カタログ更新
 - 画像生成・画像テキストエディタ・Asset アップロード（1min.ai / 1forall.ai 両対応）
 - 動画生成（Text-to-Video & Image-to-Video、非同期ジョブ自動ポーリング、`Range` 対応プロキシによる `<video>` 再生）
 - Monaco Editor 統合・コード生成・インライン補完・インラインチャット
-- 高機能 AI Coding エージェント（XML ツール呼び出し、承認フロー、`.mimocode/` 永続化）
+- 高機能 AI Coding エージェント（XML ツール呼び出し、承認フロー、`.onemin-ai/` 永続化）
 - 堅牢なファイルパス・環境変数セキュリティガード (`fs-guard`, `env-guard`)
 
 ## 必要環境
@@ -140,7 +140,7 @@ package.json
 | -------- | -------------------------------------- | ------------------------------------------------------------------------------------ |
 | `GET`    | `/api/health`                          | サーバー起動状態とプロバイダ別 API キー設定有無を確認。                              |
 | `GET`    | `/api/settings/providers`              | 各プロバイダの設定状況・マスク済みキー・機能フラグ（capabilities）を取得。           |
-| `POST`   | `/api/settings/keys`                   | API キーの疎通検証およびサーバー側保存（`.mimocode/data/api_keys.json`）。            |
+| `POST`   | `/api/settings/keys`                   | API キーの疎通検証およびサーバー側保存（`.onemin-ai/data/api_keys.json`）。          |
 | `DELETE` | `/api/settings/keys/:provider`         | UI から登録した API キーを削除し `.env` 設定または未設定へ戻す。                     |
 | `GET`    | `/api/models?provider=...`             | 指定プロバイダのチャット・コード・画像・動画モデル一覧を返す。                       |
 | `POST`   | `/api/models/refresh`                  | 選択プロバイダのモデルカタログを手動再取得する。                                     |
@@ -181,7 +181,7 @@ package.json
 ### 設定 / API キー管理
 
 1. 左メニューの「設定」または上部ヘッダーのプロバイダ切替バーから `1min.ai` / `1forall.ai` を選択できます。
-2. API キーを UI から入力すると疎通検証後にサーバー側 `.mimocode/data/api_keys.json` に安全に保存されます（フロントエンドへ生キーは返却されません）。
+2. API キーを UI から入力すると疎通検証後にサーバー側 `.onemin-ai/data/api_keys.json` に安全に保存されます（フロントエンドへ生キーは返却されません）。
 
 ### コーディング補助
 
@@ -229,7 +229,7 @@ Monaco Editor、marked、DOMPurify は `npm start`（または `npm run dev`）�
 ## 注意
 
 - `.env` をGitにコミットしないでください。本リポジトリの `.gitignore` は `.env` を除外していますが、**もし `.env` を誤ってコミットしてしまった場合は必ず 1min.ai 側で API キーを再生成（ローテーション）してください**。Git の履歴に残ったキーは `git filter-repo` 等での除去後も危険です。
-- `/api/fs/*` はプロジェクト配下のファイルを読み書きできます。`.env`、`.git`、`node_modules`、サーバー実装ファイル、エージェント永続化データ（`.mimocode/`、`.commandcode/`）などの保護パスは削除・上書き・改名からガードしています。公開サーバーで動かさないでください。
+- `/api/fs/*` はプロジェクト配下のファイルを読み書きできます。`.env`、`.git`、`node_modules`、サーバー実装ファイル、本アプリの永続化データ（`.onemin-ai/`）や他エージェントの設定（`.mimocode/`、`.commandcode/`）などの保護パスは削除・上書き・改名からガードしています。公開サーバーで動かさないでください。
 - Asset uploadはデフォルトで `25MB` までです（`MAX_FILE_SIZE` 環境変数で変更可能）。1min.ai公式のAsset APIドキュメントでは上限例として `50MB` が記載されています。
 - 公式ドキュメントではレート制限のデフォルトは `180 requests per minute` とされています。Asset APIページには `100 requests per minute` / `5 simultaneous uploads` の記載もあるため、実際のプラン制限は1min.ai側で確認してください。
 - 生成画像のURL表示は、1min.ai側の返却形式・権限設定に依存します。画像が直接表示されない場合でも、Raw JSON内の `resultObject` やAsset情報を確認してください。

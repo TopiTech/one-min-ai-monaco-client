@@ -17,13 +17,13 @@ Uses an Express server as a BFF relay so API keys never leak to the frontend, an
 ## Features
 
 - Multi-provider support (instant switcher for `1min.ai` / `1forall.ai` in the top bar)
-- Settings UI API key management (verification + persistent server storage in `.mimocode/data/api_keys.json`; starts cleanly even without keys in `.env`)
+- Settings UI API key management (verification + persistent server storage in `.onemin-ai/data/api_keys.json`; starts cleanly even without keys in `.env`)
 - Chat (1min.ai server conversations, Web Search & hybrid OpenAI-compatible routing; 1forall.ai multi-turn history with SSE streaming)
 - Categorized model picker with per-provider dynamic catalog refresh
 - Image generation, image text editing & asset upload (`1min.ai` / `1forall.ai`)
 - Video generation (`Text-to-Video` & `Image-to-Video` with async job polling & `<video>` playback via `Range`-capable proxy)
 - Monaco Editor integration (code generation, inline autocomplete, inline chat)
-- Advanced AI Coding Agent (XML tool calling, thought process display, approval flow, persistent `.mimocode/` sessions)
+- Advanced AI Coding Agent (XML tool calling, thought process display, approval flow, persistent `.onemin-ai/` sessions)
 - Robust filesystem and environment security guards (`fs-guard`, `env-guard`)
 
 ## Requirements
@@ -180,7 +180,7 @@ See `docs/api-specifications.md` and `docs/api-specifications-1forall.md` for de
 ### Settings & API Keys
 
 1. Switch between `1min.ai` and `1forall.ai` anytime using the top-bar provider selector or the Settings view.
-2. Enter an API key in Settings to verify it against the provider and persist it server-side in `.mimocode/data/api_keys.json` (raw keys are never sent back to the browser).
+2. Enter an API key in Settings to verify it against the provider and persist it server-side in `.onemin-ai/data/api_keys.json` (raw keys are never sent back to the browser).
 
 ### Coding Assistance
 

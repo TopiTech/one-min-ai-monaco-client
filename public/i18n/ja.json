@@ -282,7 +282,7 @@
   "job_failed_generic": "ジョブが失敗しました",
   "job_cancelled": "ジョブの待機をキャンセルしました",
   "api_key_management_title": "プロバイダ ＆ APIキー管理",
-  "api_key_management_desc": "入力したAPIキーはローカルサーバー側の保護領域 (.mimocode/data/api_keys.json) に保存され、ブラウザへ再送信されません。",
+  "api_key_management_desc": "入力したAPIキーはローカルサーバー側の保護領域 (.onemin-ai/data/api_keys.json) に保存され、ブラウザへ再送信されません。",
   "active_provider_label": "アクティブプロバイダ",
   "key_verify_on_save": "保存時にAPIキーを検証",
   "key_status_ui": "設定済み (UI)",

@@ -12,6 +12,7 @@ import cryptoPkg from 'crypto';
 import { validatePath, assertNotProtectedPath, PROJECT_ROOT } from '../../utils/fs-guard.js';
 import { getSafeEnv } from '../../utils/env-guard.js';
 import { serverConfig } from '../../config/server.js';
+import { TMP_DIR } from '../../config/paths.js';
 import { bindRequestAbortSignal, booleanFlagInput, optionalNumberInput } from './utils.js';
 
 const router = express.Router();
@@ -376,7 +377,7 @@ router.post('/run', async (req, res, next) => {
     targetPath = resolvedFilePath;
 
     if (code) {
-      const tmpDir = pathPkg.resolve(PROJECT_ROOT, '.mimocode', 'tmp');
+      const tmpDir = pathPkg.resolve(TMP_DIR);
       await fsPkg.mkdir(tmpDir, { recursive: true });
       // SEC-5: Defense-in-depth. The schema already restricts `extension` to
       // alphanumeric, but sanitize again and assert the resolved tmp path stays

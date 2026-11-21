@@ -31,7 +31,7 @@
 │                            │                             │
 │  ┌─────────────────────────▼──────────────────────────┐  │
 │  │  providers/index.js (Registry & Capabilities)      │  │
-│  │  services/key-store.js (.mimocode/data/api_keys)   │  │
+│  │  services/key-store.js (.onemin-ai/data/api_keys)   │  │
 │  │  utils/http-client.js · utils/sse.js               │  │
 │  └───────────┬──────────────────────────┬─────────────┘  │
 └──────────────┼──────────────────────────┼────────────────┘
@@ -139,12 +139,12 @@ The codebase uses structured comment prefixes to track change types in commit hi
 
 ### 1. BFF (Backend-for-Frontend) Pattern & Multi-Provider Abstraction
 
-The Express server acts as a BFF, storing provider API keys in `.env` and/or `.mimocode/data/api_keys.json` (`0o600`, resolved in `services/key-store.js` with UI override priority). The browser never reads raw API keys back after submission (`GET /api/settings/providers` returns only masked previews). Incoming requests select a provider (`1min` or `1forall`) routed through `providers/index.js`, enforcing per-provider capabilities (`PROVIDER_CAPABILITIES`) and isolating authentication headers (`API-KEY` vs `Authorization: Bearer`).
+The Express server acts as a BFF, storing provider API keys in `.env` and/or `.onemin-ai/data/api_keys.json` (`0o600`, resolved in `services/key-store.js` with UI override priority). The browser never reads raw API keys back after submission (`GET /api/settings/providers` returns only masked previews). Incoming requests select a provider (`1min` or `1forall`) routed through `providers/index.js`, enforcing per-provider capabilities (`PROVIDER_CAPABILITIES`) and isolating authentication headers (`API-KEY` vs `Authorization: Bearer`).
 
 ### 2. Security-First Architecture
 
 - **localBffAuth**: Cookie + header double-submit pattern for CSRF protection
-- **fs-guard & env-guard**: Path traversal protection, protected `.mimocode/` store, and child-process environment scrubbing of active provider secrets
+- **fs-guard & env-guard**: Path traversal protection, protected `.onemin-ai/` store, and child-process environment scrubbing of active provider secrets
 - **asset-proxy**: SSRF host allowlist (`storage.1min.ai`, `voicegen-storage.s3.amazonaws.com`, `tts-clariteia.s3.eu-west-1.amazonaws.com`) with HTTP `Range` passthrough for `<video>` streaming
 - **CSP**: Strict policy with per-request nonces
 - **CORS & Host validation**: Localhost-only access and DNS rebinding protection

@@ -4,7 +4,7 @@
  * 2. Downloads & SHA-256 verifies nodejs-mobile v18.20.4 Android binaries into android/app/libnode.
  * 3. Stages an allowlisted, secret-free Node.js project in android/app/src/main/assets/nodejs-project.
  * 4. Installs production-only dependencies inside the staged directory and removes monaco-editor.
- * 5. Verifies no secrets/logs (.env, .mimocode, logs, *.log) exist in the staged assets.
+ * 5. Verifies no secrets/logs (.env, .onemin-ai, .mimocode, logs, *.log) exist in the staged assets.
  */
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -28,7 +28,7 @@ const UNUSED_ABIS = ['armeabi-v7a'];
 
 const COPY_FILES = ['server.js', 'package.json', 'package-lock.json'];
 const COPY_DIRS = ['config', 'providers', 'routes', 'services', 'utils', 'middlewares'];
-const FORBIDDEN_TOP_ENTRIES = new Set(['.env', '.mimocode', 'logs']);
+const FORBIDDEN_TOP_ENTRIES = new Set(['.env', '.onemin-ai', '.mimocode', 'logs']);
 
 function buildSanitizedChildEnv() {
   const env = { ...process.env };
