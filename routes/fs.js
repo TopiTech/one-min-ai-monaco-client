@@ -372,7 +372,7 @@ router.post('/write', async (req, res, next) => {
       return res.status(400).json({ error: result.error.issues[0]?.message || 'Validation error' });
     const { path: filePath, content } = result.data;
 
-    const resolvedPath = validatePath(String(filePath));
+    const resolvedPath = validatePath(String(filePath), { resolveSymlinks: false });
     assertNotWriteProtectedPath(resolvedPath);
 
     // TOCTOU mitigation
@@ -398,7 +398,7 @@ router.post('/create', async (req, res, next) => {
       return res.status(400).json({ error: result.error.issues[0]?.message || 'Validation error' });
     const { path: targetPath, type, content } = result.data;
 
-    const resolvedPath = validatePath(String(targetPath));
+    const resolvedPath = validatePath(String(targetPath), { resolveSymlinks: false });
     assertNotWriteProtectedPath(resolvedPath);
 
     // TOCTOU mitigation

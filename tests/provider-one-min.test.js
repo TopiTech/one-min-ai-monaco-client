@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { isFailedResponse, extractFailureMessage } from '../utils/api-client.js';
 import { isPendingStatusResponse } from '../utils/http-client.js';
 import { buildOneMinVideoPayload } from '../providers/one-min/video.js';
@@ -6,7 +7,7 @@ import {
   shouldUseOneMinOpenAiCompat,
   supportsSamplingControls,
 } from '../providers/one-min/openai-compat.js';
-import { normalizeOneMinJobStatus } from '../providers/one-min/index.js';
+import { normalizeOneMinJobStatus, oneMinProvider } from '../providers/one-min/index.js';
 
 describe('1min.ai provider helpers and latest spec compliance', () => {
   test('isPendingStatusResponse and isFailedResponse distinguish PROCESSING from FAILURE', () => {
@@ -69,6 +70,48 @@ describe('1min.ai provider helpers and latest spec compliance', () => {
     expect(() => normalizeOneMinJobStatus({ aiRecord: null }, 'missing-id', 'image')).toThrow(
       'Job missing-id not found',
     );
+
+    expect(
+      normalizeOneMinJobStatus({ aiRecord: { uuid: 'j3', status: 'IN_PROGRESS' } }, 'j3', 'video'),
+    ).toMatchObject({ status: 'pending', jobId: 'j3', urls: [] });
+
+    expect(
+      normalizeOneMinJobStatus(
+        { aiRecord: { uuid: 'j4', status: 'CANCELLED', aiRecordDetail: { errorMessage: 'User cancelled' } } },
+        'j4',
+        'video',
+      ),
+    ).toMatchObject({ status: 'failed', jobId: 'j4', error: 'User cancelled', urls: [] });
+
+    expect(
+      normalizeOneMinJobStatus({ aiRecord: { uuid: 'j5' }, error: 'Gateway timeout' }, 'j5', 'image'),
+    ).toMatchObject({ status: 'failed', jobId: 'j5', error: 'Gateway timeout', urls: [] });
+  });
+
+  test('oneMinProvider.getJob forwards AbortSignal to fetch', async () => {
+    const prevFetch = globalThis.fetch;
+    const prevKey = process.env.ONE_MIN_AI_API_KEY;
+    process.env.ONE_MIN_AI_API_KEY = 'test-1min-signal-key';
+    let observedSignal = null;
+    globalThis.fetch = jest.fn(async (_url, opts) => {
+      observedSignal = opts?.signal;
+      return new Response(JSON.stringify({ aiRecord: { uuid: 'sig-1', status: 'IN_PROGRESS' } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    const controller = new AbortController();
+    try {
+      const res = await oneMinProvider.getJob('sig-1', 'video', { signal: controller.signal });
+      expect(res.status).toBe('pending');
+      expect(observedSignal).toBeDefined();
+      expect(observedSignal.aborted).toBe(false);
+    } finally {
+      globalThis.fetch = prevFetch;
+      if (prevKey === undefined) delete process.env.ONE_MIN_AI_API_KEY;
+      else process.env.ONE_MIN_AI_API_KEY = prevKey;
+    }
   });
 
   test('shouldUseOneMinOpenAiCompat routes eligible models and respects webSearch and size limits', () => {

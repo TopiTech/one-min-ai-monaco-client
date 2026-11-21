@@ -15,6 +15,7 @@ import {
   clearAllowedRootsCache,
   getSafeRealPath,
 } from '../utils/fs-guard.js';
+import { atomicWriteTextFile } from '../utils/fs-utils.js';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
@@ -463,6 +464,42 @@ describe('fs-guard', () => {
       expect(() => assertNotWriteProtectedPath(tmpDir)).toThrow(
         'Access denied: Path is protected from write operations: .',
       );
+    });
+
+    test('getSafeRealPath and atomicWriteTextFile block writing through symlinks and onto directories', async () => {
+      process.env.ALLOWED_ROOTS = tmpDir;
+      clearAllowedRootsCache();
+
+      const existingDir = path.join(tmpDir, 'subdir');
+      await fs.mkdir(existingDir, { recursive: true });
+      await expect(atomicWriteTextFile(existingDir, 'cannot overwrite dir')).rejects.toMatchObject({
+        status: 400,
+      });
+
+      const targetDir = path.join(tmpDir, 'real-dir');
+      await fs.mkdir(targetDir, { recursive: true });
+      const junctionLink = path.join(tmpDir, 'dir-link');
+      try {
+        await fs.symlink(targetDir, junctionLink, process.platform === 'win32' ? 'junction' : 'dir');
+      } catch {
+        return;
+      }
+
+      const unresolved = validatePath(junctionLink, { resolveSymlinks: false });
+      await expect(getSafeRealPath(unresolved)).rejects.toMatchObject({ status: 403 });
+      await expect(atomicWriteTextFile(junctionLink, 'blocked')).rejects.toMatchObject({ status: 403 });
+
+      const targetFile = path.join(tmpDir, 'target.txt');
+      await fs.writeFile(targetFile, 'original', 'utf8');
+      const fileLink = path.join(tmpDir, 'file-link.txt');
+      try {
+        await fs.symlink(targetFile, fileLink);
+      } catch {
+        return;
+      }
+      await expect(getSafeRealPath(fileLink)).rejects.toMatchObject({ status: 403 });
+      await expect(atomicWriteTextFile(fileLink, 'overwritten')).rejects.toMatchObject({ status: 403 });
+      expect(await fs.readFile(targetFile, 'utf8')).toBe('original');
     });
   });
 });

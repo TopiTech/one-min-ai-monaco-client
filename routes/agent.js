@@ -27,7 +27,7 @@ import { SessionLock } from '../utils/async-lock.js';
 import { atomicWriteTextFile, readSpecificLines } from '../utils/fs-utils.js';
 import { countTokensMultiple } from '../utils/tokenizer.js';
 import { validateCodeSyntax, extractSymbols, getProjectMetadata } from '../services/code-analyzer.js';
-import { BadRequestError } from '../utils/errors.js';
+import { BadRequestError, ForbiddenError, NotFoundError } from '../utils/errors.js';
 import { optionalNumberInput } from './ai/utils.js';
 
 const sessionCreateSchema = z.object({
@@ -215,8 +215,8 @@ function createDebouncedFileWriter(filePath, serialize, { delayMs = 50, label = 
     isWriting = true;
     writingPromise = (async () => {
       try {
+        if (!shouldPersistSessions()) return;
         await ensureDataDir();
-        if (isTestMode) return;
         try {
           await fs.access(DATA_DIR);
         } catch {
@@ -242,7 +242,7 @@ function createDebouncedFileWriter(filePath, serialize, { delayMs = 50, label = 
   }
 
   function save() {
-    if (isTestMode) return;
+    if (!shouldPersistSessions()) return;
     if (timer) clearTimeout(timer);
     timer = setTimeout(flush, delayMs);
     timer.unref();
@@ -468,9 +468,13 @@ async function cleanupTmpFiles(now) {
     for (const file of files) {
       if (file.endsWith('.tmp')) {
         const filePath = path.join(DATA_DIR, file);
-        const stat = await fs.stat(filePath);
-        if (now - stat.mtimeMs > maxAgeMs) {
-          await fs.unlink(filePath).catch(() => {});
+        try {
+          const stat = await fs.stat(filePath);
+          if (now - stat.mtimeMs > maxAgeMs) {
+            await fs.unlink(filePath).catch(() => {});
+          }
+        } catch {
+          // Skip files deleted or renamed concurrently
         }
       }
     }
@@ -997,20 +1001,23 @@ router.post('/sessions/:id/files', async (req, res, next) => {
       return res.status(400).json({ error: resultBody.error.issues[0]?.message || 'Validation error' });
     const { path: filePath, content } = resultBody.data;
 
-    const resolvedPath = validatePath(resolveAgentPath(filePath, session.cwd));
-    assertNotWriteProtectedPath(resolvedPath);
+    const realPath = await sessionLock.acquire(session.id, async () => {
+      const resolvedPath = validatePath(resolveAgentPath(filePath, session.cwd), { resolveSymlinks: false });
+      assertNotWriteProtectedPath(resolvedPath);
 
-    // TOCTOU mitigation: safely resolve real path and verify write protection
-    const realPath = await getSafeRealPath(resolvedPath);
+      // TOCTOU mitigation: safely resolve real path and verify write protection
+      const targetRealPath = await getSafeRealPath(resolvedPath);
 
-    const dir = path.dirname(realPath);
-    await fs.mkdir(dir, { recursive: true });
-    await atomicWriteTextFile(realPath, content || '');
+      const dir = path.dirname(targetRealPath);
+      await fs.mkdir(dir, { recursive: true });
+      await atomicWriteTextFile(targetRealPath, content || '');
 
-    await addHistoryEntry(session, {
-      type: 'write',
-      path: realPath,
-      timestamp: new Date().toISOString(),
+      await addHistoryEntry(session, {
+        type: 'write',
+        path: targetRealPath,
+        timestamp: new Date().toISOString(),
+      });
+      return targetRealPath;
     });
 
     res.json({
@@ -1616,8 +1623,22 @@ router.post('/sessions/:id/diff', async (req, res, next) => {
 
     const responsePayload = await sessionLock.acquire(session.id, async () => {
       const agentPath = resolveAgentPath(filePath, session.cwd);
-      const resolvedPath = validatePath(agentPath);
+      const resolvedPath = validatePath(agentPath, { resolveSymlinks: false });
       assertNotWriteProtectedPath(resolvedPath);
+      let lstat;
+      try {
+        lstat = await fs.lstat(resolvedPath);
+      } catch (err) {
+        if (err.code === 'ENOENT') {
+          const e = new NotFoundError(`Path not found: ${resolvedPath}`);
+          e.cause = err;
+          throw e;
+        }
+        throw err;
+      }
+      if (lstat.isSymbolicLink()) {
+        throw new ForbiddenError('Access denied: Target path is a symbolic link, writing blocked');
+      }
       const realPath = revalidateRealPath(resolvedPath);
       assertNotWriteProtectedPath(realPath);
 
@@ -1935,7 +1956,7 @@ router.post('/sessions/:id/diff', async (req, res, next) => {
 /**
  * Delete all sessions and pending commands.
  */
-router.delete('/sessions/all', (req, res, next) => {
+router.delete('/sessions/all', async (req, res, next) => {
   try {
     // Never clear sessions that are actively executing commands — doing so
     // would orphan the spawned child processes and confuse the client.
@@ -1957,7 +1978,7 @@ router.delete('/sessions/all', (req, res, next) => {
         pendingCommands.delete(token);
       }
     }
-    saveSessions();
+    await saveSessions();
     savePendingCommands();
     logger.info('All sessions cleared', { cleared: clearedCount, skippedRunning });
     res.json({

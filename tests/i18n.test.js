@@ -332,4 +332,37 @@ describe('i18n utility module', () => {
       expect(enObj[key].trim().length).toBeGreaterThan(0);
     }
   });
+
+  test('every data-i18n attribute in index.html and static t() key in public/js resolves in both catalogues', async () => {
+    const [jaContent, enContent, html, appSrc, jsNames] = await Promise.all([
+      fs.readFile(new URL('../public/i18n/ja.json', import.meta.url), 'utf-8'),
+      fs.readFile(new URL('../public/i18n/en.json', import.meta.url), 'utf-8'),
+      fs.readFile(new URL('../public/index.html', import.meta.url), 'utf-8'),
+      fs.readFile(new URL('../public/app.js', import.meta.url), 'utf-8'),
+      fs.readdir(new URL('../public/js', import.meta.url)),
+    ]);
+    const jaObj = JSON.parse(jaContent);
+    const enObj = JSON.parse(enContent);
+
+    const attrRe = /data-i18n(?:-(?:html|placeholder|title|aria))?="([^"]+)"/g;
+    let m;
+    while ((m = attrRe.exec(html)) !== null) {
+      expect(jaObj[m[1]]).toBeDefined();
+      expect(enObj[m[1]]).toBeDefined();
+    }
+
+    const jsContents = await Promise.all(
+      jsNames
+        .filter((f) => f.endsWith('.js'))
+        .map((f) => fs.readFile(new URL(`../public/js/${f}`, import.meta.url), 'utf-8')),
+    );
+    const tRe = /(?:^|[^\w.])t\(\s*['"]([a-zA-Z0-9_.-]+)['"]/g;
+    for (const src of [appSrc, ...jsContents]) {
+      while ((m = tRe.exec(src)) !== null) {
+        if (m[1] === 'key') continue;
+        expect(jaObj[m[1]]).toBeDefined();
+        expect(enObj[m[1]]).toBeDefined();
+      }
+    }
+  });
 });

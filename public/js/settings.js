@@ -28,6 +28,7 @@ const LOCAL_STORAGE_KEYS = [
   'monaco_client_word_wrap',
   'monaco_client_minimap',
   'monaco_client_tab_size',
+  'monaco_client_lang',
   'diffRenderInline',
 ];
 
@@ -333,7 +334,8 @@ function initClearLocalData() {
   if (!clearBtn) return;
 
   clearBtn.addEventListener('click', async () => {
-    const confirmed = await window.toast?.confirm?.(t('confirm_clear_data'), {
+    const toastApi = window.toast || toast;
+    const confirmed = await toastApi?.confirm?.(t('confirm_clear_data'), {
       confirmText: t('btn_delete_reload'),
       cancelText: t('btn_cancel'),
       type: 'warning',
@@ -345,7 +347,7 @@ function initClearLocalData() {
       await api('/api/agent/sessions/all', { method: 'DELETE' });
     } catch (err) {
       console.error('Failed to delete server sessions', err);
-      window.toast?.error?.(t('failed_clear_data') || 'セッションの削除に失敗しました');
+      toastApi?.error?.(t('failed_clear_data') || 'セッションの削除に失敗しました');
       return;
     }
 

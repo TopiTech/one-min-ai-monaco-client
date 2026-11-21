@@ -152,21 +152,20 @@ function buildOneForAllSubmitResponse(data, selectedModel, kind) {
   };
 }
 
+const ONE_FOR_ALL_FAILED_STATUSES = new Set([
+  'failed',
+  'error',
+  'failure',
+  'cancelled',
+  'canceled',
+  'expired',
+  'timeout',
+  'timed_out',
+  'aborted',
+]);
+
 export function normalizeOneForAllJobStatus(data, codeRef, kind = 'image') {
   const rawStatus = String(data?.status || '').toLowerCase();
-  if (rawStatus === 'failed' || rawStatus === 'error' || rawStatus === 'failure') {
-    const errText = translateErrorMessage(String(data?.error || '1forall.ai job failed'));
-    return {
-      status: 'failed',
-      jobId: codeRef,
-      provider: '1forall',
-      kind,
-      urls: [],
-      error: errText,
-      raw: data,
-    };
-  }
-
   if (rawStatus === 'completed' || rawStatus === 'success') {
     const url = data?.url_file || data?.response || '';
     const urls = url ? [url] : [];
@@ -186,6 +185,21 @@ export function normalizeOneForAllJobStatus(data, codeRef, kind = 'image') {
           resultObject: urls,
         },
       },
+      raw: data,
+    };
+  }
+
+  if (ONE_FOR_ALL_FAILED_STATUSES.has(rawStatus) || Boolean(data?.error)) {
+    const errText = translateErrorMessage(
+      String(data?.error || (rawStatus ? `1forall.ai job ${rawStatus}` : '1forall.ai job failed')),
+    );
+    return {
+      status: 'failed',
+      jobId: codeRef,
+      provider: '1forall',
+      kind,
+      urls: [],
+      error: errText,
       raw: data,
     };
   }
@@ -564,11 +578,17 @@ export const oneForAllProvider = {
     return buildOneForAllSubmitResponse(data, selectedModel, 'video');
   },
 
-  async getJob(codeRef, kind = 'image') {
+  /**
+   * @param {string} codeRef
+   * @param {string} [kind='image']
+   * @param {{ signal?: AbortSignal }} [options]
+   */
+  async getJob(codeRef, kind = 'image', { signal } = {}) {
     const segment = kind === 'video' ? 'video' : kind === 'llm' ? 'llm' : 'image';
     const data = await callOneForAll(`/v1/external/${segment}/check-status/${encodeURIComponent(codeRef)}/`, {
       method: 'GET',
       idempotent: true,
+      signal,
     });
     return normalizeOneForAllJobStatus(data, codeRef, kind);
   },

@@ -807,4 +807,258 @@ describe('agent-core raw command error handling', () => {
       global.document = prevDoc;
     }
   });
+
+  test('agent-core forwards webSearch, numOfSite, and maxWord when enabled and omits search prohibition lines', async () => {
+    const prevStorage = global.localStorage;
+    global.localStorage = { getItem: () => '1min', setItem: () => {}, removeItem: () => {} };
+
+    try {
+      const { createAgentRuntime } = await import('../public/js/agent-core.js');
+      const dom = {
+        explorerPath: { value: '/workspace' },
+        codeModel: { value: 'qwen3-coder-plus' },
+        codeWebSearch: { checked: true, disabled: false },
+        codeNumOfSite: { value: '4' },
+        codeMaxWord: { value: '1500' },
+        startAgentBtn: makeElement('button'),
+        sendAgentFeedbackBtn: makeElement('button'),
+        stopAgentBtn: makeElement('button'),
+        resetAgentBtn: makeElement('button'),
+        agentInstruction: makeElement('textarea'),
+        agentStatus: makeElement('span'),
+      };
+      const sentPayloads = [];
+      const agentState = {
+        agent: { active: true, sessionId: null, history: [], abortController: null },
+        editor: { activeFilePath: null },
+      };
+      const runtime = createAgentRuntime({
+        dom,
+        state: agentState,
+        api: (url, opts = {}) => {
+          if (url === '/api/agent/sessions') return Promise.resolve({ session: { id: 'sess-ws' } });
+          if (url === '/api/agent/config') return Promise.resolve({ maxLoops: 2 });
+          if (url.endsWith('/project-info')) return Promise.resolve({ project: null });
+          if (url.startsWith('/api/fs/list')) return Promise.resolve({ dir: '/workspace', items: [] });
+          if (url === '/api/agent/tokenize') return Promise.resolve({ counts: [], total: 0 });
+          if (url === '/api/agent/chat') {
+            sentPayloads.push(JSON.parse(opts.body));
+            return Promise.resolve({ text: '<finish>done</finish>' });
+          }
+          return Promise.resolve({});
+        },
+        t: (key, vars) => (typeof vars === 'string' ? vars : key),
+        parseXMLTags: () => ({ finish: 'done' }),
+        setAgentStatus: () => {},
+        addAgentTimelineStep: () => {},
+        addAgentApprovalStep: () => {},
+      });
+
+      await runtime.runAgentLoop('search docs');
+      expect(sentPayloads).toHaveLength(1);
+      expect(sentPayloads[0].webSearch).toBe(true);
+      expect(sentPayloads[0].numOfSite).toBe(4);
+      expect(sentPayloads[0].maxWord).toBe(1500);
+      expect(sentPayloads[0].messages[0].content).not.toContain('Strictly do NOT perform web searches');
+
+      // Disabled toggle forces webSearch: false
+      agentState.agent.active = true;
+      dom.codeWebSearch.disabled = true;
+      await runtime.runAgentLoop('search disabled');
+      expect(sentPayloads[1].webSearch).toBe(false);
+      expect(sentPayloads[1].numOfSite).toBeUndefined();
+      expect(sentPayloads[1].messages[0].content).toContain('Strictly do NOT perform web searches');
+    } finally {
+      global.localStorage = prevStorage;
+    }
+  });
+
+  test('editor-tabs handles Windows drive-letter casing and trailing slashes cleanly on rename and delete', async () => {
+    const prevDoc = global.document;
+    const prevWin = global.window;
+    const prevFetch = global.fetch;
+    const prevMonaco = global.monaco;
+
+    const doc = installDom();
+    const models = new Map();
+    global.monaco = {
+      Uri: {
+        from: ({ scheme, path: p }) => ({ toString: () => `${scheme}://${p}` }),
+        file: (p) => ({ toString: () => `file://${p}` }),
+      },
+      editor: {
+        getModel: (uri) => models.get(uri.toString()) || null,
+        createModel: (val, _lang, uri) => {
+          const m = {
+            _v: val,
+            getValue: () => m._v,
+            setValue: (v) => {
+              m._v = v;
+            },
+            dispose: () => models.delete(uri.toString()),
+          };
+          models.set(uri.toString(), m);
+          return m;
+        },
+      },
+    };
+    global.fetch = () => Promise.resolve(jsonResponse({ content: 'hello', writable: true }));
+
+    try {
+      const { createEditorTabManager } = await import('../public/js/editor-tabs.js');
+      const editorState = { activeFilePath: null, openTabs: [], readOnlyFiles: {} };
+      const editorManager = {
+        instance: { updateOptions: () => {}, setModel: () => {} },
+        getOrCreateModel: (fp, c) =>
+          global.monaco.editor.getModel(global.monaco.Uri.file(fp)) ||
+          global.monaco.editor.createModel(c, 'javascript', global.monaco.Uri.file(fp)),
+        markClean: () => {},
+        disposeUnusedModels: () => {},
+        isDirty: () => false,
+      };
+      const dom = {
+        editorTabsBar: doc.createElement('div'),
+        currentFileName: doc.createElement('span'),
+        saveFileBtn: doc.createElement('button'),
+      };
+      const tabs = createEditorTabManager(editorState, editorManager, dom);
+
+      await tabs.openFile('C:\\ws\\dir\\a.js');
+      tabs.handlePathRenamed('c:\\ws\\dir\\', 'C:\\ws\\renamed\\');
+      expect(editorState.openTabs).toEqual(['C:\\ws\\renamed\\a.js']);
+      expect(editorState.activeFilePath).toBe('C:\\ws\\renamed\\a.js');
+
+      tabs.handlePathDeleted('c:\\ws\\renamed\\');
+      expect(editorState.openTabs).toEqual([]);
+    } finally {
+      global.document = prevDoc;
+      global.window = prevWin;
+      global.fetch = prevFetch;
+      global.monaco = prevMonaco;
+    }
+  });
+
+  test('image manager polls on PENDING, QUEUED, and IN_PROGRESS statuses', async () => {
+    const prevFetch = global.fetch;
+    const prevDOMParser = global.DOMParser;
+    global.DOMParser = class {
+      parseFromString() {
+        return { documentElement: { tagName: 'svg', querySelector: () => null } };
+      }
+    };
+    const { toast } = await import('../public/js/toast.js');
+    const infoSpy = jest.spyOn(toast, 'info').mockImplementation(() => {});
+    const successSpy = jest.spyOn(toast, 'success').mockImplementation(() => {});
+    const { createImageManager } = await import('../public/js/image.js');
+
+    let polled = 0;
+    global.fetch = (url) => {
+      if (url.startsWith('/api/jobs/')) {
+        polled++;
+        return Promise.resolve(jsonResponse({ status: 'completed', images: ['done-url'] }));
+      }
+      return Promise.resolve(jsonResponse({ status: 'IN_PROGRESS', aiRecord: { uuid: 'job-in-prog' } }));
+    };
+
+    try {
+      const dom = createImageDom();
+      dom.imagePrompt.value = 'a cat';
+      dom.imageModel.value = 'gpt-image-2';
+      // Run pollJobUntilComplete faster by mocking immediate completion
+      jest.useFakeTimers();
+      const mgr = createImageManager(dom);
+      const genPromise = mgr.generateImage();
+      await jest.advanceTimersByTimeAsync(3500);
+      await genPromise;
+      expect(polled).toBe(1);
+    } finally {
+      jest.useRealTimers();
+      infoSpy.mockRestore();
+      successSpy.mockRestore();
+      global.fetch = prevFetch;
+      global.DOMParser = prevDOMParser;
+    }
+  });
+
+  test('settings clears monaco_client_lang when clearing locally saved data and explorer validates invalid names', async () => {
+    const prevDoc = global.document;
+    const prevWin = global.window;
+    const prevFetch = global.fetch;
+    const prevStorage = global.localStorage;
+    const prevDOMParser = global.DOMParser;
+
+    const doc = installDom();
+    doc.documentElement.classList = { toggle: () => {} };
+    const clearBtn = makeElement('button', 'clearLocalDataBtn');
+    const removedKeys = [];
+    const reloadSpy = jest.fn();
+
+    doc.getElementById = (id) => {
+      if (id === 'clearLocalDataBtn') return clearBtn;
+      if (id === 'csp-dynamic-styles') return styleEl;
+      return null;
+    };
+    global.window = {
+      innerWidth: 1200,
+      innerHeight: 800,
+      dispatchEvent: () => {},
+      location: { reload: reloadSpy },
+    };
+    global.localStorage = {
+      getItem: () => 'ja',
+      setItem: () => {},
+      removeItem: (k) => removedKeys.push(k),
+    };
+    global.DOMParser = class {
+      parseFromString() {
+        return { documentElement: { tagName: 'svg', querySelector: () => null } };
+      }
+    };
+    global.fetch = jest.fn(() => Promise.resolve(jsonResponse({ ok: true, providers: {} })));
+
+    const { toast } = await import('../public/js/toast.js');
+    const confirmSpy = jest.spyOn(toast, 'confirm').mockResolvedValueOnce(true);
+    const promptSpy = jest.spyOn(toast, 'prompt').mockResolvedValueOnce('bad/name');
+    const errorSpy = jest.spyOn(toast, 'error').mockImplementation(() => {});
+
+    try {
+      const { bootstrapSettings } = await import('../public/js/settings.js');
+      bootstrapSettings();
+      clearBtn.dispatchEvent({ type: 'click', preventDefault: () => {}, stopPropagation: () => {} });
+      await new Promise((r) => setTimeout(r, 30));
+
+      expect(removedKeys).toContain('monaco_client_lang');
+      expect(reloadSpy).toHaveBeenCalledTimes(1);
+
+      // Explorer rejects path separator in rename prompt without hitting /api/fs/rename
+      const { createExplorerManager } = await import('../public/js/explorer.js');
+      const fileTree = makeElement('div', 'fileTree');
+      const explorerPath = makeElement('input', 'explorerPath');
+      global.fetch = jest.fn(() =>
+        Promise.resolve(
+          jsonResponse({
+            dir: '/ws',
+            items: [{ name: 'ok.js', isDirectory: false, path: '/ws/ok.js' }],
+          }),
+        ),
+      );
+      const explorer = createExplorerManager({ fileTree, explorerPath }, () => {});
+      await explorer.loadWorkspace();
+      global.fetch.mockClear();
+
+      const node = fileTree.querySelectorAll('.tree-node')[0];
+      await node.onkeydown({ key: 'F2', preventDefault: () => {} });
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalled();
+    } finally {
+      confirmSpy.mockRestore();
+      promptSpy.mockRestore();
+      errorSpy.mockRestore();
+      global.document = prevDoc;
+      global.window = prevWin;
+      global.fetch = prevFetch;
+      global.localStorage = prevStorage;
+      global.DOMParser = prevDOMParser;
+    }
+  });
 });

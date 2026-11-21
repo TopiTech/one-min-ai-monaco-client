@@ -47,7 +47,13 @@ export function normalizeOneMinJobStatus(data, jobId, kind = 'image') {
   const aiRecord = data?.aiRecord || data || {};
   const rawStatus = String(aiRecord?.status ?? data?.status ?? '').toUpperCase();
 
-  if (rawStatus === 'PROCESSING' || rawStatus === 'PENDING' || rawStatus === 'QUEUED') {
+  if (
+    isPendingStatusResponse(data) ||
+    rawStatus === 'PROCESSING' ||
+    rawStatus === 'PENDING' ||
+    rawStatus === 'QUEUED' ||
+    rawStatus === 'IN_PROGRESS'
+  ) {
     return {
       status: 'pending',
       jobId: aiRecord?.uuid || jobId,
@@ -59,7 +65,7 @@ export function normalizeOneMinJobStatus(data, jobId, kind = 'image') {
     };
   }
 
-  if (rawStatus === 'FAILURE' || rawStatus === 'FAILED') {
+  if (isFailedResponse(data) || rawStatus === 'FAILURE' || rawStatus === 'FAILED') {
     return {
       status: 'failed',
       jobId: aiRecord?.uuid || jobId,
@@ -266,10 +272,16 @@ export const oneMinProvider = {
     };
   },
 
-  async getJob(jobId, kind = 'image') {
+  /**
+   * @param {string} jobId
+   * @param {string} [kind='image']
+   * @param {{ signal?: AbortSignal }} [options]
+   */
+  async getJob(jobId, kind = 'image', { signal } = {}) {
     const data = await callOneMin(`/api/results/${encodeURIComponent(jobId)}`, {
       method: 'GET',
       idempotent: true,
+      signal,
     });
     return normalizeOneMinJobStatus(data, jobId, kind);
   },

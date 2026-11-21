@@ -253,23 +253,38 @@ export function createEditorTabManager(editorState, editorManager, dom, callback
     }
   }
 
+  function stripTrailingSeps(targetPath) {
+    if (targetPath === '/' || targetPath === '\\') return targetPath;
+    return targetPath.replace(/[\\/]+$/, '');
+  }
+
+  function normalizePathForCompare(targetPath) {
+    return stripTrailingSeps(String(targetPath || ''))
+      .replace(/\\/g, '/')
+      .replace(/^([A-Z]):/, (_, drive) => `${drive.toLowerCase()}:`);
+  }
+
   function matchesPathOrDescendant(candidatePath, basePath) {
     if (!candidatePath || !basePath) return false;
     if (candidatePath === basePath) return true;
-    const normCand = candidatePath.replace(/\\/g, '/');
-    const normBase = basePath.replace(/\\/g, '/').replace(/\/+$/, '');
+    const normCand = normalizePathForCompare(candidatePath);
+    const normBase = normalizePathForCompare(basePath);
+    if (!normBase) return false;
     return normCand === normBase || normCand.startsWith(normBase + '/');
   }
 
   function computeRenamedPath(candidatePath, oldBase, newBase) {
     if (!candidatePath || !oldBase || !newBase) return null;
     if (candidatePath === oldBase) return newBase;
-    const normCand = candidatePath.replace(/\\/g, '/');
-    const normOld = oldBase.replace(/\\/g, '/').replace(/\/+$/, '');
-    if (normCand === normOld) return newBase;
+    const strippedCand = stripTrailingSeps(candidatePath);
+    const strippedNew = stripTrailingSeps(newBase);
+    const normCand = normalizePathForCompare(strippedCand);
+    const normOld = normalizePathForCompare(oldBase);
+    if (!normOld) return null;
+    if (normCand === normOld) return strippedNew;
     if (!normCand.startsWith(normOld + '/')) return null;
-    const suffix = candidatePath.slice(normOld.length);
-    return newBase.replace(/[\\/]+$/, '') + suffix;
+    const suffix = strippedCand.slice(normOld.length);
+    return strippedNew + suffix;
   }
 
   function handlePathDeleted(deletedPath) {

@@ -1,5 +1,6 @@
 import express from 'express';
 import { getProvider } from '../../providers/index.js';
+import { bindRequestAbortSignal } from './utils.js';
 
 const router = express.Router();
 
@@ -7,6 +8,7 @@ const JOB_ID_PATTERN = /^[A-Za-z0-9_-]{1,80}$/;
 const ALLOWED_KINDS = new Set(['image', 'video', 'llm']);
 
 router.get('/:provider/:kind/:jobId', async (req, res, next) => {
+  const { controller, cleanup } = bindRequestAbortSignal(res);
   try {
     const { provider: providerId, kind, jobId } = req.params;
     if (providerId !== '1min' && providerId !== '1forall') {
@@ -20,10 +22,12 @@ router.get('/:provider/:kind/:jobId', async (req, res, next) => {
     }
 
     const provider = getProvider(providerId);
-    const job = await provider.getJob(jobId, kind);
+    const job = await provider.getJob(jobId, kind, { signal: controller.signal });
     res.json(job);
   } catch (err) {
     next(err);
+  } finally {
+    cleanup();
   }
 });
 

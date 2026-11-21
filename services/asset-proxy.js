@@ -199,12 +199,22 @@ export async function assetProxyHandler(req, res, next) {
       res.setHeader('Content-Disposition', 'inline');
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Cache-Control', 'private, max-age=300, stale-while-revalidate=600');
+      const acceptRanges = response.headers.get('accept-ranges');
+      if (acceptRanges) {
+        res.setHeader('Accept-Ranges', acceptRanges);
+      }
+      if (
+        !response.headers.get('content-encoding') &&
+        contentLength !== null &&
+        Number.isFinite(contentLength) &&
+        contentLength >= 0
+      ) {
+        res.setHeader('Content-Length', String(contentLength));
+      }
       if (response.status === 206) {
         res.status(206);
         const contentRange = response.headers.get('content-range');
         if (contentRange) res.setHeader('Content-Range', contentRange);
-        const acceptRanges = response.headers.get('accept-ranges');
-        if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges);
       }
 
       if (response.body) {

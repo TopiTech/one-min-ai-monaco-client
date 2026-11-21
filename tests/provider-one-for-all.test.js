@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import {
   buildOneForAllTitle,
+  normalizeOneForAllJobStatus,
   oneForAllProvider,
   registerOneForAllModelLimits,
   resolveOneForAllMaxTokens,
@@ -332,5 +333,30 @@ describe('1forall.ai provider adapter and SSE/Asset handling', () => {
     });
     const sent = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
     expect(sent.messages).toEqual([{ role: 'user', content: 'Actual user prompt' }]);
+  });
+
+  test('normalizeOneForAllJobStatus treats cancelled, expired, timeout, aborted, and error payloads as failed', () => {
+    for (const status of ['cancelled', 'canceled', 'expired', 'timeout', 'timed_out', 'aborted']) {
+      expect(normalizeOneForAllJobStatus({ status }, 'ref-1', 'video')).toMatchObject({
+        status: 'failed',
+        jobId: 'ref-1',
+        provider: '1forall',
+        kind: 'video',
+        urls: [],
+      });
+    }
+
+    expect(
+      normalizeOneForAllJobStatus({ status: 'processing', error: 'Worker crashed' }, 'ref-2', 'image'),
+    ).toMatchObject({
+      status: 'failed',
+      error: 'Worker crashed',
+      urls: [],
+    });
+
+    expect(normalizeOneForAllJobStatus({ status: 'queued' }, 'ref-3', 'image')).toMatchObject({
+      status: 'pending',
+      urls: [],
+    });
   });
 });

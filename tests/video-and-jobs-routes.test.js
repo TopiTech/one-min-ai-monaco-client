@@ -283,4 +283,79 @@ describe('Video, Jobs, and Multi-Provider Route Integration Tests', () => {
       expect(sig).toBeInstanceOf(AbortSignal);
     }
   });
+
+  test('GET /api/jobs/:provider/:kind/:jobId forwards AbortSignal to upstream', async () => {
+    let observedSignal = null;
+    globalThis.fetch = jest.fn(async (_url, opts) => {
+      observedSignal = opts?.signal;
+      return new Response(JSON.stringify({ status: 'pending' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    const res = await request(app).get('/api/jobs/1forall/video/job-sig-1');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('pending');
+    expect(observedSignal).toBeInstanceOf(AbortSignal);
+  });
+
+  test('GET /api/assets/proxy forwards Accept-Ranges and uncompressed Content-Length on 200 and 206 responses', async () => {
+    const videoChunk = Buffer.from('0123456789');
+    globalThis.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(videoChunk, {
+          status: 200,
+          headers: {
+            'content-type': 'video/mp4',
+            'accept-ranges': 'bytes',
+            'content-length': String(videoChunk.length),
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(videoChunk.subarray(0, 4), {
+          status: 206,
+          headers: {
+            'content-type': 'video/mp4',
+            'accept-ranges': 'bytes',
+            'content-range': 'bytes 0-3/10',
+            'content-length': '4',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response('compressed-data', {
+          status: 200,
+          headers: {
+            'content-type': 'text/plain',
+            'content-encoding': 'gzip',
+            'content-length': '999',
+          },
+        }),
+      );
+
+    const res200 = await request(app)
+      .get('/api/assets/proxy')
+      .query({ url: 'https://storage.1min.ai/videos/clip.mp4' });
+    expect(res200.status).toBe(200);
+    expect(res200.headers['accept-ranges']).toBe('bytes');
+    expect(res200.headers['content-length']).toBe(String(videoChunk.length));
+
+    const res206 = await request(app)
+      .get('/api/assets/proxy')
+      .set('Range', 'bytes=0-3')
+      .query({ url: 'https://storage.1min.ai/videos/clip.mp4' });
+    expect(res206.status).toBe(206);
+    expect(res206.headers['accept-ranges']).toBe('bytes');
+    expect(res206.headers['content-range']).toBe('bytes 0-3/10');
+    expect(res206.headers['content-length']).toBe('4');
+
+    const resGzip = await request(app)
+      .get('/api/assets/proxy')
+      .query({ url: 'https://storage.1min.ai/videos/note.txt' });
+    expect(resGzip.status).toBe(200);
+    expect(resGzip.headers['content-length']).not.toBe('999');
+  });
 });

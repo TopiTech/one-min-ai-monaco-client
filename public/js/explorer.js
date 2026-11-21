@@ -128,10 +128,17 @@ export function createExplorerManager(dom, openFileCallback, lifecycleCallbacks 
     const label = type === 'directory' ? t('new_folder_prompt') : t('new_file_prompt');
     const defaultName = type === 'directory' ? 'new-folder' : 'new-file.js';
     const name = await toast.prompt(label, defaultName);
-    if (!name || !name.trim()) return;
+    const trimmedName = name ? name.trim() : '';
+    if (!trimmedName) return;
+
+    const cleanName = trimmedName.replace(/^[\\/]+/, '');
+    if (!cleanName || cleanName.split(/[/\\]/).some((seg) => seg === '.' || seg === '..' || seg === '')) {
+      toast.error(t('create_failed', { error: 'Invalid name' }));
+      return;
+    }
 
     const sep = basePath.includes('\\') ? '\\' : '/';
-    const newPath = basePath.replace(/[\\/]+$/, '') + sep + name.trim().replace(/^[\\/]+/, '');
+    const newPath = basePath.replace(/[\\/]+$/, '') + sep + cleanName;
 
     try {
       await api('/api/fs/create', {
@@ -153,13 +160,19 @@ export function createExplorerManager(dom, openFileCallback, lifecycleCallbacks 
 
   // ─── Rename ───────────────────────────────────────────────
   async function renameItem(filePath) {
-    const currentName = filePath.replace(/\\/g, '/').split('/').pop();
+    const normalizedTarget = filePath.replace(/[\\/]+$/, '');
+    const currentName = normalizedTarget.replace(/\\/g, '/').split('/').pop();
     const newName = await toast.prompt(t('rename_prompt'), currentName);
-    if (!newName || !newName.trim() || newName.trim() === currentName) return;
+    const trimmedName = newName ? newName.trim() : '';
+    if (!trimmedName || trimmedName === currentName) return;
+    if (trimmedName === '.' || trimmedName === '..' || /[/\\]/.test(trimmedName)) {
+      toast.error(t('rename_failed', { error: 'Invalid name' }));
+      return;
+    }
 
-    const parts = filePath.replace(/\\/g, '/').split('/');
-    parts[parts.length - 1] = newName.trim();
-    const newPath = parts.join(filePath.includes('\\') ? '\\' : '/');
+    const parts = normalizedTarget.replace(/\\/g, '/').split('/');
+    parts[parts.length - 1] = trimmedName;
+    const newPath = parts.join(normalizedTarget.includes('\\') ? '\\' : '/');
 
     try {
       await api('/api/fs/rename', {

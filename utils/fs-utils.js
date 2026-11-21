@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import readline from 'readline';
 import { createReadStream } from 'fs';
 import { validatePath, assertNotWriteProtectedPath } from './fs-guard.js';
+import { BadRequestError, ForbiddenError } from './errors.js';
 
 /**
  * Atomically writes a text file by writing to a temporary file first and renaming it.
@@ -15,25 +16,31 @@ import { validatePath, assertNotWriteProtectedPath } from './fs-guard.js';
  * @param {{ mode?: number }} [options] Optional write options.
  */
 export async function atomicWriteTextFile(filePath, content, options = {}) {
-  const dir = path.dirname(filePath);
+  const lexicalTarget = validatePath(filePath, { resolveSymlinks: false });
+  assertNotWriteProtectedPath(lexicalTarget);
+
+  const dir = path.dirname(lexicalTarget);
   const resolvedDir = validatePath(dir);
 
-  const tmpPath = path.join(resolvedDir, `.${path.basename(filePath)}.${crypto.randomUUID()}.tmp`);
+  const tmpPath = path.join(resolvedDir, `.${path.basename(lexicalTarget)}.${crypto.randomUUID()}.tmp`);
   try {
     await fs.writeFile(tmpPath, content, { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
 
-    const resolvedTarget = validatePath(filePath);
-    assertNotWriteProtectedPath(resolvedTarget);
-
     let existingStat = null;
     try {
-      existingStat = await fs.lstat(resolvedTarget);
+      existingStat = await fs.lstat(lexicalTarget);
       if (existingStat.isSymbolicLink()) {
-        throw new Error('Target path is a symbolic link, writing blocked');
+        throw new ForbiddenError('Access denied: Target path is a symbolic link, writing blocked');
+      }
+      if (existingStat.isDirectory()) {
+        throw new BadRequestError('Target path is a directory, cannot overwrite with file');
       }
     } catch (err) {
       if (err.code !== 'ENOENT') throw err;
     }
+
+    const resolvedTarget = validatePath(lexicalTarget);
+    assertNotWriteProtectedPath(resolvedTarget);
 
     if (typeof options.mode === 'number') {
       await fs.chmod(tmpPath, options.mode);

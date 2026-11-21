@@ -491,10 +491,24 @@ describe('FS Routes', () => {
           expect((await request(app).post('/api/fs/workspace/select').send({ dir: escapeLink })).status).toBe(
             403,
           );
+          expect(
+            (await request(app).post('/api/fs/write').send({ path: escapeLink, content: 'x' })).status,
+          ).toBe(403);
+          expect(
+            (await request(app).post('/api/fs/create').send({ path: escapeLink, type: 'file', content: 'x' }))
+              .status,
+          ).toBe(403);
         }
       } finally {
         await fs.rm(outsideDir, { recursive: true, force: true }).catch(() => {});
       }
+
+      // Writing file content onto an existing directory yields 400
+      const existingDir = path.join(tmpDir, 'existing-dir');
+      await fs.mkdir(existingDir, { recursive: true });
+      expect(
+        (await request(app).post('/api/fs/write').send({ path: existingDir, content: 'oops' })).status,
+      ).toBe(400);
     });
   });
 });

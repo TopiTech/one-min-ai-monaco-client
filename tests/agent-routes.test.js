@@ -145,6 +145,36 @@ describe('Agent Directory and Patch Routes', () => {
       expect(response.status).toBe(403);
     });
 
+    test('should block writing to symlinks and directories via agent files and diff endpoints', async () => {
+      const subDir = path.join(localTmpDir, 'dir-target');
+      await fs.mkdir(subDir, { recursive: true });
+
+      const dirWriteRes = await request(app)
+        .post(`/api/agent/sessions/${localSessionId}/files`)
+        .send({ path: subDir, content: 'overwrite' });
+      expect(dirWriteRes.status).toBe(400);
+
+      const realTarget = path.join(localTmpDir, 'real-dir');
+      await fs.mkdir(realTarget, { recursive: true });
+      const junction = path.join(localTmpDir, 'link-dir');
+      try {
+        await fs.symlink(realTarget, junction, process.platform === 'win32' ? 'junction' : 'dir');
+      } catch {
+        return;
+      }
+
+      const linkWriteRes = await request(app)
+        .post(`/api/agent/sessions/${localSessionId}/files`)
+        .send({ path: junction, content: 'blocked' });
+      expect(linkWriteRes.status).toBe(403);
+
+      const linkDiffRes = await request(app).post(`/api/agent/sessions/${localSessionId}/diff`).send({
+        path: junction,
+        diff: '<<<<<<< SEARCH\na\n=======\nb\n>>>>>>> REPLACE',
+      });
+      expect(linkDiffRes.status).toBe(403);
+    });
+
     test('should read a specific slice of lines when startLine and/or endLine are provided', async () => {
       const content = 'line1\nline2\nline3\nline4\nline5';
       await fs.writeFile(testFile, content, 'utf-8');

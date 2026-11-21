@@ -12,6 +12,11 @@ import { toast } from './toast.js';
 const MAX_CARDS = 50;
 const JOB_POLL_INTERVAL_MS = 3000;
 const JOB_POLL_MAX_MS = 10 * 60 * 1000;
+const PENDING_JOB_STATUSES = new Set(['PROCESSING', 'PENDING', 'QUEUED', 'IN_PROGRESS']);
+
+function hasPendingJobStatus(data) {
+  return PENDING_JOB_STATUSES.has(String(data?.status || data?.aiRecord?.status || '').toUpperCase());
+}
 
 let _lazyImageObserver = null;
 function getLazyImageObserver() {
@@ -462,9 +467,7 @@ export function createImageManager(dom) {
       if (dom.assetResult) dom.assetResult.textContent = JSON.stringify(data, null, 2);
 
       const jobId = data?.jobId || data?.code_ref || data?.aiRecord?.uuid;
-      const isPending =
-        String(data?.status || data?.aiRecord?.status || '').toUpperCase() === 'PROCESSING' ||
-        (jobId && extractImages(data).length === 0);
+      const isPending = hasPendingJobStatus(data) || (jobId && extractImages(data).length === 0);
 
       if (isPending && jobId) {
         toast.info(t('video_job_started'));
@@ -538,7 +541,7 @@ export function createImageManager(dom) {
 
       const jobId = data?.jobId || data?.code_ref || data?.aiRecord?.uuid;
       const isPending =
-        String(data?.status || data?.aiRecord?.status || '').toUpperCase() === 'PROCESSING' ||
+        hasPendingJobStatus(data) ||
         (jobId && extractImages(data).length === 0 && provider === '1forall' && isEditMode);
 
       if (isPending && jobId) {

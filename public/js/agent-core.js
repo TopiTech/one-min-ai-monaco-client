@@ -7,7 +7,7 @@ const _fileListCache = new Map();
 const FILE_LIST_CACHE_TTL_MS = 30_000;
 const FILE_LIST_CACHE_MAX = 20;
 
-function buildAgentPromptInstructions() {
+function buildAgentPromptInstructions(useWebSearch = false) {
   return [
     'IMPORTANT PROTOCOL INSTRUCTIONS:',
     'You can format your response in EITHER valid XML tags OR a single valid JSON object.',
@@ -27,8 +27,12 @@ function buildAgentPromptInstructions() {
     '- To create, write, or replace files, you MUST use <call_tool name="write_file"><parameter name="path">...</parameter><parameter name="content">...</parameter></call_tool> or <call_tool name="apply_diff">. Do NOT output raw <artifact> tags.',
     '- In XML parameter values, escape XML metacharacters (&, <, >) or wrap in <![CDATA[...]]>.',
     '- In JSON values, escape double quotes and newlines properly.',
-    '- Strictly do NOT perform web searches, URL crawling, browsing, or search grounding under any circumstances.',
-    '- Strictly do NOT output crawling status (e.g. "⚙ Crawling site ...") or web search results, source URLs, citations, or references.',
+    ...(!useWebSearch
+      ? [
+          '- Strictly do NOT perform web searches, URL crawling, browsing, or search grounding under any circumstances.',
+          '- Strictly do NOT output crawling status (e.g. "⚙ Crawling site ...") or web search results, source URLs, citations, or references.',
+        ]
+      : []),
   ].join('\n');
 }
 
@@ -903,6 +907,10 @@ export function createAgentRuntime({
         }
         if (!state.agent.active || loopSignal.aborted) break;
 
+        const useWebSearch = Boolean(dom.codeWebSearch?.checked && !dom.codeWebSearch?.disabled);
+        const numOfSiteVal = dom.codeNumOfSite?.value ? Number.parseInt(dom.codeNumOfSite.value, 10) : NaN;
+        const maxWordVal = dom.codeMaxWord?.value ? Number.parseInt(dom.codeMaxWord.value, 10) : NaN;
+
         const freshSysPrompt = buildSystemPrompt({
           workspaceRoot,
           workspaceFilesText,
@@ -912,7 +920,7 @@ export function createAgentRuntime({
 
         // Prepend fresh system prompt before the conversation history
         const messagesForApi = [
-          { role: 'system', content: buildAgentPromptInstructions() },
+          { role: 'system', content: buildAgentPromptInstructions(useWebSearch) },
           { role: 'system', content: freshSysPrompt },
           ...state.agent.history,
         ];
@@ -930,7 +938,9 @@ export function createAgentRuntime({
                 provider: getActiveProvider(),
                 messages: messagesForApi,
                 model: modelSelected,
-                webSearch: false,
+                webSearch: useWebSearch,
+                ...(useWebSearch && Number.isFinite(numOfSiteVal) ? { numOfSite: numOfSiteVal } : {}),
+                ...(useWebSearch && Number.isFinite(maxWordVal) ? { maxWord: maxWordVal } : {}),
               }),
               timeout: 600000,
             });

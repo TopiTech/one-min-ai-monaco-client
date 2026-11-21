@@ -634,13 +634,17 @@ export function revalidateRealPath(resolvedPath) {
  */
 export async function getSafeRealPath(resolvedPath) {
   let exists = false;
+  let lstatResult = null;
   try {
-    await fs.promises.lstat(resolvedPath);
+    lstatResult = await fs.promises.lstat(resolvedPath);
     exists = true;
   } catch (err) {
     if (err.code !== 'ENOENT') throw err;
   }
   if (exists) {
+    if (lstatResult.isSymbolicLink()) {
+      throw new ForbiddenError('Access denied: Target path is a symbolic link, writing blocked');
+    }
     const realPath = revalidateRealPath(resolvedPath);
     assertNotWriteProtectedPath(realPath);
     return realPath;
