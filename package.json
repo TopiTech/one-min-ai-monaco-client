@@ -70,6 +70,10 @@
     "modulePathIgnorePatterns": [
       "<rootDir>/android/"
     ],
+    "coveragePathIgnorePatterns": [
+      "<rootDir>/public/js/",
+      "<rootDir>/scripts/"
+    ],
     "maxWorkers": 2,
     "coverageThreshold": {
       "global": {
