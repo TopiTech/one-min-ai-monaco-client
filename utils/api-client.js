@@ -1,24 +1,16 @@
 import { serverConfig } from '../config/server.js';
 import logger from './logger.js';
 import { extractTextFromOneMinResponse } from './one-min-response.js';
-import { sanitizeLogText, sanitizePayload } from './sanitize.js';
+import { sanitizeLogText } from './sanitize.js';
 import { HttpError } from './errors.js';
+import { getApiKey } from '../services/key-store.js';
+import { createHttpClient, parseResponsePayloadWithInfo, parseResponsePayload } from './http-client.js';
 
-const API_BASE = serverConfig.apiBaseUrl;
-
-const RETRYABLE_NETWORK_CODES = new Set([
-  'ECONNRESET',
-  'ECONNREFUSED',
-  'ENOTFOUND',
-  'ETIMEDOUT',
-  'EPIPE',
-  'ENETUNREACH',
-  'EAI_AGAIN',
-]);
+export { parseResponsePayloadWithInfo, parseResponsePayload };
 
 function requireApiKey() {
-  const apiKey = process.env.ONE_MIN_AI_API_KEY;
-  if (!apiKey || apiKey.includes('your_1min_ai_api_key_here')) {
+  const apiKey = getApiKey('1min');
+  if (!apiKey) {
     throw new HttpError(
       500,
       'ONE_MIN_AI_API_KEY is not configured. Copy .env.example to .env and set your key.',
@@ -27,123 +19,25 @@ function requireApiKey() {
   return apiKey;
 }
 
-/**
- * Fetch with timeout support.
- *
- * Uses AbortSignal.any (Node 20.3+ / 18.17+) when available, falling back
- * to a manual AbortController that forwards whichever source aborts
- * (caller cancellation vs timeout). After either path we inspect which
- * signal fired to surface the correct error (499 client abort vs 408
- * timeout).
- */
-async function fetchWithTimeout(url, options = {}, timeoutMs = serverConfig.apiTimeout) {
-  const { signal: callerSignal, ...fetchOpts } = options;
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  const combinedSignal =
-    typeof AbortSignal.any === 'function'
-      ? AbortSignal.any(callerSignal ? [callerSignal, timeoutSignal] : [timeoutSignal])
-      : createCombinedSignal(callerSignal, timeoutSignal);
-
-  try {
-    const response = await fetch(url, { ...fetchOpts, signal: combinedSignal });
-    return response;
-  } catch (error) {
-    // Undici/Node uses DOMException "TimeoutError" (code 23) for
-    // AbortSignal.timeout(), while a caller cancellation usually surfaces as
-    // "AbortError". Treating TimeoutError as a generic network error turns a
-    // deterministic request timeout into a misleading 502 (and may trigger
-    // retries), so inspect both the error and the source signal.
-    const isTimeout = timeoutSignal.aborted || error?.name === 'TimeoutError' || error?.code === 23;
-    if (error?.name === 'AbortError' || error?.code === 'ABORT_ERR' || isTimeout) {
-      if (callerSignal && callerSignal.aborted) {
-        const err = new HttpError(499, 'Request aborted by client');
-        err.name = 'AbortError';
-        throw err;
-      }
-      throw new HttpError(408, `Request timeout after ${timeoutMs}ms`);
-    }
-    throw error;
-  }
-}
-
-/**
- * Polyfill for environments without AbortSignal.any (Node 18.0–18.16).
- * Forwards whichever of the two source signals aborts first.
- */
-function createCombinedSignal(a, b) {
-  const controller = new AbortController();
-  const onAbort = () => {
-    if (!controller.signal.aborted) {
-      // Use the original signal's reason when available (Node 18.17+).
-      const reason = (a && a.aborted && a.reason) || (b && b.aborted && b.reason) || undefined;
-      controller.abort(reason);
-    }
-  };
-  if (a) {
-    if (a.aborted) onAbort();
-    else a.addEventListener('abort', onAbort, { once: true });
-  }
-  if (b) {
-    if (b.aborted) onAbort();
-    else b.addEventListener('abort', onAbort, { once: true });
-  }
-  return controller.signal;
-}
-
-/**
- * Safely assigns a property to an error object, handling frozen/sealed
- * errors gracefully. Falls back to Object.defineProperty if direct
- * assignment fails, and silently ignores if the error is sealed/frozen.
- */
-function safeDefineProperty(obj, key, value) {
-  try {
-    obj[key] = value;
-  } catch {
-    try {
-      Object.defineProperty(obj, key, { value, writable: true, configurable: true });
-    } catch {
-      // ignore if sealed/frozen
-    }
-  }
-}
-
-/**
- * Delay helper for retry logic
- */
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-export async function parseResponsePayloadWithInfo(response) {
-  if (!response || typeof response.text !== 'function') {
-    return { payload: {}, jsonParseError: null, rawText: '' };
-  }
-  let text;
-  try {
-    text = await response.text();
-  } catch (err) {
-    return { payload: {}, jsonParseError: err, rawText: '' };
-  }
-  if (!text) return { payload: {}, jsonParseError: null, rawText: '' };
-  try {
-    return { payload: JSON.parse(text), jsonParseError: null, rawText: text };
-  } catch (err) {
-    return { payload: { message: text }, jsonParseError: err, rawText: text };
-  }
-}
-
-export async function parseResponsePayload(response) {
-  const { payload } = await parseResponsePayloadWithInfo(response);
-  return payload;
-}
+const oneMinHttpClient = createHttpClient({
+  providerLabel: '1min.ai',
+  getBaseUrl: () => serverConfig.apiBaseUrl,
+  getAuthHeaders: () => {
+    const apiKey = requireApiKey();
+    // 1min.ai's documentation lists `API-KEY` for /api/* and `Authorization: Bearer`
+    // at the top-level /openai/v1/* endpoints. Sending both keeps compatibility
+    // unless caller overrides either header explicitly.
+    return {
+      'API-KEY': apiKey,
+      Authorization: `Bearer ${apiKey}`,
+    };
+  },
+  quietParseErrorPaths: new Set(['/api/models']),
+});
 
 /**
  * Normalizes a raw Response returned from callOneMin(..., { raw: true })
  * into the usual object shape consumed by the route handlers.
- *
- * - JSON responses are parsed as-is.
- * - Non-JSON responses are exposed via `result` and `text` so existing
- *   extractText()/isFailedResponse() consumers can continue working.
  */
 export async function normalizeOneMinRawResponse(response, options = {}) {
   if (!response || typeof response.text !== 'function') {
@@ -228,8 +122,6 @@ function parseSseResponseText(text, options = {}) {
       return { ...data, status: 'FAILED', error: streamError };
     }
 
-    // SSE-2: The server normalizes upstream `result` to `final-result`.
-    // Treat it identically to `result` — buffer for final extraction.
     if (currentEvent === 'result' || currentEvent === 'final-result') {
       resultPayloads.push(data);
       continue;
@@ -263,175 +155,20 @@ function parseSseResponseText(text, options = {}) {
 }
 
 /**
- * Calls the 1min.ai API with retry logic for 429 errors and timeout support.
+ * Calls the 1min.ai API with retry logic for 429/5xx errors and timeout support.
  * @param {string} pathname
  * @param {object} [options]
  * @param {string} [options.method]
  * @param {any} [options.body]
- * @param {object} [options.headers]
+ * @param {Record<string, string>} [options.headers]
  * @param {boolean} [options.raw]
  * @param {AbortSignal} [options.signal]
  * @param {boolean} [options.idempotent]
  * @param {number} [options.timeout]
- * @param {boolean} [options.suppressJsonParseErrorLog] - Suppress logging of raw upstream
- *   bodies that fail JSON parsing (used for noisy endpoints like /api/models).
+ * @param {boolean} [options.suppressJsonParseErrorLog]
  */
-export async function callOneMin(
-  pathname,
-  {
-    method = 'POST',
-    body,
-    headers = {},
-    raw = false,
-    signal,
-    // M-1: When true, retry is disabled entirely because the upstream side
-    // effect would be duplicated (e.g. POST /api/conversations, POST /api/assets).
-    // Callers that mutate state on the upstream should pass `idempotent: false`.
-    idempotent = ['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase()),
-    timeout,
-    suppressJsonParseErrorLog = pathname === '/api/models',
-  } = {},
-) {
-  const apiKey = requireApiKey();
-  const { apiRetryAttempts: maxRetries, apiRetryDelay: retryDelay } = serverConfig;
-  // Disable retries for non-idempotent calls so we never duplicate the side
-  // effect (conversations, asset uploads) on transient network errors.
-  const effectiveRetries = idempotent ? maxRetries : 0;
-
-  // 1min.ai's documentation lists the `API-KEY` header for some endpoints
-  // and `Authorization: Bearer <key>` at the top-level API intro. To remain
-  // resilient against documentation drift, we send BOTH headers when the
-  // caller does not explicitly provide either. The duplicated value is
-  // identical, so any proxy that inspects both will see the same auth.
-  const baseHeaders = {
-    'API-KEY': apiKey,
-    Authorization: `Bearer ${apiKey}`,
-  };
-  // Caller-provided headers take precedence over our defaults so that
-  // tests and other internal callers can override the auth surface
-  // (e.g. for staging environments or mock servers).
-  for (const k of Object.keys(headers)) {
-    baseHeaders[k] = headers[k];
-  }
-
-  const makeRequest = () =>
-    fetchWithTimeout(
-      `${API_BASE}${pathname}`,
-      {
-        method,
-        headers: baseHeaders,
-        body,
-        signal,
-        isStreaming: raw,
-      },
-      timeout,
-    );
-
-  let lastError = new Error(`All ${effectiveRetries + 1} retry attempts failed for ${pathname}`);
-  let scheduledRetryDelay = null;
-
-  const exponentialRetryDelay = (attempt) =>
-    Math.round(retryDelay * Math.pow(2, attempt) * (1 + (Math.random() * 0.2 - 0.1)));
-
-  const retryAfterDelay = (value) => {
-    if (typeof value !== 'string' || !value.trim()) return null;
-    const trimmed = value.trim();
-
-    // Keep the existing one-second safety cushion for a numeric Retry-After,
-    // but reject partial/negative values instead of parseInt('10ms')=10.
-    if (/^\d+$/.test(trimmed)) {
-      const seconds = Number(trimmed);
-      if (Number.isFinite(seconds)) return Math.min(seconds * 1000 + 1000, 60000);
-    }
-
-    // RFC 7231 also permits an HTTP-date. A past date means retry promptly,
-    // while a far-future date is capped so a single upstream header cannot
-    // suspend the request indefinitely.
-    const retryAt = Date.parse(trimmed);
-    if (Number.isFinite(retryAt)) {
-      return Math.min(Math.max(retryAt - Date.now() + 1000, 1000), 60000);
-    }
-    return null;
-  };
-
-  for (let attempt = 0; attempt <= effectiveRetries; attempt++) {
-    try {
-      if (attempt > 0) {
-        // A transient response or network error schedules the delay below.
-        // Waiting here is the single wait point for each retry; the previous
-        // implementation waited in the error branch and again here, doubling
-        // every backoff interval.
-        const waitTime = scheduledRetryDelay ?? exponentialRetryDelay(attempt - 1);
-        scheduledRetryDelay = null;
-        logger.warn(`Retry ${attempt}/${effectiveRetries} for ${pathname} after ${waitTime}ms`);
-        await delay(waitTime);
-      }
-
-      const response = await makeRequest();
-
-      if ((response.status === 429 || response.status >= 500) && attempt < effectiveRetries) {
-        const retryAfter = response.headers?.get?.('Retry-After');
-        const waitTime = retryAfterDelay(retryAfter) ?? exponentialRetryDelay(attempt);
-        // Consume the response body to release the connection back to the pool.
-        try {
-          await response.body?.cancel?.();
-        } catch {
-          /* ignore */
-        }
-        scheduledRetryDelay = waitTime;
-        logger.warn(
-          `Upstream transient error (${response.status}) on ${pathname}. Retrying attempt ${attempt + 1}/${effectiveRetries} in ${waitTime}ms...`,
-        );
-        continue;
-      }
-
-      if (!response.ok) {
-        const { payload, jsonParseError, rawText } = await parseResponsePayloadWithInfo(response);
-        if (jsonParseError && rawText && !suppressJsonParseErrorLog && pathname !== '/api/models') {
-          logger.error(
-            `Failed to parse JSON error response from upstream API (${pathname}). Raw response: ${sanitizeLogText(rawText)}`,
-            {
-              error: jsonParseError.message,
-              status: response.status,
-            },
-          );
-        }
-        throw new HttpError(
-          response.status,
-          `1min.ai request failed: ${response.status}`,
-          'UPSTREAM_API_ERROR',
-          sanitizePayload(payload),
-        );
-      }
-
-      if (raw) return response;
-      const contentType = response.headers.get('content-type') || '';
-      return contentType.includes('application/json') ? response.json() : { text: await response.text() };
-    } catch (error) {
-      lastError = error;
-      const err = /** @type {any} */ (lastError);
-      if (err && typeof err === 'object' && !err.status && err.name !== 'AbortError') {
-        safeDefineProperty(err, 'status', 502);
-        safeDefineProperty(err, 'code', 'UPSTREAM_NETWORK_ERROR');
-      }
-      // Classify errors by error.code for better retry decisions:
-      // - Retryable network errors: ECONNRESET, ECONNREFUSED, ENOTFOUND, ETIMEDOUT, EPIPE
-      // - Non-retryable client errors: 4xx (except 429)
-      const isRetryableNetworkError = error?.code && RETRYABLE_NETWORK_CODES.has(error.code);
-      const isNonRetryableHttpError =
-        error?.status && error.status >= 400 && error.status < 500 && error.status !== 429;
-      if (isNonRetryableHttpError && !isRetryableNetworkError) throw error;
-      if (attempt < effectiveRetries) {
-        scheduledRetryDelay = exponentialRetryDelay(attempt);
-        const errorMessage = sanitizeLogText(error?.message || String(error));
-        logger.warn(
-          `Request failed for ${pathname}, will retry after ${scheduledRetryDelay}ms: ${errorMessage}`,
-        );
-      }
-    }
-  }
-
-  throw lastError;
+export async function callOneMin(pathname, options = {}) {
+  return oneMinHttpClient(pathname, options);
 }
 
 /**
@@ -441,50 +178,89 @@ export function extractText(data) {
   return extractTextFromOneMinResponse(data);
 }
 
+const PENDING_STATUSES = new Set(['PROCESSING', 'PENDING', 'QUEUED', 'IN_PROGRESS']);
+const SUCCESS_STATUSES = new Set(['SUCCESS', 'COMPLETED']);
+
+/**
+ * Returns true if the response represents an in-flight asynchronous job.
+ * @param {any} data
+ * @returns {boolean}
+ */
+export function isPendingResponse(data) {
+  if (!data || typeof data !== 'object') return false;
+  const status = data?.aiRecord?.status ?? data?.status ?? data?.aiRecordDetail?.status;
+  if (!status) return false;
+  return PENDING_STATUSES.has(String(status).toUpperCase());
+}
+
 /**
  * Returns true if the 1min.ai response indicates a logical failure
- * (e.g. status: "FAILED"). The upstream may still return 200 OK with
- * a payload describing the failure.
+ * (e.g. status: "FAILED" or "FAILURE"). Async pending statuses ("PROCESSING")
+ * are NOT treated as failures.
  */
 export function isFailedResponse(data) {
   if (!data || typeof data !== 'object') return false;
   const status = data?.aiRecord?.status ?? data?.status ?? data?.aiRecordDetail?.status;
-  if (!status) return false;
-  return String(status).toUpperCase() !== 'SUCCESS' && String(status).toUpperCase() !== 'COMPLETED';
+  if (!status) {
+    return Boolean(data?.error);
+  }
+  const upper = String(status).toUpperCase();
+  return !SUCCESS_STATUSES.has(upper) && !PENDING_STATUSES.has(upper);
 }
 
-function translateErrorMessage(msg) {
+export function translateErrorMessage(msg) {
   if (typeof msg !== 'string') return msg;
   const lowerMsg = msg.toLowerCase();
-  if (lowerMsg.includes('invalid_api_key') || lowerMsg.includes('invalid api key')) {
+  if (
+    lowerMsg.includes('invalid_api_key') ||
+    lowerMsg.includes('invalid api key') ||
+    lowerMsg.includes('authentication_error') ||
+    lowerMsg.includes('not a valid api key') ||
+    lowerMsg.includes('revoked')
+  ) {
     return 'APIキーが無効です。設定を確認してください。';
   }
   if (
     lowerMsg.includes('insufficient_quota') ||
     lowerMsg.includes('quota exceeded') ||
+    lowerMsg.includes('not enough credits') ||
     lowerMsg.includes('billing')
   ) {
     return 'クレジット残高またはAPIの利用可能枠が不足しています。';
   }
-  if (lowerMsg.includes('model not found') || lowerMsg.includes('invalid_model')) {
-    return '指定されたモデルが存在しません。';
+  if (lowerMsg.includes('content_policy_violation') || lowerMsg.includes('content filter')) {
+    return 'コンテンツポリシーの制限によりリクエストが拒否されました。';
+  }
+  if (
+    lowerMsg.includes('model not found') ||
+    lowerMsg.includes('invalid_model') ||
+    lowerMsg.includes('model not available')
+  ) {
+    return '指定されたモデルが存在しないか利用できません。';
   }
   return msg;
 }
 
 export function extractFailureMessage(data) {
   if (!data || typeof data !== 'object') return 'Upstream returned a failure status';
+  const resultObject = data?.aiRecord?.aiRecordDetail?.resultObject ?? data?.aiRecordDetail?.resultObject;
+  const resultObjectErrorMsg =
+    resultObject && typeof resultObject === 'object' && !Array.isArray(resultObject)
+      ? resultObject.message || resultObject.error
+      : undefined;
+
   // M-14: Do NOT fall back to data.message — 1min.ai uses that field for
-  // generic lifecycle messages like "Stream completed" even on success,
-  // which would otherwise be surfaced as a misleading failure reason.
+  // generic lifecycle messages like "Stream completed" even on success.
   const rawMsg =
     data?.aiRecord?.aiRecordDetail?.errorMessage ||
     data?.aiRecord?.errorMessage ||
+    resultObjectErrorMsg ||
     data?.error?.message ||
-    data?.error ||
+    (typeof data?.error === 'string' ? data.error : undefined) ||
+    data?.detail ||
     'Upstream returned a failure status';
 
-  return translateErrorMessage(rawMsg);
+  return translateErrorMessage(String(rawMsg));
 }
 
 /**
@@ -508,13 +284,6 @@ export function normalizeOneMinResponse(data) {
 
 /**
  * Normalizes asset API responses into a stable key/url shape.
- *
- * - `key`: the 1min.ai asset key (e.g. "images/2024_...") used in
- *   subsequent API calls such as attachments.images.
- * - `url`: the full HTTPS URL to access the uploaded file. We prefer
- *   `asset.location` (the S3 URL returned by 1min.ai) because the
- *   synthetic `https://asset.1min.ai/...` domain is not guaranteed to
- *   resolve.
  */
 export function normalizeAssetResponse(data) {
   const asset = data?.asset || {};

@@ -364,12 +364,14 @@ AI Feature API (`/api/features`) や Chat API の Non-Streaming 時には、以�
 - **`type`**: 実行された機能タイプ（例: `UNIFY_CHAT_WITH_AI`, `IMAGE_GENERATOR`, `IMAGE_EDITOR`, `CODE_GENERATOR`）。
 - **`status`**: リクエストの処理状態。
   - Chat API: `"SUCCESS"` または `"FAILED"`。
-  - AI Feature API: `"SUCCESS"`, `"COMPLETED"`, `"FAILED"` のいずれか。
+  - AI Feature API: `"PROCESSING"`（非同期実行中）、`"SUCCESS"` / `"COMPLETED"`（成功）、`"FAILED"` / `"FAILURE"`（失敗）のいずれか（`async: true` 使用時でも失敗は HTTP `200` で返却されることがあるため `status` フィールドの判定が必須）。
 - **`conversationId`**: 紐づく会話スレッドの UUID（Chat の場合のみ。作成済みの会話 `uuid` を渡すとここに戻る）。
-- **`aiRecordDetail.resultObject`**: AI によって生成された出力。配列形式が基本。
+- **`aiRecordDetail.resultObject`**: AI によって生成された出力。
   - テキスト系 (`UNIFY_CHAT_WITH_AI`, `CODE_GENERATOR`): 1要素の配列に生成テキストが入る。
-  - 画像系 (`IMAGE_GENERATOR`, `IMAGE_EDITOR`): 生成画像の永続URL または asset key の配列。
-- **`aiRecordDetail.errorMessage`**: `status: FAILED` のときに理由が格納される。
+  - 画像・動画系 (`IMAGE_GENERATOR`, `IMAGE_EDITOR`, `TEXT_TO_VIDEO`, `IMAGE_TO_VIDEO`): 生成された永続 URL または相対ストレージキーの配列。`PROCESSING` 中は空配列 `[]`。
+  - 非同期失敗 (`status: "FAILURE"`): `{ code, name, context, details, message, traceId, errorSeverity }` のエラーオブジェクトになる場合がある。
+- **`temporaryUrl`**: `GET /api/results/:resultId` 等で `status: "SUCCESS"` となったアセットに付与される署名付き・期間限定の直接ダウンロード URL。
+- **`aiRecordDetail.errorMessage`**: `status: FAILED` 時に理由が格納される場合がある。
 - **`credit`**: 本リクエストの処理によって消費されたクレジット数（API バージョンによっては未提供）。
 - **`additionalData`**: 機能固有の追加データ（nullable）。
 
@@ -377,10 +379,87 @@ AI Feature API (`/api/features`) や Chat API の Non-Streaming 時には、以�
 
 1min.ai は仕様変更を繰り返しているため、本アプリは下記優先順位で値を取り出します。
 
-| 用途                | 探索パス（左から優先）                                                                                                                                              |
-| :------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 生成テキスト        | `aiRecord.aiRecordDetail.resultObject` → `aiRecord.aiRecordDetail.result` → `aiRecord.output` → `aiRecord.resultObject` → `result` → `message` → `text` → `content` |
-| 失敗判定の `status` | `aiRecord.status` → `status` → `aiRecordDetail.status`                                                                                                              |
-| 失敗メッセージ      | `aiRecord.aiRecordDetail.errorMessage` → `aiRecord.errorMessage` → `error.message` → `error`                                                                        |
-| 生成画像 URL        | `aiRecord.aiRecordDetail.resultObject` → `aiRecord.output` → `aiRecord.resultObject` → `resultObject` → `result`                                                    |
-| 会話 ID             | `aiRecord.conversationId` → `aiRecord.aiRecordDetail.conversationId` → `conversationId`                                                                             |
+| 用途 | 探索パス（左から優先） |
+| :--- | :--- |
+| 生成テキスト | `aiRecord.aiRecordDetail.resultObject` → `aiRecord.aiRecordDetail.result` → `aiRecord.output` → `aiRecord.resultObject` → `result` → `message` → `text` → `content` |
+| 状態 / 失敗判定 `status` | `aiRecord.status` → `status` → `aiRecordDetail.status` |
+| 失敗メッセージ | `aiRecord.aiRecordDetail.errorMessage` → `aiRecord.aiRecordDetail.resultObject.message` → `aiRecord.errorMessage` → `error.message` → `error` → `data.detail` |
+| 生成画像 / 動画 URL | `aiRecord.temporaryUrl` → `temporaryUrl` → `aiRecord.aiRecordDetail.resultObject` → `aiRecord.output` → `aiRecord.resultObject` → `resultObject` → `result` |
+| 会話 ID | `aiRecord.conversationId` → `aiRecord.aiRecordDetail.conversationId` → `conversationId` |
+
+---
+
+## 7. OpenAI 互換 API (OpenAI-Compatible Chat Completions)
+
+OpenAI SDK や汎用 OpenAI クライアントと互換性のあるエンドポイント群です。本アプリでは `ONE_MIN_AI_OPENAI_COMPAT=auto`（デフォルト）時に対象モデルの Code / Agent リクエストをこの経路へハイブリッド・ルーティングします。
+
+### エンドポイント一覧
+
+| Method | Path | 用途 |
+| :--- | :--- | :--- |
+| `GET` | `/openai/v1/models` | 利用可能な互換モデル一覧の取得 |
+| `GET` | `/openai/v1/models/{id}` | 指定モデルの取得（`/` を含むモデル ID は URL エンコード必須） |
+| `POST` | `/openai/v1/chat/completions` | Chat Completions 生成（`stream: true` 対応、`max_completion_tokens` 推奨） |
+
+### 認証と制約事項
+
+- **認証ヘッダー**: OpenAI 互換エンドポイントのみ **`Authorization: Bearer <ONE_MIN_AI_API_KEY>`** を使用します（`/api/*` は従来通り `API-KEY` ヘッダー）。
+- **対応モデル**: 約 58 モデルの互換カタログ（OpenAI / DeepSeek / Qwen / GLM / Mistral / OpenRouter Kimi・Muse Spark 等）。`GET /openai/v1/models` の応答がその環境における真のソースとなります。すべての互換モデルはテキスト入力専用です。
+- **会話履歴とサイズ上限**: ステートレスであり、`1min` 側の会話履歴や Web Search / 思い出機能は自動挿入されません。1リクエストあたり **最大 200 messages / 合計 100,000 文字以内** に収める必要があります。
+- **サンプリング制御・推論モデル**:
+  - OpenAI reasoning モデル（`o3`, `o3-mini`, `gpt-5*`, `gpt-6*`）・DeepSeek・GLM では **`temperature` / `top_p` 等を送信しない** 必要があります（400 エラー回避）。
+  - OpenAI `gpt-5` / `gpt-6` / `o3` 系では `reasoning_effort` を利用可能です（GLM / Mistral / DeepSeek テキストチャット等には送らない）。
+- **ストリーミング (`stream: true`) 規約**:
+  - `stream_options: { include_usage: true }` 指定時、末尾の usage チャンクは空 `choices: []` で返却されます。
+  - 末尾の `data: [DONE]` を受信せずにストリームが閉じた場合は **不完全（失敗）として扱う** 必要があります。
+- **リトライ・タイムアウト**: 上流で自動リトライは無効化されており、再送すると二重課金となるため **`POST` の自動リトライは無効（`maxRetries: 0` / `idempotent: false`）** にする必要があります。生成タイムアウト上限は 2 分、レート制限は 60 req/min（OpenAI 互換生成系共有）です。
+
+---
+
+## 8. 非同期実行 (`async: true`) ＆ 結果取得 API (`Get Result API`)
+
+`IMAGE_EDITOR`（`gpt-image-2` の `high` 品質など）や動画生成のような長時間ジョブでは、同期リクエストがゲートウェイの 524 タイムアウトに達する場合があります。これを回避するため、非同期実行とポーリングを組み合わせます。
+
+### 非同期開始 (`POST /api/features`)
+
+リクエストボディに `"async": true` を付与します。即座に `aiRecord.status: "PROCESSING"` と `aiRecord.uuid` が返却されます（この `uuid` がそのまま `resultId` となります）。
+
+### 結果ポーリング (`GET /api/results/:resultId`)
+
+- **エンドポイント**: `GET https://api.1min.ai/api/results/:resultId`
+- **認証ヘッダー**: `API-KEY: <YOUR_API_KEY>`
+- **レスポンス例**:
+  - **処理中 (200 OK)**: `aiRecord.status === "PROCESSING"`, `aiRecord.aiRecordDetail.resultObject === []`
+  - **成功 (200 OK)**: `aiRecord.status === "SUCCESS"`, `aiRecordDetail.resultObject` に相対パスまたは URL、`aiRecord.temporaryUrl` にダウンロード可能な署名付き URL が含まれる
+  - **失敗 (200 OK)**: `aiRecord.status === "FAILURE"`, `aiRecordDetail.resultObject` がエラー詳細オブジェクト `{ code, name, message, traceId, ... }` となる（HTTP ステータス自体は `200`）
+  - **存在しない / 別チーム ID (200 OK)**: `{ "aiRecord": null }`
+
+---
+
+## 9. 動画生成 API (`TEXT_TO_VIDEO` / `IMAGE_TO_VIDEO`)
+
+`POST /api/features` に `"async": true` を指定して呼び出し、`uuid` を使って `GET /api/results/:resultId` で完了までポーリングします。
+
+### 共通構造
+
+```json
+{
+  "type": "TEXT_TO_VIDEO",
+  "model": "kling",
+  "conversationId": "TEXT_TO_VIDEO",
+  "async": true,
+  "promptObject": { }
+}
+```
+
+> 画像をアニメーションさせる場合（Image-to-Video）は先に `POST /api/assets` で画像をアップロードしてアセットキーを取得し、`type: "IMAGE_TO_VIDEO"` で送信します。
+
+### モデルファミリー別 `promptObject` マッピング（本アプリ実装準拠）
+
+| モデル系統 (`model` プレフィックス) | 主な `promptObject` フィールド | Image-to-Video 参照画像キー |
+| :--- | :--- | :--- |
+| `kling*` (`kling`) | `prompt`, `duration` (v3 は 3–15 秒、旧版は 5 / 10 秒), `aspect_ratio`, `version` (`1.0` / `2.0` / `3.0-omni` 等), `mode` (`std` / `pro`) または v3-omni の `resolution`, `enable_audio` (v3), `negative_prompt` | `imageUrl` (asset key) |
+| `veo3*` (`veo3`, `veo3-fast`, `veo3.1`, `veo3.1-fast`) | `prompt`, `aspect_ratio`, `veo3_duration` (`"8s"`), `resolution` (`720p` / `1080p`), `generate_audio`, `negativePrompt` | `imageUrl` (asset key) |
+| `sora*` (`sora-2`, `sora-2-pro`) | `prompt`, `seconds` (`4` / `8` / `12`), `size` (`1280x720`, `720x1280`, Pro の HD 時は `1792x1024` / `1024x1792`) | `reference_image_path` (asset key) |
+| `wan*` (`alibaba/wan2.6-i2v-flash`) | `prompt`, `duration` (2–30 秒), `ratio`, `resolution` (`480P` / `720P` / `1080P`), `audio` | `imageUrl` (asset key) |
+| その他汎用モデル | `prompt`, `duration`, `aspect_ratio`, `negative_prompt` | `imageUrl` (asset key) |

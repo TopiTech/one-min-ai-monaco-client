@@ -4,6 +4,7 @@
 
 import { api } from './api.js';
 import { isDarkTheme } from './theme.js';
+import { getActiveProvider } from './settings.js';
 
 const MAX_OPEN_MODELS = 20;
 const AUTOCOMPLETE_CONTEXT_BEFORE_LINES = 80;
@@ -135,17 +136,20 @@ export function createEditorManager(state) {
             _lastAutocompleteKey = requestKey;
             _lastAutocompleteAt = now;
 
+            const activeProvider = getActiveProvider();
             const data = await api('/api/code/autocomplete', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
+                provider: activeProvider,
                 code: autocompleteContext.code,
                 line: autocompleteContext.line,
                 column: autocompleteContext.column,
                 fileName: state.activeFilePath ? state.activeFilePath.split(/[\\/]/).pop() : 'untitled',
                 language: model.getLanguageId(),
                 model: document.getElementById('codeModel')?.value,
-                webSearch: document.getElementById('codeWebSearch')?.checked || false,
+                webSearch:
+                  activeProvider === '1min' && (document.getElementById('codeWebSearch')?.checked || false),
                 numOfSite: document.getElementById('codeNumOfSite')?.value
                   ? parseInt(document.getElementById('codeNumOfSite').value, 10)
                   : undefined,

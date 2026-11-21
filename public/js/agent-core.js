@@ -1,4 +1,5 @@
 import { buildXmlRepairPrompt, stripSearchArtifacts } from './utils.js';
+import { getActiveProvider } from './settings.js';
 
 // Cache for workspace file lists to avoid redundant API calls during agent loops.
 // Capped at 20 entries to prevent unbounded memory growth when switching workspaces.
@@ -754,11 +755,10 @@ export function createAgentRuntime({
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              provider: getActiveProvider(),
               messages: messagesForApi,
               model: modelSelected,
               webSearch: false,
-              // NOTE: the CODE_GENERATOR feature has no conversation concept;
-              // do not send conversationId here (it would be silently dropped).
             }),
             timeout: 600000,
           });

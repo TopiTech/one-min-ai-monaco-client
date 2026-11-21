@@ -8,6 +8,7 @@
 import { api } from './api.js';
 import { t } from './i18n.js';
 import { toast } from './toast.js';
+import { getActiveProvider } from './settings.js';
 
 const WIDGET_ID = 'inline.chat.widget';
 
@@ -108,10 +109,12 @@ export function createInlineChatManager(editorState, editorManager, dom) {
     const language = editorManager.instance.getModel()?.getLanguageId() || 'plaintext';
 
     try {
+      const activeProvider = getActiveProvider();
       const data = await api('/api/code/inline-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          provider: activeProvider,
           prompt,
           code,
           line: position.lineNumber,
@@ -119,7 +122,7 @@ export function createInlineChatManager(editorState, editorManager, dom) {
           fileName,
           language,
           model: dom.codeModel.value,
-          webSearch: dom.codeWebSearch?.checked || false,
+          webSearch: activeProvider === '1min' && (dom.codeWebSearch?.checked || false),
           numOfSite: dom.codeNumOfSite?.value ? parseInt(dom.codeNumOfSite.value, 10) : undefined,
           maxWord: dom.codeMaxWord?.value ? parseInt(dom.codeMaxWord.value, 10) : undefined,
         }),

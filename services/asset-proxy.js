@@ -46,20 +46,35 @@ export function isTrustedAssetUrl(parsed) {
   }
   const apiHost = new URL(serverConfig.apiBaseUrl).hostname;
   const assetHost = new URL(serverConfig.assetBaseUrl).hostname;
-  const allowedHosts = [assetHost, apiHost];
+  const oneForAllHost = new URL(serverConfig.oneForAllApiBaseUrl).hostname;
+  const allowedHosts = [assetHost, apiHost, 'storage.1min.ai', oneForAllHost];
 
-  const escapedBucket = serverConfig.s3Bucket.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-  const isVirtualHostS3 =
-    new RegExp(`^${escapedBucket}\\.s3(?:\\.[\\w-]+)?\\.amazonaws\\.com$`, 'i').test(parsed.hostname) ||
-    new RegExp(`^${escapedBucket}\\.s3-accelerate\\.amazonaws\\.com$`, 'i').test(parsed.hostname) ||
-    new RegExp(`^${escapedBucket}\\.s3\\.dualstack\\.[\\w-]+\\.amazonaws\\.com$`, 'i').test(parsed.hostname);
+  if (allowedHosts.some((h) => parsed.hostname === h)) {
+    return true;
+  }
 
-  const isPathStyleS3 =
-    /^s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname) &&
-    (parsed.pathname === `/${serverConfig.s3Bucket}` ||
-      parsed.pathname.startsWith(`/${serverConfig.s3Bucket}/`));
+  const buckets = [
+    serverConfig.s3Bucket,
+    ...(Array.isArray(serverConfig.oneForAllS3Buckets) ? serverConfig.oneForAllS3Buckets : []),
+  ].filter(Boolean);
 
-  return allowedHosts.some((h) => parsed.hostname === h) || isVirtualHostS3 || isPathStyleS3;
+  for (const bucket of buckets) {
+    const escapedBucket = bucket.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const isVirtualHostS3 =
+      new RegExp(`^${escapedBucket}\\.s3(?:\\.[\\w-]+)?\\.amazonaws\\.com$`, 'i').test(parsed.hostname) ||
+      new RegExp(`^${escapedBucket}\\.s3-accelerate\\.amazonaws\\.com$`, 'i').test(parsed.hostname) ||
+      new RegExp(`^${escapedBucket}\\.s3\\.dualstack\\.[\\w-]+\\.amazonaws\\.com$`, 'i').test(
+        parsed.hostname,
+      );
+    const isPathStyleS3 =
+      /^s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname) &&
+      (parsed.pathname === `/${bucket}` || parsed.pathname.startsWith(`/${bucket}/`));
+    if (isVirtualHostS3 || isPathStyleS3) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export async function assetProxyHandler(req, res, next) {
@@ -97,7 +112,12 @@ export async function assetProxyHandler(req, res, next) {
 
     while (true) {
       try {
-        response = await fetch(currentUrl, { signal: abort.signal, redirect: 'manual' });
+        /** @type {RequestInit} */
+        const fetchOpts = { signal: abort.signal, redirect: 'manual' };
+        if (req.headers?.range) {
+          fetchOpts.headers = { Range: String(req.headers.range) };
+        }
+        response = await fetch(currentUrl, fetchOpts);
       } catch (err) {
         abort.clear();
         if (err?.name === 'AbortError') {
@@ -150,6 +170,13 @@ export async function assetProxyHandler(req, res, next) {
     res.setHeader('Content-Disposition', 'inline');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, max-age=300, stale-while-revalidate=600');
+    if (response.status === 206) {
+      res.status(206);
+      const contentRange = response.headers.get('content-range');
+      if (contentRange) res.setHeader('Content-Range', contentRange);
+      const acceptRanges = response.headers.get('accept-ranges');
+      if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges);
+    }
 
     try {
       if (response.body) {

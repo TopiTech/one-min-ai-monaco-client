@@ -11,37 +11,32 @@
 > - When enabling OS command execution via the agent feature (`ENABLE_COMMAND_EXECUTION=true`), there is a risk that AI may trigger arbitrary code (e.g., installing or executing malicious packages).
 > - By default, run with **`AGENT_AUTO_APPROVE=false`** and always have a human visually verify command safety before execution. If setting `AGENT_AUTO_APPROVE=true`, use in a fully isolated sandbox or Docker container environment.
 
-A browser-based AI client MVP built with Monaco Editor + Custom UI + 1min.ai API.
-Uses an Express server as a BFF relay to avoid exposing the 1min.ai API key to the frontend.
+A browser-based, multi-provider AI client built with Monaco Editor + Custom UI + **1min.ai API** & **1forall.ai API**.  
+Uses an Express server as a BFF relay so API keys never leak to the frontend, and allows switching providers and registering/verifying API keys from either `.env` or the Settings UI.
 
 ## Features
 
-- Chat
-- Model picker with categories (Flagship, Reasoning, Fast & Light)
-- Conversation creation / resumption with `conversationId`
-- Chat extension via Web Search toggle
-- Image generation
-- Image text editor
-- Image upload via Asset API
-- Monaco Editor integration
-- Code explanation / generation / refactoring assistance
-- Inline chat with apply/discard preview
-- Advanced AI Coding Agent (detailed thought process display, approval flow)
-- Project file browsing and saving
-- Server relay architecture that keeps API keys off the frontend
-- Robust file path and security guard (`fs-guard`)
+- Multi-provider support (instant switcher for `1min.ai` / `1forall.ai` in the top bar)
+- Settings UI API key management (verification + persistent server storage in `.mimocode/data/api_keys.json`; starts cleanly even without keys in `.env`)
+- Chat (1min.ai server conversations, Web Search & hybrid OpenAI-compatible routing; 1forall.ai multi-turn history with SSE streaming)
+- Categorized model picker with per-provider dynamic catalog refresh
+- Image generation, image text editing & asset upload (`1min.ai` / `1forall.ai`)
+- Video generation (`Text-to-Video` & `Image-to-Video` with async job polling & `<video>` playback via `Range`-capable proxy)
+- Monaco Editor integration (code generation, inline autocomplete, inline chat)
+- Advanced AI Coding Agent (XML tool calling, thought process display, approval flow, persistent `.mimocode/` sessions)
+- Robust filesystem and environment security guards (`fs-guard`, `env-guard`)
 
 ## Requirements
 
 - Node.js 18+
-- 1min.ai API Key
-- Monaco Editor / marked / DOMPurify are automatically copied to `public/` on `npm start`, so no internet connection is required after `npm install` (except for Google Fonts loading)
+- 1min.ai API Key and/or 1forall.ai API Key (configured in `.env` or the in-app Settings view)
+- Monaco Editor / marked / DOMPurify are automatically copied to `public/` on `npm start`, so no internet connection is required after `npm install` (except for Google Fonts loading and upstream API calls)
 
 ## Quick Start
 
 ```bash
 cp .env.example .env
-# Edit ONE_MIN_AI_API_KEY in .env
+# Optional: set ONE_MIN_AI_API_KEY / ONE_FOR_ALL_API_KEY in .env (or configure via Settings UI)
 npm install
 npm start
 ```
@@ -62,15 +57,30 @@ http://localhost:3000
 
 | Variable                      | Required | Default               | Description                                                             |
 | ----------------------------- | -------- | --------------------- | ----------------------------------------------------------------------- |
-| `ONE_MIN_AI_API_KEY`          | Yes      | None                  | 1min.ai API key. Store only in `.env`.                                  |
-| `PORT`                        | No       | `3000`                | Local Express server listening port.                                    |
-| `NODE_ENV`                    | No       | `development`         | Set to `production` to hide stack traces and enable secure cookies.     |
-| `MAX_FILE_SIZE`               | No       | `26214400`            | Asset upload size limit in bytes (default 25MB).                        |
-| `MAX_JSON_BODY_SIZE`          | No       | `2mb`                 | JSON request body size limit.                                           |
-| `DEFAULT_CHAT_MODEL`          | No       | `gpt-4o-mini`         | Default model for chat and code generation.                             |
-| `DEFAULT_CODE_MODEL`          | No       | `qwen3-coder-plus`    | Default model for code generation.                                      |
-| `DEFAULT_IMAGE_MODEL`         | No       | `gpt-image-2`         | Default model for image generation.                                     |
-| `DEFAULT_IMAGE_EDITOR_MODEL`  | No       | `gpt-image-2`         | Default model for image text editor.                                    |
+| `ONE_MIN_AI_API_KEY`                | No       | None                             | 1min.ai API key. Can also be configured via the Settings UI.                                     |
+| `ONE_FOR_ALL_API_KEY`               | No       | None                             | 1forall.ai API key. Can also be configured via the Settings UI.                                  |
+| `DEFAULT_PROVIDER`                  | No       | `1min`                           | Initial active provider (`1min` / `1forall`).                                                    |
+| `ONE_MIN_AI_OPENAI_COMPAT`          | No       | `auto`                           | Hybrid OpenAI-compat routing mode for 1min Code/Agent (`auto` / `force` / `off`).               |
+| `ONE_FOR_ALL_API_BASE_URL`          | No       | `https://api.1forall.ai`         | 1forall.ai API base URL.                                                                         |
+| `ONE_FOR_ALL_S3_BUCKETS`            | No       | `voicegen-storage,tts-clariteia` | Allowed 1forall S3 buckets for `/api/assets/proxy` (comma-separated).                            |
+| `ONE_FOR_ALL_UPLOAD_FIELD`          | No       | `file`                           | Override multipart file field name sent to 1forall `/v1/external/image/upload/`.                 |
+| `ONE_FOR_ALL_MAX_TOKENS_AUTOCOMPLETE` | No     | `256`                            | Default `max_tokens` for 1forall autocomplete (clamped to `min_max_tokens`).                     |
+| `ONE_FOR_ALL_MAX_TOKENS_INLINE`     | No       | `1024`                           | Default `max_tokens` for 1forall inline chat.                                                    |
+| `ONE_FOR_ALL_MAX_TOKENS_CHAT`       | No       | `4096`                           | Default `max_tokens` for 1forall chat & coding agent.                                            |
+| `PORT`                              | No       | `3000`                           | Local Express server listening port.                                                             |
+| `NODE_ENV`                          | No       | `development`                    | Set to `production` to hide stack traces and enable secure cookies.                              |
+| `MAX_FILE_SIZE`                     | No       | `26214400`                       | Asset upload size limit in bytes (default 25MB).                                                 |
+| `MAX_JSON_BODY_SIZE`                | No       | `2mb`                            | JSON request body size limit.                                                                    |
+| `DEFAULT_CHAT_MODEL`                | No       | `gpt-4o-mini`                    | Default model for 1min chat and code generation.                                                 |
+| `DEFAULT_CODE_MODEL`                | No       | `qwen3-coder-plus`               | Default model for 1min code generation.                                                          |
+| `DEFAULT_IMAGE_MODEL`               | No       | `gpt-image-2`                    | Default model for 1min image generation.                                                         |
+| `DEFAULT_IMAGE_EDITOR_MODEL`        | No       | `gpt-image-2`                    | Default model for 1min image text editor.                                                        |
+| `DEFAULT_VIDEO_MODEL`               | No       | `kling`                          | Default model for 1min video generation.                                                         |
+| `DEFAULT_CHAT_MODEL_1FORALL`        | No       | `gpt-4o-mini`                    | Default model for 1forall chat.                                                                  |
+| `DEFAULT_CODE_MODEL_1FORALL`        | No       | `gpt-4o`                         | Default model for 1forall code/agent.                                                            |
+| `DEFAULT_IMAGE_MODEL_1FORALL`       | No       | `black-forest-labs/flux-schnell` | Default model for 1forall image generation.                                                      |
+| `DEFAULT_IMAGE_EDITOR_MODEL_1FORALL` | No      | `stable-diffusion-image`         | Default model for 1forall image-to-image editing.                                                |
+| `DEFAULT_VIDEO_MODEL_1FORALL`       | No       | `google-veo3`                    | Default model for 1forall video generation.                                                      |
 | `ONE_MIN_AI_API_BASE_URL`     | No       | `https://api.1min.ai` | 1min.ai API base URL. For mock servers or staging.                      |
 | `ASSET_PROXY_TIMEOUT_MS`      | No       | `30000`               | Asset proxy timeout in milliseconds.                                    |
 | `ASSET_PROXY_MAX_SIZE`        | No       | `50mb`                | Max proxied asset response size (supports `b`/`kb`/`mb`/`gb` suffixes). |
@@ -97,37 +107,52 @@ http://localhost:3000
 ## Architecture
 
 ```text
-server.js                  # Express BFF / 1min.ai API proxy / asset upload
-routes/ai.js               # Chat / image generation / code generation API
-routes/fs.js               # Project file browsing / saving API
-utils/api-client.js        # 1min.ai API calls and response extraction
-utils/fs-guard.js          # File path project-limited check and protected path validation
-config/models.js           # Available models for UI selection
-public/index.html          # UI
-public/app.js              # Frontend logic
-public/js/api.js           # Frontend common API functions
-public/js/models.js        # Model picker logic
-public/styles.css          # Styles
-docs/api-specifications.md # 1min.ai API specifications
+server.js                        # Express BFF / asset upload & proxy / static UI
+providers/                       # Multi-provider adapters (1min.ai, 1forall.ai)
+services/key-store.js            # UI + env API key persistence & resolution
+routes/settings.js               # Provider status & API key management endpoints
+routes/ai/                       # Multi-provider chat, code, image, video, job, model APIs
+routes/agent.js                  # AI coding agent session routes
+routes/agent-chat.js             # Multi-provider coding agent turn runner
+routes/fs.js                     # Project file browsing / saving API
+utils/api-client.js              # 1min.ai API calls and response extraction
+utils/http-client.js             # Shared retry/timeout HTTP client factory
+utils/sse.js                     # OpenAI & synthetic SSE normalization
+utils/fs-guard.js                # File path project-limited check and protected path validation
+config/models.js                 # Available models & dynamic catalog fetcher
+public/index.html                # UI
+public/app.js                    # Frontend logic
+public/js/api.js                 # Frontend common API functions
+public/js/settings.js            # Settings panel, API key manager & provider switcher
+public/js/model-picker.js        # Model picker logic
+public/js/image.js               # Image & video generation/editing UI + polling
+docs/api-specifications.md       # 1min.ai API specifications
+docs/api-specifications-1forall.md # 1forall.ai API specifications
 package.json
 ```
 
-For development procedures and API mapping details, add to the `docs/` directory as needed.
+See `docs/api-specifications.md` and `docs/api-specifications-1forall.md` for detailed upstream API specs and mappings.
 
 ## Local API
 
-| Method | Path                      | Description                                              |
-| ------ | ------------------------- | -------------------------------------------------------- |
-| `GET`  | `/api/health`             | Check server status and API key configuration.           |
-| `GET`  | `/api/models`             | Return list of chat, code, and image models.             |
-| `POST` | `/api/chat`               | Relay to 1min.ai Chat with AI API.                       |
-| `POST` | `/api/conversations`      | Create a conversation for chat history.                  |
-| `POST` | `/api/images/generate`    | Relay to 1min.ai AI Feature API `IMAGE_GENERATOR`.       |
-| `POST` | `/api/images/text-editor` | Relay to 1min.ai AI Feature API `IMAGE_EDITOR`.          |
-| `POST` | `/api/assets/upload`      | Upload locally received images to 1min.ai Asset API.     |
-| `POST` | `/api/code/generate`      | Generate/modify code for the entire selected code.       |
-| `POST` | `/api/code/autocomplete`  | Generate inline completion candidates for Monaco Editor. |
-| `POST` | `/api/code/inline-chat`   | Generate inline edits at cursor position.                |
+| Method   | Path                                 | Description                                                                   |
+| -------- | ------------------------------------ | ----------------------------------------------------------------------------- |
+| `GET`    | `/api/health`                        | Check server status and per-provider API key configuration.                   |
+| `GET`    | `/api/settings/providers`            | Return provider statuses, masked key previews, and capabilities.              |
+| `POST`   | `/api/settings/keys`                 | Verify and persist a provider API key on the server.                          |
+| `DELETE` | `/api/settings/keys/:provider`       | Delete a UI-stored API key for a provider.                                    |
+| `GET`    | `/api/models?provider=...`           | Return chat, code, image, and video models for the selected provider.         |
+| `POST`   | `/api/models/refresh`                | Refresh upstream model catalogs for the selected or all providers.            |
+| `POST`   | `/api/chat`                          | Relay chat requests (SSE / JSON) to the active provider.                      |
+| `POST`   | `/api/conversations`                 | Create a conversation thread (1min.ai).                                       |
+| `POST`   | `/api/images/generate`               | Relay image generation requests to the active provider.                       |
+| `POST`   | `/api/images/text-editor`            | Relay image editing (`IMAGE_EDITOR` / `image-to-image`) requests.             |
+| `POST`   | `/api/videos/generate`               | Start a Text-to-Video or Image-to-Video job and return its `jobId`.           |
+| `GET`    | `/api/jobs/:provider/:kind/:jobId`   | Poll async generation status (`image` / `video` / `llm`) and retrieve URLs.   |
+| `POST`   | `/api/assets/upload`                 | Upload local images to the active provider asset endpoint.                    |
+| `POST`   | `/api/code/generate`                 | Generate/modify code for the entire selected code.                            |
+| `POST`   | `/api/code/autocomplete`             | Generate inline completion candidates for Monaco Editor.                      |
+| `POST`   | `/api/code/inline-chat`              | Generate inline edits at cursor position.                                     |
 | `GET`  | `/api/fs/config`          | Return project root.                                     |
 | `GET`  | `/api/fs/list?dir=...`    | Return file listing for specified directory.             |
 | `GET`  | `/api/fs/read?path=...`   | Read specified file.                                     |
@@ -145,12 +170,17 @@ For development procedures and API mapping details, add to the `docs/` directory
 3. Enter a message and send.
 4. To use conversation history, click "Create New Conversation" and enter the returned ID in `conversationId`.
 
-### Image Generation / Text Edit
+### Image Generation / Editing / Video Generation
 
-1. Open "Image Gen / Text Edit" from the left menu.
+1. Open "Image Gen / Text Edit" from the left menu (switch between Image Gen, Image Edit, and Video Gen tabs).
 2. For image generation, enter prompt, model, aspect ratio, and number of outputs.
-3. For image text editor, upload a source image and enter the returned asset key or an existing image URL.
-4. Specify edit prompt, model, output size, quality, number of outputs, etc. and click "Edit Image".
+3. For image editing or Image-to-Video, upload a source image and enter the returned key/URL.
+4. For video generation (`Text-to-Video` / `Image-to-Video`), specify model, duration, resolution, and audio options; once async polling completes, preview the clip in the `<video>` player.
+
+### Settings & API Keys
+
+1. Switch between `1min.ai` and `1forall.ai` anytime using the top-bar provider selector or the Settings view.
+2. Enter an API key in Settings to verify it against the provider and persist it server-side in `.mimocode/data/api_keys.json` (raw keys are never sent back to the browser).
 
 ### Coding Assistance
 
@@ -168,27 +198,31 @@ Monaco Editor, marked, and DOMPurify are automatically copied from `node_modules
 - `public/vendor/marked.min.js` — marked parser (`.gitignore` tracked)
 - `public/vendor/purify.min.js` — DOMPurify sanitizer (`.gitignore` tracked)
 
-## 1min.ai API Integration
+## External Provider API Integration
 
-This app uses the following 1min.ai APIs:
+### 1min.ai
 
 - Base URL: `https://api.1min.ai`
-- Authentication: Uses the `API-KEY` header (per the official documentation).
+- Authentication: `API-KEY` header for native `/api/*` endpoints; `Authorization: Bearer` for `/openai/v1/*` compatible endpoints.
 - Chat with AI API: `POST /api/chat-with-ai`
-- AI Feature API: `POST /api/features`
-- Asset API: `POST /api/assets`
-- Conversation API: `POST /api/conversations`
+- OpenAI-Compatible API: `GET /openai/v1/models`, `POST /openai/v1/chat/completions`
+- AI Feature / Async Result API: `POST /api/features` (`async: true`), `GET /api/results/:resultId`
+- Asset / Conversation API: `POST /api/assets`, `POST /api/conversations`
+
+### 1forall.ai
+
+- Base URL: `https://api.1forall.ai`
+- Authentication: `Authorization: Bearer` (across OpenAI-compatible and native external routes).
+- OpenAI-Compatible API: `GET /v1/models`, `POST /v1/chat/completions`, `POST /v1/images/generations`
+- Native External Image / Video / LLM API: `/v1/external/image/*`, `/v1/external/video/*`, `/v1/external/llm/*`
 
 References:
 
 - [1min.AI API Reference](https://docs.1min.ai/docs/api/intro)
-- [Chat with AI API](https://docs.1min.ai/docs/api/chat-with-ai-api)
-- [AI Feature API](https://docs.1min.ai/docs/api/ai-feature-api)
-- [CODE_GENERATOR](https://docs.1min.ai/docs/api/ai-for-code/code-generator/code-generator-tag)
-- [Asset API](https://docs.1min.ai/docs/api/asset-api)
-- [Image Text Editor API](https://docs.1min.ai/docs/api/ai-for-image/image-text-editor/image-text-editor-tag)
-- [Rate Limits](https://docs.1min.ai/docs/api/specifications/rate-limits)
-  (Note: Some official documentation has errors. The CODE_GENERATOR endpoint documentation mentions conversationID, but the actual API does not include it.)
+- [1min.AI OpenAI-compatible API](https://docs.1min.ai/docs/api/openai-compatible)
+- [1min.AI Get Result API](https://docs.1min.ai/docs/api/get-result)
+- [1forall.ai Swagger UI (OpenAPI)](https://api.1forall.ai/v1/external/swagger-ui/)
+- [Specifications: docs/api-specifications.md](docs/api-specifications.md) / [docs/api-specifications-1forall.md](docs/api-specifications-1forall.md)
 
 ## Notes
 
@@ -207,7 +241,7 @@ References:
 - Coding agent command execution is only enabled when `ENABLE_COMMAND_EXECUTION=true`. In production, require approval flows and log auditing.
 - (Q-2) Agent file search automatically uses `ripgrep` (`rg`) if installed on the system. Falls back to `grep` / `findstr` (depending on environment) if `rg` is unavailable.
 - The Apply_diff preview may not display correctly in some cases.
-- The 1min AI API does not currently support model fetching. A generic model fetching logic is already implemented for when support is added in the future.
+- Dynamic model catalog fetching supports both OpenAI-compatible and 1forall native model endpoints, falling back to `config/models.json` when unconfigured or offline.
 
 ## License
 

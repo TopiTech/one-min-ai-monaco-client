@@ -167,13 +167,55 @@ export const serverConfig = {
   ),
   apiRetryDelay: intInRange(process.env.API_RETRY_DELAY, 0, MAX_API_TIMEOUT, FALLBACK.apiRetryDelay),
 
-  // Default models
+  // Default models (1min.ai)
   defaultChatModel: parseString(process.env.DEFAULT_CHAT_MODEL, 'gpt-4o-mini', (s) => s.length <= 100),
   defaultCodeModel: parseString(process.env.DEFAULT_CODE_MODEL, 'qwen3-coder-plus', (s) => s.length <= 100),
   defaultImageModel: parseString(process.env.DEFAULT_IMAGE_MODEL, 'gpt-image-2', (s) => s.length <= 100),
   defaultImageEditorModel: parseString(
     process.env.DEFAULT_IMAGE_EDITOR_MODEL,
     'gpt-image-2',
+    (s) => s.length <= 100,
+  ),
+  defaultVideoModel: parseString(process.env.DEFAULT_VIDEO_MODEL, 'kling', (s) => s.length <= 100),
+
+  // Multi-provider settings
+  defaultProvider: parseString(process.env.DEFAULT_PROVIDER, '1min', (s) => ['1min', '1forall'].includes(s)),
+  oneMinOpenAiCompat: parseString(process.env.ONE_MIN_AI_OPENAI_COMPAT, 'auto', (s) =>
+    ['auto', 'force', 'off'].includes(s),
+  ),
+
+  // 1forall.ai settings
+  oneForAllApiBaseUrl: parseApiUrl(process.env.ONE_FOR_ALL_API_BASE_URL, 'https://api.1forall.ai'),
+  oneForAllS3Buckets: (process.env.ONE_FOR_ALL_S3_BUCKETS || 'voicegen-storage,tts-clariteia')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s && s.length <= 100 && /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(s)),
+  oneForAllMaxTokensAutocomplete: intInRange(process.env.ONE_FOR_ALL_MAX_TOKENS_AUTOCOMPLETE, 32, 32768, 256),
+  oneForAllMaxTokensInline: intInRange(process.env.ONE_FOR_ALL_MAX_TOKENS_INLINE, 64, 32768, 1024),
+  oneForAllMaxTokensChat: intInRange(process.env.ONE_FOR_ALL_MAX_TOKENS_CHAT, 128, 32768, 4096),
+  defaultChatModel1ForAll: parseString(
+    process.env.DEFAULT_CHAT_MODEL_1FORALL,
+    'gpt-4o-mini',
+    (s) => s.length <= 100,
+  ),
+  defaultCodeModel1ForAll: parseString(
+    process.env.DEFAULT_CODE_MODEL_1FORALL,
+    'gpt-4o',
+    (s) => s.length <= 100,
+  ),
+  defaultImageModel1ForAll: parseString(
+    process.env.DEFAULT_IMAGE_MODEL_1FORALL,
+    'black-forest-labs/flux-schnell',
+    (s) => s.length <= 100,
+  ),
+  defaultImageEditorModel1ForAll: parseString(
+    process.env.DEFAULT_IMAGE_EDITOR_MODEL_1FORALL,
+    'stable-diffusion-image',
+    (s) => s.length <= 100,
+  ),
+  defaultVideoModel1ForAll: parseString(
+    process.env.DEFAULT_VIDEO_MODEL_1FORALL,
+    'google-veo3',
     (s) => s.length <= 100,
   ),
 

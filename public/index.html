@@ -280,7 +280,23 @@
             <strong id="viewTitle" data-i18n="nav_chat">通常チャット</strong>
             <span id="status" class="status" aria-live="polite" data-i18n="status_ready">準備完了</span>
           </div>
-          <button type="button" id="healthBtn" class="ghost" data-i18n="health_check">ヘルスチェック</button>
+          <div class="topbar-actions">
+            <div class="provider-switcher" title="AI Provider">
+              <span id="providerConfigDot" class="provider-dot" aria-hidden="true"></span>
+              <select
+                id="activeProviderSelect"
+                class="provider-select"
+                aria-label="AI プロバイダ"
+                data-i18n-aria="provider_select_label"
+              >
+                <option value="1min">1min.ai</option>
+                <option value="1forall">1forall.ai</option>
+              </select>
+            </div>
+            <button type="button" id="healthBtn" class="ghost" data-i18n="health_check">
+              ヘルスチェック
+            </button>
+          </div>
         </header>
 
         <section id="chat" class="view active">
@@ -499,7 +515,33 @@
         <section id="image" class="view">
           <div class="panel two">
             <div class="card grow">
-              <h2 data-i18n="image_gen_title">画像生成 / 編集</h2>
+              <div class="media-header-row">
+                <h2 data-i18n="image_gen_title">画像生成 / 編集</h2>
+                <div id="mediaModeTabs" class="media-mode-tabs" role="tablist">
+                  <button
+                    type="button"
+                    id="mediaTabImage"
+                    class="picker-tab active"
+                    data-media-mode="image"
+                    role="tab"
+                    aria-selected="true"
+                    data-i18n="media_tab_image"
+                  >
+                    画像生成 / 編集
+                  </button>
+                  <button
+                    type="button"
+                    id="mediaTabVideo"
+                    class="picker-tab"
+                    data-media-mode="video"
+                    role="tab"
+                    aria-selected="false"
+                    data-i18n="media_tab_video"
+                  >
+                    動画生成 (Video)
+                  </button>
+                </div>
+              </div>
 
               <textarea
                 id="imagePrompt"
@@ -512,7 +554,7 @@
 
               <div class="image-input-source">
                 <h3 class="sub-h3" data-i18n="source_image">
-                  元画像 (画像編集を行う場合のみ指定してください)
+                  元画像 (画像編集・Image-to-Videoを行う場合のみ指定)
                 </h3>
                 <div class="row u-mb-10">
                   <input
@@ -549,7 +591,7 @@
               </div>
 
               <div class="row u-mb-16">
-                <div class="u-flex-2">
+                <div id="imageModelPickerWrap" class="u-flex-2">
                   <!-- Model Picker for Image Generation / Edit -->
                   <button
                     id="imageModelBtn"
@@ -588,10 +630,47 @@
                   </button>
                   <input id="imageModel" value="gpt-image-2" type="hidden" />
                 </div>
+                <div id="videoModelPickerWrap" class="u-flex-2 u-hidden">
+                  <button
+                    id="videoModelBtn"
+                    class="model-picker-btn"
+                    data-model-type="video"
+                    data-target-input="videoModel"
+                    aria-haspopup="listbox"
+                    aria-controls="modelPickerDropdown"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                      <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                    </svg>
+                    <span id="videoModelLabel">Kling AI (Text & Image to Video)</span>
+                    <svg
+                      class="chevron"
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </button>
+                  <input id="videoModel" value="kling" type="hidden" />
+                </div>
               </div>
 
               <!-- Parameters section -->
-              <div class="image-parameters-box">
+              <div id="imageParamsSection" class="image-parameters-box">
                 <!-- Regular Text-to-Image settings -->
                 <div id="textToImageParams" class="param-group">
                   <h4 class="sub-h4" data-i18n="text_to_image_settings">テキストから生成用の設定</h4>
@@ -677,6 +756,66 @@
                         data-i18n-placeholder="compression_placeholder"
                         class="u-w-full"
                       />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div id="videoParams" class="image-parameters-box u-hidden">
+                <div class="param-group">
+                  <h4 class="sub-h4" data-i18n="video_settings_title">動画生成設定</h4>
+                  <div class="row u-mb-10">
+                    <div class="u-flex-1">
+                      <label for="videoAspectRatio" class="label-muted-sm" data-i18n="aspect_ratio"
+                        >アスペクト比</label
+                      >
+                      <select id="videoAspectRatio" class="u-w-full">
+                        <option value="16:9" selected>16:9</option>
+                        <option value="9:16">9:16</option>
+                        <option value="1:1">1:1</option>
+                      </select>
+                    </div>
+                    <div class="u-flex-1">
+                      <label for="videoDuration" class="label-muted-sm" data-i18n="video_duration"
+                        >再生時間 (秒)</label
+                      >
+                      <select id="videoDuration" class="u-w-full">
+                        <option value="5" selected>5s</option>
+                        <option value="8">8s</option>
+                        <option value="10">10s</option>
+                        <option value="12">12s</option>
+                      </select>
+                    </div>
+                    <div class="u-flex-1">
+                      <label for="videoResolution" class="label-muted-sm" data-i18n="video_resolution"
+                        >解像度</label
+                      >
+                      <select id="videoResolution" class="u-w-full">
+                        <option value="720p" selected>720p</option>
+                        <option value="1080p">1080p</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="row u-mb-10">
+                    <div class="u-flex-2">
+                      <label
+                        for="videoNegativePrompt"
+                        class="label-muted-sm"
+                        data-i18n="video_negative_prompt"
+                        >ネガティブプロンプト (任意)</label
+                      >
+                      <input
+                        id="videoNegativePrompt"
+                        type="text"
+                        placeholder="blurry, watermark, low quality..."
+                        class="u-w-full"
+                      />
+                    </div>
+                    <div class="u-flex-1 video-audio-check-wrap">
+                      <label class="check">
+                        <input type="checkbox" id="videoAudio" checked />
+                        <span data-i18n="video_generate_audio">音声生成</span>
+                      </label>
                     </div>
                   </div>
                 </div>
@@ -1217,8 +1356,105 @@
             <h2 data-i18n="settings_title">サーバー設定とAPI情報</h2>
             <p data-i18n="settings_description">
               このアプリケーションはブラウザからローカルの中継Expressサーバーにアクセスし、ローカルサーバーが安全に
-              1min.ai API と通信を行います。APIキーがフロントエンドに露出することはありません。
+              1min.ai / 1forall.ai API と通信を行います。APIキーがフロントエンドに露出することはありません。
             </p>
+
+            <div id="apiKeySettingsBox" class="env-defaults-box api-key-settings-box">
+              <div class="api-key-header-row">
+                <h3 class="h3-white" data-i18n="api_key_management_title">プロバイダ ＆ APIキー管理</h3>
+                <label class="check api-key-verify-check">
+                  <input type="checkbox" id="verifyApiKeyOnSave" checked />
+                  <span data-i18n="key_verify_on_save">保存時にAPIキーを検証</span>
+                </label>
+              </div>
+              <p class="env-defaults-text" data-i18n="api_key_management_desc">
+                入力したAPIキーはローカルサーバー側の保護領域 (.mimocode/data/api_keys.json)
+                に保存され、ブラウザへ再送信されません。
+              </p>
+
+              <div class="api-key-provider-row u-mb-12">
+                <label for="defaultProviderSelect" class="label-muted-sm" data-i18n="active_provider_label"
+                  >アクティブプロバイダ</label
+                >
+                <select id="defaultProviderSelect" class="u-w-full">
+                  <option value="1min">1min.ai</option>
+                  <option value="1forall">1forall.ai</option>
+                </select>
+              </div>
+
+              <div class="api-key-grid">
+                <div class="api-key-card">
+                  <div class="api-key-card-head">
+                    <strong>1min.ai</strong>
+                    <span id="oneMinKeyStatus" class="status-badge status-missing" data-i18n="key_status_none"
+                      >未設定</span
+                    >
+                  </div>
+                  <div class="api-key-masked-row">
+                    <span class="label-muted-sm" data-i18n="key_current_masked">登録済みキー:</span>
+                    <code id="oneMinKeyMasked">-</code>
+                  </div>
+                  <div class="row row--gap-8">
+                    <input
+                      id="oneMinApiKeyInput"
+                      type="password"
+                      autocomplete="off"
+                      placeholder="1min.ai API Key..."
+                      data-i18n-placeholder="key_input_placeholder_1min"
+                      class="u-flex-1"
+                    />
+                    <button type="button" id="saveOneMinKeyBtn" class="small" data-i18n="btn_save_key">
+                      保存
+                    </button>
+                    <button
+                      type="button"
+                      id="deleteOneMinKeyBtn"
+                      class="ghost small danger-action"
+                      data-i18n="btn_delete_key"
+                    >
+                      削除
+                    </button>
+                  </div>
+                </div>
+
+                <div class="api-key-card">
+                  <div class="api-key-card-head">
+                    <strong>1forall.ai</strong>
+                    <span
+                      id="oneForAllKeyStatus"
+                      class="status-badge status-missing"
+                      data-i18n="key_status_none"
+                      >未設定</span
+                    >
+                  </div>
+                  <div class="api-key-masked-row">
+                    <span class="label-muted-sm" data-i18n="key_current_masked">登録済みキー:</span>
+                    <code id="oneForAllKeyMasked">-</code>
+                  </div>
+                  <div class="row row--gap-8">
+                    <input
+                      id="oneForAllApiKeyInput"
+                      type="password"
+                      autocomplete="off"
+                      placeholder="1forall.ai API Key (sk_live_...)..."
+                      data-i18n-placeholder="key_input_placeholder_1forall"
+                      class="u-flex-1"
+                    />
+                    <button type="button" id="saveOneForAllKeyBtn" class="small" data-i18n="btn_save_key">
+                      保存
+                    </button>
+                    <button
+                      type="button"
+                      id="deleteOneForAllKeyBtn"
+                      class="ghost small danger-action"
+                      data-i18n="btn_delete_key"
+                    >
+                      削除
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
             <ol>
               <li data-i18n-html="settings_step1">
                 プロジェクトルートの <code>.env.example</code> をコピーして <code>.env</code> を作成します。

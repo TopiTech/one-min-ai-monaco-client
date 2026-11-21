@@ -1,25 +1,22 @@
 /**
- * Image generation and editing module
+ * Image and Video generation/editing module
  */
 
 import { api, assetUrl, extractImages } from './api.js';
 import { setCriticalStyle } from './dom-style.js';
-import { getAllImageModels } from './model-picker.js';
+import { getAllImageModels, getAllVideoModels } from './model-picker.js';
+import { getActiveProvider } from './settings.js';
 import { t } from './i18n.js';
 import { toast } from './toast.js';
 
 const MAX_CARDS = 50;
+const JOB_POLL_INTERVAL_MS = 3000;
+const JOB_POLL_MAX_MS = 10 * 60 * 1000;
 
-// M-3: Lazily hydrate <img> elements as they scroll into view. We set
-// `data-src` when building the card and let the observer promote it to
-// `src` only when the card is within ~200px of the viewport. The observer
-// auto-disconnects after hydration so we don't pay a per-frame cost on
-// long-lived galleries.
 let _lazyImageObserver = null;
 function getLazyImageObserver() {
   if (_lazyImageObserver) return _lazyImageObserver;
   if (typeof IntersectionObserver === 'undefined') {
-    // Fallback: no-op observer that immediately hydrates every image.
     return {
       observe: (el) => {
         if (el.dataset.src) {
@@ -48,16 +45,109 @@ function getLazyImageObserver() {
 const lazyImageObserver = getLazyImageObserver();
 
 export function createImageState() {
-  return {};
+  return {
+    mediaMode: 'image',
+  };
 }
 
 export function createImageManager(dom) {
+  let _mediaMode = 'image';
+
   function pruneImageGallery() {
     const gallery = dom.imageGallery;
     if (!gallery) return;
     while (gallery.children.length > MAX_CARDS) {
       gallery.removeChild(gallery.lastChild);
     }
+  }
+
+  function setMediaMode(mode) {
+    _mediaMode = mode === 'video' ? 'video' : 'image';
+    const tabImage = document.getElementById('mediaTabImage');
+    const tabVideo = document.getElementById('mediaTabVideo');
+    const imageModelWrap = document.getElementById('imageModelPickerWrap');
+    const videoModelWrap = document.getElementById('videoModelPickerWrap');
+    const imageParamsBox = document.getElementById('imageParamsSection');
+    const videoParamsBox = document.getElementById('videoParams');
+    const btnText = document.getElementById('generateImageBtnText');
+
+    tabImage?.classList.toggle('active', _mediaMode === 'image');
+    tabImage?.setAttribute('aria-selected', String(_mediaMode === 'image'));
+    tabVideo?.classList.toggle('active', _mediaMode === 'video');
+    tabVideo?.setAttribute('aria-selected', String(_mediaMode === 'video'));
+
+    imageModelWrap?.classList.toggle('u-hidden', _mediaMode === 'video');
+    videoModelWrap?.classList.toggle('u-hidden', _mediaMode !== 'video');
+    imageParamsBox?.classList.toggle('u-hidden', _mediaMode === 'video');
+    videoParamsBox?.classList.toggle('u-hidden', _mediaMode !== 'video');
+
+    if (btnText) {
+      if (_mediaMode === 'video') {
+        btnText.textContent = t('btn_generate_video');
+      } else {
+        const hasSource = Boolean(dom.editorImageUrl?.value?.trim());
+        btnText.textContent = hasSource ? t('img_edit_btn') : t('img_generate_btn');
+      }
+    }
+  }
+
+  function initMediaModeTabs() {
+    const tabImage = document.getElementById('mediaTabImage');
+    const tabVideo = document.getElementById('mediaTabVideo');
+    tabImage?.addEventListener('click', () => setMediaMode('image'));
+    tabVideo?.addEventListener('click', () => setMediaMode('video'));
+  }
+
+  initMediaModeTabs();
+
+  function renderVideos(data) {
+    const urls = extractImages(data);
+    const gallery = dom.imageGallery;
+    if (!gallery) return;
+
+    if (!urls.length) {
+      const pre = document.createElement('pre');
+      pre.className = 'json';
+      pre.textContent = JSON.stringify(data, null, 2);
+      gallery.prepend(pre);
+      return;
+    }
+
+    for (const rawUrl of urls) {
+      const proxied = assetUrl(rawUrl);
+      const card = document.createElement('div');
+      card.className = 'imageCard videoCard';
+
+      const video = document.createElement('video');
+      video.controls = true;
+      video.preload = 'metadata';
+      video.className = 'generated-video';
+      video.src = proxied;
+      card.appendChild(video);
+
+      const infoRow = document.createElement('div');
+      infoRow.className = 'image-card-info';
+
+      const link = document.createElement('a');
+      link.href = proxied;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = rawUrl.length > 36 ? rawUrl.slice(0, 33) + '...' : rawUrl;
+      link.title = rawUrl;
+      link.className = 'image-card-link';
+      infoRow.appendChild(link);
+
+      const modelName = document.getElementById('videoModelLabel')?.textContent?.trim() || 'Video AI';
+      const badge = document.createElement('span');
+      badge.className = 'image-card-model';
+      badge.textContent = modelName;
+      infoRow.appendChild(badge);
+
+      card.appendChild(infoRow);
+      gallery.prepend(card);
+    }
+
+    pruneImageGallery();
   }
 
   function renderImages(data, sourceImageUrl = null) {
@@ -77,7 +167,6 @@ export function createImageManager(dom) {
     gallery.querySelectorAll('.imageCard').forEach((card) => {
       const imgEl = card.querySelector('img:not(.image-before)');
       const link = card.querySelector('a');
-      // M-3: Check data-src for lazy-loaded images that haven't hydrated yet
       const key = (imgEl && (imgEl.src || imgEl.dataset?.src)) || (link && link.href) || '';
       if (key) existingCards.set(key, card);
     });
@@ -148,11 +237,6 @@ export function createImageManager(dom) {
             `.${cmpId} .slider-divider { left: 50%; }`,
         );
 
-        // H-2: The slider fires `input` faster than injectStyle's per-second
-        // rate limiter (anti-CSS-exfil) allows, so dragging would stall.
-        // Throttle DOM-style writes to one per animation frame (last value
-        // wins) and guarantee the final position is always applied on
-        // pointer release via `change` (fires once).
         let _sliderRaf = null;
         const applySlider = (val) => {
           setCriticalStyle(
@@ -175,11 +259,6 @@ export function createImageManager(dom) {
         card.appendChild(slider);
       } else {
         const imgEl = document.createElement('img');
-        // M-3: Defer the actual fetch until the card scrolls near the
-        // viewport. We store the URL on data-src and let the
-        // IntersectionObserver below swap it onto .src. Saves bandwidth
-        // and decode time when a single generate call returns 10+ URLs
-        // but the user only looks at the first one.
         imgEl.dataset.src = url;
         imgEl.alt = t('img_generated');
         imgEl.loading = 'lazy';
@@ -227,10 +306,128 @@ export function createImageManager(dom) {
     pruneImageGallery();
   }
 
+  async function pollJobUntilComplete({ provider, kind, jobId }) {
+    const gallery = dom.imageGallery;
+    const progressCard = document.createElement('div');
+    progressCard.className = 'imageCard job-polling-card';
+
+    const statusText = document.createElement('div');
+    statusText.className = 'job-polling-status';
+    statusText.textContent = t('job_polling_progress', { sec: 0 });
+    progressCard.appendChild(statusText);
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'ghost small';
+    cancelBtn.textContent = t('btn_cancel');
+    progressCard.appendChild(cancelBtn);
+
+    if (gallery) {
+      gallery.prepend(progressCard);
+    }
+
+    let cancelled = false;
+    cancelBtn.onclick = () => {
+      cancelled = true;
+      progressCard.remove();
+    };
+
+    const startedAt = Date.now();
+    try {
+      while (!cancelled) {
+        const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+        statusText.textContent = t('job_polling_progress', { sec: elapsedSec });
+
+        if (Date.now() - startedAt > JOB_POLL_MAX_MS) {
+          throw new Error(t('job_polling_timeout'));
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
+        if (cancelled) break;
+
+        const job = await api(
+          `/api/jobs/${encodeURIComponent(provider)}/${encodeURIComponent(kind)}/${encodeURIComponent(jobId)}`,
+        );
+        if (dom.assetResult) {
+          dom.assetResult.textContent = JSON.stringify(job, null, 2);
+        }
+
+        if (job.status === 'completed') {
+          progressCard.remove();
+          return job;
+        }
+        if (job.status === 'failed') {
+          throw new Error(job.error || t('job_failed_generic'));
+        }
+      }
+      throw new Error(t('job_cancelled'));
+    } catch (err) {
+      progressCard.remove();
+      throw err;
+    }
+  }
+
+  async function generateVideo() {
+    const imageUrl = dom.editorImageUrl?.value?.trim() || '';
+    const prompt = dom.imagePrompt?.value?.trim() || '';
+    const model = document.getElementById('videoModel')?.value || getAllVideoModels()[0]?.id || 'kling';
+    const provider = getActiveProvider();
+
+    if (!prompt && !imageUrl) {
+      toast.warning(t('video_enter_prompt_or_image'));
+      return;
+    }
+
+    const generateBtn = dom.generateImage;
+    if (generateBtn) generateBtn.disabled = true;
+
+    try {
+      let data = await api('/api/videos/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider,
+          prompt,
+          imageUrl: imageUrl || undefined,
+          model,
+          aspect_ratio: document.getElementById('videoAspectRatio')?.value || '16:9',
+          duration: Number(document.getElementById('videoDuration')?.value || 5),
+          resolution: document.getElementById('videoResolution')?.value || '720p',
+          audio: Boolean(document.getElementById('videoAudio')?.checked ?? true),
+          negativePrompt: document.getElementById('videoNegativePrompt')?.value?.trim() || undefined,
+        }),
+      });
+      if (dom.assetResult) dom.assetResult.textContent = JSON.stringify(data, null, 2);
+
+      const jobId = data?.jobId || data?.code_ref || data?.aiRecord?.uuid;
+      const isPending =
+        String(data?.status || data?.aiRecord?.status || '').toUpperCase() === 'PROCESSING' ||
+        (jobId && extractImages(data).length === 0);
+
+      if (isPending && jobId) {
+        toast.info(t('video_job_started'));
+        data = await pollJobUntilComplete({ provider, kind: 'video', jobId });
+      }
+
+      toast.success(t('video_generated_toast'));
+      if (dom.assetResult) dom.assetResult.textContent = JSON.stringify(data, null, 2);
+      renderVideos(data);
+    } catch (e) {
+      toast.error(t('video_process_failed', { error: e.message }));
+    } finally {
+      if (generateBtn) generateBtn.disabled = false;
+    }
+  }
+
   async function generateImage() {
+    if (_mediaMode === 'video') {
+      return generateVideo();
+    }
+
     const imageUrl = dom.editorImageUrl.value.trim();
     const prompt = dom.imagePrompt.value.trim();
     const model = dom.imageModel.value;
+    const provider = getActiveProvider();
 
     if (!prompt) {
       toast.warning(t('img_enter_prompt'));
@@ -246,6 +443,7 @@ export function createImageManager(dom) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            provider,
             imageUrl,
             prompt,
             model,
@@ -257,24 +455,32 @@ export function createImageManager(dom) {
             output_compression: document.getElementById('editorOutputCompression').value || undefined,
           }),
         });
-        toast.success(t('img_edited'));
-        dom.assetResult.textContent = JSON.stringify(data, null, 2);
-        renderImages(data, imageUrl);
       } else {
         data = await api('/api/images/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            provider,
             prompt,
             model,
             num_outputs: document.getElementById('numOutputs').value,
             aspect_ratio: document.getElementById('aspectRatio').value,
           }),
         });
-        toast.success(t('img_generated_toast'));
-        dom.assetResult.textContent = JSON.stringify(data, null, 2);
-        renderImages(data);
       }
+
+      const jobId = data?.jobId || data?.code_ref || data?.aiRecord?.uuid;
+      const isPending =
+        String(data?.status || data?.aiRecord?.status || '').toUpperCase() === 'PROCESSING' ||
+        (jobId && extractImages(data).length === 0 && provider === '1forall' && isEditMode);
+
+      if (isPending && jobId) {
+        data = await pollJobUntilComplete({ provider, kind: 'image', jobId });
+      }
+
+      toast.success(isEditMode ? t('img_edited') : t('img_generated_toast'));
+      dom.assetResult.textContent = JSON.stringify(data, null, 2);
+      renderImages(data, isEditMode ? imageUrl : null);
     } catch (e) {
       toast.error(t('img_process_failed', { error: e.message }));
     }
@@ -284,6 +490,7 @@ export function createImageManager(dom) {
     if (!file) return;
     const generateBtn = dom.generateImage;
     const assetInput = document.getElementById('assetInput');
+    const provider = getActiveProvider();
 
     if (generateBtn) generateBtn.disabled = true;
     if (assetInput) assetInput.disabled = true;
@@ -292,13 +499,17 @@ export function createImageManager(dom) {
     const fd = new FormData();
     fd.append('asset', file);
     try {
-      const data = await api('/api/assets/upload', { method: 'POST', body: fd });
+      const data = await api(`/api/assets/upload?provider=${encodeURIComponent(provider)}`, {
+        method: 'POST',
+        body: fd,
+      });
       dom.assetResult.textContent = JSON.stringify(data, null, 2);
       const key = data?.key || data?.asset?.key || data?.fileContent?.path || data?.asset?.location || '';
       const url = data?.url || (key ? assetUrl(key) : '');
-      if (key) {
-        dom.editorImageUrl.value = url || key;
-        updateEditorImagePreview(url || key);
+      if (key || url) {
+        const val = provider === '1forall' ? url || key : url || key;
+        dom.editorImageUrl.value = val;
+        updateEditorImagePreview(val);
       }
       toast.success(t('img_upload_complete'));
     } catch (e) {
@@ -327,7 +538,9 @@ export function createImageManager(dom) {
       if (clearBtn) clearBtn.classList.remove('is-shown');
       if (imgToImgParams) imgToImgParams.classList.remove('is-shown');
       if (textToImgParams) textToImgParams.classList.remove('is-hidden');
-      if (btnText) btnText.textContent = t('img_generate_btn');
+      if (btnText) {
+        btnText.textContent = _mediaMode === 'video' ? t('btn_generate_video') : t('img_generate_btn');
+      }
 
       if (
         modelObj &&
@@ -352,16 +565,17 @@ export function createImageManager(dom) {
     if (clearBtn) clearBtn.classList.add('is-shown');
     if (imgToImgParams) imgToImgParams.classList.add('is-shown');
     if (textToImgParams) textToImgParams.classList.add('is-hidden');
-    if (btnText) btnText.textContent = t('img_edit_btn');
+    if (btnText) {
+      btnText.textContent = _mediaMode === 'video' ? t('btn_generate_video') : t('img_edit_btn');
+    }
 
     const isEditorModel = modelObj && modelObj.tags && modelObj.tags.includes('editor');
     if (!isEditorModel) {
-      const defaultEditor = getAllImageModels().find((m) => m.tags && m.tags.includes('editor')) || {
-        id: 'gpt-image-2',
-        label: 'GPT Image 2',
-      };
-      dom.imageModel.value = defaultEditor.id;
-      dom.imageModelLabel.textContent = defaultEditor.label;
+      const defaultEditor = getAllImageModels().find((m) => m.tags && m.tags.includes('editor'));
+      if (defaultEditor) {
+        dom.imageModel.value = defaultEditor.id;
+        dom.imageModelLabel.textContent = defaultEditor.label;
+      }
     }
   }
 
@@ -373,7 +587,10 @@ export function createImageManager(dom) {
 
   return {
     renderImages,
+    renderVideos,
     generateImage,
+    generateVideo,
+    setMediaMode,
     performAssetUpload,
     updateEditorImagePreview,
     clearImage,

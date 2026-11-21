@@ -1,8 +1,10 @@
 import express from 'express';
 import { z } from 'zod';
 import { callOneMin, isFailedResponse, extractFailureMessage } from '../../utils/api-client.js';
+import { isPendingStatusResponse } from '../../utils/http-client.js';
 import { HttpError } from '../../utils/errors.js';
 import { extractAssetKey } from '../../utils/asset-utils.js';
+import { assertCapability, getProvider, resolveProviderId } from '../../providers/index.js';
 import { getDefaultModel, outputCompressionSchema } from './utils.js';
 
 const router = express.Router();
@@ -25,6 +27,8 @@ const imageCountSchema = z
 
 const imageGenerateSchema = z
   .object({
+    provider: z.enum(['1min', '1forall']).optional(),
+    async: z.boolean().optional(),
     prompt: z.preprocess((val) => (val === undefined || val === null ? '' : String(val)), imagePromptSchema),
     model: z.string().max(IMAGE_MODEL_MAX_LENGTH, 'model is too long').optional(),
     num_outputs: z.preprocess((val) => (val === undefined ? 1 : Number(val)), imageCountSchema),
@@ -41,20 +45,29 @@ const imageGenerateSchema = z
     size: z.string().max(IMAGE_SIZE_MAX_LENGTH, 'size is too long').optional(),
   })
   .superRefine((data, ctx) => {
-    const selectedModel = data.model || getDefaultModel('IMAGE_GENERATOR');
-    const isGptImage = selectedModel.startsWith('gpt-image');
-    if (!isGptImage) {
-      if (data.quality !== 'medium' || data.background !== 'auto' || data.output_compression !== undefined) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'quality, background, and output_compression are only supported by gpt-image-* models',
-        });
+    const providerId = data.provider || '1min';
+    if (providerId === '1min') {
+      const selectedModel = data.model || getDefaultModel('IMAGE_GENERATOR');
+      const isGptImage = selectedModel.startsWith('gpt-image');
+      if (!isGptImage) {
+        if (
+          data.quality !== 'medium' ||
+          data.background !== 'auto' ||
+          data.output_compression !== undefined
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'quality, background, and output_compression are only supported by gpt-image-* models',
+          });
+        }
       }
     }
   });
 
 const imageEditorSchema = z
   .object({
+    provider: z.enum(['1min', '1forall']).optional(),
+    async: z.boolean().optional(),
     imageUrl: z.preprocess(
       (val) => (val === undefined || val === null ? '' : String(val)),
       z
@@ -72,6 +85,9 @@ const imageEditorSchema = z
     output_compression: outputCompressionSchema,
   })
   .superRefine((data, ctx) => {
+    const providerId = data.provider || '1min';
+    if (providerId === '1forall') return;
+
     const selectedModel = data.model || getDefaultModel('IMAGE_EDITOR');
     const isGptImage = selectedModel.startsWith('gpt-image');
 
@@ -139,6 +155,22 @@ router.post('/generate', async (req, res, next) => {
       return res.status(400).json({ error: errorMsg });
     }
     const data = result.data;
+    const providerId = resolveProviderId(data.provider);
+
+    if (providerId === '1forall') {
+      const provider = getProvider('1forall');
+      const resData = await provider.generateImage({
+        prompt: data.prompt,
+        model: data.model,
+        num_outputs: data.num_outputs,
+        aspect_ratio: data.aspect_ratio,
+        size: data.size,
+        output_format: data.output_format,
+        async: data.async,
+      });
+      return res.json(resData);
+    }
+
     const selectedModel = data.model || getDefaultModel('IMAGE_GENERATOR');
     const isGptImage = selectedModel.startsWith('gpt-image');
 
@@ -164,6 +196,7 @@ router.post('/generate', async (req, res, next) => {
     const payload = {
       type: 'IMAGE_GENERATOR',
       model: selectedModel,
+      ...(data.async ? { async: true } : {}),
       promptObject,
     };
     const dataRes = await callOneMin('/api/features', {
@@ -179,6 +212,15 @@ router.post('/generate', async (req, res, next) => {
         dataRes,
       );
     }
+    if (isPendingStatusResponse(dataRes) && dataRes?.aiRecord?.uuid) {
+      return res.json({
+        ...dataRes,
+        status: 'PROCESSING',
+        jobId: dataRes.aiRecord.uuid,
+        provider: '1min',
+        kind: 'image',
+      });
+    }
     res.json(dataRes);
   } catch (err) {
     next(err);
@@ -193,6 +235,19 @@ router.post('/text-editor', async (req, res, next) => {
       return res.status(400).json({ error: errorMsg });
     }
     const data = result.data;
+    const providerId = resolveProviderId(data.provider);
+    assertCapability(providerId, 'imageEdit', 'Image editing');
+
+    if (providerId === '1forall') {
+      const provider = getProvider('1forall');
+      const resData = await provider.editImage({
+        imageUrl: data.imageUrl,
+        prompt: data.prompt,
+        model: data.model,
+      });
+      return res.json(resData);
+    }
+
     const selectedModel = data.model || getDefaultModel('IMAGE_EDITOR');
     const isGptImage = selectedModel.startsWith('gpt-image');
 
@@ -214,6 +269,7 @@ router.post('/text-editor', async (req, res, next) => {
     const payload = {
       type: 'IMAGE_EDITOR',
       model: selectedModel,
+      ...(data.async ? { async: true } : {}),
       promptObject,
     };
 
@@ -229,6 +285,15 @@ router.post('/text-editor', async (req, res, next) => {
         'UPSTREAM_API_ERROR',
         dataRes,
       );
+    }
+    if (isPendingStatusResponse(dataRes) && dataRes?.aiRecord?.uuid) {
+      return res.json({
+        ...dataRes,
+        status: 'PROCESSING',
+        jobId: dataRes.aiRecord.uuid,
+        provider: '1min',
+        kind: 'image',
+      });
     }
     res.json(dataRes);
   } catch (err) {

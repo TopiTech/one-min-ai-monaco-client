@@ -1,7 +1,9 @@
+import { getActiveSecretValues } from '../services/key-store.js';
+
 /**
  * Environment variable guard utility.
- * Centralizes environmental filtering to protect credentials like ONE_MIN_AI_API_KEY
- * and LOCAL_BFF_AUTH_TOKEN when executing sub-processes.
+ * Centralizes environmental filtering to protect credentials like ONE_MIN_AI_API_KEY,
+ * ONE_FOR_ALL_API_KEY, UI-stored keys, and LOCAL_BFF_AUTH_TOKEN when executing sub-processes.
  * @returns {NodeJS.ProcessEnv}
  */
 export function getSafeEnv() {
@@ -29,9 +31,7 @@ export function getSafeEnv() {
 
   /** @type {NodeJS.ProcessEnv} */
   const safeEnv = {};
-  const secretValues = [process.env.ONE_MIN_AI_API_KEY, process.env.LOCAL_BFF_AUTH_TOKEN].filter(
-    (v) => v && typeof v === 'string' && v.length > 5,
-  );
+  const secretValues = getActiveSecretValues();
 
   for (const [key, value] of Object.entries(process.env)) {
     if (SAFE_ENV_KEYS_UPPER.has(key.toUpperCase()) && value) {

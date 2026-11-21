@@ -1,51 +1,32 @@
 /**
- * Agent Chat Route — uses CODE_GENERATOR (/api/features) for the coding agent mode.
- *
- * The agent loop needs a general-purpose LLM chat to handle system prompts,
- * multi-turn conversation (flattened into a single prompt), and XML tool call outputs.
- *
- * API Reference: https://docs.1min.ai/docs/api/ai-for-code/code-generator/code-generator-tag
+ * Agent Chat Route — routes to 1min.ai (hybrid OpenAI-compat / CODE_GENERATOR)
+ * or 1forall.ai (/v1/chat/completions) while keeping XML tool formatting intact.
  */
 
 import express from 'express';
 import { z } from 'zod';
-import { HttpError } from '../utils/errors.js';
-import {
-  callOneMin,
-  extractText,
-  isFailedResponse,
-  extractFailureMessage,
-  normalizeOneMinRawResponse,
-} from '../utils/api-client.js';
-import { parseWebSearchParams, buildCodePayload, stripSearchArtifacts } from '../utils/web-search.js';
+import { extractText } from '../utils/api-client.js';
+import { parseWebSearchParams, stripSearchArtifacts } from '../utils/web-search.js';
 import logger from '../utils/logger.js';
 import { serverConfig } from '../config/server.js';
+import { assertCapability, getProvider, resolveProviderId } from '../providers/index.js';
 
 const router = express.Router();
-const CODE_GENERATOR_FEATURE_ENDPOINT = '/api/features?isStreaming=true';
 export const MAX_AGENT_PROMPT_CHARS = 200000;
 export const MAX_AGENT_MESSAGES = 100;
 export const MAX_AGENT_MESSAGE_CHARS = 50000;
 
-// ---------------------------------------------------------------------------
-// Schema
-// ---------------------------------------------------------------------------
-
 /**
  * Flatten a messages array into a single prompt string with role labels.
- * This preserves the conversation flow so the LLM can infer context.
+ * This preserves the conversation flow when routing via CODE_GENERATOR.
  */
 function flattenMessages(messages) {
   if (!Array.isArray(messages) || messages.length === 0) return null;
   return messages
     .map((m) => {
-      // SEC: Sanitize role to prevent XML attribute injection.
-      // Only allow alphanumeric characters and common role names.
       const rawRole = (m.role || 'user').toLowerCase();
       const role = rawRole.replace(/[^a-z0-9_-]/g, '').slice(0, 50) || 'user';
       const content = typeof m.content === 'string' ? m.content : '';
-      // Avoid double-escaping by wrapping content inside CDATA block.
-      // Safely escape any existing ']]>' sequence by breaking the CDATA block and restarting.
       const safeContent = content.replace(/\]\]>/g, ']]]]><![CDATA[>');
       return `<message role="${role}"><![CDATA[\n${safeContent}\n]]></message>`;
     })
@@ -54,6 +35,8 @@ function flattenMessages(messages) {
 
 export const agentChatSchema = z
   .object({
+    provider: z.enum(['1min', '1forall']).optional(),
+    useOpenAiCompat: z.boolean().optional(),
     prompt: z
       .string()
       .max(MAX_AGENT_MESSAGE_CHARS, `prompt exceeds ${MAX_AGENT_MESSAGE_CHARS} characters`)
@@ -94,13 +77,8 @@ export const agentChatSchema = z
     }
   });
 
-// ---------------------------------------------------------------------------
-// POST /api/agent/chat
-// ---------------------------------------------------------------------------
-
 router.post('/chat', async (req, res, next) => {
   try {
-    // 1. Validate request body
     const result = agentChatSchema.safeParse(req.body);
     if (!result.success) {
       const errorMsg = result.error.issues[0]?.message || 'Validation error';
@@ -108,59 +86,41 @@ router.post('/chat', async (req, res, next) => {
     }
 
     const data = result.data;
-
-    // 2. Build prompt text from messages (array) or plain prompt string
-    const promptText =
-      Array.isArray(data.messages) && data.messages.length > 0 ? flattenMessages(data.messages) : data.prompt;
-
-    // 3. Parse web search params via shared helper
+    const providerId = resolveProviderId(data.provider);
     const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({
       webSearch: data.webSearch,
       numOfSite: data.numOfSite,
       maxWord: data.maxWord,
     });
+    if (parsedWebSearch) {
+      assertCapability(providerId, 'webSearch', 'Web search');
+    }
 
-    // 4. Build CODE_GENERATOR payload
-    const payload = buildCodePayload({
+    const promptText =
+      Array.isArray(data.messages) && data.messages.length > 0 ? flattenMessages(data.messages) : data.prompt;
+
+    logger.debug('Agent chat request', {
+      provider: providerId,
+      model: data.model,
+      webSearch: parsedWebSearch,
+      promptLength: String(promptText).length,
+    });
+
+    const provider = getProvider(providerId);
+    const normalizedDataRes = await provider.codeComplete({
       prompt: String(promptText),
+      messages: data.messages,
       model: data.model,
       webSearch: parsedWebSearch,
       parsedNumOfSite,
       parsedMaxWord,
-    });
-
-    logger.debug('Agent chat request', {
-      model: payload.model,
-      webSearch: parsedWebSearch,
-      promptLength: String(promptText).length,
-      type: payload.type,
-    });
-
-    // 5. Call 1min.ai /api/features (CODE_GENERATOR)
-    const dataRes = await callOneMin(CODE_GENERATOR_FEATURE_ENDPOINT, {
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      raw: true,
-      // SEC: CODE_GENERATOR creates an upstream record; never retry a POST
-      // that would duplicate the side effect / credit consumption.
-      idempotent: false,
+      useOpenAiCompat: data.useOpenAiCompat,
+      task: 'agent',
+      context: 'Code Generator agent-chat',
+      maxTokens: serverConfig.oneForAllMaxTokensChat,
       timeout: serverConfig.agentChatTimeoutMs,
     });
-    const normalizedDataRes = await normalizeOneMinRawResponse(dataRes, {
-      context: 'Code Generator agent-chat',
-    });
 
-    // 6. Handle upstream failure
-    if (isFailedResponse(normalizedDataRes)) {
-      throw new HttpError(
-        502,
-        `1min.ai agent chat failed: ${extractFailureMessage(normalizedDataRes)}`,
-        'UPSTREAM_API_ERROR',
-        normalizedDataRes,
-      );
-    }
-
-    // 7. Extract text and return in agent-friendly format (stripping any web search artifacts)
     const rawText = extractText(normalizedDataRes);
     const text = stripSearchArtifacts(rawText);
     res.json({ text, raw: normalizedDataRes });

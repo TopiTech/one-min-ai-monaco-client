@@ -3,14 +3,9 @@ import { spawn } from 'child_process';
 import { z } from 'zod';
 import { killProcessTree, trackActiveProcess } from '../../services/command-runner.js';
 import { HttpError } from '../../utils/errors.js';
-import {
-  callOneMin,
-  extractText,
-  isFailedResponse,
-  extractFailureMessage,
-  normalizeOneMinRawResponse,
-} from '../../utils/api-client.js';
-import { parseWebSearchParams, buildCodePayload } from '../../utils/web-search.js';
+import { extractText } from '../../utils/api-client.js';
+import { parseWebSearchParams } from '../../utils/web-search.js';
+import { assertCapability, getProvider, resolveProviderId } from '../../providers/index.js';
 import fsPkg from 'fs/promises';
 import pathPkg from 'path';
 import cryptoPkg from 'crypto';
@@ -20,9 +15,9 @@ import { serverConfig } from '../../config/server.js';
 
 const router = express.Router();
 
-const CODE_GENERATOR_FEATURE_ENDPOINT = '/api/features?isStreaming=true';
-
 const codeGenerateSchema = z.object({
+  provider: z.enum(['1min', '1forall']).optional(),
+  useOpenAiCompat: z.boolean().optional(),
   instruction: z.preprocess(
     (val) => (val === undefined || val === null ? '' : String(val)),
     z
@@ -69,6 +64,8 @@ function lineColumnSchema() {
 }
 
 const codeAutocompleteSchema = z.object({
+  provider: z.enum(['1min', '1forall']).optional(),
+  useOpenAiCompat: z.boolean().optional(),
   code: z
     .string({ message: 'code, line, and column are required' })
     .min(1, { message: 'code, line, and column are required' })
@@ -90,6 +87,8 @@ const codeAutocompleteSchema = z.object({
 });
 
 const codeInlineChatSchema = z.object({
+  provider: z.enum(['1min', '1forall']).optional(),
+  useOpenAiCompat: z.boolean().optional(),
   prompt: z
     .string({ message: 'prompt, code, line, and column are required' })
     .min(1, { message: 'prompt, code, line, and column are required' })
@@ -158,11 +157,15 @@ router.post('/generate', async (req, res, next) => {
       return res.status(400).json({ error: errorMsg });
     }
     const data = result.data;
+    const providerId = resolveProviderId(data.provider);
     const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({
       webSearch: data.webSearch,
       numOfSite: data.numOfSite,
       maxWord: data.maxWord,
     });
+    if (parsedWebSearch) {
+      assertCapability(providerId, 'webSearch', 'Web search');
+    }
 
     const prompt = `You are an expert software engineer. Execute the user instruction on the following code.
 
@@ -182,33 +185,18 @@ Current code:
 ${data.code}
 \`\`\``;
 
-    const payload = buildCodePayload({
+    const provider = getProvider(providerId);
+    const normalizedDataRes = await provider.codeComplete({
       prompt,
       model: data.model,
       webSearch: parsedWebSearch,
       parsedNumOfSite,
       parsedMaxWord,
-    });
-    const dataRes = await callOneMin(CODE_GENERATOR_FEATURE_ENDPOINT, {
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      raw: true,
-      // SEC: CODE_GENERATOR creates an upstream record; never retry a POST
-      // that would duplicate the side effect / credit consumption.
-      idempotent: false,
+      useOpenAiCompat: data.useOpenAiCompat,
+      task: 'generate',
+      context: 'Code Generator generate',
       timeout: 600000,
     });
-    const normalizedDataRes = await normalizeOneMinRawResponse(dataRes, {
-      context: 'Code Generator generate',
-    });
-    if (isFailedResponse(normalizedDataRes)) {
-      throw new HttpError(
-        502,
-        `1min.ai code generate failed: ${extractFailureMessage(normalizedDataRes)}`,
-        'UPSTREAM_API_ERROR',
-        normalizedDataRes,
-      );
-    }
     res.json(normalizedDataRes);
   } catch (err) {
     next(err);
@@ -223,11 +211,15 @@ router.post('/autocomplete', async (req, res, next) => {
       return res.status(400).json({ error: errorMsg });
     }
     const data = result.data;
+    const providerId = resolveProviderId(data.provider);
     const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({
       webSearch: data.webSearch,
       numOfSite: data.numOfSite,
       maxWord: data.maxWord,
     });
+    if (parsedWebSearch) {
+      assertCapability(providerId, 'webSearch', 'Web search');
+    }
 
     const { beforeCode, afterCode } = buildCodeContext(data.code, data.line, data.column, 100);
 
@@ -247,33 +239,18 @@ ${afterCode}
 
 Suggested code:`;
 
-    const payload = buildCodePayload({
+    const provider = getProvider(providerId);
+    const normalizedDataRes = await provider.codeComplete({
       prompt,
       model: data.model,
       webSearch: parsedWebSearch,
       parsedNumOfSite,
       parsedMaxWord,
-    });
-
-    const dataRes = await callOneMin(CODE_GENERATOR_FEATURE_ENDPOINT, {
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      raw: true,
-      // SEC: CODE_GENERATOR creates an upstream record; never retry a POST
-      // that would duplicate the side effect / credit consumption.
-      idempotent: false,
-    });
-    const normalizedDataRes = await normalizeOneMinRawResponse(dataRes, {
+      useOpenAiCompat: data.useOpenAiCompat,
+      task: 'autocomplete',
       context: 'Code Generator autocomplete',
+      maxTokens: serverConfig.oneForAllMaxTokensAutocomplete,
     });
-    if (isFailedResponse(normalizedDataRes)) {
-      throw new HttpError(
-        502,
-        `1min.ai code autocomplete failed: ${extractFailureMessage(normalizedDataRes)}`,
-        'UPSTREAM_API_ERROR',
-        normalizedDataRes,
-      );
-    }
 
     let suggestion = extractText(normalizedDataRes);
     suggestion = stripCodeFences(suggestion);
@@ -292,11 +269,15 @@ router.post('/inline-chat', async (req, res, next) => {
       return res.status(400).json({ error: errorMsg });
     }
     const data = result.data;
+    const providerId = resolveProviderId(data.provider);
     const { parsedWebSearch, parsedNumOfSite, parsedMaxWord } = parseWebSearchParams({
       webSearch: data.webSearch,
       numOfSite: data.numOfSite,
       maxWord: data.maxWord,
     });
+    if (parsedWebSearch) {
+      assertCapability(providerId, 'webSearch', 'Web search');
+    }
 
     const { beforeCode, afterCode } = buildCodeContext(data.code, data.line, data.column, 150);
 
@@ -316,33 +297,18 @@ ${afterCode}
 
 Inserted/Modified code:`;
 
-    const payload = buildCodePayload({
+    const provider = getProvider(providerId);
+    const normalizedDataRes = await provider.codeComplete({
       prompt,
       model: data.model,
       webSearch: parsedWebSearch,
       parsedNumOfSite,
       parsedMaxWord,
-    });
-
-    const dataRes = await callOneMin(CODE_GENERATOR_FEATURE_ENDPOINT, {
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      raw: true,
-      // SEC: CODE_GENERATOR creates an upstream record; never retry a POST
-      // that would duplicate the side effect / credit consumption.
-      idempotent: false,
-    });
-    const normalizedDataRes = await normalizeOneMinRawResponse(dataRes, {
+      useOpenAiCompat: data.useOpenAiCompat,
+      task: 'inline',
       context: 'Code Generator inline-chat',
+      maxTokens: serverConfig.oneForAllMaxTokensInline,
     });
-    if (isFailedResponse(normalizedDataRes)) {
-      throw new HttpError(
-        502,
-        `1min.ai inline chat failed: ${extractFailureMessage(normalizedDataRes)}`,
-        'UPSTREAM_API_ERROR',
-        normalizedDataRes,
-      );
-    }
 
     let codeResult = extractText(normalizedDataRes);
     codeResult = stripCodeFences(codeResult);

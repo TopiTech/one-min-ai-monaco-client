@@ -81,11 +81,13 @@ export function sanitizeLogText(value, maxLength = 2048) {
   let text = value.replace(/[\r\n]/g, '\\n');
   text = text
     .replace(/(["']?authorization["']?\s*[:=]\s*["']?)Bearer\s+[^\s,;"'<>\\]+/gi, '$1Bearer [REDACTED]')
+    .replace(/(["']?authorization["']?\s*[:=]\s*["']?)Api-Key\s+[^\s,;"'<>\\]+/gi, '$1Api-Key [REDACTED]')
     .replace(
-      /(["']?(?:api[-_ ]?key|authorization|token|password|secret|credential)["']?\s*[:=]\s*["']?)(?!Bearer\b)([^\s,;"'<>}\\]+)/gi,
+      /(["']?(?:api[-_ ]?key|authorization|token|password|secret|credential)["']?\s*[:=]\s*["']?)(?!Bearer\b|Api-Key\b)([^\s,;"'<>}\\]+)/gi,
       '$1[REDACTED]',
     )
-    .replace(/\bBearer\s+[^\s,;"'<>\\]+/gi, 'Bearer [REDACTED]');
+    .replace(/\bBearer\s+[^\s,;"'<>\\]+/gi, 'Bearer [REDACTED]')
+    .replace(/\bApi-Key\s+[^\s,;"'<>\\]+/gi, 'Api-Key [REDACTED]');
 
   const limit = Number.isFinite(maxLength) && maxLength > 0 ? Math.floor(maxLength) : 2048;
   return text.length > limit ? text.slice(0, limit) + '...[truncated]' : text;

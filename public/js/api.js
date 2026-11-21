@@ -190,6 +190,7 @@ function extractImages(data) {
     }
   }
   if (raw == null && Array.isArray(data?.images)) raw = data.images;
+  if (raw == null && Array.isArray(data?.urls)) raw = data.urls;
 
   const arr = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
 

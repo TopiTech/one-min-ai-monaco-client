@@ -4,6 +4,7 @@ import { spawn } from 'child_process';
 import { StringDecoder } from 'string_decoder';
 import { executeCommand, checkCommandSafety, killProcessTree } from '../services/command-runner.js';
 import { getSafeEnv } from '../utils/env-guard.js';
+import { getActiveSecretValues } from '../services/key-store.js';
 import { detectBinaryContent } from '../utils/mime-guard.js';
 import {
   validatePath,
@@ -349,9 +350,7 @@ const sessionWriter = createDebouncedFileWriter(
   SESSIONS_FILE,
   () => {
     const rawSessions = Object.fromEntries(sessions);
-    const secrets = [process.env.ONE_MIN_AI_API_KEY, process.env.LOCAL_BFF_AUTH_TOKEN].filter(
-      (s) => s && typeof s === 'string' && s.length >= 8,
-    );
+    const secrets = getActiveSecretValues().filter((s) => s.length >= 8);
     // SEC-4: Mask sensitive keys if present in the data.
     // Note: API keys should not normally appear in session data (they are
     // only sent via HTTP headers in callOneMin), but this is a defense-in-depth

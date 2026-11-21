@@ -1240,5 +1240,117 @@
       "provider": "Replicate",
       "tags": ["image", "editor"]
     }
-  ]
+  ],
+  "videoModels": [
+    {
+      "id": "kling",
+      "label": "Kling AI (Text & Image to Video)",
+      "provider": "Kling",
+      "tags": ["video", "flagship"]
+    },
+    {
+      "id": "veo3-video",
+      "label": "Google Veo3 Video",
+      "provider": "Google",
+      "tags": ["video", "flagship"]
+    },
+    {
+      "id": "sora-2",
+      "label": "OpenAI Sora 2",
+      "provider": "OpenAI",
+      "tags": ["video", "fast"]
+    },
+    {
+      "id": "sora-2-pro",
+      "label": "OpenAI Sora 2 Pro",
+      "provider": "OpenAI",
+      "tags": ["video", "flagship"]
+    },
+    {
+      "id": "wan3.0-video",
+      "label": "Alibaba Wan 3.0",
+      "provider": "Alibaba",
+      "tags": ["video"]
+    },
+    {
+      "id": "wan3.0-video-prime",
+      "label": "Alibaba Wan 3.0 Prime",
+      "provider": "Alibaba",
+      "tags": ["video", "flagship"]
+    },
+    {
+      "id": "hailuo-video",
+      "label": "Hailuo Video (MiniMax)",
+      "provider": "MiniMax",
+      "tags": ["video"]
+    },
+    {
+      "id": "luma-video",
+      "label": "Luma Dream Machine",
+      "provider": "Luma",
+      "tags": ["video"]
+    }
+  ],
+  "oneForAll": {
+    "chatModels": [
+      { "id": "gpt-4o-mini", "label": "GPT-4o mini", "provider": "OpenAI", "tags": ["fast"] },
+      { "id": "gpt-4o", "label": "GPT-4o", "provider": "OpenAI", "tags": ["flagship"] },
+      { "id": "gpt-4.1", "label": "GPT-4.1", "provider": "OpenAI", "tags": ["flagship"] },
+      { "id": "gpt-4.1-mini", "label": "GPT-4.1 mini", "provider": "OpenAI", "tags": ["fast"] },
+      { "id": "o3-mini", "label": "o3-mini", "provider": "OpenAI", "tags": ["reasoning"] },
+      { "id": "claude-sonnet-4-5", "label": "Claude Sonnet 4.5", "provider": "Anthropic", "tags": ["flagship"] },
+      { "id": "deepseek-chat", "label": "DeepSeek Chat", "provider": "DeepSeek", "tags": ["fast"] },
+      { "id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash", "provider": "Google", "tags": ["fast"] }
+    ],
+    "codeModels": [
+      { "id": "gpt-4o", "label": "GPT-4o", "provider": "OpenAI", "tags": ["code", "flagship"] },
+      { "id": "gpt-4o-mini", "label": "GPT-4o mini", "provider": "OpenAI", "tags": ["code", "fast"] },
+      { "id": "gpt-4.1", "label": "GPT-4.1", "provider": "OpenAI", "tags": ["code", "flagship"] },
+      { "id": "o3-mini", "label": "o3-mini", "provider": "OpenAI", "tags": ["code", "reasoning"] },
+      { "id": "claude-sonnet-4-5", "label": "Claude Sonnet 4.5", "provider": "Anthropic", "tags": ["code", "flagship"] },
+      { "id": "deepseek-chat", "label": "DeepSeek Chat", "provider": "DeepSeek", "tags": ["code", "fast"] }
+    ],
+    "imageModels": [
+      {
+        "id": "black-forest-labs/flux-schnell",
+        "label": "FLUX.1 Schnell",
+        "provider": "Black Forest Labs",
+        "tags": ["image", "fast"]
+      },
+      {
+        "id": "dall-e-3",
+        "label": "DALL-E 3",
+        "provider": "OpenAI",
+        "tags": ["image", "flagship"]
+      },
+      {
+        "id": "gpt-image-1",
+        "label": "GPT Image 1",
+        "provider": "OpenAI",
+        "tags": ["image", "flagship"]
+      },
+      {
+        "id": "stable-diffusion-image",
+        "label": "Stable Diffusion Image Edit",
+        "provider": "Stability",
+        "tags": ["image", "editor"]
+      }
+    ],
+    "videoModels": [
+      {
+        "id": "google-veo3",
+        "label": "Google Veo 3",
+        "provider": "Google",
+        "tags": ["video", "flagship"],
+        "meta": { "mode": "TEXT_TO_VIDEO" }
+      },
+      {
+        "id": "kling_standard",
+        "label": "Kling Standard (Image to Video)",
+        "provider": "Kling",
+        "tags": ["video", "image-to-video"],
+        "meta": { "mode": "IMAGE_TO_VIDEO" }
+      }
+    ]
+  }
 }

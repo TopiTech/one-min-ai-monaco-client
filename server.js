@@ -28,6 +28,9 @@ import aiRoutes from './routes/ai/index.js';
 import fsRoutes from './routes/fs.js';
 import agentRoutes, { flushPendingWriters, initAgentState, killAllSearchProcesses } from './routes/agent.js';
 import agentChatRoutes from './routes/agent-chat.js';
+import settingsRoutes from './routes/settings.js';
+import { getProvider, resolveProviderId } from './providers/index.js';
+import { getProvidersKeyStatus, hasApiKey } from './services/key-store.js';
 import { initModels, getModelSyncStatus, stopModelSync } from './config/models.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -189,21 +192,35 @@ async function handleAssetUpload(req, res, next) {
       }
     }
 
-    const formData = new FormData();
-    formData.append('asset', assetBlob, safeName);
+    const providerId = resolveProviderId(
+      typeof req.query?.provider === 'string'
+        ? req.query.provider
+        : typeof req.body?.provider === 'string'
+          ? req.body.provider
+          : undefined,
+    );
 
-    const data = await callOneMin('/api/assets', {
-      method: 'POST',
-      body: formData,
-      idempotent: false,
-    });
-    const normalized = normalizeAssetResponse(data);
-    delete normalized.raw;
-    if (!normalized.key) {
-      logger.warn('Asset upload completed without a usable asset key', {
-        filename: req.file.originalname,
-        responseKeys: Object.keys(data || {}),
+    let normalized;
+    if (providerId === '1forall') {
+      const provider = getProvider('1forall');
+      normalized = await provider.uploadAsset({ blob: assetBlob, filename: safeName });
+    } else {
+      const formData = new FormData();
+      formData.append('asset', assetBlob, safeName);
+
+      const data = await callOneMin('/api/assets', {
+        method: 'POST',
+        body: formData,
+        idempotent: false,
       });
+      normalized = normalizeAssetResponse(data);
+      delete normalized.raw;
+      if (!normalized.key) {
+        logger.warn('Asset upload completed without a usable asset key', {
+          filename: req.file.originalname,
+          responseKeys: Object.keys(data || {}),
+        });
+      }
     }
 
     logger.info('Asset upload successful', { filename: req.file.originalname });
@@ -279,16 +296,39 @@ export function createApp(options = {}) {
 
   // A-6: Register health endpoint before rate-limit middleware so it's always accessible.
   app.use('/api/health', (_req, res) => {
-    const status = getModelSyncStatus();
+    const status = getModelSyncStatus('1min');
+    const oneForAllStatus = getModelSyncStatus('1forall');
+    const keyStatus = getProvidersKeyStatus();
     res.json({
       ok: true,
       service: 'one-min-ai-monaco-client',
       version: process.env.npm_package_version || packageJson.version || '1.0.0',
       uptime: process.uptime(),
+      defaultProvider: serverConfig.defaultProvider,
+      providers: {
+        '1min': {
+          configured: keyStatus['1min'].configured,
+          source: keyStatus['1min'].source,
+          models: {
+            ok: status.ok,
+            lastSync: status.lastSync,
+            error: status.error,
+            source: status.source || 'fallback',
+          },
+        },
+        '1forall': {
+          configured: keyStatus['1forall'].configured,
+          source: keyStatus['1forall'].source,
+          models: {
+            ok: oneForAllStatus.ok,
+            lastSync: oneForAllStatus.lastSync,
+            error: oneForAllStatus.error,
+            source: oneForAllStatus.source || 'fallback',
+          },
+        },
+      },
       models: {
         // QUAL-2: `ok` is the single source of truth for model sync status.
-        // `syncFailed: !ok` was redundant and could cause confusion if the two
-        // fields ever got out of sync.
         ok: status.ok,
         lastSync: status.lastSync,
         error: status.error,
@@ -456,6 +496,7 @@ export function createApp(options = {}) {
   protectedRouter.get('/assets/proxy', assetProxyHandler);
 
   protectedRouter.use('/', aiRoutes);
+  protectedRouter.use('/settings', settingsRoutes);
   protectedRouter.use('/fs', fsRoutes);
   protectedRouter.use('/agent', agentRoutes);
   // Mount the agent-chat route at /agent so the /chat sub-route is at /api/agent/chat
@@ -498,13 +539,11 @@ export function createApp(options = {}) {
 }
 
 function validateEnvironment() {
-  const required = ['ONE_MIN_AI_API_KEY'];
-  const missing = required.filter(
-    (key) => !process.env[key] || process.env[key].includes('your_1min_ai_api_key_here'),
-  );
-  if (missing.length > 0) {
-    logger.error('Missing required environment variables', { missing });
-    process.exit(1);
+  if (!hasApiKey('1min') && !hasApiKey('1forall')) {
+    logger.warn(
+      'No AI provider API keys are configured yet. You can enter your 1min.ai or 1forall.ai API key ' +
+        'in the browser Settings tab, or set ONE_MIN_AI_API_KEY / ONE_FOR_ALL_API_KEY in .env.',
+    );
   }
 
   if (process.env.NODE_ENV === 'production' && serverConfig.exposeErrorDetails) {

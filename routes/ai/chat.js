@@ -10,6 +10,8 @@ import { HttpError } from '../../utils/errors.js';
 import logger from '../../utils/logger.js';
 import { serverConfig } from '../../config/server.js';
 import { shouldExposeErrorText } from '../../server.js';
+import { assertCapability, getProvider, resolveProviderId } from '../../providers/index.js';
+import { consumeOpenAiSseStream } from '../../utils/sse.js';
 import { getDefaultModel } from './utils.js';
 
 const router = express.Router();
@@ -72,47 +74,71 @@ const rawAttachmentsSchema = z
   )
   .optional();
 
-const chatRequestSchema = z.object({
-  prompt: z.preprocess(
-    (val) => (val === undefined || val === null ? '' : String(val)),
-    z
-      .string()
-      .refine((val) => val.trim().length > 0, { message: 'prompt is required' })
-      .refine((val) => val.length <= 50000, { message: 'prompt exceeds maximum length of 50000 characters' }),
-  ),
-  model: z.string().optional(),
-  conversationId: z.string().optional(),
-  attachments: rawAttachmentsSchema,
-  webSearch: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
-  numOfSite: z.preprocess(
-    (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
-    z
-      .number()
-      .int()
-      .min(1, { message: 'numOfSite must be a number between 1 and 10' })
-      .max(10, { message: 'numOfSite must be a number between 1 and 10' })
-      .optional(),
-  ),
-  maxWord: z.preprocess(
-    (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
-    z
-      .number()
-      .int()
-      .min(100, { message: 'maxWord must be a number between 100 and 10000' })
-      .max(10000, { message: 'maxWord must be a number between 100 and 10000' })
-      .optional(),
-  ),
-  history: z.preprocess(
-    (val) => (val === undefined ? true : val === 'true' || val === true),
-    z.boolean().default(true),
-  ),
-  withMemories: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
-  brandVoiceId: z.string().optional(),
-  isMixed: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
+const chatMessageSchema = z.object({
+  role: z.string().max(50).default('user'),
+  content: z.string().max(50000).default(''),
 });
 
+const chatRequestSchema = z
+  .object({
+    provider: z.enum(['1min', '1forall']).optional(),
+    prompt: z.preprocess(
+      (val) => (val === undefined || val === null ? '' : String(val)),
+      z.string().refine((val) => val.length <= 50000, {
+        message: 'prompt exceeds maximum length of 50000 characters',
+      }),
+    ),
+    messages: z.array(chatMessageSchema).max(200).optional(),
+    model: z.string().optional(),
+    maxTokens: z.preprocess(
+      (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
+      z.number().int().min(1).max(32768).optional(),
+    ),
+    conversationId: z.string().optional(),
+    attachments: rawAttachmentsSchema,
+    webSearch: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
+    numOfSite: z.preprocess(
+      (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
+      z
+        .number()
+        .int()
+        .min(1, { message: 'numOfSite must be a number between 1 and 10' })
+        .max(10, { message: 'numOfSite must be a number between 1 and 10' })
+        .optional(),
+    ),
+    maxWord: z.preprocess(
+      (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
+      z
+        .number()
+        .int()
+        .min(100, { message: 'maxWord must be a number between 100 and 10000' })
+        .max(10000, { message: 'maxWord must be a number between 100 and 10000' })
+        .optional(),
+    ),
+    history: z.preprocess(
+      (val) => (val === undefined ? true : val === 'true' || val === true),
+      z.boolean().default(true),
+    ),
+    withMemories: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
+    brandVoiceId: z.string().optional(),
+    isMixed: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
+  })
+  .superRefine((data, ctx) => {
+    const hasPrompt = data.prompt.trim().length > 0;
+    const hasMessages =
+      Array.isArray(data.messages) && data.messages.some((m) => String(m.content || '').trim().length > 0);
+    if (!hasPrompt && !hasMessages) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'prompt is required',
+      });
+    }
+  });
+
+/** @param {Record<string, any>} params */
 function buildChatPayload({
   prompt,
+  messages,
   model,
   conversationId,
   attachments,
@@ -124,11 +150,21 @@ function buildChatPayload({
   brandVoiceId,
   isMixed,
 }) {
+  const effectivePrompt =
+    prompt && prompt.trim()
+      ? String(prompt)
+      : Array.isArray(messages)
+        ? messages
+            .filter((m) => String(m.content || '').trim())
+            .map((m) => `${m.role}: ${m.content}`)
+            .join('\n\n')
+        : '';
+
   return {
     type: 'UNIFY_CHAT_WITH_AI',
     model: model || getDefaultModel('CHAT'),
     promptObject: {
-      prompt: String(prompt),
+      prompt: effectivePrompt,
       settings: {
         webSearchSettings: {
           webSearch: Boolean(webSearch),
@@ -148,6 +184,14 @@ function buildChatPayload({
   };
 }
 
+function validateProviderChatCapabilities(providerId, data) {
+  if (data.webSearch) assertCapability(providerId, 'webSearch', 'Web search');
+  if (data.withMemories) assertCapability(providerId, 'memories', 'AI memories');
+  if (data.attachments) assertCapability(providerId, 'chatAttachments', 'Chat attachments');
+  if (data.conversationId) assertCapability(providerId, 'serverConversations', 'Server-side conversationId');
+  if (data.brandVoiceId) assertCapability(providerId, 'serverConversations', 'Brand voice');
+}
+
 function parseChatRequest(body) {
   const result = chatRequestSchema.safeParse(body);
   if (!result.success) {
@@ -155,49 +199,148 @@ function parseChatRequest(body) {
     return { error: { status: 400, message: errorMsg } };
   }
   const data = result.data;
-  const payload = buildChatPayload({
-    prompt: data.prompt,
-    model: data.model,
-    conversationId: data.conversationId,
-    attachments: data.attachments,
-    webSearch: data.webSearch,
-    numOfSite: data.numOfSite,
-    maxWord: data.maxWord,
-    history: data.history,
-    withMemories: data.withMemories,
-    brandVoiceId: data.brandVoiceId,
-    isMixed: data.isMixed,
-  });
-  return { payload };
+  const providerId = resolveProviderId(data.provider);
+  validateProviderChatCapabilities(providerId, data);
+
+  const payload = providerId === '1min' ? buildChatPayload(data) : null;
+  return { providerId, data, payload };
 }
 
 router.post('/', async (req, res, next) => {
   try {
-    const { error, payload } = parseChatRequest(req.body);
+    const { error, providerId, data, payload } = parseChatRequest(req.body);
     if (error) return res.status(error.status).json({ error: error.message });
 
-    const data = await callOneMin('/api/chat-with-ai', {
+    if (providerId === '1forall') {
+      const provider = getProvider('1forall');
+      const result = await provider.chat({
+        prompt: data.prompt,
+        messages: data.messages,
+        model: data.model,
+        maxTokens: data.maxTokens,
+      });
+      return res.json(result);
+    }
+
+    const responseData = await callOneMin('/api/chat-with-ai', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       idempotent: false,
     });
-    if (isFailedResponse(data)) {
+    if (isFailedResponse(responseData)) {
       throw new HttpError(
         502,
-        `1min.ai chat failed: ${extractFailureMessage(data)}`,
+        `1min.ai chat failed: ${extractFailureMessage(responseData)}`,
         'UPSTREAM_API_ERROR',
-        data,
+        responseData,
       );
     }
-    res.json(data);
+    res.json(responseData);
   } catch (err) {
     next(err);
   }
 });
 
+function setSseHeaders(res) {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+}
+
+function flushRes(res) {
+  if (typeof (/** @type {any} */ (res).flush) === 'function') {
+    /** @type {any} */ (res).flush();
+  }
+}
+
+async function handleOneForAllChatStream(req, res, data, controller) {
+  const provider = getProvider('1forall');
+  const { response, format } = await provider.openChatStream({
+    prompt: data.prompt,
+    messages: data.messages,
+    model: data.model,
+    maxTokens: data.maxTokens,
+    signal: controller.signal,
+  });
+
+  setSseHeaders(res);
+
+  if (format === '1min-sse') {
+    const bodyText = await response.text();
+    if (!res.writableEnded && !res.destroyed) {
+      res.write(bodyText);
+      flushRes(res);
+      res.end();
+    }
+    return;
+  }
+
+  const heartbeatInterval = setInterval(() => {
+    if (!res.writableEnded) {
+      res.write(':\n\n');
+      flushRes(res);
+    }
+  }, 15_000);
+
+  let streamErrorMsg = null;
+  let accumulated = '';
+  let finalUsage = null;
+  try {
+    const result = await consumeOpenAiSseStream(response, {
+      signal: controller.signal,
+      onContent: (chunk) => {
+        accumulated += chunk;
+        if (!res.writableEnded && !res.destroyed) {
+          res.write(`event: content\ndata: ${JSON.stringify({ content: chunk })}\n\n`);
+          flushRes(res);
+        }
+      },
+      onError: (msg) => {
+        streamErrorMsg = msg;
+      },
+      onDone: ({ usage }) => {
+        finalUsage = usage || null;
+      },
+    });
+
+    if (streamErrorMsg) {
+      if (!res.writableEnded && !res.destroyed) {
+        res.write(`event: error\ndata: ${JSON.stringify({ error: streamErrorMsg })}\n\n`);
+        flushRes(res);
+      }
+      return;
+    }
+
+    const finalText = result.text || accumulated;
+    if (!res.writableEnded && !res.destroyed) {
+      const finalRecord = {
+        aiRecord: {
+          status: 'SUCCESS',
+          model: data.model || serverConfig.defaultChatModel1ForAll,
+          aiRecordDetail: { resultObject: [finalText] },
+          ...(finalUsage ? { usage: finalUsage } : {}),
+        },
+      };
+      res.write(`event: final-result\ndata: ${JSON.stringify(finalRecord)}\n\n`);
+      res.write('data: [DONE]\n\n');
+      flushRes(res);
+    }
+  } catch (streamErr) {
+    if (controller.signal.aborted || streamErr?.name === 'AbortError') {
+      logger.info('1forall stream reading aborted due to client disconnection.');
+    } else if (!res.writableEnded && !res.destroyed) {
+      res.write(`event: error\ndata: ${JSON.stringify({ error: 'Upstream stream interrupted' })}\n\n`);
+    }
+  } finally {
+    clearInterval(heartbeatInterval);
+    if (!res.writableEnded) res.end();
+  }
+}
+
 router.post('/stream', async (req, res, next) => {
   try {
-    const { error, payload } = parseChatRequest(req.body);
+    const { error, providerId, data, payload } = parseChatRequest(req.body);
     if (error) return res.status(error.status).json({ error: error.message });
 
     const controller = new AbortController();
@@ -207,6 +350,11 @@ router.post('/stream', async (req, res, next) => {
         controller.abort();
       }
     });
+
+    if (providerId === '1forall') {
+      await handleOneForAllChatStream(req, res, data, controller);
+      return;
+    }
 
     const response = await callOneMin('/api/chat-with-ai?isStreaming=true', {
       headers: { 'Content-Type': 'application/json' },
@@ -229,34 +377,31 @@ router.post('/stream', async (req, res, next) => {
     }
 
     if (response.headers.get('content-type')?.includes('application/json')) {
-      const data = await response.json().catch(() => null);
-      if (isFailedResponse(data)) {
+      const jsonData = await response.json().catch(() => null);
+      if (isFailedResponse(jsonData)) {
         throw new HttpError(
           502,
-          `1min.ai conversation failed: ${extractFailureMessage(data)}`,
+          `1min.ai conversation failed: ${extractFailureMessage(jsonData)}`,
           'UPSTREAM_API_ERROR',
-          data,
+          jsonData,
         );
       }
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
-      res.write(`event: result\ndata: ${JSON.stringify(data)}\n\n`);
+      res.write(`event: result\ndata: ${JSON.stringify(jsonData)}\n\n`);
       res.write('data: [DONE]\n\n');
       return res.end();
     }
 
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
+    setSseHeaders(res);
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     const heartbeatInterval = setInterval(() => {
       if (!res.writableEnded) {
         res.write(':\n\n');
-        if (typeof (/** @type {any} */ (res).flush) === 'function') /** @type {any} */ (res).flush();
+        flushRes(res);
       }
     }, 15_000);
 
@@ -264,7 +409,7 @@ router.post('/stream', async (req, res, next) => {
     let carry = '';
     let totalStreamBytes = 0;
     let streamLimitExceeded = false;
-    const MAX_STREAM_BYTES = 50 * 1024 * 1024; // 50MB safety limit
+    const MAX_STREAM_BYTES = 50 * 1024 * 1024;
 
     const normalizeResultBlock = (block) => {
       const lines = block.split('\n');
@@ -321,7 +466,7 @@ router.post('/stream', async (req, res, next) => {
           }
           if (classified.type === 'forward') {
             res.write(classified.block + '\n\n');
-            if (typeof (/** @type {any} */ (res).flush) === 'function') /** @type {any} */ (res).flush();
+            flushRes(res);
           }
         }
       }
@@ -335,7 +480,7 @@ router.post('/stream', async (req, res, next) => {
           resultBlocks.push(classified.block);
         } else if (classified.type === 'forward') {
           res.write(classified.block + '\n\n');
-          if (typeof (/** @type {any} */ (res).flush) === 'function') /** @type {any} */ (res).flush();
+          flushRes(res);
         }
       }
 
@@ -343,28 +488,23 @@ router.post('/stream', async (req, res, next) => {
         for (const resultBlock of resultBlocks) {
           res.write(normalizeResultBlock(resultBlock) + '\n\n');
         }
-        if (typeof (/** @type {any} */ (res).flush) === 'function') /** @type {any} */ (res).flush();
+        flushRes(res);
       }
     } catch (streamErr) {
       if (controller.signal.aborted || streamErr.name === 'AbortError') {
         logger.info('Stream reading aborted due to client disconnection.');
       } else {
         logger.warn('Stream interrupted', { error: streamErr.message });
-        // SSE normal closure means "complete" for clients; without an explicit
-        // error event a mid-stream upstream failure would be presented to the
-        // user as a truncated-but-successful answer.
         if (!res.writableEnded && !res.destroyed) {
           res.write(`event: error\ndata: ${JSON.stringify({ error: 'Upstream stream interrupted' })}\n\n`);
         }
       }
     } finally {
       if (streamLimitExceeded) {
-        // Stop consuming the oversized upstream body so the connection is
-        // released immediately instead of being held until the fetch timeout.
         try {
           await reader.cancel();
         } catch {
-          // ignore — reader may already be released or errored
+          // ignore
         }
         if (!res.writableEnded && !res.destroyed) {
           res.write(`event: error\ndata: ${JSON.stringify({ error: 'Stream exceeded maximum size' })}\n\n`);

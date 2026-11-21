@@ -1,10 +1,13 @@
 import { api } from './api.js';
 import { t } from './i18n.js';
 import { toast } from './toast.js';
+import { getActiveProvider } from './settings.js';
 
 let _allChatModels = [];
 let _allCodeModels = [];
 let _allImageModels = [];
+let _allVideoModels = [];
+let _providerCatalogs = { '1min': null, '1forall': null };
 let _activePickerBtn = null;
 let _activePickerType = null;
 let _activeTag = 'all';
@@ -34,6 +37,9 @@ export function getAllCodeModels() {
 }
 export function getAllImageModels() {
   return _allImageModels;
+}
+export function getAllVideoModels() {
+  return _allVideoModels;
 }
 
 const FALLBACK_CHAT_MODELS = [
@@ -103,22 +109,102 @@ const FALLBACK_IMAGE_MODELS = [
   },
 ];
 
+const FALLBACK_VIDEO_MODELS = [
+  { id: 'kling', label: 'Kling AI (Fallback)', provider: 'Kling', tags: ['video', 'flagship'] },
+  {
+    id: 'veo3-video',
+    label: 'Google Veo3 Video (Fallback)',
+    provider: 'Google',
+    tags: ['video', 'flagship'],
+  },
+  { id: 'sora-2', label: 'OpenAI Sora 2 (Fallback)', provider: 'OpenAI', tags: ['video', 'fast'] },
+];
+
+function applyActiveProviderCatalog(providerId = getActiveProvider()) {
+  const cat = _providerCatalogs[providerId];
+  if (cat) {
+    _allChatModels =
+      Array.isArray(cat.chatModels) && cat.chatModels.length > 0 ? cat.chatModels : FALLBACK_CHAT_MODELS;
+    _allCodeModels =
+      Array.isArray(cat.codeModels) && cat.codeModels.length > 0 ? cat.codeModels : FALLBACK_CODE_MODELS;
+    _allImageModels =
+      Array.isArray(cat.imageModels) && cat.imageModels.length > 0 ? cat.imageModels : FALLBACK_IMAGE_MODELS;
+    _allVideoModels =
+      Array.isArray(cat.videoModels) && cat.videoModels.length > 0 ? cat.videoModels : FALLBACK_VIDEO_MODELS;
+  }
+  syncPickerSelectionsToCatalog(providerId);
+}
+
+function syncPickerSelectionsToCatalog(providerId = getActiveProvider()) {
+  const pairs = [
+    { inputId: 'chatModel', labelId: 'chatModelLabel', models: _allChatModels, fallbackId: 'gpt-4o-mini' },
+    {
+      inputId: 'codeModel',
+      labelId: 'codeModelLabel',
+      models: _allCodeModels,
+      fallbackId: providerId === '1forall' ? 'gpt-4o' : 'qwen3-coder-plus',
+    },
+    {
+      inputId: 'imageModel',
+      labelId: 'imageModelLabel',
+      models: _allImageModels,
+      fallbackId: providerId === '1forall' ? 'black-forest-labs/flux-schnell' : 'gpt-image-2',
+    },
+    {
+      inputId: 'videoModel',
+      labelId: 'videoModelLabel',
+      models: _allVideoModels,
+      fallbackId: providerId === '1forall' ? 'google-veo3' : 'kling',
+    },
+  ];
+
+  for (const { inputId, labelId, models, fallbackId } of pairs) {
+    const inputEl = document.getElementById(inputId);
+    const labelEl = document.getElementById(labelId);
+    if (!inputEl || !Array.isArray(models) || models.length === 0) continue;
+
+    let selected = models.find((m) => m.id === inputEl.value);
+    if (!selected) {
+      selected = models.find((m) => m.id === fallbackId) || models[0];
+      inputEl.value = selected.id;
+    }
+    if (labelEl && selected) {
+      labelEl.textContent = selected.label;
+    }
+  }
+}
+
 export async function loadModels() {
   try {
     const [data, health] = await Promise.all([api('/api/models'), api('/api/health').catch(() => null)]);
 
-    _allChatModels =
-      Array.isArray(data.chatModels) && data.chatModels.length > 0 ? data.chatModels : FALLBACK_CHAT_MODELS;
-    _allCodeModels =
-      Array.isArray(data.codeModels) && data.codeModels.length > 0 ? data.codeModels : FALLBACK_CODE_MODELS;
-    _allImageModels =
-      Array.isArray(data.imageModels) && data.imageModels.length > 0
-        ? data.imageModels
-        : FALLBACK_IMAGE_MODELS;
+    if (data?.providers) {
+      _providerCatalogs = {
+        '1min': data.providers['1min'] || null,
+        '1forall': data.providers['1forall'] || null,
+      };
+    }
+
+    const activeProvider = getActiveProvider();
+    if (_providerCatalogs[activeProvider]) {
+      applyActiveProviderCatalog(activeProvider);
+    } else {
+      _allChatModels =
+        Array.isArray(data.chatModels) && data.chatModels.length > 0 ? data.chatModels : FALLBACK_CHAT_MODELS;
+      _allCodeModels =
+        Array.isArray(data.codeModels) && data.codeModels.length > 0 ? data.codeModels : FALLBACK_CODE_MODELS;
+      _allImageModels =
+        Array.isArray(data.imageModels) && data.imageModels.length > 0
+          ? data.imageModels
+          : FALLBACK_IMAGE_MODELS;
+      _allVideoModels =
+        Array.isArray(data.videoModels) && data.videoModels.length > 0
+          ? data.videoModels
+          : FALLBACK_VIDEO_MODELS;
+      syncPickerSelectionsToCatalog(activeProvider);
+    }
 
     if (health?.models?.source === 'fallback') {
-      // Keep the fallback state visible only in the console so the UI does not
-      // repeat the same notice on every reload.
       console.info(health.models.error || t('model_fetch_warning'));
     }
   } catch (e) {
@@ -126,6 +212,7 @@ export async function loadModels() {
     _allChatModels = FALLBACK_CHAT_MODELS;
     _allCodeModels = FALLBACK_CODE_MODELS;
     _allImageModels = FALLBACK_IMAGE_MODELS;
+    _allVideoModels = FALLBACK_VIDEO_MODELS;
     toast.warning(t('model_fetch_warning'));
   }
 }
@@ -241,6 +328,18 @@ function renderPickerList(models, search = '', tag = 'all') {
         contentRow.appendChild(bSpan);
       }
 
+      if (m.meta?.credits != null) {
+        const cSpan = document.createElement('span');
+        cSpan.className = 'model-tag tag-credits';
+        cSpan.textContent = `${m.meta.credits} cr`;
+        contentRow.appendChild(cSpan);
+      } else if (m.meta?.creditsPerOutputToken != null) {
+        const cSpan = document.createElement('span');
+        cSpan.className = 'model-tag tag-credits';
+        cSpan.textContent = `${m.meta.creditsPerOutputToken}/tok`;
+        contentRow.appendChild(cSpan);
+      }
+
       // Tags display
       if (m.tags && m.tags.length > 0) {
         const tagsDiv = document.createElement('div');
@@ -290,25 +389,46 @@ function openModelPicker(btn, type) {
   _activeTag = 'all';
 
   btn.setAttribute('aria-expanded', 'true');
-  let models = type === 'image' ? _allImageModels : type === 'code' ? _allCodeModels : _allChatModels;
+  let models =
+    type === 'video'
+      ? _allVideoModels
+      : type === 'image'
+        ? _allImageModels
+        : type === 'code'
+          ? _allCodeModels
+          : _allChatModels;
 
   if (_creditSaving) {
-    models = models.filter((m) => m.tags && m.tags.includes('fast'));
+    const fastModels = models.filter((m) => m.tags && m.tags.includes('fast'));
+    if (fastModels.length > 0) models = fastModels;
   }
 
   if (type === 'image') {
     const isEditMode = !!document.getElementById('editorImageUrl')?.value?.trim();
     if (isEditMode) {
-      // Show only models with the "editor" tag for image editing
-      models = _allImageModels.filter((m) => m.tags && m.tags.includes('editor'));
+      const editorModels = _allImageModels.filter((m) => m.tags && m.tags.includes('editor'));
+      models = editorModels.length > 0 ? editorModels : _allImageModels;
     } else {
-      // For generation: show flagship + fast models (exclude editor-only models)
       models = _allImageModels.filter((m) => {
         if (!m.tags) return true;
         if (m.tags.includes('editor') && !m.tags.includes('flagship') && !m.tags.includes('fast'))
           return false;
         return true;
       });
+    }
+  }
+
+  if (type === 'video') {
+    const isI2V = !!document.getElementById('editorImageUrl')?.value?.trim();
+    if (isI2V) {
+      const i2vModels = _allVideoModels.filter(
+        (m) =>
+          !m.meta?.mode ||
+          m.meta.mode === 'IMAGE_TO_VIDEO' ||
+          m.tags?.includes('image-to-video') ||
+          getActiveProvider() === '1min',
+      );
+      if (i2vModels.length > 0) models = i2vModels;
     }
   }
 
@@ -473,6 +593,25 @@ function navigatePickerItems(direction) {
 }
 
 export function initModelPickers() {
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('provider-changed', (e) => {
+      const nextProvider = e?.detail?.provider || getActiveProvider();
+      applyActiveProviderCatalog(nextProvider);
+    });
+    window.addEventListener('models-refresh-requested', async (e) => {
+      try {
+        await api('/api/models/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: e?.detail?.provider }),
+        });
+        await loadModels();
+      } catch (err) {
+        console.warn('Model refresh failed:', err);
+      }
+    });
+  }
+
   document.querySelectorAll('.model-picker-btn').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();

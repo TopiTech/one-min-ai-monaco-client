@@ -8,6 +8,7 @@ import { renderMarkdownSafely } from './utils.js';
 import { t } from './i18n.js';
 import { findTextCandidate } from './one-min-response.js';
 import { toast } from './toast.js';
+import { getActiveProvider } from './settings.js';
 
 const MAX_MESSAGES = 200;
 const MAX_STREAM_MS = 5 * 60 * 1000;
@@ -36,6 +37,7 @@ export function createChatState() {
   return {
     attachments: [],
     abortController: null,
+    history: [],
   };
 }
 
@@ -262,7 +264,11 @@ export function createChatManager(dom, state) {
         try {
           const fd = new FormData();
           fd.append('asset', att.file);
-          const data = await api('/api/assets/upload', { method: 'POST', body: fd });
+          const provider = getActiveProvider();
+          const data = await api(`/api/assets/upload?provider=${encodeURIComponent(provider)}`, {
+            method: 'POST',
+            body: fd,
+          });
           const key = data?.key || data?.asset?.key || data?.fileContent?.path || data?.asset?.location || '';
           const url = data?.url || (key ? assetUrl(key) : '');
           att.assetKey = key;
@@ -345,31 +351,46 @@ export function createChatManager(dom, state) {
     let fullText = '';
     let followStreamScroll = wasNearBottom;
 
+    const provider = getActiveProvider();
     try {
-      const uploadedAttachments = await uploadAttachments();
+      let requestPayload;
+      if (provider === '1forall') {
+        const history = Array.isArray(state.chat.history) ? state.chat.history : [];
+        requestPayload = {
+          provider: '1forall',
+          prompt,
+          messages: [...history, { role: 'user', content: prompt }],
+          model: dom.chatModel.value,
+        };
+      } else {
+        const uploadedAttachments = await uploadAttachments();
 
-      const apiAttachments = {};
-      const imageKeys = uploadedAttachments
-        .filter((a) => a.type === 'image' && a.assetKey)
-        .map((a) => a.assetKey);
-      const fileKeys = uploadedAttachments
-        .filter((a) => a.type === 'file' && a.assetKey)
-        .map((a) => a.assetKey);
-      if (imageKeys.length > 0) apiAttachments.images = imageKeys;
-      if (fileKeys.length > 0) apiAttachments.files = fileKeys;
+        const apiAttachments = {};
+        const imageKeys = uploadedAttachments
+          .filter((a) => a.type === 'image' && a.assetKey)
+          .map((a) => a.assetKey);
+        const fileKeys = uploadedAttachments
+          .filter((a) => a.type === 'file' && a.assetKey)
+          .map((a) => a.assetKey);
+        if (imageKeys.length > 0) apiAttachments.images = imageKeys;
+        if (fileKeys.length > 0) apiAttachments.files = fileKeys;
 
-      const requestBody = JSON.stringify({
-        prompt,
-        model: dom.chatModel.value,
-        conversationId: dom.conversationId.value || undefined,
-        webSearch: dom.webSearch.checked,
-        numOfSite: dom.chatNumOfSite?.value ? parseInt(dom.chatNumOfSite.value, 10) : undefined,
-        maxWord: dom.chatMaxWord?.value ? parseInt(dom.chatMaxWord.value, 10) : undefined,
-        withMemories: dom.withMemories?.checked || false,
-        isMixed: dom.isMixed?.checked || false,
-        brandVoiceId: dom.brandVoiceId?.value?.trim() || undefined,
-        attachments: Object.keys(apiAttachments).length > 0 ? apiAttachments : undefined,
-      });
+        requestPayload = {
+          provider: '1min',
+          prompt,
+          model: dom.chatModel.value,
+          conversationId: dom.conversationId.value || undefined,
+          webSearch: dom.webSearch.checked,
+          numOfSite: dom.chatNumOfSite?.value ? parseInt(dom.chatNumOfSite.value, 10) : undefined,
+          maxWord: dom.chatMaxWord?.value ? parseInt(dom.chatMaxWord.value, 10) : undefined,
+          withMemories: dom.withMemories?.checked || false,
+          isMixed: dom.isMixed?.checked || false,
+          brandVoiceId: dom.brandVoiceId?.value?.trim() || undefined,
+          attachments: Object.keys(apiAttachments).length > 0 ? apiAttachments : undefined,
+        };
+      }
+
+      const requestBody = JSON.stringify(requestPayload);
 
       for (let attempt = 0; attempt <= MAX_STREAM_RETRIES; attempt++) {
         let reader = null;
@@ -571,6 +592,11 @@ export function createChatManager(dom, state) {
 
       if (!fullText) {
         fullText = t('chat_empty_response');
+      } else if (Array.isArray(state.chat.history)) {
+        state.chat.history.push({ role: 'user', content: prompt }, { role: 'assistant', content: fullText });
+        if (state.chat.history.length > 40) {
+          state.chat.history.splice(0, state.chat.history.length - 40);
+        }
       }
 
       renderMarkdownSafely(aiContentDiv, fullText);
