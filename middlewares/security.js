@@ -1,6 +1,7 @@
 import helmet from 'helmet';
 import crypto from 'crypto';
 import logger from '../utils/logger.js';
+import { isAndroidPlatform } from '../config/server.js';
 
 const customOrigins = (process.env.ALLOWED_CORS_ORIGINS || '')
   .split(',')
@@ -67,6 +68,7 @@ export function generateNonce(req, res, next) {
 // style-src requires 'unsafe-inline' for Monaco's CSSOM insertRule operations.
 // style-src-attr uses nonce for inline style attribute protection.
 export function configureCSP() {
+  const isAndroid = isAndroidPlatform();
   return helmet({
     contentSecurityPolicy: {
       directives: {
@@ -74,7 +76,9 @@ export function configureCSP() {
         'script-src': ["'self'", (_req, /** @type {any} */ res) => `'nonce-${res.locals.nonce}'`, 'blob:'],
         'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
         'style-src-attr': ["'unsafe-inline'"],
-        'upgrade-insecure-requests': [],
+        // Android WebView loads the local BFF over plain HTTP loopback (127.0.0.1);
+        // null deletes helmet's default upgrade-insecure-requests directive.
+        'upgrade-insecure-requests': isAndroid ? null : [],
         'img-src': ["'self'", 'data:', 'https:', 'blob:'],
         'connect-src': ["'self'"],
         'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com'],
@@ -87,6 +91,7 @@ export function configureCSP() {
     },
     crossOriginEmbedderPolicy: false,
     xFrameOptions: { action: 'deny' },
+    ...(isAndroid ? { hsts: false } : {}),
   });
 }
 
@@ -124,8 +129,8 @@ export function securityHeaders(req, res, next) {
   res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
 
   // Apply Strict-Transport-Security (HSTS) only in non-development/test environments
-  // to avoid breaking local HTTP environments.
-  if (process.env.NODE_ENV === 'production') {
+  // to avoid breaking local HTTP environments (including Android local BFF loopback).
+  if (process.env.NODE_ENV === 'production' && !isAndroidPlatform()) {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   }
   next();

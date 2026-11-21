@@ -15,7 +15,11 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"server.js\" \"{public,routes,utils,config,services,tests}/**/*.{js,css,html}\"",
     "format:check": "prettier --check \"server.js\" \"{public,routes,utils,config,services,tests}/**/*.{js,css,html}\"",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "android:prepare": "node scripts/android-prepare.js",
+    "android:sync": "node scripts/android-prepare.js && npx cap sync android",
+    "android:build": "node scripts/android-prepare.js && npx cap sync android && cd android && gradlew.bat assembleDebug",
+    "android:open": "npx cap open android"
   },
   "dependencies": {
     "cookie": "^2.0.1",
@@ -36,6 +40,9 @@
     "qs": "^6.16.0"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/cli": "^8.6.2",
+    "@capacitor/core": "^8.6.2",
     "@eslint/css": "^2.0.0",
     "@eslint/js": "^10.0.1",
     "@eslint/markdown": "^8.0.3",
@@ -60,6 +67,9 @@
     "moduleNameMapper": {
       "^(\\.{1,2}/.*)\\.js$": "$1"
     },
+    "modulePathIgnorePatterns": [
+      "<rootDir>/android/"
+    ],
     "maxWorkers": 2,
     "coverageThreshold": {
       "global": {

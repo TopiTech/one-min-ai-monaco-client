@@ -139,7 +139,14 @@ function parseLogLevel(raw) {
   return VALID_LOG_LEVELS.has(v) ? v : 'info';
 }
 
+export function isAndroidPlatform() {
+  return String(process.env.APP_PLATFORM || '').toLowerCase() === 'android';
+}
+
 export const serverConfig = {
+  // Platform target ('android' disables Monaco Editor and command execution)
+  appPlatform: isAndroidPlatform() ? 'android' : 'default',
+
   // Server settings
   port: intInRange(process.env.PORT, MIN_PORT, MAX_PORT, FALLBACK.port),
 
@@ -256,8 +263,10 @@ export const serverConfig = {
   ),
 
   // Agent settings
-  enableCommandExecution: parseBoolean(process.env.ENABLE_COMMAND_EXECUTION, false),
-  enableCodeRun: parseBoolean(process.env.ENABLE_CODE_RUN, false),
+  enableCommandExecution: isAndroidPlatform()
+    ? false
+    : parseBoolean(process.env.ENABLE_COMMAND_EXECUTION, false),
+  enableCodeRun: isAndroidPlatform() ? false : parseBoolean(process.env.ENABLE_CODE_RUN, false),
   commandTimeoutMs: intInRange(
     process.env.COMMAND_TIMEOUT_MS,
     MIN_COMMAND_TIMEOUT,

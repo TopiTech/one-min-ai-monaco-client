@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { callOneMin, normalizeAssetResponse } from './utils/api-client.js';
-import { serverConfig } from './config/server.js';
+import { serverConfig, isAndroidPlatform } from './config/server.js';
 import logger, { initLogger, sanitizeUrlForLogging } from './utils/logger.js';
 import { validateBufferMimeType, getExtensionFromMimeType } from './utils/mime-guard.js';
 import fs from 'fs';
@@ -275,6 +275,11 @@ export function createApp(options = {}) {
     localAuthToken: localAuthTokenOption,
     enableRateLimit = process.env.NODE_ENV !== 'test',
   } = options;
+  const isAndroid = isAndroidPlatform();
+  if (isAndroid) {
+    serverConfig.enableCommandExecution = false;
+    serverConfig.enableCodeRun = false;
+  }
   const localAuthToken =
     localAuthTokenOption ?? authToken ?? process.env.LOCAL_BFF_AUTH_TOKEN ?? getOrCreatePersistentAuthToken();
 
@@ -388,6 +393,11 @@ export function createApp(options = {}) {
 
       let rawHtml = fs.readFileSync(htmlPath, 'utf8');
 
+      if (isAndroid) {
+        rawHtml = rawHtml.replace(/<script[^>]*src="\/vs\/loader\.js"[^>]*><\/script>\s*/i, '');
+        rawHtml = rawHtml.replace(/<html\b/i, '<html data-platform="android"');
+      }
+
       // Pre-parse the HTML to inject %%NONCE%% placeholders
       rawHtml = rawHtml.replace(/<script\b/g, `<script nonce="%%NONCE%%"`);
       rawHtml = rawHtml.replace(
@@ -423,16 +433,17 @@ export function createApp(options = {}) {
       if (requireLocalAuth) {
         const ONE_DAY_MS = 24 * 60 * 60 * 1000;
         const csrfToken = crypto.randomBytes(24).toString('hex');
+        const useSecureCookie = process.env.NODE_ENV === 'production' && !isAndroid;
         res.cookie('__bff_session', localAuthToken, {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
+          secure: useSecureCookie,
           sameSite: 'strict',
           maxAge: ONE_DAY_MS,
           path: '/api',
         });
         res.cookie('__bff_csrf', csrfToken, {
           httpOnly: false,
-          secure: process.env.NODE_ENV === 'production',
+          secure: useSecureCookie,
           sameSite: 'strict',
           maxAge: ONE_DAY_MS,
           path: '/',
@@ -539,6 +550,12 @@ export function createApp(options = {}) {
 }
 
 function validateEnvironment() {
+  if (isAndroidPlatform()) {
+    serverConfig.enableCommandExecution = false;
+    serverConfig.enableCodeRun = false;
+    logger.info('Running in Android platform mode: command execution and code run disabled');
+  }
+
   if (!hasApiKey('1min') && !hasApiKey('1forall')) {
     logger.warn(
       'No AI provider API keys are configured yet. You can enter your 1min.ai or 1forall.ai API key ' +

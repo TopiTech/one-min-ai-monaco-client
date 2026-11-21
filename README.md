@@ -224,6 +224,7 @@ Monaco Editor、marked、DOMPurify は `npm start`（または `npm run dev`）�
 - [1min.AI Get Result API](https://docs.1min.ai/docs/api/get-result)
 - [1forall.ai Swagger UI (OpenAPI)](https://api.1forall.ai/v1/external/swagger-ui/)
 - [詳細仕様: docs/api-specifications.md](docs/api-specifications.md) / [docs/api-specifications-1forall.md](docs/api-specifications-1forall.md)
+- [Android アプリビルドガイド (Capacitor + nodejs-mobile)](docs/android.md)
 
 ## 注意
 

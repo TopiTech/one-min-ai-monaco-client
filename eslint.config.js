@@ -16,6 +16,7 @@ export default defineConfig([
       '.mimocode/**',
       '.commandcode/**',
       'docs/**',
+      'android/**',
     ],
   },
   {

@@ -30,6 +30,7 @@ import { createAgentTimeline } from './js/agent-timeline.js';
 
 // Helper to get element by ID
 const $ = (id) => document.getElementById(id);
+const IS_ANDROID = document.documentElement.dataset.platform === 'android';
 
 // Initialize i18n first
 await initI18n();
@@ -181,7 +182,7 @@ for (const btn of navBtns) {
     btn.classList.add('active');
     $(btn.dataset.view).classList.add('active');
     $('viewTitle').textContent = btn.textContent.trim();
-    if (btn.dataset.view === 'coding') setTimeout(() => editorManager.layout(), 100);
+    if (btn.dataset.view === 'coding' && !IS_ANDROID) setTimeout(() => editorManager.layout(), 100);
   });
 }
 
@@ -389,70 +390,72 @@ dom.clearImageBtn.onclick = () => imageManager.clearImage();
 const openFile = (filePath) => tabManager.openFile(filePath);
 const saveFile = () => tabManager.saveFile();
 
-// Initialize Monaco Editor
-require.config({ paths: { vs: '/vs' } });
-require(['vs/editor/editor.main'], () => {
-  editorManager.init();
-  // Initialize editor toolbar after Monaco is ready
-  initEditorToolbar(editorManager, editorState);
-}, (err) => {
-  // #22: Monaco AMD loader failure — show user-visible error
-  const msg = err?.message || err || 'Failed to load Monaco Editor from local assets or server';
-  toast.error(t('monaco_load_failed', { error: msg }));
-  console.error('Monaco AMD load error:', err);
+// Initialize Monaco Editor (skipped in Android mode where public/vs is omitted)
+if (!IS_ANDROID && typeof require === 'function') {
+  require.config({ paths: { vs: '/vs' } });
+  require(['vs/editor/editor.main'], () => {
+    editorManager.init();
+    // Initialize editor toolbar after Monaco is ready
+    initEditorToolbar(editorManager, editorState);
+  }, (err) => {
+    // #22: Monaco AMD loader failure — show user-visible error
+    const msg = err?.message || err || 'Failed to load Monaco Editor from local assets or server';
+    toast.error(t('monaco_load_failed', { error: msg }));
+    console.error('Monaco AMD load error:', err);
 
-  const container = document.getElementById('editor');
-  if (container) {
-    container.textContent = '';
+    const container = document.getElementById('editor');
+    if (container) {
+      container.textContent = '';
 
-    const errorView = document.createElement('div');
-    errorView.className = 'editor-load-error';
+      const errorView = document.createElement('div');
+      errorView.className = 'editor-load-error';
 
-    const title = document.createElement('h3');
-    title.className = 'editor-load-error__title';
-    title.textContent = 'エディタの読み込みに失敗しました / Editor Load Failed';
+      const title = document.createElement('h3');
+      title.className = 'editor-load-error__title';
+      title.textContent = 'エディタの読み込みに失敗しました / Editor Load Failed';
 
-    const message = document.createElement('p');
-    message.className = 'editor-load-error__message';
-    message.textContent = String(msg);
+      const message = document.createElement('p');
+      message.className = 'editor-load-error__message';
+      message.textContent = String(msg);
 
-    const checklist = document.createElement('div');
-    checklist.className = 'editor-load-error__checklist';
+      const checklist = document.createElement('div');
+      checklist.className = 'editor-load-error__checklist';
 
-    const checklistTitle = document.createElement('strong');
-    checklistTitle.className = 'editor-load-error__checklist-title';
-    checklistTitle.textContent = '🔧 推奨されるチェックリスト / Troubleshooting Checklist:';
+      const checklistTitle = document.createElement('strong');
+      checklistTitle.className = 'editor-load-error__checklist-title';
+      checklistTitle.textContent = '🔧 推奨されるチェックリスト / Troubleshooting Checklist:';
 
-    const checklistItems = document.createElement('ul');
-    checklistItems.className = 'editor-load-error__list';
+      const checklistItems = document.createElement('ul');
+      checklistItems.className = 'editor-load-error__list';
 
-    const checklistTexts = [
-      'ローカルの BFF サーバーが正常に起動しているか（npm start 等）',
-      'ブラウザのネットワーク接続およびセキュリティ設定（Adblockやプロキシなど）に問題がないか',
-      'public/vs ディレクトリが存在し、Monaco Editorアセットが正しく配置されているか',
-    ];
-    for (const text of checklistTexts) {
-      const item = document.createElement('li');
-      item.textContent = text;
-      checklistItems.appendChild(item);
+      const checklistTexts = [
+        'ローカルの BFF サーバーが正常に起動しているか（npm start 等）',
+        'ブラウザのネットワーク接続およびセキュリティ設定（Adblockやプロキシなど）に問題がないか',
+        'public/vs ディレクトリが存在し、Monaco Editorアセットが正しく配置されているか',
+      ];
+      for (const text of checklistTexts) {
+        const item = document.createElement('li');
+        item.textContent = text;
+        checklistItems.appendChild(item);
+      }
+
+      checklist.appendChild(checklistTitle);
+      checklist.appendChild(checklistItems);
+
+      const reloadButton = document.createElement('button');
+      reloadButton.type = 'button';
+      reloadButton.className = 'editor-load-error__reload';
+      reloadButton.textContent = '再読み込み / Reload';
+      reloadButton.addEventListener('click', () => window.location.reload());
+
+      errorView.appendChild(title);
+      errorView.appendChild(message);
+      errorView.appendChild(checklist);
+      errorView.appendChild(reloadButton);
+      container.appendChild(errorView);
     }
-
-    checklist.appendChild(checklistTitle);
-    checklist.appendChild(checklistItems);
-
-    const reloadButton = document.createElement('button');
-    reloadButton.type = 'button';
-    reloadButton.className = 'editor-load-error__reload';
-    reloadButton.textContent = '再読み込み / Reload';
-    reloadButton.addEventListener('click', () => window.location.reload());
-
-    errorView.appendChild(title);
-    errorView.appendChild(message);
-    errorView.appendChild(checklist);
-    errorView.appendChild(reloadButton);
-    container.appendChild(errorView);
-  }
-});
+  });
+}
 
 // toggleInlineChat and closeInlineChat are set on window above via inlineChatManager
 
@@ -1115,10 +1118,12 @@ function initAgentInstructionControl() {
   updateButtons();
 }
 
-initWorkspace();
-initFolderPicker();
+if (!IS_ANDROID) {
+  initWorkspace();
+  initFolderPicker();
+  initAgentInstructionControl();
+}
 initCreditSavingMode();
-initAgentInstructionControl();
 
 // Listen to custom events from agent-core.js to decoupled editor UI
 document.addEventListener('editor:open-file', (e) => {

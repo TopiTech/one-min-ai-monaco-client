@@ -1,0 +1,9 @@
+{
+  "appId": "com.topitech.oneminai",
+  "appName": "1min AI Client",
+  "webDir": "mobile/loader",
+  "server": {
+    "androidScheme": "https",
+    "allowNavigation": ["127.0.0.1", "localhost"]
+  }
+}

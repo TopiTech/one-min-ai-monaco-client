@@ -704,3 +704,9 @@
     margin-top: 12px;
   }
 }
+
+/* Android mode: hide Coding (Monaco Editor & Agent) navigation tab and view */
+html[data-platform='android'] .nav[data-view='coding'],
+html[data-platform='android'] #coding {
+  display: none !important;
+}

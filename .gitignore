@@ -19,3 +19,12 @@ public/vs/
 public/vendor/
 jest-results.json
 test_output.txt
+
+# Android build & bundled runtime artifacts
+android/app/libnode/
+android/app/src/main/assets/nodejs-project/
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/capacitor-cordova-android-plugins/
