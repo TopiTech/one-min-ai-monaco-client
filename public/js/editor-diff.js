@@ -41,6 +41,10 @@ function setModalVisible(modal, visible) {
   modal.classList.toggle('is-hidden', !visible);
 }
 
+function isMonacoAvailable() {
+  return typeof monaco !== 'undefined' && Boolean(monaco?.editor);
+}
+
 function disposeModel(model) {
   if (!model) return;
   try {
@@ -84,10 +88,11 @@ export function createDiffDialog({ t, getThemeName }) {
   }
 
   function syncTheme() {
+    // Android mode omits Monaco entirely; referencing `monaco` unguarded
+    // threw a ReferenceError from the global theme toggle.
+    if (!isMonacoAvailable()) return;
     const theme = getThemeName();
-    if (typeof monaco.editor.setTheme === 'function') {
-      monaco.editor.setTheme(theme);
-    }
+    monaco.editor.setTheme(theme);
     diffEditor?.layout();
   }
 
@@ -105,6 +110,8 @@ export function createDiffDialog({ t, getThemeName }) {
     let onBackdropClick = null;
     let cleanupSession = () => {};
 
+    if (!isMonacoAvailable()) return false;
+
     try {
       modal = document.getElementById('diffModal');
       container = document.getElementById('diffEditorContainer');
@@ -118,9 +125,7 @@ export function createDiffDialog({ t, getThemeName }) {
       }
 
       const theme = getThemeName();
-      if (typeof monaco.editor.setTheme === 'function') {
-        monaco.editor.setTheme(theme);
-      }
+      monaco.editor.setTheme(theme);
 
       pathLabel.textContent = t('diff_file_label', { path: filePath });
       setModalVisible(modal, true);

@@ -341,7 +341,11 @@ $('createConversation').onclick = async () => {
     const data = await api('/api/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: dom.conversationTitle.value, model: dom.chatModel.value }),
+      body: JSON.stringify({
+        provider: getActiveProvider(),
+        title: dom.conversationTitle.value,
+        model: dom.chatModel.value,
+      }),
     });
     const id =
       data?.conversation?.uuid || data?.uuid || data?.aiRecord?.conversationId || data?.conversationId || '';

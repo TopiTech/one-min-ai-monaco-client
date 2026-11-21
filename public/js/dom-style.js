@@ -23,6 +23,7 @@ const MAX_INJECTS_PER_SECOND = 5;
 const MAX_STYLE_CONTENT_LENGTH = 16_384; // 16KB safety limit
 
 const ruleIndex = new Map(); // selector -> raw rule
+const staticBlocks = new Map(); // static block id -> raw CSS
 let styleEl = null;
 
 // --- Rate limiter state ---
@@ -65,6 +66,14 @@ function serialize() {
   for (const rule of ruleIndex.values()) {
     out += rule + '\n';
   }
+  // Static blocks (module-level component CSS) live in the same <style>
+  // element, so they must be part of every re-serialization. Keeping them
+  // only in textContent meant the next injectStyle()/setCriticalStyle()
+  // call silently erased them (toast styles disappeared after the first
+  // image comparison slider update).
+  for (const css of staticBlocks.values()) {
+    out += css + '\n';
+  }
   return out;
 }
 
@@ -89,7 +98,7 @@ export function injectStyle(css) {
 export function clearInjectedStyles() {
   ruleIndex.clear();
   if (styleEl && document.head.contains(styleEl)) {
-    styleEl.textContent = '';
+    styleEl.textContent = serialize();
   }
 }
 
@@ -150,11 +159,11 @@ export function injectStaticStyles(id, css) {
   if (typeof id !== 'string' || !id || typeof css !== 'string' || !css.trim()) return;
   if (css.length > MAX_STYLE_CONTENT_LENGTH) return;
 
-  const el = ensureStyleElement();
-  if (el.__staticIds && el.__staticIds.has(id)) return;
+  if (staticBlocks.has(id)) return;
+  staticBlocks.set(id, css);
 
-  // Append the static block after dynamic rules so rule order is preserved.
-  el.textContent = (el.textContent || '') + '\n' + css;
-  if (!el.__staticIds) el.__staticIds = new Set();
-  el.__staticIds.add(id);
+  // Re-serialize so the new block survives (and keeps its position after
+  // dynamic rules) on every later injectStyle()/setCriticalStyle() call.
+  const el = ensureStyleElement();
+  el.textContent = serialize();
 }

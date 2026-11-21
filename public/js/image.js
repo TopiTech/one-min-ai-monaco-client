@@ -54,21 +54,35 @@ export function createImageManager(dom) {
   let _mediaMode = 'image';
   let _isGenerating = false;
 
+  function removeCardCriticalStyles(card) {
+    const cmpEl = card?.querySelector?.('.image-comparison-slider');
+    if (!cmpEl) return;
+    for (const cls of cmpEl.classList) {
+      if (cls.startsWith('cmp-')) {
+        removeCriticalStylesByPrefix(`.${cls} `);
+      }
+    }
+  }
+
   function pruneImageGallery() {
     const gallery = dom.imageGallery;
     if (!gallery) return;
     while (gallery.children.length > MAX_CARDS) {
       const removed = gallery.lastChild;
-      const cmpEl = removed?.querySelector?.('.image-comparison-slider');
-      if (cmpEl) {
-        for (const cls of cmpEl.classList) {
-          if (cls.startsWith('cmp-')) {
-            removeCriticalStylesByPrefix(`.${cls} `);
-          }
-        }
-      }
+      removeCardCriticalStyles(removed);
       gallery.removeChild(removed);
     }
+  }
+
+  function renderJsonFallback(gallery, data) {
+    // Replace rather than append: repeated empty/unsupported responses used
+    // to grow an unbounded stack of identical <pre> blocks.
+    gallery.querySelector('pre.json')?.remove();
+    const pre = document.createElement('pre');
+    pre.className = 'json';
+    pre.textContent = JSON.stringify(data, null, 2);
+    gallery.prepend(pre);
+    pruneImageGallery();
   }
 
   function setMediaMode(mode) {
@@ -116,10 +130,7 @@ export function createImageManager(dom) {
     if (!gallery) return;
 
     if (!urls.length) {
-      const pre = document.createElement('pre');
-      pre.className = 'json';
-      pre.textContent = JSON.stringify(data, null, 2);
-      gallery.prepend(pre);
+      renderJsonFallback(gallery, data);
       return;
     }
 
@@ -166,10 +177,7 @@ export function createImageManager(dom) {
     if (!gallery) return;
 
     if (!images.length) {
-      const pre = document.createElement('pre');
-      pre.className = 'json';
-      pre.textContent = JSON.stringify(data, null, 2);
-      gallery.prepend(pre);
+      renderJsonFallback(gallery, data);
       return;
     }
 
@@ -177,7 +185,14 @@ export function createImageManager(dom) {
     gallery.querySelectorAll('.imageCard').forEach((card) => {
       const imgEl = card.querySelector('img:not(.image-before)');
       const link = card.querySelector('a');
-      const key = (imgEl && (imgEl.src || imgEl.dataset?.src)) || (link && link.href) || '';
+      // Compare the authored (relative/proxied) URLs. The .src/.href DOM
+      // properties resolve to absolute URLs, while assetUrl() returns a
+      // relative /api/assets/proxy URL — using the properties never matched
+      // and recreated (or leaked comparison styles from) every card render.
+      const key =
+        (imgEl && (imgEl.getAttribute?.('src') || imgEl.dataset?.src)) ||
+        (link && (link.getAttribute?.('href') || link.href)) ||
+        '';
       if (key) existingCards.set(key, card);
     });
 
@@ -310,7 +325,10 @@ export function createImageManager(dom) {
     }
 
     existingCards.forEach((card, url) => {
-      if (!newUrls.has(url)) card.remove();
+      if (!newUrls.has(url)) {
+        removeCardCriticalStyles(card);
+        card.remove();
+      }
     });
 
     pruneImageGallery();
@@ -358,6 +376,9 @@ export function createImageManager(dom) {
         const job = await api(
           `/api/jobs/${encodeURIComponent(provider)}/${encodeURIComponent(kind)}/${encodeURIComponent(jobId)}`,
         );
+        // The request may complete after the user pressed Cancel. Re-check
+        // before acting on the payload so a cancelled job is not rendered.
+        if (cancelled) break;
         if (dom.assetResult) {
           dom.assetResult.textContent = JSON.stringify(job, null, 2);
         }
