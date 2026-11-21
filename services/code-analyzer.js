@@ -45,8 +45,12 @@ export function validateCodeSyntax(code, language = 'javascript') {
     } catch (err) {
       let line = 1;
       let col = 1;
+      const lineColMatch = err.message.match(/line\s+(\d+)\s+column\s+(\d+)/i);
       const posMatch = err.message.match(/at position (\d+)/i);
-      if (posMatch) {
+      if (lineColMatch) {
+        line = Number(lineColMatch[1]);
+        col = Number(lineColMatch[2]);
+      } else if (posMatch) {
         const pos = Number(posMatch[1]);
         const lines = code.slice(0, pos).split('\n');
         line = lines.length;
@@ -135,9 +139,27 @@ export function validateCodeSyntax(code, language = 'javascript') {
 function checkBracketsBalance(code) {
   const stack = [];
   const pairs = { '}': '{', ']': '[', ')': '(' };
-  let state = 'code'; // 'code' | 'line_comment' | 'block_comment' | 'single_quote' | 'double_quote' | 'template'
+  let state = 'code'; // 'code' | 'line_comment' | 'block_comment' | 'single_quote' | 'double_quote' | 'template' | 'regex'
   let stringStart = null;
   let escape = false;
+  let regexInClass = false;
+  let canPrecedeRegex = true;
+  let currentWord = '';
+
+  const REGEX_PRECEDING_KEYWORDS = new Set([
+    'return',
+    'case',
+    'throw',
+    'else',
+    'in',
+    'of',
+    'typeof',
+    'void',
+    'delete',
+    'await',
+    'yield',
+  ]);
+  const REGEX_PRECEDING_CHARS = new Set('([,{;:?!&|^~+-*%=>'.split(''));
 
   let line = 1;
   let col = 0;
@@ -149,8 +171,11 @@ function checkBracketsBalance(code) {
     if (ch === '\n') {
       line++;
       col = 0;
-      if (state === 'line_comment') {
+      if (state === 'line_comment' || state === 'regex') {
         state = 'code';
+        regexInClass = false;
+        canPrecedeRegex = true;
+        currentWord = '';
       } else if ((state === 'single_quote' || state === 'double_quote') && !escape) {
         // Raw newline in single/double quoted string without backslash escape is a syntax error
         return `Unterminated string literal at line ${stringStart.line}, column ${stringStart.col}`;
@@ -164,7 +189,10 @@ function checkBracketsBalance(code) {
       continue;
     }
 
-    if (ch === '\\' && (state === 'single_quote' || state === 'double_quote' || state === 'template')) {
+    if (
+      ch === '\\' &&
+      (state === 'single_quote' || state === 'double_quote' || state === 'template' || state === 'regex')
+    ) {
       escape = true;
       continue;
     }
@@ -172,35 +200,52 @@ function checkBracketsBalance(code) {
     if (state === 'code') {
       if (ch === '/' && code[i + 1] === '/') {
         state = 'line_comment';
+        currentWord = '';
         i++;
         col++;
         continue;
       }
       if (ch === '/' && code[i + 1] === '*') {
         state = 'block_comment';
+        currentWord = '';
         stringStart = { line, col };
         i++;
         col++;
         continue;
       }
+      if (ch === '/' && canPrecedeRegex) {
+        state = 'regex';
+        regexInClass = false;
+        canPrecedeRegex = false;
+        currentWord = '';
+        continue;
+      }
       if (ch === "'") {
         state = 'single_quote';
+        canPrecedeRegex = false;
+        currentWord = '';
         stringStart = { line, col };
         continue;
       }
       if (ch === '"') {
         state = 'double_quote';
+        canPrecedeRegex = false;
+        currentWord = '';
         stringStart = { line, col };
         continue;
       }
       if (ch === '`') {
         state = 'template';
+        canPrecedeRegex = false;
+        currentWord = '';
         stringStart = { line, col };
         continue;
       }
 
       if (ch === '{' || ch === '[' || ch === '(') {
         stack.push({ ch, line, col });
+        canPrecedeRegex = true;
+        currentWord = '';
       } else if (ch === '}' || ch === ']' || ch === ')') {
         const last = stack.pop();
         if (!last) {
@@ -208,11 +253,26 @@ function checkBracketsBalance(code) {
         }
         if (last.ch === '${' && ch === '}') {
           state = last.prevState || 'template';
+          canPrecedeRegex = false;
+          currentWord = '';
           continue;
         }
         if (last.ch !== pairs[ch]) {
           return `Unmatched closing '${ch}' at line ${line}, column ${col}`;
         }
+        canPrecedeRegex = ch === '}';
+        currentWord = '';
+      } else if (/[A-Za-z0-9_$]/.test(ch)) {
+        currentWord += ch;
+        canPrecedeRegex = false;
+      } else if (!/\s/.test(ch)) {
+        canPrecedeRegex = ch !== '<' && REGEX_PRECEDING_CHARS.has(ch);
+        currentWord = '';
+      } else if (currentWord) {
+        if (REGEX_PRECEDING_KEYWORDS.has(currentWord)) {
+          canPrecedeRegex = true;
+        }
+        currentWord = '';
       }
     } else if (state === 'block_comment') {
       if (ch === '*' && code[i + 1] === '/') {
@@ -228,11 +288,21 @@ function checkBracketsBalance(code) {
       if (ch === '"') {
         state = 'code';
       }
+    } else if (state === 'regex') {
+      if (ch === '[') {
+        regexInClass = true;
+      } else if (ch === ']') {
+        regexInClass = false;
+      } else if (ch === '/' && !regexInClass) {
+        state = 'code';
+      }
     } else if (state === 'template') {
       if (ch === '`') {
         state = 'code';
       } else if (ch === '$' && code[i + 1] === '{') {
         stack.push({ ch: '${', line, col, prevState: 'template' });
+        canPrecedeRegex = true;
+        currentWord = '';
         i++;
         col++;
         state = 'code';
@@ -270,21 +340,36 @@ export function extractSymbols(code, language = 'javascript') {
   const lang = String(language).toLowerCase();
 
   const KEYWORDS = new Set(['if', 'for', 'while', 'switch', 'catch', 'function', 'return']);
+  let inBlockComment = false;
 
   for (let i = 0; i < lines.length; i++) {
     const lineNum = i + 1;
     const line = lines[i];
     const trimmed = line.trim();
 
-    // Skip empty or pure comment lines
-    if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('#') || trimmed.startsWith('/*')) {
+    if (inBlockComment) {
+      if (trimmed.includes('*/')) {
+        inBlockComment = false;
+      }
+      continue;
+    }
+
+    if (trimmed.startsWith('/*')) {
+      if (!trimmed.includes('*/', 2)) {
+        inBlockComment = true;
+      }
+      continue;
+    }
+
+    // Skip empty or pure single-line comment lines
+    if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('#')) {
       continue;
     }
 
     if (['javascript', 'js', 'typescript', 'ts', 'jsx', 'tsx'].includes(lang)) {
       // 1. Function declarations (including generator, async, and multiline parameter definitions)
       const fnMatch = line.match(
-        /(?:export\s+(?:default\s+)?)?(?:async\s+)?function(?:\s*\*|\s+)\s*([A-Za-z0-9_$]+)?(?:\s*\(([^)]*)\))?/,
+        /^\s*(?:export\s+(?:default\s+)?)?(?:async\s+)?function(?:\s*\*|\s+)\s*([A-Za-z0-9_$]+)?(?:\s*\(([^)]*)\))?/,
       );
       if (fnMatch && (fnMatch[1] || line.includes('('))) {
         const name = fnMatch[1] || '(anonymous function)';
@@ -300,7 +385,7 @@ export function extractSymbols(code, language = 'javascript') {
 
       // 2. Class declarations: class Foo ...
       const classMatch = line.match(
-        /(?:export\s+(?:default\s+)?)?class\s+([A-Za-z0-9_$]+)(?:\s+extends\s+([A-Za-z0-9_$]+))?/,
+        /^\s*(?:export\s+(?:default\s+)?)?class\s+([A-Za-z0-9_$]+)(?:\s+extends\s+([A-Za-z0-9_$]+))?/,
       );
       if (classMatch) {
         symbols.push({
@@ -314,7 +399,7 @@ export function extractSymbols(code, language = 'javascript') {
 
       // 3. Arrow functions / Variable functions: const foo = (...) => ...
       const varFnMatch = line.match(
-        /(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?(?:\(([^)]*)\)|[A-Za-z0-9_$]+)?\s*=>/,
+        /^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?(?:\(([^)]*)\)|[A-Za-z0-9_$]+)?\s*=>/,
       );
       if (varFnMatch) {
         symbols.push({
@@ -327,7 +412,7 @@ export function extractSymbols(code, language = 'javascript') {
       }
 
       // 4. Interfaces & Types (TypeScript)
-      const typeMatch = line.match(/(?:export\s+)?(?:interface|type)\s+([A-Za-z0-9_$]+)/);
+      const typeMatch = line.match(/^\s*(?:export\s+)?(?:interface|type)\s+([A-Za-z0-9_$]+)/);
       if (typeMatch) {
         symbols.push({
           name: typeMatch[1],

@@ -271,4 +271,27 @@ describe('config/models.js', () => {
       ]);
     });
   });
+
+  describe('fetchModels skips 1min discovery when API key is missing', () => {
+    test('keeps fallback status without making HTTP requests when ONE_MIN_AI_API_KEY is unset', async () => {
+      const prevKey = process.env.ONE_MIN_AI_API_KEY;
+      delete process.env.ONE_MIN_AI_API_KEY;
+      mockFetchError(500);
+
+      try {
+        const { fetchModels, getModelSyncStatus } = await import('../config/models.js');
+        await fetchModels({ provider: '1min' });
+
+        expect(globalThis.fetch).not.toHaveBeenCalled();
+        const status = getModelSyncStatus();
+        expect(status.ok).toBe(true);
+        expect(status.source).toBe('fallback');
+        expect(status.error).toBeNull();
+      } finally {
+        if (prevKey !== undefined) {
+          process.env.ONE_MIN_AI_API_KEY = prevKey;
+        }
+      }
+    });
+  });
 });

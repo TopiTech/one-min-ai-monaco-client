@@ -60,6 +60,7 @@ export function createInlineChatManager(editorState, editorManager, dom) {
     widgetDom.appendChild(statusDiv);
 
     promptInput.onkeydown = async (e) => {
+      if (e.isComposing || e.keyCode === 229) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         await submitInlineChat();
@@ -74,6 +75,8 @@ export function createInlineChatManager(editorState, editorManager, dom) {
 
     return widgetDom;
   }
+
+  let _isSubmitting = false;
 
   const widget = {
     getId: () => WIDGET_ID,
@@ -92,22 +95,26 @@ export function createInlineChatManager(editorState, editorManager, dom) {
   };
 
   async function submitInlineChat() {
-    if (!editorState.activeFilePath || !editorManager.instance) return;
+    if (_isSubmitting || !editorState.activeFilePath || !editorManager.instance) return;
     const domNode = getOrCreateDomNode();
     const input = domNode.querySelector('#inlineChatPrompt');
     const statusDiv = domNode.querySelector('#inlineChatStatus');
     const prompt = input.value.trim();
     if (!prompt) return;
 
+    _isSubmitting = true;
     statusDiv.classList.add('is-shown');
     statusDiv.className = 'inline-chat-status is-shown loading';
     input.disabled = true;
 
+    const targetFilePath = editorState.activeFilePath;
+    const targetModel = editorManager.instance.getModel();
     const code = editorManager.instance.getValue();
     const position = editorManager.instance.getPosition();
-    const fileName = editorState.activeFilePath.split(/[\\/]/).pop();
-    const language = editorManager.instance.getModel()?.getLanguageId() || 'plaintext';
+    const fileName = targetFilePath.split(/[\\/]/).pop();
+    const language = targetModel?.getLanguageId() || 'plaintext';
 
+    let failed = false;
     try {
       const activeProvider = getActiveProvider();
       const data = await api('/api/code/inline-chat', {
@@ -136,6 +143,13 @@ export function createInlineChatManager(editorState, editorManager, dom) {
         });
 
         if (accepted) {
+          if (
+            editorState.activeFilePath !== targetFilePath ||
+            editorManager.instance?.getModel() !== targetModel
+          ) {
+            toast.warning(t('tab_switch_failed', { error: targetFilePath }));
+            return;
+          }
           const range = new monaco.Range(
             position.lineNumber,
             position.column,
@@ -153,13 +167,19 @@ export function createInlineChatManager(editorState, editorManager, dom) {
         }
       }
     } catch (e) {
+      failed = true;
       toast.error(t('inline_chat_failed', { error: e.message }));
     } finally {
+      _isSubmitting = false;
       statusDiv.classList.remove('is-shown', 'loading');
       statusDiv.className = 'inline-chat-status';
       input.disabled = false;
-      input.value = '';
-      closeInlineChat();
+      if (!failed) {
+        input.value = '';
+        closeInlineChat();
+      } else {
+        input.focus();
+      }
     }
   }
 

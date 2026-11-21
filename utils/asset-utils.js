@@ -1,6 +1,34 @@
 import { serverConfig } from '../config/server.js';
 
 /**
+ * Unwraps an internal `/api/assets/proxy?url=...` reference back to its decoded
+ * upstream HTTPS/HTTP URL so external provider endpoints (e.g. 1forall.ai) receive
+ * the public asset URL rather than an unresolvable localhost-relative proxy path.
+ *
+ * @param {string} rawUrl
+ * @returns {string}
+ */
+export function unwrapAssetProxyUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return rawUrl;
+  const trimmed = rawUrl.trim();
+  if (!trimmed.startsWith('/api/assets/proxy')) return trimmed;
+  try {
+    const parsedProxy = new URL(trimmed, 'http://localhost');
+    const urlParam = parsedProxy.searchParams.get('url');
+    if (urlParam && /^https?:\/\//i.test(urlParam.trim())) {
+      return urlParam.trim();
+    }
+    const keyParam = parsedProxy.searchParams.get('key');
+    if (keyParam && keyParam.trim()) {
+      return `${serverConfig.assetBaseUrl.replace(/\/$/, '')}/${keyParam.trim().replace(/^\//, '')}`;
+    }
+  } catch {
+    // ignore malformed proxy URL and return original
+  }
+  return trimmed;
+}
+
+/**
  * Extracts a 1min.ai asset key from various URL formats.
  * Handles local proxy URLs, full HTTP/HTTPS URLs, and bare keys.
  *

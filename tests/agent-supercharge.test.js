@@ -231,6 +231,27 @@ export const deleteUser = async (id) => {
     expect(metadata.testCommand).toBe('npm test');
     expect(metadata.configFiles.length).toBeGreaterThan(0);
   });
+
+  test('validateCodeSyntax handles regex literals with quotes/brackets in TypeScript', () => {
+    const tsWithRegex = `const singleRe = /['"(]/;\nconst multiRe = /[a-z]/g;\nexport function ok(v: string) { return singleRe.test(v); }`;
+    expect(validateCodeSyntax(tsWithRegex, 'typescript').valid).toBe(true);
+  });
+
+  test('extractSymbols ignores declarations inside multiline block comments and string literals', () => {
+    const code = `
+/*
+function commentedOut() {}
+export class CommentedClass {}
+*/
+const example = "export function fakeSymbol() {}";
+export function realSymbol() {
+  return example;
+}
+`;
+    const symbols = extractSymbols(code, 'javascript');
+    const names = symbols.map((s) => s.name);
+    expect(names).toEqual(['realSymbol']);
+  });
 });
 
 describe('Agent New Endpoints & apply_diff Enhancements', () => {

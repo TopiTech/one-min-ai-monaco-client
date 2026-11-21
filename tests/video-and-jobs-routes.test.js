@@ -189,4 +189,42 @@ describe('Video, Jobs, and Multi-Provider Route Integration Tests', () => {
     expect(requestedUrls.some((u) => u.includes('1min'))).toBe(true);
     expect(requestedUrls.some((u) => u.includes('1forall'))).toBe(true);
   });
+
+  test('1forall image edit and video generation unwrap /api/assets/proxy?url= and handle null/bool numbers', async () => {
+    globalThis.fetch = jest.fn(async () => {
+      return new Response(JSON.stringify({ code_ref: 'job-ref-1', status: 'processing' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    const editRes = await request(app).post('/api/images/text-editor').send({
+      provider: '1forall',
+      model: 'flux-kontext',
+      imageUrl: '/api/assets/proxy?url=https%3A%2F%2Fcdn.example.com%2Finput.png',
+      prompt: 'make it brighter',
+    });
+    expect(editRes.status).toBe(200);
+    const editSent = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+    expect(editSent.file_reference).toBe('https://cdn.example.com/input.png');
+
+    const videoOk = await request(app).post('/api/videos/generate').send({
+      provider: '1forall',
+      imageUrl: '/api/assets/proxy?url=https%3A%2F%2Fcdn.example.com%2Fframe.png',
+      prompt: 'animate',
+      duration: null,
+      speed: null,
+    });
+    expect(videoOk.status).toBe(200);
+    const vidSent = JSON.parse(globalThis.fetch.mock.calls[1][1].body);
+    expect(vidSent.source_image_path).toBe('https://cdn.example.com/frame.png');
+    expect(vidSent.speed).toBeUndefined();
+
+    const videoBool = await request(app).post('/api/videos/generate').send({
+      provider: '1forall',
+      prompt: 'animate',
+      duration: true,
+    });
+    expect(videoBool.status).toBe(400);
+  });
 });

@@ -91,7 +91,8 @@ function normalizeOpenAiMessages({ prompt, messages, systemPrompt }) {
         out.push({ role, content });
       }
     }
-  } else if (prompt && typeof prompt === 'string') {
+  }
+  if (!out.some((m) => m.role !== 'system') && prompt && typeof prompt === 'string' && prompt.trim()) {
     out.push({ role: 'user', content: prompt });
   }
 
@@ -123,7 +124,32 @@ function isNonStreamingModelError(status, payload) {
   if (status !== 400) return false;
   const param = String(payload?.error?.param || '').toLowerCase();
   const msg = String(payload?.error?.message || payload?.detail || '').toLowerCase();
-  return param === 'model' || msg.includes('stream');
+  return param === 'stream' || msg.includes('stream');
+}
+
+function buildOneForAllSubmitResponse(data, selectedModel, kind) {
+  const codeRef = data?.code_ref || String(data?.id || '');
+  const normalized = normalizeOneForAllJobStatus(data, codeRef, kind);
+  if (normalized.status === 'failed') {
+    throw new HttpError(502, normalized.error || `1forall.ai ${kind} job failed`, 'UPSTREAM_API_ERROR', data);
+  }
+  const jobStatus = normalized.status === 'completed' ? 'SUCCESS' : 'PROCESSING';
+  return {
+    status: jobStatus,
+    jobId: codeRef,
+    code_ref: codeRef,
+    provider: '1forall',
+    kind,
+    urls: normalized.urls,
+    aiRecord: {
+      uuid: codeRef,
+      status: jobStatus,
+      model: selectedModel,
+      temporaryUrl: normalized.url_file || null,
+      aiRecordDetail: { resultObject: normalized.urls },
+    },
+    raw: data,
+  };
 }
 
 export function normalizeOneForAllJobStatus(data, codeRef, kind = 'image') {
@@ -408,24 +434,7 @@ export const oneForAllProvider = {
         idempotent: false,
       });
 
-      const codeRef = data?.code_ref || String(data?.id || '');
-      const normalized = normalizeOneForAllJobStatus(data, codeRef, 'image');
-      return {
-        status: normalized.status === 'completed' ? 'SUCCESS' : 'PROCESSING',
-        jobId: codeRef,
-        code_ref: codeRef,
-        provider: '1forall',
-        kind: 'image',
-        urls: normalized.urls,
-        aiRecord: {
-          uuid: codeRef,
-          status: normalized.status === 'completed' ? 'SUCCESS' : 'PROCESSING',
-          model: selectedModel,
-          temporaryUrl: normalized.url_file || null,
-          aiRecordDetail: { resultObject: normalized.urls },
-        },
-        raw: data,
-      };
+      return buildOneForAllSubmitResponse(data, selectedModel, 'image');
     }
 
     const n = Math.min(Math.max(Math.round(Number(num_outputs) || 1), 1), 4);
@@ -477,24 +486,7 @@ export const oneForAllProvider = {
       idempotent: false,
     });
 
-    const codeRef = data?.code_ref || String(data?.id || '');
-    const normalized = normalizeOneForAllJobStatus(data, codeRef, 'image');
-    return {
-      status: normalized.status === 'completed' ? 'SUCCESS' : 'PROCESSING',
-      jobId: codeRef,
-      code_ref: codeRef,
-      provider: '1forall',
-      kind: 'image',
-      urls: normalized.urls,
-      aiRecord: {
-        uuid: codeRef,
-        status: normalized.status === 'completed' ? 'SUCCESS' : 'PROCESSING',
-        model: selectedModel,
-        temporaryUrl: normalized.url_file || null,
-        aiRecordDetail: { resultObject: normalized.urls },
-      },
-      raw: data,
-    };
+    return buildOneForAllSubmitResponse(data, selectedModel, 'image');
   },
 
   /**
@@ -534,24 +526,7 @@ export const oneForAllProvider = {
       idempotent: false,
     });
 
-    const codeRef = data?.code_ref || String(data?.id || '');
-    const normalized = normalizeOneForAllJobStatus(data, codeRef, 'video');
-    return {
-      status: normalized.status === 'completed' ? 'SUCCESS' : 'PROCESSING',
-      jobId: codeRef,
-      code_ref: codeRef,
-      provider: '1forall',
-      kind: 'video',
-      urls: normalized.urls,
-      aiRecord: {
-        uuid: codeRef,
-        status: normalized.status === 'completed' ? 'SUCCESS' : 'PROCESSING',
-        model: selectedModel,
-        temporaryUrl: normalized.url_file || null,
-        aiRecordDetail: { resultObject: normalized.urls },
-      },
-      raw: data,
-    };
+    return buildOneForAllSubmitResponse(data, selectedModel, 'video');
   },
 
   async getJob(codeRef, kind = 'image') {

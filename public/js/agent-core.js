@@ -195,28 +195,19 @@ async function trimAgentHistory(apiFn, history, t, creditSaving, maxTokens) {
   const contents = history.map((h) => h.content || '');
   const counts = await estimateTokensBatch(apiFn, contents);
 
-  let totalTokens = 0;
-  for (let i = history.length - 1; i >= 0; i--) {
-    totalTokens += counts[i];
-    if (totalTokens > limit && i > 0) {
-      if (history.length > 1) {
-        // Keep initial instruction at history[0] to prevent goal amnesia
-        const removed = history.splice(1, i);
-        history.splice(1, 0, {
-          role: 'user',
-          content:
-            t('context_omitted', { count: removed.length }) ||
-            `【過去の経緯省略 (${removed.length}件のステップを圧縮)】`,
-        });
-      } else {
-        const removed = history.splice(0, i);
-        history.unshift({
-          role: 'user',
-          content:
-            t('context_omitted', { count: removed.length }) ||
-            `【過去の経緯省略 (${removed.length}件のステップを圧縮)】`,
-        });
-      }
+  // Reserve initial instruction budget (history[0]) when preserving it to prevent context overflow
+  let totalTokens = history.length > 1 ? counts[0] || 0 : 0;
+  for (let i = history.length - 1; i >= 1; i--) {
+    totalTokens += counts[i] || 0;
+    if (totalTokens > limit) {
+      // Keep initial instruction at history[0] to prevent goal amnesia
+      const removed = history.splice(1, i);
+      history.splice(1, 0, {
+        role: 'user',
+        content:
+          t('context_omitted', { count: removed.length }) ||
+          `【過去の経緯省略 (${removed.length}件のステップを圧縮)】`,
+      });
       return;
     }
   }
@@ -477,7 +468,7 @@ export function createAgentRuntime({
     let oldContent = '';
     let existed = false;
 
-    const currentRes = await api(readUrl, { raw: true });
+    const currentRes = await api(readUrl, { raw: true, signal: state.agent.abortController?.signal });
     if (currentRes.ok) {
       const currentData = await currentRes.json().catch(() => ({}));
       oldContent = typeof currentData?.content === 'string' ? currentData.content : '';
@@ -498,6 +489,7 @@ export function createAgentRuntime({
     await api(`/api/agent/sessions/${sessionId}/files`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: state.agent.abortController?.signal,
       body: JSON.stringify({ path: fullPath, content }),
     });
     await openFileEvent(fullPath);
@@ -518,7 +510,7 @@ export function createAgentRuntime({
       let url = `/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`;
       if (startLine !== undefined) url += `&startLine=${startLine}`;
       if (endLine !== undefined) url += `&endLine=${endLine}`;
-      const data = await api(url);
+      const data = await api(url, { signal: state.agent.abortController?.signal });
       await openFileEvent(fullPath);
       return { text: data.content, success: true };
     },
@@ -539,13 +531,16 @@ export function createAgentRuntime({
       if (!filePath) throw new Error('path パラメータが必要です');
       if (diff === undefined) throw new Error('diff パラメータが必要です');
       const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
+      const signal = state.agent.abortController?.signal;
 
       const current = await api(
         `/api/agent/sessions/${sessionId}/files?path=${encodeURIComponent(fullPath)}`,
+        { signal },
       );
       const preview = await api(`/api/agent/sessions/${sessionId}/diff`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal,
         body: JSON.stringify({ path: fullPath, diff, dryRun: true, startLine }),
       });
 
@@ -553,6 +548,7 @@ export function createAgentRuntime({
         const res = await api(`/api/agent/sessions/${sessionId}/diff`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: state.agent.abortController?.signal,
           body: JSON.stringify({ path: fullPath, diff, startLine }),
         });
         await openFileEvent(fullPath);
@@ -567,7 +563,7 @@ export function createAgentRuntime({
       let url = `/api/agent/sessions/${sessionId}/find-files?pattern=${encodeURIComponent(pattern)}`;
       if (dir) url += `&dir=${encodeURIComponent(fullDir)}`;
       if (params.maxResults) url += `&maxResults=${params.maxResults}`;
-      const data = await api(url);
+      const data = await api(url, { signal: state.agent.abortController?.signal });
       const text = data.files?.length
         ? `Found ${data.files.length} matching files:\n` +
           data.files.map((f) => `- ${f.relativePath}`).join('\n')
@@ -580,7 +576,7 @@ export function createAgentRuntime({
       const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, filePath);
       let url = `/api/agent/sessions/${sessionId}/outline?path=${encodeURIComponent(fullPath)}`;
       if (params.language) url += `&language=${encodeURIComponent(params.language)}`;
-      const data = await api(url);
+      const data = await api(url, { signal: state.agent.abortController?.signal });
       const text = data.symbols?.length
         ? `Outline for ${filePath} (${data.symbols.length} symbols):\n` +
           data.symbols.map((s) => `• [L${s.line}] (${s.type}) ${s.signature || s.name}`).join('\n')
@@ -590,7 +586,9 @@ export function createAgentRuntime({
     list_directory: async ({ sessionId, workspaceRoot, params }) => {
       const dirPath = params.path || '';
       const fullPath = resolvePathRelativeToWorkspace(workspaceRoot, dirPath);
-      const data = await api(`/api/agent/sessions/${sessionId}/dir?path=${encodeURIComponent(fullPath)}`);
+      const data = await api(`/api/agent/sessions/${sessionId}/dir?path=${encodeURIComponent(fullPath)}`, {
+        signal: state.agent.abortController?.signal,
+      });
       const text = data.items?.length
         ? data.items.map((i) => `- ${i.isDirectory ? '[Dir] ' : '[File] '}${i.name}`).join('\n')
         : 'ディレクトリは空または存在しません。';
@@ -599,7 +597,9 @@ export function createAgentRuntime({
     search_files: async ({ sessionId, params }) => {
       const { query } = params;
       if (!query) throw new Error('query パラメータが必要です');
-      const data = await api(`/api/agent/sessions/${sessionId}/search?query=${encodeURIComponent(query)}`);
+      const data = await api(`/api/agent/sessions/${sessionId}/search?query=${encodeURIComponent(query)}`, {
+        signal: state.agent.abortController?.signal,
+      });
       const text = data.results?.length
         ? data.results.map((r) => `${r.file}:${r.line}: ${r.content}`).join('\n')
         : '検索結果なし';
@@ -611,6 +611,7 @@ export function createAgentRuntime({
       const data = await api(`/api/agent/sessions/${sessionId}/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: state.agent.abortController?.signal,
         body: JSON.stringify({ code, language: language || 'javascript' }),
       });
       if (data.valid) {
@@ -674,7 +675,20 @@ export function createAgentRuntime({
       }
 
       const approvalResult = await new Promise((resolve) => {
-        state.agent.resolver = resolve;
+        let settled = false;
+        const onAbort = () => settle({ abort: true });
+        const settle = (value) => {
+          if (settled) return;
+          settled = true;
+          signal?.removeEventListener?.('abort', onAbort);
+          resolve(value);
+        };
+        if (signal?.aborted) {
+          settle({ abort: true });
+          return;
+        }
+        signal?.addEventListener?.('abort', onAbort, { once: true });
+        state.agent.resolver = settle;
         addAgentApprovalStep(
           command,
           workspaceRoot,
@@ -707,12 +721,12 @@ export function createAgentRuntime({
                 );
                 res = await processCommandStream(resRaw, stepId, t, approveSignal);
               }
-              resolve({ approved: true, result: res });
+              settle({ approved: true, result: res });
             } catch (e) {
-              resolve({ approved: true, error: e });
+              settle({ approved: true, error: e });
             }
           },
-          (reason) => resolve({ approved: false, reason }),
+          (reason) => settle({ approved: false, reason }),
         );
       });
 

@@ -12,6 +12,7 @@ import cryptoPkg from 'crypto';
 import { validatePath, assertNotProtectedPath, PROJECT_ROOT } from '../../utils/fs-guard.js';
 import { getSafeEnv } from '../../utils/env-guard.js';
 import { serverConfig } from '../../config/server.js';
+import { bindRequestAbortSignal, booleanFlagInput, optionalNumberInput } from './utils.js';
 
 const router = express.Router();
 
@@ -32,29 +33,13 @@ const codeGenerateSchema = z.object({
     z.string().refine((val) => val.length <= 100000, { message: 'code exceeds 100000 characters' }),
   ),
   model: z.string().optional(),
-  webSearch: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
-  numOfSite: z.preprocess(
-    (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
-    z.number().int().optional(),
-  ),
-  maxWord: z.preprocess(
-    (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
-    z.number().int().optional(),
-  ),
+  webSearch: booleanFlagInput(false),
+  numOfSite: optionalNumberInput(z.number().int().optional()),
+  maxWord: optionalNumberInput(z.number().int().optional()),
 });
 
 function lineColumnSchema() {
-  return z.preprocess(
-    (val) => {
-      if (val === undefined || val === null || val === '') return undefined;
-      const n = Number(val);
-      // Reject NaN, Infinity, and non-finite values that Number() can produce
-      // from non-numeric input. Passing NaN through would otherwise be caught
-      // by the downstream int() check, but a single tailored error message
-      // is more actionable for the caller.
-      if (!Number.isFinite(n)) return val;
-      return n;
-    },
+  return optionalNumberInput(
     z
       .number({ message: 'line and column must be finite numbers' })
       .int({ message: 'line and column must be integers' })
@@ -75,15 +60,9 @@ const codeAutocompleteSchema = z.object({
   fileName: z.string().optional(),
   language: z.string().optional(),
   model: z.string().optional(),
-  webSearch: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
-  numOfSite: z.preprocess(
-    (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
-    z.number().int().optional(),
-  ),
-  maxWord: z.preprocess(
-    (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
-    z.number().int().optional(),
-  ),
+  webSearch: booleanFlagInput(false),
+  numOfSite: optionalNumberInput(z.number().int().optional()),
+  maxWord: optionalNumberInput(z.number().int().optional()),
 });
 
 const codeInlineChatSchema = z.object({
@@ -103,15 +82,9 @@ const codeInlineChatSchema = z.object({
   fileName: z.string().optional(),
   language: z.string().optional(),
   model: z.string().optional(),
-  webSearch: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
-  numOfSite: z.preprocess(
-    (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
-    z.number().int().optional(),
-  ),
-  maxWord: z.preprocess(
-    (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
-    z.number().int().optional(),
-  ),
+  webSearch: booleanFlagInput(false),
+  numOfSite: optionalNumberInput(z.number().int().optional()),
+  maxWord: optionalNumberInput(z.number().int().optional()),
 });
 
 function buildCodeContext(code, line, column, contextLines = 100) {
@@ -145,11 +118,12 @@ function sanitizeForPrompt(value, maxLen = 256) {
 
 function stripCodeFences(text) {
   if (!text.includes('```')) return text;
-  const match = text.match(/```(?:\w+)?\n([\s\S]*?)```/);
+  const match = text.match(/```[^\r\n`]*\r?\n([\s\S]*?)```/);
   return match ? match[1] : text.replace(/```/g, '');
 }
 
 router.post('/generate', async (req, res, next) => {
+  const { controller, cleanup } = bindRequestAbortSignal(res);
   try {
     const result = codeGenerateSchema.safeParse(req.body);
     if (!result.success) {
@@ -195,15 +169,20 @@ ${data.code}
       useOpenAiCompat: data.useOpenAiCompat,
       task: 'generate',
       context: 'Code Generator generate',
+      signal: controller.signal,
       timeout: 600000,
     });
     res.json(normalizedDataRes);
   } catch (err) {
+    if (controller.signal.aborted && (res.writableEnded || res.destroyed)) return;
     next(err);
+  } finally {
+    cleanup();
   }
 });
 
 router.post('/autocomplete', async (req, res, next) => {
+  const { controller, cleanup } = bindRequestAbortSignal(res);
   try {
     const result = codeAutocompleteSchema.safeParse(req.body);
     if (!result.success) {
@@ -250,6 +229,7 @@ Suggested code:`;
       task: 'autocomplete',
       context: 'Code Generator autocomplete',
       maxTokens: serverConfig.oneForAllMaxTokensAutocomplete,
+      signal: controller.signal,
     });
 
     let suggestion = extractText(normalizedDataRes);
@@ -257,11 +237,15 @@ Suggested code:`;
 
     res.json({ suggestion });
   } catch (err) {
+    if (controller.signal.aborted && (res.writableEnded || res.destroyed)) return;
     next(err);
+  } finally {
+    cleanup();
   }
 });
 
 router.post('/inline-chat', async (req, res, next) => {
+  const { controller, cleanup } = bindRequestAbortSignal(res);
   try {
     const result = codeInlineChatSchema.safeParse(req.body);
     if (!result.success) {
@@ -308,6 +292,7 @@ Inserted/Modified code:`;
       task: 'inline',
       context: 'Code Generator inline-chat',
       maxTokens: serverConfig.oneForAllMaxTokensInline,
+      signal: controller.signal,
     });
 
     let codeResult = extractText(normalizedDataRes);
@@ -315,7 +300,10 @@ Inserted/Modified code:`;
 
     res.json({ code: codeResult });
   } catch (err) {
+    if (controller.signal.aborted && (res.writableEnded || res.destroyed)) return;
     next(err);
+  } finally {
+    cleanup();
   }
 });
 

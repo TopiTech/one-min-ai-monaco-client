@@ -1,6 +1,8 @@
 import express from 'express';
 import { z } from 'zod';
 import { assertCapability, getProvider, resolveProviderId } from '../../providers/index.js';
+import { unwrapAssetProxyUrl } from '../../utils/asset-utils.js';
+import { booleanFlagInput, optionalNumberInput } from './utils.js';
 
 const router = express.Router();
 
@@ -17,26 +19,21 @@ const videoGenerateSchema = z
       .default(''),
     model: z.string().max(200, 'model is too long').optional(),
     aspect_ratio: z.string().max(32, 'aspect_ratio is too long').default('16:9'),
-    duration: z.preprocess(
-      (v) => (v === undefined || v === '' ? 5 : Number(v)),
+    duration: optionalNumberInput(
       z
         .number({ message: 'duration must be a number' })
         .int('duration must be an integer')
         .min(1, 'duration must be between 1 and 60 seconds')
-        .max(60, 'duration must be between 1 and 60 seconds'),
+        .max(60, 'duration must be between 1 and 60 seconds')
+        .optional()
+        .default(5),
     ),
     resolution: z.string().max(32).default('720p'),
-    audio: z.preprocess(
-      (v) => (v === undefined ? true : v === 'true' || v === true),
-      z.boolean().default(true),
-    ),
+    audio: booleanFlagInput(true),
     negativePrompt: z.string().max(5000).optional(),
     mode: z.string().max(32).optional(),
     version: z.string().max(32).optional(),
-    speed: z.preprocess(
-      (v) => (v === undefined || v === '' ? undefined : Number(v)),
-      z.number().min(0.1).max(10).optional(),
-    ),
+    speed: optionalNumberInput(z.number().min(0.1).max(10).optional()),
     additionalFields: z.record(z.string(), z.any()).optional(),
   })
   .superRefine((data, ctx) => {
@@ -62,10 +59,14 @@ router.post('/generate', async (req, res, next) => {
       assertCapability(providerId, 'imageToVideo', 'Image-to-Video');
     }
 
+    const rawImageUrl = data.imageUrl.trim();
+    const resolvedImageUrl =
+      rawImageUrl && providerId === '1forall' ? unwrapAssetProxyUrl(rawImageUrl) : rawImageUrl;
+
     const provider = getProvider(providerId);
     const result = await provider.generateVideo({
       prompt: data.prompt.trim(),
-      imageUrl: data.imageUrl.trim() || undefined,
+      imageUrl: resolvedImageUrl || undefined,
       model: data.model,
       aspect_ratio: data.aspect_ratio,
       duration: data.duration,

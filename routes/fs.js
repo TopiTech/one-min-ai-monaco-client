@@ -43,6 +43,8 @@ const BINARY_EXTENSIONS = new Set([
   '.db',
 ]);
 
+import { optionalNumberInput } from './ai/utils.js';
+
 const router = express.Router();
 
 const workspaceSelectSchema = z.object({ dir: z.string().min(1, 'dir is required') });
@@ -50,14 +52,8 @@ const listSchema = z.object({ dir: z.string().optional() });
 const readSchema = z
   .object({
     path: z.string().min(1, 'path is required'),
-    startLine: z.preprocess(
-      (val) => (val === undefined || val === null || val === '' ? undefined : Number(val)),
-      z.number().int().min(1).optional(),
-    ),
-    endLine: z.preprocess(
-      (val) => (val === undefined || val === null || val === '' ? undefined : Number(val)),
-      z.number().int().min(1).optional(),
-    ),
+    startLine: optionalNumberInput(z.number().int().min(1).optional()),
+    endLine: optionalNumberInput(z.number().int().min(1).optional()),
   })
   .refine(
     (data) => {
@@ -436,12 +432,15 @@ router.post('/delete', async (req, res, next) => {
     assertNotWriteProtectedPath(resolvedPath);
 
     // Target must exist to be deleted.
-    // If the target is a symlink, unlink the link directly without resolving
-    // the target to avoid deleting the referenced directory or failing on broken links.
+    // If the target is a symlink, verify its parent directory real path is
+    // within allowed roots and unlink the link itself without resolving target.
     const lstat = await fs.lstat(resolvedPath);
     if (lstat.isSymbolicLink()) {
-      await fs.unlink(resolvedPath);
-      return res.json({ ok: true, path: resolvedPath });
+      const realParent = revalidateRealPath(path.dirname(resolvedPath));
+      const safeSymlinkPath = path.join(realParent, path.basename(resolvedPath));
+      assertNotWriteProtectedPath(safeSymlinkPath);
+      await fs.unlink(safeSymlinkPath);
+      return res.json({ ok: true, path: safeSymlinkPath });
     }
 
     const realPath = revalidateRealPath(resolvedPath);
@@ -483,12 +482,16 @@ router.post('/rename', async (req, res, next) => {
     assertNotWriteProtectedPath(resolvedOld);
     assertNotWriteProtectedPath(resolvedNew);
 
-    // If resolvedOld is a symlink, move/rename the symlink itself without resolving target.
+    // If resolvedOld is a symlink, verify its parent directory real path is
+    // within allowed roots and rename the symlink itself without resolving target.
     const lstatOld = await fs.lstat(resolvedOld);
     if (lstatOld.isSymbolicLink()) {
+      const realOldParent = revalidateRealPath(path.dirname(resolvedOld));
+      const safeOldPath = path.join(realOldParent, path.basename(resolvedOld));
+      assertNotWriteProtectedPath(safeOldPath);
       const realNew = await getSafeRealPath(resolvedNew);
-      await fs.rename(resolvedOld, realNew);
-      return res.json({ ok: true, oldPath: resolvedOld, newPath: realNew });
+      await fs.rename(safeOldPath, realNew);
+      return res.json({ ok: true, oldPath: safeOldPath, newPath: realNew });
     }
 
     // Old path must exist, resolve symlinks

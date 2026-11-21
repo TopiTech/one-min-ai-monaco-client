@@ -142,13 +142,15 @@ export function createAgentTimeline(dom) {
     return stepId;
   }
 
+  let _approvalStepSeq = 0;
+
   function addApprovalStep(command, cwd, approvalToken, onApprove, onReject) {
     const log = dom.agentActivityLog;
     if (!log) return;
     const placeholder = log.querySelector('.timeline-placeholder');
     if (placeholder) placeholder.remove();
 
-    const stepId = 'step-approval-' + Date.now();
+    const stepId = `step-approval-${Date.now()}-${++_approvalStepSeq}`;
 
     const step = document.createElement('div');
     step.className = 'agent-step approval';
@@ -212,6 +214,7 @@ export function createAgentTimeline(dom) {
     feedbackInput.placeholder = t('cmd_reject_reason');
     feedbackInput.setAttribute('aria-label', t('cmd_reject_reason'));
     feedbackInput.addEventListener('keydown', (e) => {
+      if (e.isComposing || e.keyCode === 229) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         rejectBtn.click();

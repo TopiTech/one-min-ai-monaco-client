@@ -130,7 +130,7 @@ async function parseJsonOrTextResponse(res) {
   if (!text) return {};
 
   const contentType = res.headers.get('content-type') || '';
-  const isJsonType = contentType.includes('application/json');
+  const isJsonType = contentType.toLowerCase().includes('application/json') || /\+json\b/i.test(contentType);
   const trimmed = text.trim();
 
   if (!isJsonType && !trimmed.startsWith('{') && !trimmed.startsWith('[')) {
@@ -146,6 +146,12 @@ async function parseJsonOrTextResponse(res) {
 
 function assetUrl(path) {
   if (!path) return '';
+  if (
+    /^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(path) ||
+    path.startsWith('/api/assets/proxy?')
+  ) {
+    return path;
+  }
   // クエリパラメータに BFF トークンを載せないようにし、Cookie 認証のみにする
   if (/^https?:\/\//.test(path)) {
     return `/api/assets/proxy?url=${encodeURIComponent(path)}`;

@@ -27,9 +27,16 @@ import { SessionLock } from '../utils/async-lock.js';
 import { atomicWriteTextFile, readSpecificLines } from '../utils/fs-utils.js';
 import { countTokensMultiple } from '../utils/tokenizer.js';
 import { validateCodeSyntax, extractSymbols, getProjectMetadata } from '../services/code-analyzer.js';
+import { optionalNumberInput } from './ai/utils.js';
 
 const sessionCreateSchema = z.object({
-  id: z.string().max(128, 'session id is too long').optional(),
+  id: z
+    .string()
+    .max(128, 'session id is too long')
+    .refine((val) => val !== 'all' && !/[\\/]/.test(val) && !val.includes('..'), {
+      message: 'session id contains reserved or invalid characters',
+    })
+    .optional(),
   cwd: z.string().max(4096, 'cwd is too long').optional(),
   task: z.string().max(50000, 'task exceeds 50000 characters').optional(),
 });
@@ -54,14 +61,8 @@ const approveSchema = z.object({
 const fileReadSchema = z
   .object({
     path: z.string({ message: 'path is required' }).min(1, 'path is required').max(4096, 'path is too long'),
-    startLine: z.preprocess(
-      (val) => (val === undefined || val === null || val === '' ? undefined : Number(val)),
-      z.number().int().min(1).optional(),
-    ),
-    endLine: z.preprocess(
-      (val) => (val === undefined || val === null || val === '' ? undefined : Number(val)),
-      z.number().int().min(1).optional(),
-    ),
+    startLine: optionalNumberInput(z.number().int().min(1).optional()),
+    endLine: optionalNumberInput(z.number().int().min(1).optional()),
   })
   .refine(
     (data) => {
@@ -90,29 +91,20 @@ const searchSchema = z.object({
     .min(1, 'query is required')
     .max(4096, 'query is too long'),
   dir: z.string().max(4096, 'dir is too long').optional(),
-  maxResults: z.preprocess(
-    (val) => (val === undefined ? undefined : Number(val)),
-    z.number().int().positive().max(100).optional().default(20),
-  ),
+  maxResults: optionalNumberInput(z.number().int().positive().max(100).optional().default(20)),
 });
 
 const fileDiffSchema = z.object({
   path: z.string({ message: 'path is required' }).min(1, 'path is required').max(4096, 'path is too long'),
   diff: z.string({ message: 'diff is required' }).max(500000, 'diff exceeds 500000 characters'),
   dryRun: z.boolean().optional().default(false),
-  startLine: z.preprocess(
-    (val) => (val === undefined || val === null || val === '' ? undefined : Number(val)),
-    z.number().int().min(1).optional(),
-  ),
+  startLine: optionalNumberInput(z.number().int().min(1).optional()),
 });
 
 const findFilesSchema = z.object({
   pattern: z.string().max(1024, 'pattern is too long').optional().default('*'),
   dir: z.string().max(4096, 'dir is too long').optional(),
-  maxResults: z.preprocess(
-    (val) => (val === undefined || val === '' ? undefined : Number(val)),
-    z.number().int().positive().max(200).optional().default(50),
-  ),
+  maxResults: optionalNumberInput(z.number().int().positive().max(200).optional().default(50)),
 });
 
 const outlineSchema = z.object({
@@ -213,6 +205,10 @@ function createDebouncedFileWriter(filePath, serialize, { delayMs = 50, label = 
   let writingPromise = null;
 
   async function flush() {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
     while (isWriting) {
       await writingPromise?.catch(() => {});
     }
@@ -230,7 +226,7 @@ function createDebouncedFileWriter(filePath, serialize, { delayMs = 50, label = 
         const suffix = crypto.randomBytes(4).toString('hex');
         const tmpFile = `${filePath}.${suffix}.tmp`;
         try {
-          await fs.writeFile(tmpFile, data, { encoding: 'utf-8', mode: 0o600 });
+          await fs.writeFile(tmpFile, data, { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
           await fs.rename(tmpFile, filePath);
         } catch (writeErr) {
           await fs.unlink(tmpFile).catch(() => {});
@@ -407,9 +403,21 @@ const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 const ZOMBIE_GRACE_MS = serverConfig.agentZombieGraceMs;
 
+function purgePendingCommandsForSession(sessionId) {
+  let removed = false;
+  for (const [token, pending] of pendingCommands) {
+    if (pending?.sessionId === sessionId) {
+      pendingCommands.delete(token);
+      removed = true;
+    }
+  }
+  return removed;
+}
+
 function cleanupExpiredSessions() {
   const now = Date.now();
   let changed = false;
+  const expiredSessionIds = new Set();
   for (const [id, session] of sessions) {
     if (session.status === 'running') {
       // M-5: Never reap a session that is actively executing a command.
@@ -429,13 +437,18 @@ function cleanupExpiredSessions() {
     }
     if (now - session.lastAccessedAt > serverConfig.sessionTtlMs) {
       sessions.delete(id);
+      expiredSessionIds.add(id);
       changed = true;
     }
   }
   let pendingChanged = false;
   for (const [token, pending] of pendingCommands) {
     const createdAt = Number(pending?.createdAt);
-    if (!Number.isFinite(createdAt) || now - createdAt > PENDING_COMMAND_TTL_MS) {
+    if (
+      expiredSessionIds.has(pending?.sessionId) ||
+      !Number.isFinite(createdAt) ||
+      now - createdAt > PENDING_COMMAND_TTL_MS
+    ) {
       pendingCommands.delete(token);
       pendingChanged = true;
     }
@@ -529,6 +542,9 @@ router.post('/sessions', async (req, res, next) => {
         a[1].lastAccessedAt < b[1].lastAccessedAt ? a : b,
       )[0];
       sessions.delete(oldestId);
+      if (purgePendingCommandsForSession(oldestId)) {
+        savePendingCommands();
+      }
     }
 
     await sessionLock.acquire(sessionId, async () => {
@@ -560,7 +576,8 @@ router.post('/tokenize', (req, res) => {
     // (history is trimmed to ~40k tokens, i.e. tens of messages).
     const MAX_TOKENIZE_TEXTS = 500;
     const MAX_TOKENIZE_TEXT_LENGTH = 100000;
-    const rawTexts = Array.isArray(req.body.texts) ? req.body.texts : [req.body.text || ''];
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const rawTexts = Array.isArray(body.texts) ? body.texts : [body.text || ''];
     const texts = rawTexts
       .slice(0, MAX_TOKENIZE_TEXTS)
       .map((t) => String(t ?? '').slice(0, MAX_TOKENIZE_TEXT_LENGTH));
@@ -741,6 +758,10 @@ router.post('/sessions/:id/commands', async (req, res, next) => {
       });
     }
   } catch (err) {
+    if (res.headersSent) {
+      if (!res.writableEnded && !res.destroyed) res.end();
+      return;
+    }
     next(err);
   }
 });
@@ -887,6 +908,10 @@ router.post('/sessions/:id/approve', async (req, res, next) => {
       });
     }
   } catch (err) {
+    if (res.headersSent) {
+      if (!res.writableEnded && !res.destroyed) res.end();
+      return;
+    }
     next(err);
   }
 });
@@ -1064,7 +1089,9 @@ async function searchWithRg(dir, query, maxResults) {
           killProcessTree(child, true);
         }
       }, 5000);
+      forceKillTimeoutId.unref?.();
     }, serverConfig.commandTimeoutMs || 30_000);
+    searchTimeoutId.unref?.();
     // M-5: Parse lines as they arrive so we can stop early without
     // buffering the full output. Each `data` chunk can contain multiple
     // lines — we keep a small carry-over buffer for the trailing partial
@@ -1114,6 +1141,8 @@ async function searchWithRg(dir, query, maxResults) {
     });
 
     child.stdout.on('end', () => {
+      const tail = decoder.end();
+      if (tail) carry += tail;
       if (carry) processLine(carry);
     });
 

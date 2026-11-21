@@ -10,6 +10,7 @@ import { parseWebSearchParams, stripSearchArtifacts } from '../utils/web-search.
 import logger from '../utils/logger.js';
 import { serverConfig } from '../config/server.js';
 import { assertCapability, getProvider, resolveProviderId } from '../providers/index.js';
+import { bindRequestAbortSignal, booleanFlagInput, optionalNumberInput } from './ai/utils.js';
 
 const router = express.Router();
 export const MAX_AGENT_PROMPT_CHARS = 200000;
@@ -51,15 +52,9 @@ export const agentChatSchema = z
       .max(MAX_AGENT_MESSAGES, `messages exceeds ${MAX_AGENT_MESSAGES} entries`)
       .optional(),
     model: z.string().max(100, 'model is too long').optional(),
-    webSearch: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
-    numOfSite: z.preprocess(
-      (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
-      z.number().int().optional(),
-    ),
-    maxWord: z.preprocess(
-      (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
-      z.number().int().optional(),
-    ),
+    webSearch: booleanFlagInput(false),
+    numOfSite: optionalNumberInput(z.number().int().optional()),
+    maxWord: optionalNumberInput(z.number().int().optional()),
   })
   .superRefine((data, ctx) => {
     const promptText =
@@ -78,6 +73,7 @@ export const agentChatSchema = z
   });
 
 router.post('/chat', async (req, res, next) => {
+  const { controller, cleanup } = bindRequestAbortSignal(res);
   try {
     const result = agentChatSchema.safeParse(req.body);
     if (!result.success) {
@@ -119,13 +115,20 @@ router.post('/chat', async (req, res, next) => {
       context: 'Code Generator agent-chat',
       maxTokens: serverConfig.oneForAllMaxTokensChat,
       timeout: serverConfig.agentChatTimeoutMs,
+      signal: controller.signal,
     });
 
     const rawText = extractText(normalizedDataRes);
     const text = stripSearchArtifacts(rawText);
     res.json({ text, raw: normalizedDataRes });
   } catch (err) {
+    if (controller.signal.aborted && (res.writableEnded || res.destroyed)) return;
+    if (controller.signal.aborted && !res.headersSent) {
+      return res.status(499).json({ error: 'Client Closed Request' });
+    }
     next(err);
+  } finally {
+    cleanup();
   }
 });
 

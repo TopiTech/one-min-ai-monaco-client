@@ -420,6 +420,16 @@ async function fetchOneForAllModels() {
 }
 
 async function fetchOneMinModels({ includeExtended = false } = {}) {
+  if (!hasApiKey('1min')) {
+    lastFetchStatus = {
+      ok: true,
+      lastSync: lastFetchStatus.lastSync,
+      error: null,
+      source: 'fallback',
+    };
+    return;
+  }
+
   const requestedFeatures = [
     ['chat', MODEL_FEATURES.chat],
     ['code', MODEL_FEATURES.code],

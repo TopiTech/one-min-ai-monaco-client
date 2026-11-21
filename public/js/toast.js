@@ -232,11 +232,15 @@ function showToast(message, options = {}) {
 
   // Pause on hover
   toast.addEventListener('mouseenter', () => {
-    if (dismissTimeout) clearTimeout(dismissTimeout);
+    if (dismissTimeout) {
+      clearTimeout(dismissTimeout);
+      dismissTimeout = null;
+    }
   });
 
   toast.addEventListener('mouseleave', () => {
-    if (duration > 0) {
+    if (dismissTimeout) clearTimeout(dismissTimeout);
+    if (duration > 0 && !toast.classList.contains('removing')) {
       dismissTimeout = setTimeout(() => removeToast(toast), duration);
     }
   });
@@ -381,9 +385,14 @@ function toastPrompt(message, defaultValue = '', options = {}) {
     inputEl.select();
 
     onKey = (e) => {
+      if (e.isComposing || e.keyCode === 229) return;
       if (e.key === 'Escape') {
         finish(null);
-      } else if (e.key === 'Enter') {
+      } else if (
+        e.key === 'Enter' &&
+        (document.activeElement === inputEl || toast.contains(document.activeElement))
+      ) {
+        e.preventDefault();
         finish(inputEl.value);
       }
     };

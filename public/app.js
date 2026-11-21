@@ -566,6 +566,7 @@ dom.resetAgentBtn.onclick = async () => {
     type: 'warning',
   });
   if (accepted) {
+    const previousSessionId = state.agent.sessionId;
     state.agent.active = false;
     if (state.agent.abortController) {
       state.agent.abortController.abort();
@@ -580,6 +581,11 @@ dom.resetAgentBtn.onclick = async () => {
     document.querySelectorAll('.agent-step.approval').forEach((el) => el.__finalizeApproval?.());
     state.agent.sessionId = null;
     state.agent.history = [];
+    if (previousSessionId) {
+      api(`/api/agent/sessions/${encodeURIComponent(previousSessionId)}`, { method: 'DELETE' }).catch(
+        () => {},
+      );
+    }
     const log = dom.agentActivityLog;
     if (log) {
       log.textContent = '';
@@ -618,6 +624,7 @@ dom.sendAgentFeedbackBtn.onclick = () => {
 };
 
 dom.agentInstruction.addEventListener('keydown', (e) => {
+  if (e.isComposing || e.keyCode === 229) return;
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     if (state.agent.active) {
@@ -881,17 +888,26 @@ function initFolderPicker() {
   }
 
   upButton.onclick = () => {
-    const normalized = folderPickerCurrentPath.replace(/[\\/]$/, '');
-    if (/^[A-Za-z]:[\\/]?$/.test(normalized)) {
+    const trimmed = (folderPickerCurrentPath || '').trim();
+    if (!trimmed || trimmed === '/' || /^[A-Za-z]:[\\/]?$/.test(trimmed)) {
       return;
     }
 
+    const normalized = trimmed.replace(/[\\/]+$/, '');
     const lastSlash = Math.max(normalized.lastIndexOf('\\'), normalized.lastIndexOf('/'));
-    if (lastSlash <= 0) {
+    if (lastSlash < 0) {
       return;
     }
 
-    const parentPath = normalized.substring(0, lastSlash) || normalized;
+    let parentPath;
+    if (lastSlash === 0) {
+      parentPath = '/';
+    } else {
+      parentPath = normalized.substring(0, lastSlash);
+      if (/^[A-Za-z]:$/.test(parentPath)) {
+        parentPath += '\\';
+      }
+    }
     if (parentPath && parentPath !== folderPickerCurrentPath) {
       renderFolderPickerList(parentPath);
     }
@@ -999,6 +1015,8 @@ function initCreditSavingMode() {
 
   if (toggle) toggle.onchange = handleChange;
   if (mobileToggle) mobileToggle.onchange = handleChange;
+
+  window.addEventListener('provider-changed', () => applyCreditSavingMode());
 
   applyCreditSavingMode();
 }
@@ -1165,9 +1183,6 @@ document.addEventListener('editor:show-diff', async (e) => {
   const convFields = [
     { id: 'conversationId', type: 'value' },
     { id: 'conversationTitle', type: 'value' },
-    { id: 'webSearch', type: 'checkbox' },
-    { id: 'chatNumOfSite', type: 'value' },
-    { id: 'chatMaxWord', type: 'value' },
     { id: 'withMemories', type: 'checkbox' },
     { id: 'isMixed', type: 'checkbox' },
     { id: 'brandVoiceId', type: 'value' },

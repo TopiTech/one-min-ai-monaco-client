@@ -312,4 +312,24 @@ describe('public api wrapper', () => {
     const headers = global.fetch.mock.calls[0][1].headers;
     expect(headers['x-local-bff-token']).toBeUndefined();
   });
+
+  test('assetUrl avoids double-wrapping already proxied paths and safe data URIs', async () => {
+    const { assetUrl } = await loadApiModule();
+    expect(assetUrl('/api/assets/proxy?url=https%3A%2F%2Fexample.com%2Fa.png')).toBe(
+      '/api/assets/proxy?url=https%3A%2F%2Fexample.com%2Fa.png',
+    );
+    const dataUri = 'data:image/png;base64,iVBORw0KGgo=';
+    expect(assetUrl(dataUri)).toBe(dataUri);
+  });
+
+  test('parses application/problem+json error responses as structured JSON', async () => {
+    global.fetch.mockResolvedValue(
+      new Response(JSON.stringify({ error: 'Rate limited', code: 'LIMIT' }), {
+        status: 429,
+        headers: { 'content-type': 'application/problem+json; charset=utf-8' },
+      }),
+    );
+    const { api } = await loadApiModule({ cookie: '' });
+    await expect(api('/api/test')).rejects.toMatchObject({ message: 'Rate limited' });
+  });
 });

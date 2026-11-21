@@ -176,8 +176,16 @@ async function persistStoredKeys(keysObj) {
   await fsp.mkdir(dir, { recursive: true });
   const tmpFile = path.join(dir, `api_keys.${crypto.randomBytes(6).toString('hex')}.tmp`);
   const payload = JSON.stringify(keysObj, null, 2);
-  await fsp.writeFile(tmpFile, payload, { encoding: 'utf8', mode: 0o600 });
   try {
+    await fsp.writeFile(tmpFile, payload, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    try {
+      const stat = await fsp.lstat(filePath);
+      if (stat.isSymbolicLink()) {
+        throw new Error('Target API key file is a symbolic link, writing blocked');
+      }
+    } catch (statErr) {
+      if (statErr.code !== 'ENOENT') throw statErr;
+    }
     await fsp.rename(tmpFile, filePath);
     memoryKeysCache = { ...keysObj };
   } catch (err) {

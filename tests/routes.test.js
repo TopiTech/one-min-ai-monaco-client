@@ -737,4 +737,79 @@ describe('AI Routes Integration Tests', () => {
       expect(redirectCancel).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('SSE ordering, code fences, and strict numeric coercion', () => {
+    test('holds data: [DONE] until after event: final-result even when upstream sends [DONE] directly', async () => {
+      const encoder = new TextEncoder();
+      const chunks = [
+        'event: content\ndata: {"content":"chunk"}\n\n',
+        'data: [DONE]\n\n',
+        'event: result\ndata: {"aiRecord":{"aiRecordDetail":{"resultObject":"done-text"}}}\n\n',
+      ];
+      callOneMin.mockResolvedValue({
+        ok: true,
+        headers: new Headers({ 'content-type': 'text/event-stream' }),
+        body: new ReadableStream({
+          start(controller) {
+            for (const c of chunks) controller.enqueue(encoder.encode(c));
+            controller.close();
+          },
+        }),
+      });
+
+      const response = await request(app).post('/api/chat/stream').send(testPayloads.chat);
+      expect(response.status).toBe(200);
+      const finalIdx = response.text.indexOf('event: final-result');
+      const doneIdx = response.text.indexOf('data: [DONE]');
+      expect(finalIdx).toBeGreaterThan(-1);
+      expect(doneIdx).toBeGreaterThan(finalIdx);
+    });
+
+    test('POST /api/code/autocomplete strips CRLF and c++ fenced code blocks cleanly', async () => {
+      callOneMin.mockResolvedValueOnce({
+        result: '```c++\r\nint x = 42;\r\n```',
+      });
+
+      const response = await request(app).post('/api/code/autocomplete').send({
+        code: 'int main() {\n  ',
+        line: 2,
+        column: 3,
+      });
+      expect(response.status).toBe(200);
+      expect(response.body.suggestion).toBe('int x = 42;\r\n');
+    });
+
+    test('treats null optional numeric params as omitted instead of 0 and rejects boolean values', async () => {
+      callOneMin.mockResolvedValue({
+        aiRecord: { aiRecordDetail: { resultObject: ['ok'] } },
+      });
+
+      const okChat = await request(app).post('/api/chat').send({
+        prompt: 'hello',
+        numOfSite: null,
+        maxWord: null,
+        maxTokens: null,
+      });
+      expect(okChat.status).toBe(200);
+
+      const badChat = await request(app).post('/api/chat').send({
+        prompt: 'hello',
+        numOfSite: true,
+      });
+      expect(badChat.status).toBe(400);
+
+      const badImage = await request(app).post('/api/images/generate').send({
+        prompt: 'cat',
+        num_outputs: true,
+      });
+      expect(badImage.status).toBe(400);
+
+      const badEditorFormat = await request(app).post('/api/images/text-editor').send({
+        imageUrl: 'images/a.png',
+        prompt: 'edit',
+        output_format: 'bmp',
+      });
+      expect(badEditorFormat.status).toBe(400);
+    });
+  });
 });

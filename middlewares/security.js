@@ -26,9 +26,10 @@ const normalizedCustomOrigins = customOrigins
 
 export function isAllowedHostHeader(hostStr) {
   if (/^127\.0\.0\.1(?::\d+)?$/i.test(hostStr) || /^localhost(?::\d+)?$/i.test(hostStr)) return true;
+  const normalizedHost = String(hostStr).toLowerCase();
   for (const o of customOrigins) {
     try {
-      if (new URL(o.includes('://') ? o : `http://${o}`).host === hostStr) return true;
+      if (new URL(o.includes('://') ? o : `http://${o}`).host.toLowerCase() === normalizedHost) return true;
     } catch {
       // ignore
     }
@@ -38,7 +39,15 @@ export function isAllowedHostHeader(hostStr) {
 
 export function isAllowedOriginStr(originStr) {
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(originStr)) return true;
-  if (normalizedCustomOrigins.includes(originStr)) return true;
+  let normalized = originStr;
+  try {
+    if (/^https?:\/\//i.test(originStr)) {
+      normalized = new URL(originStr).origin;
+    }
+  } catch {
+    // keep raw originStr
+  }
+  if (normalizedCustomOrigins.includes(normalized)) return true;
   // Fallback: exact match against raw custom origins
   return customOrigins.includes(originStr);
 }
@@ -101,6 +110,15 @@ export function corsHeaders(req, res, next) {
   if (origin) {
     if (isAllowedOriginStr(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
+      const existingVary = res.getHeader?.('Vary');
+      if (!existingVary) {
+        res.setHeader('Vary', 'Origin');
+      } else {
+        const varyStr = Array.isArray(existingVary) ? existingVary.join(', ') : String(existingVary);
+        if (!varyStr.toLowerCase().split(',').map((s) => s.trim()).includes('origin')) {
+          res.setHeader('Vary', `${varyStr}, Origin`);
+        }
+      }
       res.setHeader('Access-Control-Allow-Methods', ALLOWED_CORS_METHODS);
       res.setHeader('Access-Control-Allow-Headers', ALLOWED_CORS_HEADERS);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -111,10 +129,6 @@ export function corsHeaders(req, res, next) {
     }
   }
   if (req.method === 'OPTIONS') {
-    if (origin && !isAllowedOriginStr(origin)) {
-      logger.warn('CORS preflight blocked from origin', { origin });
-      return res.status(403).json({ error: 'CORS preflight blocked: Origin not allowed' });
-    }
     return res.sendStatus(204);
   }
   next();

@@ -28,6 +28,7 @@ export function setCreditSavingMode(enabled) {
 // Shared handler refs for cleanup
 let _searchHandler = null;
 let _tabHandlers = [];
+let _outsideClickTimer = null;
 
 export function getAllChatModels() {
   return _allChatModels;
@@ -286,6 +287,7 @@ function renderPickerList(models, search = '', tag = 'all') {
     return;
   }
 
+  const usedOptionIds = new Set();
   for (const [provider, items] of groups.entries()) {
     const header = document.createElement('div');
     header.className = `model-picker-group-header model-picker-group-header--${providerToSlug(provider)}`;
@@ -363,9 +365,16 @@ function renderPickerList(models, search = '', tag = 'all') {
       idSpan.textContent = m.id;
       item.appendChild(idSpan);
 
-      // Assign a stable id for aria-activedescendant support
+      // Assign a unique, stable id for aria-activedescendant support
       if (!item.id) {
-        item.id = `picker-opt-${m.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+        const baseId = `picker-opt-${m.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+        let candidateId = baseId;
+        let suffix = 1;
+        while (usedOptionIds.has(candidateId)) {
+          candidateId = `${baseId}-${++suffix}`;
+        }
+        usedOptionIds.add(candidateId);
+        item.id = candidateId;
       }
       item.addEventListener('focus', () => {
         setPickerSelectedItem(item);
@@ -522,8 +531,15 @@ function openModelPicker(btn, type) {
   });
 
   document.removeEventListener('click', closePicker);
-  setTimeout(() => {
-    document.addEventListener('click', closePicker);
+  if (_outsideClickTimer !== null) {
+    clearTimeout(_outsideClickTimer);
+    _outsideClickTimer = null;
+  }
+  _outsideClickTimer = setTimeout(() => {
+    _outsideClickTimer = null;
+    if (_activePickerBtn) {
+      document.addEventListener('click', closePicker);
+    }
   }, 10);
 }
 
@@ -538,11 +554,15 @@ function closePicker(e) {
   const dropdown = document.getElementById('modelPickerDropdown');
   if (dropdown && !dropdown.contains(e.target)) {
     closeModelPicker();
-    document.removeEventListener('click', closePicker);
   }
 }
 
 function closeModelPicker() {
+  if (_outsideClickTimer !== null) {
+    clearTimeout(_outsideClickTimer);
+    _outsideClickTimer = null;
+  }
+  document.removeEventListener('click', closePicker);
   const dropdown = document.getElementById('modelPickerDropdown');
   const search = document.getElementById('modelPickerSearch');
   if (dropdown) {

@@ -527,8 +527,11 @@ export function createImageManager(dom) {
     }
   }
 
+  let _isUploading = false;
+
   async function performAssetUpload(file, onStatusChange) {
-    if (!file) return;
+    if (!file || _isUploading) return;
+    _isUploading = true;
     const generateBtn = dom.generateImage;
     const assetInput = document.getElementById('assetInput');
     const provider = getActiveProvider();
@@ -556,6 +559,7 @@ export function createImageManager(dom) {
     } catch (e) {
       toast.error(t('img_upload_failed', { error: e.message }));
     } finally {
+      _isUploading = false;
       if (generateBtn) generateBtn.disabled = false;
       if (assetInput) assetInput.disabled = false;
       if (onStatusChange) onStatusChange(t('status_ready'), 'ok');
@@ -590,9 +594,16 @@ export function createImageManager(dom) {
         !modelObj.tags.includes('flagship') &&
         !modelObj.tags.includes('fast')
       ) {
-        const defaultGen = getAllImageModels().find(
-          (m) => m.tags && (m.tags.includes('flagship') || m.tags.includes('fast')),
-        ) || { id: 'gpt-image-2', label: 'GPT Image 2' };
+        const fallbackGen =
+          getActiveProvider() === '1forall'
+            ? { id: 'black-forest-labs/flux-schnell', label: 'FLUX.1 Schnell' }
+            : { id: 'gpt-image-2', label: 'GPT Image 2' };
+        const defaultGen =
+          getAllImageModels().find(
+            (m) => m.tags && (m.tags.includes('flagship') || m.tags.includes('fast')),
+          ) ||
+          getAllImageModels().find((m) => !m.tags?.includes('editor')) ||
+          fallbackGen;
         if (dom.imageModel) dom.imageModel.value = defaultGen.id;
         if (dom.imageModelLabel) dom.imageModelLabel.textContent = defaultGen.label;
       }

@@ -202,10 +202,26 @@ describe('agent-timeline accessibility', () => {
 
       feedbackInput.value = 'command is dangerous';
       const preventDefault = jest.fn();
+
+      // IME composition Enter must NOT trigger rejection
+      keydownHandler({ key: 'Enter', isComposing: true, preventDefault });
+      expect(onReject).not.toHaveBeenCalled();
+
       keydownHandler({ key: 'Enter', preventDefault });
 
       expect(preventDefault).toHaveBeenCalled();
       expect(onReject).toHaveBeenCalledWith('command is dangerous');
+
+      // Consecutive approval cards within the same millisecond get distinct DOM IDs
+      addApprovalStep('npm lint', '/workspace', 'token-456', onApprove, onReject);
+      const ids = [];
+      const collectApprovalIds = (el) => {
+        if (typeof el.id === 'string' && el.id.startsWith('step-approval-')) ids.push(el.id);
+        (el.children || []).forEach(collectApprovalIds);
+      };
+      collectApprovalIds(dom.agentActivityLog);
+      expect(ids).toHaveLength(2);
+      expect(new Set(ids).size).toBe(2);
 
       jest.runAllTimers();
     } finally {

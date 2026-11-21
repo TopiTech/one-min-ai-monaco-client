@@ -8,10 +8,59 @@ export function getDefaultModel(type) {
   return serverConfig.defaultChatModel;
 }
 
+/**
+ * Strictly parses optional numeric inputs for Zod schemas without coercing
+ * `null`, whitespace-only strings, or booleans into `0` or `1`.
+ *
+ * @template {z.ZodTypeAny} T
+ * @param {T} schema
+ */
+export function optionalNumberInput(schema) {
+  return z.preprocess((val) => {
+    if (val === undefined || val === null || val === '') return undefined;
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      return trimmed === '' ? undefined : Number(trimmed);
+    }
+    if (typeof val === 'number') return val;
+    return val;
+  }, schema);
+}
+
+/**
+ * Parses boolean flags while honoring an explicit default when null/undefined.
+ *
+ * @param {boolean} [defaultValue=false]
+ */
+export function booleanFlagInput(defaultValue = false) {
+  return z.preprocess(
+    (val) => (val === undefined || val === null ? defaultValue : val === 'true' || val === true),
+    z.boolean().default(defaultValue),
+  );
+}
+
+/**
+ * Binds an AbortController to `res` close before headers finish so upstream
+ * calls abort promptly on client disconnect, with a cleanup callback for finally.
+ *
+ * @param {import('express').Response} res
+ */
+export function bindRequestAbortSignal(res) {
+  const controller = new AbortController();
+  const onClose = () => {
+    if (!res.writableEnded) {
+      controller.abort();
+    }
+  };
+  res.on('close', onClose);
+  const cleanup = () => res.off?.('close', onClose);
+  return { controller, cleanup };
+}
+
 export const outputCompressionSchema = z
   .preprocess(
     (val) => {
-      if (val === undefined || val === '' || (typeof val === 'string' && val.trim() === '')) {
+      if (val === undefined || val === null || val === '' || (typeof val === 'string' && val.trim() === '')) {
         return undefined;
       }
       return val;

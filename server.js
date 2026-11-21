@@ -102,6 +102,39 @@ function normalizePayloadError(err) {
   return null;
 }
 
+/**
+ * Trims an incomplete trailing multi-byte UTF-8 sequence when reading a fixed-size
+ * prefix chunk of a larger file so TextDecoder fatal validation does not falsely
+ * reject valid multi-byte UTF-8 files cut mid-character.
+ *
+ * @param {Buffer} buffer Prefix slice from disk.
+ * @returns {Buffer}
+ */
+function trimIncompleteTrailingUtf8(buffer) {
+  const len = buffer.length;
+  if (len === 0) return buffer;
+
+  // Walk back past up to 3 trailing UTF-8 continuation bytes (10xxxxxx).
+  let idx = len - 1;
+  const minScan = Math.max(0, len - 4);
+  while (idx > minScan && (buffer[idx] & 0xc0) === 0x80) {
+    idx--;
+  }
+
+  const lead = buffer[idx];
+  const remaining = len - idx;
+  if (lead >= 0xc2 && lead <= 0xdf && remaining < 2) {
+    return buffer.subarray(0, idx);
+  }
+  if (lead >= 0xe0 && lead <= 0xef && remaining < 3) {
+    return buffer.subarray(0, idx);
+  }
+  if (lead >= 0xf0 && lead <= 0xf4 && remaining < 4) {
+    return buffer.subarray(0, idx);
+  }
+  return buffer;
+}
+
 async function handleAssetUpload(req, res, next) {
   const tmpFilePath = req.file?.path;
   try {
@@ -120,7 +153,8 @@ async function handleAssetUpload(req, res, next) {
       } finally {
         await fd.close();
       }
-      const head = headBuf.subarray(0, bytesRead);
+      const rawHead = headBuf.subarray(0, bytesRead);
+      const head = req.file.size > bytesRead ? trimIncompleteTrailingUtf8(rawHead) : rawHead;
       if (!validateBufferMimeType(head, req.file.mimetype)) {
         logger.warn('Asset upload rejected: MIME type signature mismatch', {
           filename: req.file.originalname,
@@ -160,7 +194,9 @@ async function handleAssetUpload(req, res, next) {
     let assetBlob;
     if (typeof fs.openAsBlob === 'function') {
       try {
-        assetBlob = await fs.openAsBlob(tmpFilePath);
+        assetBlob = await fs.openAsBlob(tmpFilePath, {
+          type: req.file.mimetype || 'application/octet-stream',
+        });
       } catch {
         // openAsBlob may fail on certain OS/filesystem combinations;
         // fall through to the in-memory fallback below.
@@ -416,6 +452,9 @@ export function createApp(options = {}) {
       // in stale nonces on subsequent loads, failing CSP verification.
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       let html = loadCachedHtml();
+      if (!html) {
+        return res.status(500).send('Error loading index.html');
+      }
 
       const nonce = res.locals.nonce;
 
@@ -509,8 +548,7 @@ export function createApp(options = {}) {
   protectedRouter.use('/agent', agentChatRoutes);
   app.use('/api', protectedApiAuth, protectedRouter);
 
-  // eslint-disable-next-line no-unused-vars
-  app.use((err, req, res, _next) => {
+  app.use((err, req, res, next) => {
     const status = err.status || 500;
 
     // In production (NODE_ENV=production) or when NODE_ENV is unset, never
@@ -530,6 +568,10 @@ export function createApp(options = {}) {
       payload: exposeDetails ? err.payload : undefined,
       stack: exposeDetails ? err.stack : undefined,
     });
+
+    if (res.headersSent) {
+      return next(err);
+    }
 
     res.status(status).json({
       error: exposeErrorText

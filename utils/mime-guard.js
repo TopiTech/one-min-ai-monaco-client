@@ -4,6 +4,17 @@
  */
 
 /**
+ * Normalizes a declared MIME type by stripping optional parameters (e.g. `; charset=utf-8`),
+ * trimming surrounding whitespace, and lowercasing.
+ * @param {string} declaredMimeType
+ * @returns {string}
+ */
+function normalizeMimeType(declaredMimeType) {
+  if (!declaredMimeType) return '';
+  return String(declaredMimeType).split(';')[0].trim().toLowerCase();
+}
+
+/**
  * Validates that the buffer matches the expected file signature.
  * @param {Buffer} buffer The file buffer in memory.
  * @param {string} declaredMimeType The MIME type declared by the client.
@@ -14,10 +25,12 @@ export function validateBufferMimeType(buffer, declaredMimeType) {
     return false;
   }
 
+  const mime = normalizeMimeType(declaredMimeType);
+
   if (buffer.length === 0) {
     // Empty buffers are signature-valid for any declared type (no bytes to contradict it).
     // Empty files are a legitimate use case (e.g. creating a new empty source file).
-    return Boolean(declaredMimeType);
+    return Boolean(mime);
   }
 
   const hex = buffer.toString('hex', 0, 8).toUpperCase();
@@ -29,8 +42,6 @@ export function validateBufferMimeType(buffer, declaredMimeType) {
   if (isPE || isELF) {
     return false;
   }
-
-  const mime = String(declaredMimeType).toLowerCase();
 
   // Text types: Validate the buffer decodes as UTF-8 (or 7-bit ASCII)
   // and contains no null bytes. This prevents uploading polyglot binaries
@@ -189,8 +200,8 @@ const MIME_TO_EXTENSION = {
  * @returns {string} The matching extension starting with a dot, or '.bin' fallback.
  */
 export function getExtensionFromMimeType(declaredMimeType) {
-  if (!declaredMimeType) return '.bin';
-  const mime = String(declaredMimeType).toLowerCase();
+  const mime = normalizeMimeType(declaredMimeType);
+  if (!mime) return '.bin';
   if (MIME_TO_EXTENSION[mime]) {
     return MIME_TO_EXTENSION[mime];
   }

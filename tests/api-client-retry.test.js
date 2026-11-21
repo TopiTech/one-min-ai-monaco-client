@@ -500,4 +500,38 @@ describe('normalizeOneMinResponse', () => {
       serverConfig.apiRetryDelay = prevDelay;
     }
   });
+
+  test('createCombinedSignal removes listener from non-aborting signal once the other aborts', async () => {
+    const { createCombinedSignal } = await import('../utils/http-client.js');
+    const a = new AbortController();
+    const b = new AbortController();
+    const removeSpy = jest.spyOn(b.signal, 'removeEventListener');
+
+    const combined = createCombinedSignal(a.signal, b.signal);
+    expect(combined.aborted).toBe(false);
+
+    a.abort(new Error('first abort'));
+    expect(combined.aborted).toBe(true);
+    expect(removeSpy).toHaveBeenCalledWith('abort', expect.any(Function));
+  });
+
+  test('createHttpClient parses application/problem+json responses as JSON', async () => {
+    const { createHttpClient } = await import('../utils/http-client.js');
+    globalThis.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: new Map([['content-type', 'application/problem+json; charset=utf-8']]),
+      json: async () => ({ title: 'Structured JSON' }),
+      text: async () => '{"title":"Structured JSON"}',
+    }));
+
+    const client = createHttpClient({
+      providerLabel: 'TestProvider',
+      getBaseUrl: () => 'https://example.invalid',
+      getAuthHeaders: () => ({}),
+    });
+
+    const res = await client('/status', { method: 'GET' });
+    expect(res).toEqual({ title: 'Structured JSON' });
+  });
 });

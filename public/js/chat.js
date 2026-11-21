@@ -199,6 +199,7 @@ export function createChatManager(dom, state) {
     if (attachments.length === 0) {
       attachmentsArea.classList.add('u-hidden');
       container.textContent = '';
+      updateSendButton();
       return;
     }
 
@@ -391,6 +392,9 @@ export function createChatManager(dom, state) {
     try {
       let requestPayload;
       if (provider === '1forall') {
+        if (attachments.length > 0) {
+          throw new Error(t('provider_feature_unsupported', { provider: '1forall.ai' }));
+        }
         const history = Array.isArray(state.chat.history) ? state.chat.history : [];
         requestPayload = {
           provider: '1forall',
@@ -523,10 +527,102 @@ export function createChatManager(dom, state) {
             }
           };
 
+          const processSseLine = (line) => {
+            if (!line.trim()) {
+              currentEvent = 'content';
+              return;
+            }
+
+            if (line.startsWith('event:')) {
+              currentEvent = line.slice(6).trim() || 'content';
+              return;
+            }
+
+            if (!line.startsWith('data:')) return;
+            const dataStr = line.replace(/^data:\s*/, '').trim();
+            if (!dataStr) return;
+
+            if (dataStr === '[DONE]') {
+              streamDone = true;
+              return;
+            }
+
+            try {
+              const data = JSON.parse(dataStr);
+
+              if (currentEvent === 'error') {
+                streamError = new Error(data?.error || data?.message || 'Stream error');
+                streamDone = true;
+                return;
+              }
+
+              if (currentEvent === 'done') {
+                streamDone = true;
+                return;
+              }
+
+              if (currentEvent === 'result') {
+                // The `result` event can arrive before, during, or after
+                // incremental `content` chunks. If we've already accumulated
+                // text from content events, only adopt the result if it
+                // would extend what we have — otherwise leave fullText
+                // untouched to avoid duplicate rendering.
+                const text = findTextCandidate(data?.aiRecord || data);
+                if (text && text.length > fullText.length) {
+                  fullText = text;
+                  aiContentDiv.textContent = fullText;
+                }
+                return;
+              }
+
+              // SSE-2: `final-result` is the server-normalized definitive
+              // result from 1min.ai. The server buffers the upstream
+              // `event: result` and sends it as `event: final-result`
+              // after all content deltas. Adopt it unconditionally.
+              if (currentEvent === 'final-result') {
+                const text = findTextCandidate(data?.aiRecord || data);
+                if (text) {
+                  fullText = text;
+                  aiContentDiv.textContent = fullText;
+                }
+                streamDone = true;
+                return;
+              }
+
+              const content =
+                data?.content ||
+                data?.choices?.[0]?.delta?.content ||
+                data?.choices?.[0]?.message?.content ||
+                data?.message?.content ||
+                data?.delta?.content ||
+                data?.text ||
+                findTextCandidate(data?.aiRecord || data);
+              if (content) {
+                followStreamScroll =
+                  followStreamScroll &&
+                  dom.chatLog.scrollTop + dom.chatLog.clientHeight >= dom.chatLog.scrollHeight - 120;
+                fullText += content;
+                scheduleRender();
+              }
+
+              const finishReason = data?.choices?.[0]?.finish_reason;
+              if (finishReason && finishReason !== 'null') {
+                streamDone = true;
+              }
+            } catch {
+              // Ignore non-JSON SSE chunks
+            }
+          };
+
           while (!streamDone) {
             const { done, value } = await reader.read();
             if (done) {
               readerFinished = true;
+              const tail = decoder.decode();
+              if (tail) buffer += tail;
+              if (buffer.trim()) {
+                processSseLine(buffer);
+              }
               break;
             }
 
@@ -535,91 +631,8 @@ export function createChatManager(dom, state) {
             buffer = lines.pop() ?? '';
 
             for (const line of lines) {
-              if (!line.trim()) {
-                currentEvent = 'content';
-                continue;
-              }
-
-              if (line.startsWith('event:')) {
-                currentEvent = line.slice(6).trim() || 'content';
-                continue;
-              }
-
-              if (!line.startsWith('data:')) continue;
-              const dataStr = line.replace(/^data:\s*/, '').trim();
-              if (!dataStr) continue;
-
-              if (dataStr === '[DONE]') {
-                streamDone = true;
-                break;
-              }
-
-              try {
-                const data = JSON.parse(dataStr);
-
-                if (currentEvent === 'error') {
-                  streamError = new Error(data?.error || data?.message || 'Stream error');
-                  streamDone = true;
-                  break;
-                }
-
-                if (currentEvent === 'done') {
-                  streamDone = true;
-                  break;
-                }
-
-                if (currentEvent === 'result') {
-                  // The `result` event can arrive before, during, or after
-                  // incremental `content` chunks. If we've already accumulated
-                  // text from content events, only adopt the result if it
-                  // would extend what we have — otherwise leave fullText
-                  // untouched to avoid duplicate rendering.
-                  const text = findTextCandidate(data?.aiRecord || data);
-                  if (text && text.length > fullText.length) {
-                    fullText = text;
-                    aiContentDiv.textContent = fullText;
-                  }
-                  continue;
-                }
-
-                // SSE-2: `final-result` is the server-normalized definitive
-                // result from 1min.ai. The server buffers the upstream
-                // `event: result` and sends it as `event: final-result`
-                // after all content deltas. Adopt it unconditionally.
-                if (currentEvent === 'final-result') {
-                  const text = findTextCandidate(data?.aiRecord || data);
-                  if (text) {
-                    fullText = text;
-                    aiContentDiv.textContent = fullText;
-                  }
-                  streamDone = true;
-                  break;
-                }
-
-                const content =
-                  data?.content ||
-                  data?.choices?.[0]?.delta?.content ||
-                  data?.choices?.[0]?.message?.content ||
-                  data?.message?.content ||
-                  data?.delta?.content ||
-                  data?.text ||
-                  findTextCandidate(data?.aiRecord || data);
-                if (content) {
-                  followStreamScroll =
-                    followStreamScroll &&
-                    dom.chatLog.scrollTop + dom.chatLog.clientHeight >= dom.chatLog.scrollHeight - 120;
-                  fullText += content;
-                  scheduleRender();
-                }
-
-                const finishReason = data?.choices?.[0]?.finish_reason;
-                if (finishReason && finishReason !== 'null') {
-                  streamDone = true;
-                  break;
-                }
-              } catch {
-                // Ignore non-JSON SSE chunks
-              }
+              processSseLine(line);
+              if (streamDone) break;
             }
           }
 
@@ -715,6 +728,7 @@ export function createChatManager(dom, state) {
       state.chat.attachments.length = 0;
       state.chat.attachments.push(...remaining);
       updateAttachmentPreview();
+      updateSendButton();
     }
   }
 

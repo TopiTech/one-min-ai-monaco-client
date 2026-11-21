@@ -612,6 +612,16 @@ describe('Code Review Improvements', () => {
         await slowPromise;
         expect(editorState.activeFilePath).toBe('/fast.js');
         expect(activeModel?.uriKey).toBe('file:///fast.js');
+
+        // Dirty open tab should not be overwritten by openFile and closing must clear metadata
+        editorState.readOnlyFiles['/fast.js'] = false;
+        editorManager.isDirty = (p) => p === '/fast.js';
+        const fastModel = global.monaco.editor.getModel(global.monaco.Uri.file('/fast.js'));
+        fastModel.setValue('unsaved user edits');
+        await tabs.openFile('/fast.js');
+        expect(fastModel.getValue()).toBe('unsaved user edits');
+        tabs.closeTabInternal('/fast.js');
+        expect(editorState.readOnlyFiles['/fast.js']).toBeUndefined();
       } finally {
         global.document = prevDoc;
         global.window = prevWin;
@@ -1214,6 +1224,29 @@ describe('Code Review Improvements', () => {
         expect(gallery.children.length).toBe(50);
         expect(styleTag.textContent).not.toContain('.cmp-evicted');
         expect(styleTag.textContent).toContain('.cmp-keep');
+
+        // Clearing editor image on 1forall provider must fall back to a 1forall model, not gpt-image-2
+        global.localStorage = { getItem: () => '1forall', setItem: () => {}, removeItem: () => {} };
+        global.fetch = () =>
+          Promise.resolve(
+            new Response(
+              JSON.stringify({
+                providers: {
+                  '1forall': {
+                    imageModels: [
+                      { id: 'flux-edit', label: 'Flux Edit', provider: '1forall', tags: ['editor'] },
+                    ],
+                  },
+                },
+              }),
+              { status: 200, headers: { 'content-type': 'application/json' } },
+            ),
+          );
+        const { loadModels } = await import('../public/js/model-picker.js');
+        await loadModels();
+        dom.imageModel.value = 'flux-edit';
+        mgr.clearImage();
+        expect(dom.imageModel.value).toBe('black-forest-labs/flux-schnell');
       } finally {
         global.document = prevDoc;
         global.window = prevWin;

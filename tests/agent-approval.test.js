@@ -288,5 +288,17 @@ describe('Agent Approval Flow', () => {
         serverConfig.enableCommandExecution = previousValue;
       }
     });
+
+    test('POST /sessions rejects reserved id "all" or slashes and POST /tokenize tolerates empty body', async () => {
+      const reservedRes = await request(app).post('/api/agent/sessions').send({ id: 'all' });
+      expect(reservedRes.status).toBe(400);
+
+      const slashRes = await request(app).post('/api/agent/sessions').send({ id: 'bad/id' });
+      expect(slashRes.status).toBe(400);
+
+      const tokRes = await request(app).post('/api/agent/tokenize').send();
+      expect(tokRes.status).toBe(200);
+      expect(tokRes.body).toHaveProperty('total');
+    });
   });
 });

@@ -181,5 +181,17 @@ describe('command-runner', () => {
       const res = await promise;
       expect(res.stdout).toBe('日本語テスト');
     });
+
+    test('blocks obfuscated interpreter flags after leading options while allowing app args after script path', () => {
+      expect(checkCommandSafety('node --no-warnings -e "console.log(1)"').safe).toBe(false);
+      expect(checkCommandSafety('node -pe "1+1"').safe).toBe(false);
+      expect(checkCommandSafety('node --max-old-space-size 4096 --eval "1"').safe).toBe(false);
+      expect(checkCommandSafety('python -u -c "print(1)"').safe).toBe(false);
+      expect(checkCommandSafety('python3 -W ignore -m http.server').safe).toBe(false);
+
+      expect(checkCommandSafety('node server.js -e customArg').safe).toBe(true);
+      expect(checkCommandSafety('node server.js -p 3000').safe).toBe(true);
+      expect(checkCommandSafety('python app.py -m').safe).toBe(true);
+    });
   });
 });

@@ -75,6 +75,7 @@ export function createDiffDialog({ t, getThemeName }) {
   let diffEditor = null;
   let resizeObserver = null;
   let activeModels = { original: null, modified: null };
+  let dialogQueue = Promise.resolve();
 
   function disconnectResizeObserver() {
     resizeObserver?.disconnect();
@@ -96,7 +97,13 @@ export function createDiffDialog({ t, getThemeName }) {
     diffEditor?.layout();
   }
 
-  async function showDiffDialog(filePath, oldContent, newContent) {
+  function showDiffDialog(filePath, oldContent, newContent) {
+    const run = dialogQueue.then(() => showDiffDialogInternal(filePath, oldContent, newContent));
+    dialogQueue = run.catch(() => {});
+    return run;
+  }
+
+  async function showDiffDialogInternal(filePath, oldContent, newContent) {
     let modal = null;
     let container = null;
     let pathLabel;

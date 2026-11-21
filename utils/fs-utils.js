@@ -8,11 +8,13 @@ import { validatePath, assertNotWriteProtectedPath } from './fs-guard.js';
 /**
  * Atomically writes a text file by writing to a temporary file first and renaming it.
  * Uses 'wx' flag to prevent symlink hijacking and checks if the target path is a symlink.
+ * Preserves existing file permissions on POSIX when overwriting unless `options.mode` is specified.
  *
  * @param {string} filePath Target file path.
  * @param {string} content Text content to write.
+ * @param {{ mode?: number }} [options] Optional write options.
  */
-export async function atomicWriteTextFile(filePath, content) {
+export async function atomicWriteTextFile(filePath, content, options = {}) {
   const dir = path.dirname(filePath);
   const resolvedDir = validatePath(dir);
 
@@ -23,13 +25,23 @@ export async function atomicWriteTextFile(filePath, content) {
     const resolvedTarget = validatePath(filePath);
     assertNotWriteProtectedPath(resolvedTarget);
 
+    let existingStat = null;
     try {
-      const stat = await fs.lstat(resolvedTarget);
-      if (stat.isSymbolicLink()) {
+      existingStat = await fs.lstat(resolvedTarget);
+      if (existingStat.isSymbolicLink()) {
         throw new Error('Target path is a symbolic link, writing blocked');
       }
     } catch (err) {
       if (err.code !== 'ENOENT') throw err;
+    }
+
+    if (typeof options.mode === 'number') {
+      await fs.chmod(tmpPath, options.mode);
+    } else if (existingStat && process.platform !== 'win32') {
+      const existingMode = existingStat.mode & 0o777;
+      if (existingMode !== 0o600) {
+        await fs.chmod(tmpPath, existingMode);
+      }
     }
 
     await fs.rename(tmpPath, resolvedTarget);

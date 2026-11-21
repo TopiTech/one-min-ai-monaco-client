@@ -209,9 +209,9 @@ export function createEditorManager(state) {
     const allModels = monaco.editor.getModels();
     if (allModels.length > MAX_OPEN_MODELS) {
       const active = _instance.getModel();
-      const openTabs = state.openTabs;
+      const openUris = new Set(state.openTabs.map((p) => monaco.Uri.file(p).toString()));
       const unused = allModels.filter(
-        (m) => m !== active && !openTabs.includes(m.uri.fsPath) && m.uri.scheme === 'file',
+        (m) => m !== active && m.uri.scheme === 'file' && !openUris.has(m.uri.toString()),
       );
       for (const m of unused.slice(0, allModels.length - MAX_OPEN_MODELS)) {
         m.dispose();

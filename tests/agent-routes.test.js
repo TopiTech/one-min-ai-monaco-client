@@ -502,6 +502,27 @@ replaced
       pendingCommands.delete('valid-token');
     });
 
+    test('purges pending commands belonging to sessions expired during cleanup', async () => {
+      const createdRes = await request(app).post('/api/agent/sessions').send({ cwd: process.cwd() });
+      expect(createdRes.status).toBe(200);
+      const staleId = createdRes.body.session.id;
+
+      const futureNow = Date.now() + 2 * 60 * 60 * 1000;
+      pendingCommands.set('orphan-tok', {
+        createdAt: futureNow - 1000,
+        sessionId: staleId,
+        command: 'pwd',
+      });
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(futureNow);
+      try {
+        cleanupExpiredSessions();
+        expect(pendingCommands.has('orphan-tok')).toBe(false);
+      } finally {
+        pendingCommands.delete('orphan-tok');
+        nowSpy.mockRestore();
+      }
+    });
+
     test('hides protected files such as .env, secrets.json, and package.json in dir and find-files listings', async () => {
       const localTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-dir-protect-'));
       const prevRoots = process.env.ALLOWED_ROOTS;

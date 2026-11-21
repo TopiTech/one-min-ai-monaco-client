@@ -271,4 +271,66 @@ describe('1forall.ai provider adapter and SSE/Asset handling', () => {
     });
     expect(format).toBe('openai-sse');
   });
+
+  test('openChatStream does not retry invalid-model 400 errors that are unrelated to streaming', async () => {
+    globalThis.fetch = jest.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          error: {
+            message: 'The model nonexistent-model does not exist',
+            type: 'invalid_request_error',
+            param: 'model',
+            code: 'model_not_found',
+          },
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      );
+    });
+
+    await expect(
+      oneForAllProvider.openChatStream({
+        prompt: 'Hi',
+        model: 'nonexistent-model',
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('generateImage (async) throws 502 when initial upstream response already reports failed', async () => {
+    globalThis.fetch = jest.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          code_ref: 'img-fail-1',
+          status: 'failed',
+          error: 'Prompt rejected by safety filter',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+
+    await expect(
+      oneForAllProvider.generateImage({
+        prompt: 'test',
+        model: 'flux-1',
+        async: true,
+      }),
+    ).rejects.toMatchObject({ status: 502 });
+  });
+
+  test('chat falls back to prompt when messages array contains only whitespace entries', async () => {
+    globalThis.fetch = jest.fn(async () => {
+      return new Response(JSON.stringify({ choices: [{ message: { content: 'fallback prompt ok' } }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    await oneForAllProvider.chat({
+      prompt: 'Actual user prompt',
+      messages: [{ role: 'user', content: '   ' }],
+      model: 'gpt-4o-mini',
+    });
+    const sent = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+    expect(sent.messages).toEqual([{ role: 'user', content: 'Actual user prompt' }]);
+  });
 });

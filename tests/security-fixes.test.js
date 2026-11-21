@@ -597,4 +597,71 @@ describe('Security fixes regression', () => {
       expect(csp).toMatch(/style-src[^;]*'unsafe-inline'/);
     });
   });
+
+  describe('asset-proxy active content blocking and post-headersSent safety', () => {
+    test('blocks image/svg+xml and application/xhtml+xml from being proxied inline', async () => {
+      const { assetProxyHandler } = await import('../services/asset-proxy.js');
+      const prevFetch = globalThis.fetch;
+      globalThis.fetch = jest.fn(async () => ({
+        ok: true,
+        status: 200,
+        headers: new Map([
+          ['content-type', 'image/svg+xml; charset=utf-8'],
+          ['content-length', '40'],
+        ]),
+        body: { cancel: jest.fn(async () => {}) },
+      }));
+
+      try {
+        const req = { query: { key: 'images/xss.svg' }, headers: {} };
+        const json = jest.fn();
+        const status = jest.fn(() => ({ json }));
+        const res = { status, setHeader: jest.fn(), on: jest.fn(), off: jest.fn() };
+        const next = jest.fn();
+
+        await assetProxyHandler(req, res, next);
+        expect(status).toHaveBeenCalledWith(403);
+        expect(json).toHaveBeenCalledWith({ error: 'Unsupported content type from upstream' });
+        expect(next).not.toHaveBeenCalled();
+      } finally {
+        globalThis.fetch = prevFetch;
+      }
+    });
+
+    test('destroys response instead of calling next(err) when error happens after headersSent', async () => {
+      const { assetProxyHandler } = await import('../services/asset-proxy.js');
+      const prevFetch = globalThis.fetch;
+      globalThis.fetch = jest.fn(async () => ({
+        ok: true,
+        status: 200,
+        headers: new Map([['content-type', 'image/png']]),
+        body: {
+          pipeThrough: () => {
+            throw new Error('stream pipe failure');
+          },
+        },
+      }));
+
+      try {
+        const req = { query: { key: 'images/broken.png' }, headers: {} };
+        const res = {
+          headersSent: true,
+          destroyed: false,
+          writableEnded: false,
+          setHeader: jest.fn(),
+          status: jest.fn(),
+          destroy: jest.fn(),
+          on: jest.fn(),
+          off: jest.fn(),
+        };
+        const next = jest.fn();
+
+        await assetProxyHandler(req, res, next);
+        expect(res.destroy).toHaveBeenCalledWith(expect.any(Error));
+        expect(next).not.toHaveBeenCalled();
+      } finally {
+        globalThis.fetch = prevFetch;
+      }
+    });
+  });
 });

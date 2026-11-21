@@ -102,6 +102,7 @@ export function createEditorTabManager(editorState, editorManager, dom) {
       const model = monaco.editor.getModel(fileUri);
 
       if (model) {
+        ++_openFileSeq;
         if (editorManager.instance) {
           editorManager.instance.setModel(model);
           editorState.activeFilePath = filePath;
@@ -142,6 +143,12 @@ export function createEditorTabManager(editorState, editorManager, dom) {
     if (tabIndex === -1) return;
 
     editorState.openTabs.splice(tabIndex, 1);
+    if (editorState.readOnlyFiles) {
+      delete editorState.readOnlyFiles[filePath];
+    }
+    if (editorState.originalVersions) {
+      delete editorState.originalVersions[filePath];
+    }
 
     const fileUri = monaco.Uri.file(filePath);
     const model = monaco.editor.getModel(fileUri);
@@ -168,6 +175,10 @@ export function createEditorTabManager(editorState, editorManager, dom) {
   }
 
   async function openFile(filePath) {
+    if (editorState.openTabs.includes(filePath) && editorManager.isDirty?.(filePath)) {
+      await switchToTab(filePath);
+      return;
+    }
     const requestSeq = ++_openFileSeq;
     try {
       const data = await api(`/api/fs/read?path=${encodeURIComponent(filePath)}`);

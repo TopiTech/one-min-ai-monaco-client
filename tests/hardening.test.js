@@ -38,6 +38,15 @@ describe('Hardening Improvements Tests', () => {
       expect(isWriteProtectedPath(scriptsDir)).toBe(true);
       expect(isWriteProtectedPath(scriptsFile)).toBe(true);
     });
+
+    test('**/ prefix matches only segment boundaries without false filename prefix matches', () => {
+      const currentFile = fileURLToPath(import.meta.url);
+      const projectRoot = path.resolve(currentFile, '../../');
+
+      expect(isWriteProtectedPath(path.join(projectRoot, 'secrets.json'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(projectRoot, 'config', 'secrets.json'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(projectRoot, 'my_secrets.json'))).toBe(false);
+    });
   });
 
   describe('/api/code/run filePath Validation', () => {
@@ -317,6 +326,47 @@ describe('Hardening Improvements Tests', () => {
         process.env.NODE_ENV = prevEnv;
         process.env.ALLOWED_CORS_ORIGINS = prevCors;
       }
+    });
+  });
+
+  describe('CORS, Host normalization, and large UTF-8 upload boundaries', () => {
+    test('matches mixed-case allowed Host and Origin and sets Vary: Origin', async () => {
+      const app = createApp({
+        requireLocalAuth: false,
+        enableRateLimit: false,
+      });
+
+      const res = await request(app)
+        .get('/api/fs/config')
+        .set('Host', 'EXAMPLE.COM')
+        .set('Origin', 'HTTPS://EXAMPLE.COM');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['access-control-allow-origin']).toBe('HTTPS://EXAMPLE.COM');
+      expect(String(res.headers.vary || '')).toMatch(/\borigin\b/i);
+    });
+
+    test('accepts text uploads >8KB where a multi-byte UTF-8 character straddles byte 8192', async () => {
+      const { callOneMin } = await import('../utils/api-client.js');
+      /** @type {any} */ (callOneMin).mockResolvedValueOnce({
+        asset: { key: 'images/utf8.txt' },
+      });
+
+      const app = createApp({
+        requireLocalAuth: false,
+        enableRateLimit: false,
+      });
+
+      // 8191 ASCII bytes + 3-byte Japanese 'あ' (bytes 8191..8193) + trailing ASCII
+      const payload = Buffer.concat([Buffer.alloc(8191, 0x61), Buffer.from('あいうえお', 'utf8')]);
+
+      const res = await request(app).post('/api/assets/upload').attach('asset', payload, {
+        filename: 'utf8-boundary.txt',
+        contentType: 'text/plain; charset=utf-8',
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body.key).toBe('images/utf8.txt');
     });
   });
 });

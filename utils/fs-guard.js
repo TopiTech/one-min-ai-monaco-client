@@ -101,11 +101,16 @@ function globToRegExp(glob) {
     const c = baseGlob[i];
     if (c === '*') {
       if (baseGlob[i + 1] === '*') {
-        regex += '.*';
-        i++; // skip the second *
-        // Consume an optional trailing `/` so `**/` matches zero or more
-        // directory levels.
-        if (baseGlob[i + 1] === '/') i++;
+        // When `**/` appears at the start or right after a `/`, it represents
+        // zero or more directory segments (`(?:.*/)?`), rather than `.*` which
+        // would falsely match prefixes within a single filename (e.g. `**/foo` matching `barfoo`).
+        if (baseGlob[i + 2] === '/' && (i === 0 || baseGlob[i - 1] === '/')) {
+          regex += '(?:.*/)?';
+          i += 2;
+        } else {
+          regex += '.*';
+          i++; // skip the second *
+        }
       } else {
         regex += '[^/]*';
       }
@@ -598,21 +603,22 @@ export function revalidateRealPath(resolvedPath) {
  * @returns {Promise<string>} Safely validated real path.
  */
 export async function getSafeRealPath(resolvedPath) {
-  let realPath = resolvedPath;
+  let exists = false;
   try {
-    const stat = await fs.promises.lstat(resolvedPath);
-    if (stat.isFile() || stat.isDirectory() || stat.isSymbolicLink()) {
-      realPath = revalidateRealPath(resolvedPath);
-      assertNotWriteProtectedPath(realPath);
-    }
+    await fs.promises.lstat(resolvedPath);
+    exists = true;
   } catch (err) {
     if (err.code !== 'ENOENT') throw err;
-    const { realPath: candidateRealPath } = resolvePathWithAncestors(resolvedPath);
-    assertPathWithinRealRoots(candidateRealPath);
-    assertNotWriteProtectedPath(candidateRealPath);
-    realPath = candidateRealPath;
   }
-  return realPath;
+  if (exists) {
+    const realPath = revalidateRealPath(resolvedPath);
+    assertNotWriteProtectedPath(realPath);
+    return realPath;
+  }
+  const { realPath: candidateRealPath } = resolvePathWithAncestors(resolvedPath);
+  assertPathWithinRealRoots(candidateRealPath);
+  assertNotWriteProtectedPath(candidateRealPath);
+  return candidateRealPath;
 }
 
 /**

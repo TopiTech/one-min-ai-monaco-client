@@ -22,20 +22,26 @@ export const RETRYABLE_NETWORK_CODES = new Set([
  */
 export function createCombinedSignal(a, b) {
   const controller = new AbortController();
+  let cleanedUp = false;
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    if (a) a.removeEventListener('abort', onAbort);
+    if (b) b.removeEventListener('abort', onAbort);
+  };
   const onAbort = () => {
     if (!controller.signal.aborted) {
       const reason = (a && a.aborted && a.reason) || (b && b.aborted && b.reason) || undefined;
       controller.abort(reason);
     }
+    cleanup();
   };
-  if (a) {
-    if (a.aborted) onAbort();
-    else a.addEventListener('abort', onAbort, { once: true });
+  if (a?.aborted || b?.aborted) {
+    onAbort();
+    return controller.signal;
   }
-  if (b) {
-    if (b.aborted) onAbort();
-    else b.addEventListener('abort', onAbort, { once: true });
-  }
+  if (a) a.addEventListener('abort', onAbort, { once: true });
+  if (b) b.addEventListener('abort', onAbort, { once: true });
   return controller.signal;
 }
 
@@ -312,7 +318,8 @@ export function createHttpClient({
 
         if (raw) return response;
         const contentType = response.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
+        const mimeType = contentType.split(';')[0].trim().toLowerCase();
+        if (mimeType === 'application/json' || mimeType.endsWith('+json')) {
           try {
             return await response.json();
           } catch {

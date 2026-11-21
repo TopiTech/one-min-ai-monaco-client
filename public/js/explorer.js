@@ -6,6 +6,7 @@ export function createExplorerManager(dom, openFileCallback) {
   let _currentDir = null;
   let _allNodes = []; // flat list for search
   let _visibleNodesCache = null;
+  let _loadSeq = 0;
 
   function invalidateVisibleNodesCache() {
     _visibleNodesCache = null;
@@ -90,6 +91,7 @@ export function createExplorerManager(dom, openFileCallback) {
       tree.querySelectorAll('.tree-node, .tree-children').forEach((el) => {
         el.style.display = '';
       });
+      invalidateVisibleNodesCache();
       return;
     }
 
@@ -197,6 +199,7 @@ export function createExplorerManager(dom, openFileCallback) {
 
   // ─── Load workspace ───────────────────────────────────────
   async function loadWorkspace(dirPath = null) {
+    const loadSeq = ++_loadSeq;
     try {
       _currentDir = dirPath;
       const tree = dom.fileTree;
@@ -214,13 +217,21 @@ export function createExplorerManager(dom, openFileCallback) {
       }
 
       const data = await api(`/api/fs/list${dirPath ? `?dir=${encodeURIComponent(dirPath)}` : ''}`);
+      if (loadSeq !== _loadSeq) return;
       _currentDir = data.dir;
       dom.explorerPath.value = data.dir;
       tree.textContent = '';
       _allNodes = [];
       await renderTreeNodes(data.items, tree, 0);
-      invalidateVisibleNodesCache();
+      if (loadSeq !== _loadSeq) return;
+      const activeQuery = document.getElementById('fileSearchInput')?.value?.trim().toLowerCase();
+      if (activeQuery) {
+        _applyFilter(activeQuery);
+      } else {
+        invalidateVisibleNodesCache();
+      }
     } catch (e) {
+      if (loadSeq !== _loadSeq) return;
       if (dom.fileTree) dom.fileTree.textContent = '';
       toast.error(t('workspace_load_failed', { error: e.message }));
     }
@@ -408,8 +419,12 @@ export function createExplorerManager(dom, openFileCallback) {
     const tree = dom.fileTree;
     if (!tree) return [];
     _visibleNodesCache = Array.from(tree.querySelectorAll('.tree-node')).filter((n) => {
+      if (n.style.display === 'none') return false;
       let parentGroup = n.parentElement;
       while (parentGroup && parentGroup !== tree) {
+        if (parentGroup.style.display === 'none') {
+          return false;
+        }
         if (
           parentGroup.classList.contains('tree-children') &&
           !parentGroup.classList.contains('is-expanded')

@@ -349,6 +349,7 @@ export function collectProcessOutput(child, options = {}) {
           killProcessTree(child, true);
         }
       }, 5000);
+      forceKillTimeoutId.unref?.();
     }, timeoutMs);
 
     child.on('close', (exitCode) => {
@@ -427,6 +428,124 @@ function stripQuotedContents(command) {
 }
 
 /**
+ * Structural token-based check for dangerous interpreter execution flags
+ * regardless of leading options (e.g. `node --no-warnings -e`), bundled short
+ * flags (e.g. `node -pe`, `python3 -uc`), or full executable paths.
+ *
+ * @param {string[]} tokens Parsed command tokens
+ * @returns {string | null} Reason string if blocked, null otherwise
+ */
+function hasDangerousInterpreterInvocation(tokens) {
+  if (!Array.isArray(tokens) || tokens.length === 0) return null;
+  const rawExe = tokens[0].split(/[/\\]/).pop() || '';
+  const exeBase = normalizeCommandName(rawExe);
+
+  const collectFlagsBeforeScript = (args, scriptExtRe) => {
+    const flags = [];
+    for (const arg of args) {
+      if (arg === '--') break;
+      if (scriptExtRe && scriptExtRe.test(arg)) break;
+      if (arg.startsWith('-')) flags.push(arg);
+    }
+    return flags;
+  };
+
+  if (exeBase === 'node') {
+    for (const flag of collectFlagsBeforeScript(tokens.slice(1), /\.(?:[cm]?js|ts)$/i)) {
+      const head = flag.toLowerCase().split('=')[0];
+      if (
+        /^--(?:eval|print|require|import|input-type|experimental.*|inspect.*|loader|conditions)$/.test(
+          head,
+        ) ||
+        (/^-[a-z]+$/i.test(head) && /[epr]/i.test(head.slice(1)))
+      ) {
+        return `node execution flag: ${flag}`;
+      }
+    }
+    return null;
+  }
+
+  if (/^python(?:\d+(?:\.\d+)*)?$/.test(exeBase)) {
+    for (const flag of collectFlagsBeforeScript(tokens.slice(1), /\.(?:py|pyw)$/i)) {
+      const head = flag.toLowerCase().split('=')[0];
+      if (
+        head === '--command' ||
+        head === '--module' ||
+        (/^-[a-z]+$/i.test(head) && /[cm]/i.test(head.slice(1)))
+      ) {
+        return `python execution flag: ${flag}`;
+      }
+    }
+    return null;
+  }
+
+  if (exeBase === 'perl') {
+    for (const flag of collectFlagsBeforeScript(tokens.slice(1), /\.(?:pl|pm)$/i)) {
+      const head = flag.split('=')[0];
+      if (head === '--eval' || (/^-[a-zA-Z]+$/.test(head) && /[eEM]/.test(head.slice(1)))) {
+        return `perl execution flag: ${flag}`;
+      }
+    }
+    return null;
+  }
+
+  if (exeBase === 'ruby') {
+    for (const flag of collectFlagsBeforeScript(tokens.slice(1), /\.rb$/i)) {
+      const head = flag.toLowerCase().split('=')[0];
+      if (
+        head === '--eval' ||
+        head === '--require' ||
+        (/^-[a-z]+$/i.test(head) && /[er]/i.test(head.slice(1)))
+      ) {
+        return `ruby execution flag: ${flag}`;
+      }
+    }
+    return null;
+  }
+
+  if (exeBase === 'php') {
+    for (const flag of collectFlagsBeforeScript(tokens.slice(1), /\.php$/i)) {
+      const head = flag.toLowerCase().split('=')[0];
+      if (head === '--run' || (/^-[a-z]+$/i.test(head) && /[rf]/i.test(head.slice(1)))) {
+        return `php execution flag: ${flag}`;
+      }
+    }
+    return null;
+  }
+
+  if (exeBase === 'bash' || exeBase === 'sh' || exeBase === 'dash' || exeBase === 'zsh') {
+    for (const flag of collectFlagsBeforeScript(tokens.slice(1), /\.(?:sh|bash|zsh)$/i)) {
+      const head = flag.toLowerCase().split('=')[0];
+      if (head === '--command' || (/^-[a-z]+$/i.test(head) && /[cl]/i.test(head.slice(1)))) {
+        return `shell execution flag: ${flag}`;
+      }
+    }
+    return null;
+  }
+
+  if (exeBase === 'cmd') {
+    for (const arg of tokens.slice(1)) {
+      if (/^\/[ck](?:$|[:=])/i.test(arg)) {
+        return `cmd execution switch: ${arg}`;
+      }
+    }
+    return null;
+  }
+
+  if (exeBase === 'powershell' || exeBase === 'pwsh') {
+    for (const arg of tokens.slice(1)) {
+      const head = arg.toLowerCase().split('=')[0];
+      if (/^-(?:c(?:ommand)?|e(?:nc(?:odedcommand)?)?|f(?:ile)?)$/i.test(head)) {
+        return `powershell execution flag: ${arg}`;
+      }
+    }
+    return null;
+  }
+
+  return null;
+}
+
+/**
  * Check if a command contains dangerous patterns.
  * @param {string} command The command to check.
  * @returns {{ safe: boolean, reason?: string }}
@@ -463,6 +582,14 @@ export function checkCommandSafety(command) {
   const commandName = normalizeCommandName(tokens[0]);
   if (!isAllowedCommandName(commandName)) {
     return { safe: false, reason: 'Command not in allowlist' };
+  }
+
+  const dangerousInterpreter = hasDangerousInterpreterInvocation(tokens);
+  if (dangerousInterpreter) {
+    return {
+      safe: false,
+      reason: `Command contains blocked ${dangerousInterpreter}`,
+    };
   }
 
   // B-4: Normalize command to catch obfuscation (quote removal + slash normalization)

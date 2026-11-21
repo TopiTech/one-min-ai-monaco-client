@@ -186,7 +186,12 @@ export async function assetProxyHandler(req, res, next) {
       }
 
       const contentType = response.headers.get('content-type') || 'application/octet-stream';
-      if (/text\/html|application\/javascript|text\/javascript/i.test(contentType)) {
+      const normalizedMime = contentType.split(';')[0].trim().toLowerCase();
+      if (
+        /^(?:text\/html|application\/(?:x-)?javascript|text\/javascript|image\/svg\+xml|application\/xhtml\+xml|text\/xml|application\/xml)$/i.test(
+          normalizedMime,
+        )
+      ) {
         await response.body?.cancel?.().catch(() => {});
         return res.status(403).json({ error: 'Unsupported content type from upstream' });
       }
@@ -222,6 +227,10 @@ export async function assetProxyHandler(req, res, next) {
       if (!res.headersSent) {
         return res.status(err.status).json({ error: 'Asset proxy response too large' });
       }
+      res.destroy(err);
+      return;
+    }
+    if (res.headersSent) {
       res.destroy(err);
       return;
     }

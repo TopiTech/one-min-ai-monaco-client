@@ -503,4 +503,55 @@ describe('agent-core raw command error handling', () => {
     expect(resultStep.resultText).not.toContain('undefined');
     expect(state.agent.active).toBe(false);
   });
+
+  test('aborting during run_command approval unblocks pending promise immediately without hanging', async () => {
+    const { createAgentRuntime } = await import('../public/js/agent-core.js');
+    const dom = {
+      explorerPath: { value: '/workspace' },
+      codeModel: { value: 'qwen3-coder-plus' },
+      startAgentBtn: makeElement('button'),
+      sendAgentFeedbackBtn: makeElement('button'),
+      stopAgentBtn: makeElement('button'),
+      resetAgentBtn: makeElement('button'),
+      agentInstruction: makeElement('textarea'),
+      agentStatus: makeElement('span'),
+    };
+    const state = {
+      agent: { active: true, sessionId: null, history: [], abortController: null },
+      editor: { activeFilePath: null },
+    };
+
+    const runtime = createAgentRuntime({
+      dom,
+      state,
+      api: (url) => {
+        if (url === '/api/agent/sessions') return Promise.resolve({ session: { id: 'sess-abort' } });
+        if (url === '/api/agent/config') return Promise.resolve({ maxLoops: 3 });
+        if (url.endsWith('/project-info')) return Promise.resolve({ project: null });
+        if (url.startsWith('/api/fs/list')) return Promise.resolve({ dir: '/workspace', items: [] });
+        if (url === '/api/agent/chat') {
+          return Promise.resolve({
+            text: '<call_tool name="run_command"><parameter name="command">npm test</parameter></call_tool>',
+          });
+        }
+        if (url.includes('/commands?stream=true')) {
+          return Promise.resolve(jsonResponse({ requiresApproval: true, approvalToken: 'tok-1' }, 200));
+        }
+        if (url === '/api/agent/tokenize') return Promise.resolve({ counts: [], total: 0 });
+        return Promise.resolve({});
+      },
+      t: (key, vars) => (typeof vars === 'string' ? vars : key),
+      parseXMLTags: () => ({ toolCall: { name: 'run_command', params: { command: 'npm test' } } }),
+      setAgentStatus: () => {},
+      addAgentTimelineStep: () => {},
+      addAgentApprovalStep: () => {
+        // Trigger abort immediately while awaiting approval
+        state.agent.active = false;
+        state.agent.abortController.abort();
+      },
+    });
+
+    await expect(runtime.runAgentLoop('run and abort')).resolves.toBeUndefined();
+    expect(state.agent.active).toBe(false);
+  });
 });

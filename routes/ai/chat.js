@@ -12,7 +12,7 @@ import { serverConfig } from '../../config/server.js';
 import { shouldExposeErrorText } from '../../server.js';
 import { assertCapability, getProvider, resolveProviderId } from '../../providers/index.js';
 import { consumeOpenAiSseStream } from '../../utils/sse.js';
-import { getDefaultModel } from './utils.js';
+import { bindRequestAbortSignal, booleanFlagInput, getDefaultModel, optionalNumberInput } from './utils.js';
 
 const router = express.Router();
 
@@ -90,15 +90,11 @@ const chatRequestSchema = z
     ),
     messages: z.array(chatMessageSchema).max(200).optional(),
     model: z.string().optional(),
-    maxTokens: z.preprocess(
-      (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
-      z.number().int().min(1).max(32768).optional(),
-    ),
+    maxTokens: optionalNumberInput(z.number().int().min(1).max(32768).optional()),
     conversationId: z.string().optional(),
     attachments: rawAttachmentsSchema,
-    webSearch: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
-    numOfSite: z.preprocess(
-      (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
+    webSearch: booleanFlagInput(false),
+    numOfSite: optionalNumberInput(
       z
         .number()
         .int()
@@ -106,8 +102,7 @@ const chatRequestSchema = z
         .max(10, { message: 'numOfSite must be a number between 1 and 10' })
         .optional(),
     ),
-    maxWord: z.preprocess(
-      (val) => (val !== undefined && val !== '' ? Number(val) : undefined),
+    maxWord: optionalNumberInput(
       z
         .number()
         .int()
@@ -115,13 +110,10 @@ const chatRequestSchema = z
         .max(10000, { message: 'maxWord must be a number between 100 and 10000' })
         .optional(),
     ),
-    history: z.preprocess(
-      (val) => (val === undefined ? true : val === 'true' || val === true),
-      z.boolean().default(true),
-    ),
-    withMemories: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
+    history: booleanFlagInput(true),
+    withMemories: booleanFlagInput(false),
     brandVoiceId: z.string().optional(),
-    isMixed: z.preprocess((val) => val === 'true' || val === true, z.boolean().default(false)),
+    isMixed: booleanFlagInput(false),
   })
   .superRefine((data, ctx) => {
     const hasPrompt = data.prompt.trim().length > 0;
@@ -207,6 +199,7 @@ function parseChatRequest(body) {
 }
 
 router.post('/', async (req, res, next) => {
+  const { controller, cleanup } = bindRequestAbortSignal(res);
   try {
     const { error, providerId, data, payload } = parseChatRequest(req.body);
     if (error) return res.status(error.status).json({ error: error.message });
@@ -218,6 +211,7 @@ router.post('/', async (req, res, next) => {
         messages: data.messages,
         model: data.model,
         maxTokens: data.maxTokens,
+        signal: controller.signal,
       });
       return res.json(result);
     }
@@ -226,6 +220,7 @@ router.post('/', async (req, res, next) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       idempotent: false,
+      signal: controller.signal,
     });
     if (isFailedResponse(responseData)) {
       throw new HttpError(
@@ -237,7 +232,13 @@ router.post('/', async (req, res, next) => {
     }
     res.json(responseData);
   } catch (err) {
+    if (controller.signal.aborted && (res.writableEnded || res.destroyed)) return;
+    if (controller.signal.aborted && !res.headersSent) {
+      return res.status(499).json({ error: 'Client Closed Request' });
+    }
     next(err);
+  } finally {
+    cleanup();
   }
 });
 
@@ -344,17 +345,10 @@ async function handleOneForAllChatStream(req, res, data, controller) {
 }
 
 router.post('/stream', async (req, res, next) => {
+  const { controller, cleanup } = bindRequestAbortSignal(res);
   try {
     const { error, providerId, data, payload } = parseChatRequest(req.body);
     if (error) return res.status(error.status).json({ error: error.message });
-
-    const controller = new AbortController();
-    res.on('close', () => {
-      if (!res.writableEnded) {
-        logger.info('Client closed the connection. Aborting stream request.');
-        controller.abort();
-      }
-    });
 
     if (providerId === '1forall') {
       await handleOneForAllChatStream(req, res, data, controller);
@@ -407,6 +401,10 @@ router.post('/stream', async (req, res, next) => {
       return;
     }
 
+    if (!response.body) {
+      throw new HttpError(502, '1min.ai stream returned empty response body', 'UPSTREAM_API_ERROR');
+    }
+
     setSseHeaders(res);
 
     const reader = response.body.getReader();
@@ -420,6 +418,7 @@ router.post('/stream', async (req, res, next) => {
     heartbeatInterval.unref?.();
 
     let resultBlocks = [];
+    let sawDoneBlock = false;
     let carry = '';
     let totalStreamBytes = 0;
     let streamLimitExceeded = false;
@@ -445,15 +444,24 @@ router.post('/stream', async (req, res, next) => {
       if (!trimmedBlock) return { type: 'ignore', block: '' };
 
       let eventName = 'message';
+      const dataLines = [];
       for (const line of trimmedBlock.split(/\r?\n/)) {
         if (line.startsWith('event:')) {
           eventName = line.slice(6).trim() || 'message';
-          break;
+        } else if (line.startsWith('data:')) {
+          dataLines.push(line.slice(5).trim());
         }
       }
 
+      if (eventName === 'result') {
+        return { type: 'result', block: trimmedBlock };
+      }
+      if (eventName === 'message' && dataLines.length === 1 && dataLines[0] === '[DONE]') {
+        return { type: 'done', block: 'data: [DONE]' };
+      }
+
       return {
-        type: eventName === 'result' ? 'result' : 'forward',
+        type: 'forward',
         block: trimmedBlock,
       };
     };
@@ -482,6 +490,10 @@ router.post('/stream', async (req, res, next) => {
             resultBlocks.push(classified.block);
             continue;
           }
+          if (classified.type === 'done') {
+            sawDoneBlock = true;
+            continue;
+          }
           if (classified.type === 'forward' && !res.writableEnded && !res.destroyed) {
             res.write(classified.block + '\n\n');
             flushRes(res);
@@ -496,6 +508,8 @@ router.post('/stream', async (req, res, next) => {
         const classified = classifySseBlock(carry);
         if (classified.type === 'result') {
           resultBlocks.push(classified.block);
+        } else if (classified.type === 'done') {
+          sawDoneBlock = true;
         } else if (classified.type === 'forward' && !res.writableEnded && !res.destroyed) {
           res.write(classified.block + '\n\n');
           flushRes(res);
@@ -506,6 +520,10 @@ router.post('/stream', async (req, res, next) => {
         for (const resultBlock of resultBlocks) {
           res.write(normalizeResultBlock(resultBlock) + '\n\n');
         }
+        flushRes(res);
+      }
+      if (sawDoneBlock && !res.writableEnded && !res.destroyed) {
+        res.write('data: [DONE]\n\n');
         flushRes(res);
       }
     } catch (streamErr) {
@@ -553,6 +571,8 @@ router.post('/stream', async (req, res, next) => {
     } else if (!res.writableEnded) {
       res.end();
     }
+  } finally {
+    cleanup();
   }
 });
 

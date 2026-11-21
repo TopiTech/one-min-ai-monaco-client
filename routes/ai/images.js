@@ -3,9 +3,9 @@ import { z } from 'zod';
 import { callOneMin, isFailedResponse, extractFailureMessage } from '../../utils/api-client.js';
 import { isPendingStatusResponse } from '../../utils/http-client.js';
 import { HttpError } from '../../utils/errors.js';
-import { extractAssetKey } from '../../utils/asset-utils.js';
+import { extractAssetKey, unwrapAssetProxyUrl } from '../../utils/asset-utils.js';
 import { assertCapability, getProvider, resolveProviderId } from '../../providers/index.js';
-import { getDefaultModel, outputCompressionSchema } from './utils.js';
+import { getDefaultModel, optionalNumberInput, outputCompressionSchema } from './utils.js';
 
 const router = express.Router();
 
@@ -31,7 +31,7 @@ const imageGenerateSchema = z
     async: z.boolean().optional(),
     prompt: z.preprocess((val) => (val === undefined || val === null ? '' : String(val)), imagePromptSchema),
     model: z.string().max(IMAGE_MODEL_MAX_LENGTH, 'model is too long').optional(),
-    num_outputs: z.preprocess((val) => (val === undefined ? 1 : Number(val)), imageCountSchema),
+    num_outputs: optionalNumberInput(imageCountSchema.optional().default(1)),
     aspect_ratio: z.string().default('1:1'),
     quality: z.string().default('medium'),
     background: z.string().default('auto'),
@@ -42,7 +42,11 @@ const imageGenerateSchema = z
         message: 'output_format must be one of: png, webp, jpeg, jpg',
       }),
     output_compression: outputCompressionSchema,
-    size: z.string().max(IMAGE_SIZE_MAX_LENGTH, 'size is too long').optional(),
+    size: z
+      .string()
+      .max(IMAGE_SIZE_MAX_LENGTH, 'size is too long')
+      .regex(/^\d+x\d+$/, 'size must be in WxH format (e.g. 1024x1024)')
+      .optional(),
   })
   .superRefine((data, ctx) => {
     const providerId = resolveProviderId(data.provider);
@@ -79,9 +83,14 @@ const imageEditorSchema = z
     model: z.string().max(IMAGE_MODEL_MAX_LENGTH, 'model is too long').optional(),
     size: z.string().max(IMAGE_SIZE_MAX_LENGTH, 'size is too long').default('1024x1024'),
     quality: z.string().default('medium'),
-    n: z.preprocess((val) => (val === undefined ? 1 : Number(val)), imageCountSchema.default(1)),
+    n: optionalNumberInput(imageCountSchema.optional().default(1)),
     background: z.string().default('auto'),
-    output_format: z.string().default('webp'),
+    output_format: z
+      .string()
+      .default('webp')
+      .refine((val) => ['png', 'webp', 'jpeg', 'jpg'].includes(val), {
+        message: 'output_format must be one of: png, webp, jpeg, jpg',
+      }),
     output_compression: outputCompressionSchema,
   })
   .superRefine((data, ctx) => {
@@ -241,7 +250,7 @@ router.post('/text-editor', async (req, res, next) => {
     if (providerId === '1forall') {
       const provider = getProvider('1forall');
       const resData = await provider.editImage({
-        imageUrl: data.imageUrl,
+        imageUrl: unwrapAssetProxyUrl(data.imageUrl),
         prompt: data.prompt,
         model: data.model,
       });

@@ -24,6 +24,13 @@ const DEFAULT_FONT_SIZE = 14;
 let _editorManager = null;
 let _editorState = null;
 let _outputVisible = false;
+let _isRunning = false;
+
+function parseClampedInt(raw, fallback, min, max) {
+  const n = Number.parseInt(raw ?? '', 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(n, min), max);
+}
 
 /** Attach toolbar to the already-initialized Monaco instance */
 export function initEditorToolbar(editorManager, editorState) {
@@ -31,10 +38,10 @@ export function initEditorToolbar(editorManager, editorState) {
   _editorState = editorState;
 
   // Restore persisted preferences
-  const savedFontSize = parseInt(localStorage.getItem(STORAGE_KEY_FONT) || String(DEFAULT_FONT_SIZE), 10);
+  const savedFontSize = parseClampedInt(localStorage.getItem(STORAGE_KEY_FONT), DEFAULT_FONT_SIZE, 8, 32);
   const savedWrap = localStorage.getItem(STORAGE_KEY_WRAP) !== 'off';
   const savedMinimap = localStorage.getItem(STORAGE_KEY_MINIMAP) !== 'false';
-  const savedTabSize = parseInt(localStorage.getItem(STORAGE_KEY_TAB_SIZE) || '2', 10);
+  const savedTabSize = parseClampedInt(localStorage.getItem(STORAGE_KEY_TAB_SIZE), 2, 1, 8);
 
   const instance = editorManager.instance;
   if (instance) {
@@ -119,6 +126,7 @@ function _bindToolbarButtons(fontSize, wordWrap, minimapOn, tabSize) {
     _editorManager?.instance?.updateOptions({ fontSize: _fontSize });
     localStorage.setItem(STORAGE_KEY_FONT, String(_fontSize));
   };
+  if (fontDisplay) fontDisplay.textContent = _fontSize + 'px';
 
   const fontDecBtn = document.getElementById('toolbarFontDec');
   if (fontDecBtn) {
@@ -245,6 +253,7 @@ function _bindRunPanel() {
 }
 
 async function _runCurrentFile() {
+  if (_isRunning) return;
   const filePath = _editorState?.activeFilePath;
   const instance = _editorManager?.instance;
   if (!instance) {
@@ -256,80 +265,88 @@ async function _runCurrentFile() {
     return;
   }
 
-  const confirmed = await toast.confirm(
-    t('run_confirm_warning') ||
-      'Warning: This code will execute directly on your local host machine. Executing untrusted code can harm your system. Do you want to proceed?',
-    { type: 'warning' },
-  );
-  if (!confirmed) {
-    return;
-  }
-
-  const outputPanel = document.getElementById('codeOutputPanel');
-  const outputContent = document.getElementById('codeOutputContent');
-  const outputStatus = document.getElementById('codeOutputStatus');
-  const runBtn = document.getElementById('toolbarRun');
-
-  // Show output panel
-  _outputVisible = true;
-  outputPanel?.classList.add('is-visible');
-  document.getElementById('toggleOutputBtn')?.classList.add('is-active');
-  setTimeout(() => _editorManager?.layout(), 150);
-
-  if (outputContent) outputContent.textContent = '';
-  if (outputStatus) {
-    outputStatus.textContent = t('run_running');
-    outputStatus.className = 'code-output-status running';
-  }
-  if (runBtn) {
-    runBtn.disabled = true;
-    runBtn.classList.add('is-running');
-  }
-
-  const startTime = Date.now();
-
+  _isRunning = true;
   try {
-    const code = instance.getValue();
-    const langId = instance.getModel()?.getLanguageId() || 'plaintext';
-    const ext = filePath.split('.').pop().toLowerCase();
+    const confirmed = await toast.confirm(
+      t('run_confirm_warning') ||
+        'Warning: This code will execute directly on your local host machine. Executing untrusted code can harm your system. Do you want to proceed?',
+      { type: 'warning' },
+    );
+    if (!confirmed) {
+      return;
+    }
 
-    const res = await api('/api/code/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        filePath,
-        code,
-        language: langId,
-        extension: ext,
-      }),
-    });
+    const outputPanel = document.getElementById('codeOutputPanel');
+    const outputContent = document.getElementById('codeOutputContent');
+    const outputStatus = document.getElementById('codeOutputStatus');
+    const runBtn = document.getElementById('toolbarRun');
 
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-    if (outputContent) {
-      outputContent.textContent = res.output || res.stdout || '(出力なし)';
-      if (res.stderr) {
-        outputContent.textContent += '\n\n--- stderr ---\n' + res.stderr;
+    // Show output panel
+    _outputVisible = true;
+    outputPanel?.classList.add('is-visible');
+    document.getElementById('toggleOutputBtn')?.classList.add('is-active');
+    setTimeout(() => _editorManager?.layout(), 150);
+
+    if (outputContent) outputContent.textContent = '';
+    if (outputStatus) {
+      outputStatus.textContent = t('run_running');
+      outputStatus.className = 'code-output-status running';
+    }
+    if (runBtn) {
+      runBtn.disabled = true;
+      runBtn.classList.add('is-running');
+    }
+
+    const startTime = Date.now();
+
+    try {
+      const code = instance.getValue();
+      const langId = instance.getModel()?.getLanguageId() || 'plaintext';
+      const baseName = filePath.split(/[\\/]/).pop() || '';
+      const dotIdx = baseName.lastIndexOf('.');
+      const ext =
+        dotIdx > 0 && dotIdx < baseName.length - 1 ? baseName.slice(dotIdx + 1).toLowerCase() : undefined;
+
+      const res = await api('/api/code/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filePath,
+          code,
+          language: langId,
+          extension: ext,
+        }),
+      });
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+      if (outputContent) {
+        outputContent.textContent = res.output || res.stdout || '(出力なし)';
+        if (res.stderr) {
+          outputContent.textContent += '\n\n--- stderr ---\n' + res.stderr;
+        }
+      }
+      if (outputStatus) {
+        const exitCode = res.exitCode ?? 0;
+        outputStatus.textContent =
+          exitCode === 0
+            ? t('run_success', { time: elapsed })
+            : t('run_failed', { code: exitCode, time: elapsed });
+        outputStatus.className = `code-output-status ${exitCode === 0 ? 'ok' : 'err'}`;
+      }
+    } catch (e) {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+      if (outputContent) outputContent.textContent = e.message || String(e);
+      if (outputStatus) {
+        outputStatus.textContent = t('run_error', { time: elapsed });
+        outputStatus.className = 'code-output-status err';
+      }
+    } finally {
+      if (runBtn) {
+        runBtn.disabled = false;
+        runBtn.classList.remove('is-running');
       }
     }
-    if (outputStatus) {
-      const exitCode = res.exitCode ?? 0;
-      outputStatus.textContent =
-        exitCode === 0
-          ? t('run_success', { time: elapsed })
-          : t('run_failed', { code: exitCode, time: elapsed });
-      outputStatus.className = `code-output-status ${exitCode === 0 ? 'ok' : 'err'}`;
-    }
-  } catch (e) {
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-    if (outputContent) outputContent.textContent = e.message || String(e);
-    if (outputStatus) {
-      outputStatus.textContent = t('run_error', { time: elapsed });
-      outputStatus.className = 'code-output-status err';
-    }
   } finally {
-    if (runBtn) {
-      runBtn.disabled = false;
-      runBtn.classList.remove('is-running');
-    }
+    _isRunning = false;
   }
 }

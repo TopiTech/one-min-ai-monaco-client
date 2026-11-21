@@ -44,6 +44,22 @@ describe('mime-guard utility', () => {
       expect(validateBufferMimeType(invalidUtf8, 'text/plain')).toBe(false);
     });
 
+    test('normalizes MIME type parameters and whitespace cleanly', () => {
+      const validJson = Buffer.from('{"ok":true}', 'utf-8');
+      expect(validateBufferMimeType(validJson, 'application/json; charset=utf-8')).toBe(true);
+      expect(validateBufferMimeType(validJson, ' APPLICATION/XML ; charset=UTF-8 ')).toBe(true);
+
+      const validPng = Buffer.from('89504E470D0A1A0A', 'hex');
+      expect(validateBufferMimeType(validPng, 'image/png; name="sample.png"')).toBe(true);
+
+      const invalidPng = Buffer.from('0000000000000000', 'hex');
+      expect(validateBufferMimeType(invalidPng, 'image/png; name="bad.png"')).toBe(false);
+
+      const emptyBuf = Buffer.alloc(0);
+      expect(validateBufferMimeType(emptyBuf, 'text/plain; charset=utf-8')).toBe(true);
+      expect(validateBufferMimeType(emptyBuf, '   ; charset=utf-8')).toBe(false);
+    });
+
     test('validates image/png signature', () => {
       const validPng = Buffer.from('89504E470D0A1A0A', 'hex');
       expect(validateBufferMimeType(validPng, 'image/png')).toBe(true);
@@ -246,6 +262,12 @@ describe('mime-guard utility', () => {
 
     test('returns .bin for unknown mime types', () => {
       expect(getExtensionFromMimeType('application/unknown')).toBe('.bin');
+    });
+
+    test('strips MIME parameters before resolving extensions', () => {
+      expect(getExtensionFromMimeType('application/json; charset=utf-8')).toBe('.json');
+      expect(getExtensionFromMimeType('text/plain; charset=utf-8')).toBe('.txt');
+      expect(getExtensionFromMimeType('TEXT/MARKDOWN ; charset=UTF-8')).toBe('.md');
     });
   });
 });
