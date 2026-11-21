@@ -26,6 +26,7 @@ import { toast } from './toast.js';
  */
 export function createEditorTabManager(editorState, editorManager, dom) {
   let _saveStatusTimer = null;
+  let _openFileSeq = 0;
 
   function isReadOnly(filePath) {
     return Boolean(editorState.readOnlyFiles?.[filePath]);
@@ -83,7 +84,11 @@ export function createEditorTabManager(editorState, editorManager, dom) {
     editorState.activeFilePath = null;
     if (editorManager.instance) {
       editorManager.instance.updateOptions({ readOnly: false });
-      editorManager.instance.setModel(monaco.editor.createModel('', 'plaintext'));
+      const blankUri = monaco.Uri.from({ scheme: 'inmemory', path: '/__blank__' });
+      const blankModel =
+        monaco.editor.getModel(blankUri) || monaco.editor.createModel('', 'plaintext', blankUri);
+      blankModel.setValue('');
+      editorManager.instance.setModel(blankModel);
     }
     dom.currentFileName.textContent = t('no_file_selected');
     dom.currentFileName.title = '';
@@ -163,8 +168,10 @@ export function createEditorTabManager(editorState, editorManager, dom) {
   }
 
   async function openFile(filePath) {
+    const requestSeq = ++_openFileSeq;
     try {
       const data = await api(`/api/fs/read?path=${encodeURIComponent(filePath)}`);
+      if (requestSeq !== _openFileSeq) return;
       if (editorManager.instance) {
         const contentSize = data.content ? data.content.length : 0;
         const LARGE_FILE_THRESHOLD = 2 * 1024 * 1024; // 2MB
@@ -177,7 +184,7 @@ export function createEditorTabManager(editorState, editorManager, dom) {
               type: 'warning',
             },
           );
-          if (!accepted) return;
+          if (!accepted || requestSeq !== _openFileSeq) return;
         }
 
         const model = editorManager.getOrCreateModel(filePath, data.content);

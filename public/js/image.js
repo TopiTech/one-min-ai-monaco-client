@@ -3,7 +3,7 @@
  */
 
 import { api, assetUrl, extractImages } from './api.js';
-import { setCriticalStyle } from './dom-style.js';
+import { setCriticalStyle, removeCriticalStylesByPrefix } from './dom-style.js';
 import { getAllImageModels, getAllVideoModels } from './model-picker.js';
 import { getActiveProvider } from './settings.js';
 import { t } from './i18n.js';
@@ -52,12 +52,22 @@ export function createImageState() {
 
 export function createImageManager(dom) {
   let _mediaMode = 'image';
+  let _isGenerating = false;
 
   function pruneImageGallery() {
     const gallery = dom.imageGallery;
     if (!gallery) return;
     while (gallery.children.length > MAX_CARDS) {
-      gallery.removeChild(gallery.lastChild);
+      const removed = gallery.lastChild;
+      const cmpEl = removed?.querySelector?.('.image-comparison-slider');
+      if (cmpEl) {
+        for (const cls of cmpEl.classList) {
+          if (cls.startsWith('cmp-')) {
+            removeCriticalStylesByPrefix(`.${cls} `);
+          }
+        }
+      }
+      gallery.removeChild(removed);
     }
   }
 
@@ -368,6 +378,7 @@ export function createImageManager(dom) {
   }
 
   async function generateVideo() {
+    if (_isGenerating) return;
     const imageUrl = dom.editorImageUrl?.value?.trim() || '';
     const prompt = dom.imagePrompt?.value?.trim() || '';
     const model = document.getElementById('videoModel')?.value || getAllVideoModels()[0]?.id || 'kling';
@@ -379,6 +390,7 @@ export function createImageManager(dom) {
     }
 
     const generateBtn = dom.generateImage;
+    _isGenerating = true;
     if (generateBtn) generateBtn.disabled = true;
 
     try {
@@ -415,6 +427,7 @@ export function createImageManager(dom) {
     } catch (e) {
       toast.error(t('video_process_failed', { error: e.message }));
     } finally {
+      _isGenerating = false;
       if (generateBtn) generateBtn.disabled = false;
     }
   }
@@ -423,10 +436,11 @@ export function createImageManager(dom) {
     if (_mediaMode === 'video') {
       return generateVideo();
     }
+    if (_isGenerating) return;
 
-    const imageUrl = dom.editorImageUrl.value.trim();
-    const prompt = dom.imagePrompt.value.trim();
-    const model = dom.imageModel.value;
+    const imageUrl = dom.editorImageUrl?.value?.trim() || '';
+    const prompt = dom.imagePrompt?.value?.trim() || '';
+    const model = dom.imageModel?.value;
     const provider = getActiveProvider();
 
     if (!prompt) {
@@ -435,6 +449,9 @@ export function createImageManager(dom) {
     }
 
     const isEditMode = !!imageUrl;
+    const generateBtn = dom.generateImage;
+    _isGenerating = true;
+    if (generateBtn) generateBtn.disabled = true;
 
     try {
       let data;
@@ -447,12 +464,12 @@ export function createImageManager(dom) {
             imageUrl,
             prompt,
             model,
-            size: document.getElementById('editorSize').value.trim(),
-            quality: document.getElementById('editorQuality').value,
-            n: document.getElementById('editorN').value,
-            background: document.getElementById('editorBackground').value,
-            output_format: document.getElementById('editorOutputFormat').value,
-            output_compression: document.getElementById('editorOutputCompression').value || undefined,
+            size: document.getElementById('editorSize')?.value?.trim() || '1024x1024',
+            quality: document.getElementById('editorQuality')?.value || 'medium',
+            n: document.getElementById('editorN')?.value || '1',
+            background: document.getElementById('editorBackground')?.value || 'auto',
+            output_format: document.getElementById('editorOutputFormat')?.value || 'webp',
+            output_compression: document.getElementById('editorOutputCompression')?.value || undefined,
           }),
         });
       } else {
@@ -463,8 +480,8 @@ export function createImageManager(dom) {
             provider,
             prompt,
             model,
-            num_outputs: document.getElementById('numOutputs').value,
-            aspect_ratio: document.getElementById('aspectRatio').value,
+            num_outputs: document.getElementById('numOutputs')?.value || '1',
+            aspect_ratio: document.getElementById('aspectRatio')?.value || '1:1',
           }),
         });
       }
@@ -479,10 +496,13 @@ export function createImageManager(dom) {
       }
 
       toast.success(isEditMode ? t('img_edited') : t('img_generated_toast'));
-      dom.assetResult.textContent = JSON.stringify(data, null, 2);
+      if (dom.assetResult) dom.assetResult.textContent = JSON.stringify(data, null, 2);
       renderImages(data, isEditMode ? imageUrl : null);
     } catch (e) {
       toast.error(t('img_process_failed', { error: e.message }));
+    } finally {
+      _isGenerating = false;
+      if (generateBtn) generateBtn.disabled = false;
     }
   }
 
@@ -503,12 +523,12 @@ export function createImageManager(dom) {
         method: 'POST',
         body: fd,
       });
-      dom.assetResult.textContent = JSON.stringify(data, null, 2);
+      if (dom.assetResult) dom.assetResult.textContent = JSON.stringify(data, null, 2);
       const key = data?.key || data?.asset?.key || data?.fileContent?.path || data?.asset?.location || '';
       const url = data?.url || (key ? assetUrl(key) : '');
       if (key || url) {
-        const val = provider === '1forall' ? url || key : url || key;
-        dom.editorImageUrl.value = val;
+        const val = url || key;
+        if (dom.editorImageUrl) dom.editorImageUrl.value = val;
         updateEditorImagePreview(val);
       }
       toast.success(t('img_upload_complete'));
@@ -530,7 +550,7 @@ export function createImageManager(dom) {
     const btnText = document.getElementById('generateImageBtnText');
     const value = (imageUrl || input?.value || '').trim();
 
-    const currentModelId = dom.imageModel.value;
+    const currentModelId = dom.imageModel?.value;
     const modelObj = getAllImageModels().find((m) => m.id === currentModelId) || null;
 
     if (!value) {
@@ -552,8 +572,8 @@ export function createImageManager(dom) {
         const defaultGen = getAllImageModels().find(
           (m) => m.tags && (m.tags.includes('flagship') || m.tags.includes('fast')),
         ) || { id: 'gpt-image-2', label: 'GPT Image 2' };
-        dom.imageModel.value = defaultGen.id;
-        dom.imageModelLabel.textContent = defaultGen.label;
+        if (dom.imageModel) dom.imageModel.value = defaultGen.id;
+        if (dom.imageModelLabel) dom.imageModelLabel.textContent = defaultGen.label;
       }
       return;
     }
@@ -573,15 +593,16 @@ export function createImageManager(dom) {
     if (!isEditorModel) {
       const defaultEditor = getAllImageModels().find((m) => m.tags && m.tags.includes('editor'));
       if (defaultEditor) {
-        dom.imageModel.value = defaultEditor.id;
-        dom.imageModelLabel.textContent = defaultEditor.label;
+        if (dom.imageModel) dom.imageModel.value = defaultEditor.id;
+        if (dom.imageModelLabel) dom.imageModelLabel.textContent = defaultEditor.label;
       }
     }
   }
 
   function clearImage() {
-    dom.editorImageUrl.value = '';
-    document.getElementById('assetInput').value = '';
+    if (dom.editorImageUrl) dom.editorImageUrl.value = '';
+    const assetInput = document.getElementById('assetInput');
+    if (assetInput) assetInput.value = '';
     updateEditorImagePreview();
   }
 

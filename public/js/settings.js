@@ -105,6 +105,10 @@ export function applyProviderCapabilitiesToUi(providerId = getActiveProvider()) 
   const unsupportedTip = t('provider_feature_unsupported', {
     provider: providerId === '1forall' ? '1forall.ai' : '1min.ai',
   });
+  const creditSavingToggle = document.getElementById('creditSavingToggle');
+  const isCreditSaving = creditSavingToggle
+    ? Boolean(creditSavingToggle.checked)
+    : typeof localStorage !== 'undefined' && localStorage.getItem('monaco_client_credit_saving') === 'true';
 
   const setControlState = (id, enabled) => {
     const el = document.getElementById(id);
@@ -121,6 +125,10 @@ export function applyProviderCapabilitiesToUi(providerId = getActiveProvider()) 
   };
 
   setControlState('webSearch', caps.webSearch);
+  if (isCreditSaving) {
+    const ws = document.getElementById('webSearch');
+    if (ws) ws.disabled = true;
+  }
   setControlState('chatNumOfSite', caps.webSearch);
   setControlState('chatMaxWord', caps.webSearch);
   setControlState('withMemories', caps.memories);
@@ -130,6 +138,10 @@ export function applyProviderCapabilitiesToUi(providerId = getActiveProvider()) 
   setControlState('conversationId', caps.serverConversations);
   setControlState('attachImageBtn', caps.chatAttachments);
   setControlState('codeWebSearch', caps.webSearch);
+  if (isCreditSaving) {
+    const cws = document.getElementById('codeWebSearch');
+    if (cws) cws.disabled = true;
+  }
   setControlState('codeNumOfSite', caps.webSearch);
   setControlState('codeMaxWord', caps.webSearch);
 
@@ -421,6 +433,8 @@ function initProviderAndApiKeySettings() {
         );
       } catch (err) {
         toast?.error?.(t('key_delete_failed', { error: err.message }));
+      } finally {
+        renderKeyRowStatus(providerId, _providersMeta[providerId]);
       }
     });
   };

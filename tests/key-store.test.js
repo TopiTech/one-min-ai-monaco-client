@@ -107,4 +107,15 @@ describe('services/key-store.js', () => {
     expect(secrets).toContain('sk_live_1forall_secret_xyz');
     expect(secrets).not.toContain('your_1min_ai_api_key_here');
   });
+
+  test('concurrent setApiKey and deleteApiKey calls do not overwrite each other', async () => {
+    await Promise.all([
+      setApiKey('1min', 'key_1min_concurrent_12345'),
+      setApiKey('1forall', 'key_1forall_concurrent_67890'),
+    ]);
+
+    resetKeyStoreCache();
+    expect(getApiKey('1min')).toBe('key_1min_concurrent_12345');
+    expect(getApiKey('1forall')).toBe('key_1forall_concurrent_67890');
+  });
 });

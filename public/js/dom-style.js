@@ -93,6 +93,20 @@ export function clearInjectedStyles() {
   }
 }
 
+export function removeCriticalStylesByPrefix(prefix) {
+  if (typeof prefix !== 'string' || !prefix) return;
+  let removed = false;
+  for (const key of ruleIndex.keys()) {
+    if (key.startsWith(prefix)) {
+      ruleIndex.delete(key);
+      removed = true;
+    }
+  }
+  if (removed && styleEl && document.head.contains(styleEl)) {
+    styleEl.textContent = serialize();
+  }
+}
+
 /**
  * Inject a style that MUST be applied immediately (e.g. a drag/animation
  * callback that fires faster than MAX_INJECTS_PER_SECOND). Unlike

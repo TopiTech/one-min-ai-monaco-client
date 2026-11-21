@@ -82,8 +82,32 @@ function safeDefineProperty(obj, key, value) {
   }
 }
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function createClientAbortError() {
+  const err = new HttpError(499, 'Request aborted by client');
+  err.name = 'AbortError';
+  return err;
+}
+
+/**
+ * @param {number} ms
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<void>}
+ */
+function delay(ms, signal) {
+  if (signal?.aborted) {
+    return Promise.reject(createClientAbortError());
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(createClientAbortError());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener?.('abort', onAbort);
+      resolve(undefined);
+    }, ms);
+    signal?.addEventListener?.('abort', onAbort, { once: true });
+  });
 }
 
 export function translateErrorMessage(msg) {
@@ -242,7 +266,7 @@ export function createHttpClient({
           const waitTime = scheduledRetryDelay ?? exponentialRetryDelay(attempt - 1);
           scheduledRetryDelay = null;
           logger.warn(`Retry ${attempt}/${effectiveRetries} for ${pathname} after ${waitTime}ms`);
-          await delay(waitTime);
+          await delay(waitTime, signal);
         }
 
         const response = await makeRequest();
@@ -288,7 +312,18 @@ export function createHttpClient({
 
         if (raw) return response;
         const contentType = response.headers.get('content-type') || '';
-        return contentType.includes('application/json') ? response.json() : { text: await response.text() };
+        if (contentType.includes('application/json')) {
+          try {
+            return await response.json();
+          } catch {
+            throw new HttpError(
+              502,
+              `${providerLabel} returned invalid JSON response`,
+              'UPSTREAM_INVALID_JSON',
+            );
+          }
+        }
+        return { text: await response.text() };
       } catch (error) {
         lastError = error;
         const err = /** @type {any} */ (lastError);
@@ -296,6 +331,7 @@ export function createHttpClient({
           safeDefineProperty(err, 'status', 502);
           safeDefineProperty(err, 'code', 'UPSTREAM_NETWORK_ERROR');
         }
+        if (error?.code === 'UPSTREAM_INVALID_JSON') throw error;
         const isRetryableNetworkError = error?.code && RETRYABLE_NETWORK_CODES.has(error.code);
         const isNonRetryableHttpError =
           error?.status && error.status >= 400 && error.status < 500 && error.status !== 429;

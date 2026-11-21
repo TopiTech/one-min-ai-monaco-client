@@ -16,6 +16,7 @@ let _currentLang = DEFAULT_LANG;
 let _translations = {};
 /** @type {Promise<void>|null} */
 let _loadingPromise = null;
+let _langRequestId = 0;
 
 /**
  * Get nested value from object by dot-separated key.
@@ -26,25 +27,39 @@ function deepGet(obj, keyPath) {
 }
 
 /**
- * Load translation JSON for the given language.
+ * Load translation JSON for the given language without letting stale requests overwrite newer ones.
  */
-async function loadTranslations(lang) {
+async function loadTranslations(lang, reqId) {
   try {
     const resp = await fetch(`./i18n/${lang}.json`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    _translations = await resp.json();
+    const data = await resp.json();
+    if (reqId === _langRequestId) {
+      _translations = data;
+    }
+    return true;
   } catch (err) {
     console.error(`[i18n] Failed to load translations for "${lang}":`, err);
-    // If English fails, fall back to embedded empty (keys will be returned as-is)
+    if (reqId !== _langRequestId) return false;
+    // If non-default language fails, fall back to default language
     if (lang !== DEFAULT_LANG) {
       try {
         const resp = await fetch(`./i18n/${DEFAULT_LANG}.json`);
-        _translations = await resp.json();
-        _currentLang = DEFAULT_LANG;
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`, { cause: err });
+        const fallbackData = await resp.json();
+        if (reqId === _langRequestId) {
+          _translations = fallbackData;
+          _currentLang = DEFAULT_LANG;
+          localStorage.setItem(I18N_STORAGE_KEY, DEFAULT_LANG);
+        }
+        return true;
       } catch {
-        _translations = {};
+        if (reqId === _langRequestId) _translations = {};
       }
+    } else if (reqId === _langRequestId) {
+      _translations = {};
     }
+    return false;
   }
 }
 
@@ -138,7 +153,7 @@ export function t(key, params, fallback) {
   if (actualParams && typeof val === 'string' && typeof actualParams === 'object') {
     for (const [k, v] of Object.entries(actualParams)) {
       const safeKey = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      val = val.replace(new RegExp(`\\{${safeKey}\\}`, 'g'), v);
+      val = val.replace(new RegExp(`\\{${safeKey}\\}`, 'g'), () => String(v));
     }
   }
   return val;
@@ -150,10 +165,13 @@ export function t(key, params, fallback) {
  */
 export async function initI18n() {
   const saved = localStorage.getItem(I18N_STORAGE_KEY);
-  _currentLang = SUPPORTED_LANGS.includes(saved) ? saved : DEFAULT_LANG;
+  const initialLang = SUPPORTED_LANGS.includes(saved) ? saved : DEFAULT_LANG;
+  const reqId = ++_langRequestId;
+  _currentLang = initialLang;
 
-  _loadingPromise = loadTranslations(_currentLang);
+  _loadingPromise = loadTranslations(initialLang, reqId);
   await _loadingPromise;
+  if (reqId !== _langRequestId) return;
 
   // Apply once DOM is ready
   if (document.readyState === 'loading') {
@@ -172,13 +190,15 @@ export async function setLanguage(lang) {
     console.warn(`[i18n] Unsupported language: "${lang}"`);
     return;
   }
+  const reqId = ++_langRequestId;
   _currentLang = lang;
   localStorage.setItem(I18N_STORAGE_KEY, lang);
-  await loadTranslations(lang);
+  const loaded = await loadTranslations(lang, reqId);
+  if (!loaded || reqId !== _langRequestId) return;
   applyTranslations();
 
   // Dispatch custom event so other modules can react
-  window.dispatchEvent(new CustomEvent('language-changed', { detail: { lang } }));
+  window.dispatchEvent(new CustomEvent('language-changed', { detail: { lang: _currentLang } }));
 }
 
 /**

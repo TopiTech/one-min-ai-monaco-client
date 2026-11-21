@@ -34,6 +34,8 @@ public class MainActivity extends BridgeActivity {
 
     private static final AtomicBoolean nodeStarted = new AtomicBoolean(false);
     private static volatile boolean nodeReady = false;
+    private static volatile boolean nodeExited = false;
+    private static volatile int nodeExitCode = 0;
 
     static {
         System.loadLibrary("native-lib");
@@ -76,6 +78,9 @@ public class MainActivity extends BridgeActivity {
                             throw new IOException("Missing server.js in " + nodeProjectDir);
                         }
 
+                        nodeExited = false;
+                        nodeExitCode = 0;
+
                         Thread nodeThread = new Thread(
                             () -> {
                                 int code = startNodeWithArguments(
@@ -84,6 +89,11 @@ public class MainActivity extends BridgeActivity {
                                     getCacheDir().getAbsolutePath(),
                                     workspaceDir.getAbsolutePath()
                                 );
+                                nodeExitCode = code;
+                                nodeExited = true;
+                                if (!nodeReady) {
+                                    nodeStarted.set(false);
+                                }
                                 Log.w(TAG, "Node.js exited with code: " + code);
                             },
                             "nodejs-runtime"
@@ -123,6 +133,9 @@ public class MainActivity extends BridgeActivity {
                 nodeReady = true;
                 navigateToBff();
                 return;
+            }
+            if (nodeExited) {
+                throw new IOException("Local Node.js BFF exited prematurely with code " + nodeExitCode);
             }
             Thread.sleep(HEALTH_POLL_INTERVAL_MS);
         }

@@ -49,6 +49,7 @@ const {
   stripMarkdownCodeBlock,
   unescapeXmlText,
   parseXMLTags,
+  repairAndParseJson,
   sanitizeXmlText,
   buildXmlRepairPrompt,
   createSvgIcon,
@@ -299,6 +300,34 @@ describe('parseXMLTags', () => {
     expect(prompt).toContain('&lt;finish&gt;done&lt;/finish&gt;');
     expect(prompt).toContain('missing close tag');
     expect(prompt).toContain('<thought>, <call_tool>, <finish>');
+  });
+
+  test('repairAndParseJson preserves //, /* */, and single-quoted literals inside double-quoted JSON strings', () => {
+    const raw = [
+      '{',
+      '  // outer comment that should be stripped',
+      '  "thought": "add python helper",',
+      '  "tool": "write_file",',
+      '  "params": {',
+      '    "path": "app.py",',
+      "    \"content\": \"url = 'https://example.com' // keep comment\\n/* keep block */\\ncfg = {'k': 'v'}\",",
+      '  }',
+      '}',
+    ].join('\n');
+
+    const parsed = repairAndParseJson(raw);
+    expect(parsed.tool).toBe('write_file');
+    expect(parsed.params.content).toContain('// keep comment');
+    expect(parsed.params.content).toContain('/* keep block */');
+    expect(parsed.params.content).toContain("cfg = {'k': 'v'}");
+
+    // Also repairs single-quoted JSON keys/values outside double strings while leaving inner string content intact
+    const singleQuoted = `{'thought': 'edit', 'tool': 'read_file', 'params': {'path': 'a.js', 'note': "say 'hi'"}}`;
+    expect(repairAndParseJson(singleQuoted)).toEqual({
+      thought: 'edit',
+      tool: 'read_file',
+      params: { path: 'a.js', note: "say 'hi'" },
+    });
   });
 });
 

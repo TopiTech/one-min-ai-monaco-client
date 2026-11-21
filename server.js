@@ -138,12 +138,7 @@ async function handleAssetUpload(req, res, next) {
       mimetype: req.file.mimetype,
     });
 
-    let originalName = req.file.originalname || '';
-    try {
-      originalName = Buffer.from(originalName, 'latin1').toString('utf8');
-    } catch {
-      // Ignore conversion error and keep as is
-    }
+    const originalName = req.file.originalname || '';
 
     let safeName = path
       .basename(originalName)

@@ -152,5 +152,15 @@ describe('api-client', () => {
         raw: data,
       });
     });
+
+    test('should extract text from shared DAG objects while still guarding cycles', () => {
+      const node = { foo: 'bar' };
+      const dag = { content: node, text: { resultObject: node } };
+      expect(extractText(dag)).toBe(JSON.stringify(node, null, 2));
+
+      const cyclic = {};
+      cyclic.self = cyclic;
+      expect(() => extractText({ resultObject: cyclic })).not.toThrow();
+    });
   });
 });

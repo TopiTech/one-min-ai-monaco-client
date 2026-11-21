@@ -13,9 +13,15 @@ export class ProxySizeLimitError extends Error {
 
 export function buildAssetProxyAbortSignal(timeoutMs) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
   return {
     signal: controller.signal,
+    abort: () => controller.abort(),
+    isTimedOut: () => timedOut,
     clear: () => clearTimeout(timeoutId),
   };
 }
@@ -79,7 +85,15 @@ export function isTrustedAssetUrl(parsed) {
 
 export async function assetProxyHandler(req, res, next) {
   try {
-    const { url, key } = req.query;
+    const { url: rawUrl, key: rawKey } = req.query;
+    if (
+      (rawUrl !== undefined && typeof rawUrl !== 'string') ||
+      (rawKey !== undefined && typeof rawKey !== 'string')
+    ) {
+      return res.status(400).json({ error: 'url and key must be strings' });
+    }
+    const url = typeof rawUrl === 'string' ? rawUrl : '';
+    const key = typeof rawKey === 'string' ? rawKey : '';
     if (!url && !key) {
       return res.status(400).json({ error: 'url or key is required' });
     }
@@ -105,80 +119,89 @@ export async function assetProxyHandler(req, res, next) {
     }
 
     const abort = buildAssetProxyAbortSignal(serverConfig.assetProxyTimeoutMs);
+    let clientClosed = false;
+    const onClose = () => {
+      if (!res.writableEnded) {
+        clientClosed = true;
+        abort.abort();
+      }
+    };
+    res.on?.('close', onClose);
+
     let response;
     let currentUrl = targetUrl;
     let redirectCount = 0;
     const MAX_REDIRECTS = 3;
 
-    while (true) {
-      try {
-        /** @type {RequestInit} */
-        const fetchOpts = { signal: abort.signal, redirect: 'manual' };
-        if (req.headers?.range) {
-          fetchOpts.headers = { Range: String(req.headers.range) };
-        }
-        response = await fetch(currentUrl, fetchOpts);
-      } catch (err) {
-        abort.clear();
-        if (err?.name === 'AbortError') {
-          return res.status(504).json({ error: 'Asset proxy request timed out' });
-        }
-        throw err;
-      }
-
-      if ([301, 302, 307, 308].includes(response.status) && response.headers.has('location')) {
-        redirectCount++;
-        if (redirectCount > MAX_REDIRECTS) {
-          abort.clear();
-          return res.status(502).json({ error: 'Too many redirects from upstream asset host' });
-        }
-        const locationHeader = response.headers.get('location');
-        let redirectTarget;
-        try {
-          redirectTarget = new URL(locationHeader, currentUrl);
-        } catch {
-          abort.clear();
-          return res.status(502).json({ error: 'Invalid redirect location from upstream' });
-        }
-        if (!isTrustedAssetUrl(redirectTarget)) {
-          abort.clear();
-          return res.status(403).json({ error: 'Access denied: Untrusted redirect host' });
-        }
-        currentUrl = redirectTarget.toString();
-        continue;
-      }
-      break;
-    }
-
-    if (!response.ok) {
-      abort.clear();
-      return res.status(response.status).json({ error: `Failed to fetch asset: ${response.statusText}` });
-    }
-
-    const contentLength = parseContentLength(response.headers.get('content-length'));
-    if (contentLength !== null && contentLength > serverConfig.assetProxyMaxSize) {
-      abort.clear();
-      return res.status(413).json({ error: 'Asset proxy response too large' });
-    }
-
-    const contentType = response.headers.get('content-type') || 'application/octet-stream';
-    if (/text\/html|application\/javascript|text\/javascript/i.test(contentType)) {
-      abort.clear();
-      return res.status(403).json({ error: 'Unsupported content type from upstream' });
-    }
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', 'inline');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', 'private, max-age=300, stale-while-revalidate=600');
-    if (response.status === 206) {
-      res.status(206);
-      const contentRange = response.headers.get('content-range');
-      if (contentRange) res.setHeader('Content-Range', contentRange);
-      const acceptRanges = response.headers.get('accept-ranges');
-      if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges);
-    }
-
     try {
+      while (true) {
+        try {
+          /** @type {RequestInit} */
+          const fetchOpts = { signal: abort.signal, redirect: 'manual' };
+          if (req.headers?.range) {
+            fetchOpts.headers = { Range: String(req.headers.range) };
+          }
+          response = await fetch(currentUrl, fetchOpts);
+        } catch (err) {
+          if (clientClosed || res.destroyed || res.writableEnded) {
+            return;
+          }
+          if (err?.name === 'AbortError' || abort.isTimedOut()) {
+            return res.status(504).json({ error: 'Asset proxy request timed out' });
+          }
+          throw err;
+        }
+
+        if ([301, 302, 307, 308].includes(response.status) && response.headers.has('location')) {
+          const locationHeader = response.headers.get('location');
+          await response.body?.cancel?.().catch(() => {});
+          redirectCount++;
+          if (redirectCount > MAX_REDIRECTS) {
+            return res.status(502).json({ error: 'Too many redirects from upstream asset host' });
+          }
+          let redirectTarget;
+          try {
+            redirectTarget = new URL(locationHeader, currentUrl);
+          } catch {
+            return res.status(502).json({ error: 'Invalid redirect location from upstream' });
+          }
+          if (!isTrustedAssetUrl(redirectTarget)) {
+            return res.status(403).json({ error: 'Access denied: Untrusted redirect host' });
+          }
+          currentUrl = redirectTarget.toString();
+          continue;
+        }
+        break;
+      }
+
+      if (!response.ok) {
+        await response.body?.cancel?.().catch(() => {});
+        return res.status(response.status).json({ error: `Failed to fetch asset: ${response.statusText}` });
+      }
+
+      const contentLength = parseContentLength(response.headers.get('content-length'));
+      if (contentLength !== null && contentLength > serverConfig.assetProxyMaxSize) {
+        await response.body?.cancel?.().catch(() => {});
+        return res.status(413).json({ error: 'Asset proxy response too large' });
+      }
+
+      const contentType = response.headers.get('content-type') || 'application/octet-stream';
+      if (/text\/html|application\/javascript|text\/javascript/i.test(contentType)) {
+        await response.body?.cancel?.().catch(() => {});
+        return res.status(403).json({ error: 'Unsupported content type from upstream' });
+      }
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', 'inline');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cache-Control', 'private, max-age=300, stale-while-revalidate=600');
+      if (response.status === 206) {
+        res.status(206);
+        const contentRange = response.headers.get('content-range');
+        if (contentRange) res.setHeader('Content-Range', contentRange);
+        const acceptRanges = response.headers.get('accept-ranges');
+        if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges);
+      }
+
       if (response.body) {
         const limitedBody = response.body.pipeThrough(
           createByteLimitTransform(serverConfig.assetProxyMaxSize),
@@ -188,9 +211,13 @@ export async function assetProxyHandler(req, res, next) {
         res.end();
       }
     } finally {
+      res.off?.('close', onClose);
       abort.clear();
     }
   } catch (err) {
+    if (res.destroyed || res.writableEnded) {
+      return;
+    }
     if (err?.name === 'ProxySizeLimitError') {
       if (!res.headersSent) {
         return res.status(err.status).json({ error: 'Asset proxy response too large' });

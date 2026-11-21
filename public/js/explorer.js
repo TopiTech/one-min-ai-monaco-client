@@ -318,19 +318,31 @@ export function createExplorerManager(dom, openFileCallback) {
         childrenContainer.setAttribute('role', 'group');
         container.appendChild(childrenContainer);
 
+        let isLoadingDir = false;
         node.onclick = async (e) => {
           e.stopPropagation();
+          if (isLoadingDir) return;
           const isExpanded = node.classList.toggle('expanded');
           node.setAttribute('aria-expanded', String(isExpanded));
           if (isExpanded) {
             childrenContainer.classList.add('is-expanded');
             toggle.classList.add('expanded');
             if (childrenContainer.childElementCount === 0) {
+              isLoadingDir = true;
               try {
                 const res = await api(`/api/fs/list?dir=${encodeURIComponent(item.path)}`);
                 await renderTreeNodes(res.items, childrenContainer, depth + 1);
+                const q = document.getElementById('fileSearchInput')?.value?.trim().toLowerCase();
+                if (q) _applyFilter(q);
               } catch (err) {
                 console.error(err);
+                node.classList.remove('expanded');
+                node.setAttribute('aria-expanded', 'false');
+                childrenContainer.classList.remove('is-expanded');
+                toggle.classList.remove('expanded');
+                toast.error(t('workspace_load_failed', { error: err?.message || 'Error' }));
+              } finally {
+                isLoadingDir = false;
               }
             }
           } else {

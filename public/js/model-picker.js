@@ -263,7 +263,10 @@ function renderPickerList(models, search = '', tag = 'all') {
 
   if (q) {
     filtered = filtered.filter(
-      (m) => m.label.toLowerCase().includes(q) || m.provider.toLowerCase().includes(q),
+      (m) =>
+        m.label.toLowerCase().includes(q) ||
+        m.id.toLowerCase().includes(q) ||
+        m.provider.toLowerCase().includes(q),
     );
   }
 
@@ -398,18 +401,13 @@ function openModelPicker(btn, type) {
           ? _allCodeModels
           : _allChatModels;
 
-  if (_creditSaving) {
-    const fastModels = models.filter((m) => m.tags && m.tags.includes('fast'));
-    if (fastModels.length > 0) models = fastModels;
-  }
-
   if (type === 'image') {
     const isEditMode = !!document.getElementById('editorImageUrl')?.value?.trim();
     if (isEditMode) {
-      const editorModels = _allImageModels.filter((m) => m.tags && m.tags.includes('editor'));
-      models = editorModels.length > 0 ? editorModels : _allImageModels;
+      const editorModels = models.filter((m) => m.tags && m.tags.includes('editor'));
+      models = editorModels.length > 0 ? editorModels : models;
     } else {
-      models = _allImageModels.filter((m) => {
+      models = models.filter((m) => {
         if (!m.tags) return true;
         if (m.tags.includes('editor') && !m.tags.includes('flagship') && !m.tags.includes('fast'))
           return false;
@@ -421,7 +419,7 @@ function openModelPicker(btn, type) {
   if (type === 'video') {
     const isI2V = !!document.getElementById('editorImageUrl')?.value?.trim();
     if (isI2V) {
-      const i2vModels = _allVideoModels.filter(
+      const i2vModels = models.filter(
         (m) =>
           !m.meta?.mode ||
           m.meta.mode === 'IMAGE_TO_VIDEO' ||
@@ -430,6 +428,11 @@ function openModelPicker(btn, type) {
       );
       if (i2vModels.length > 0) models = i2vModels;
     }
+  }
+
+  if (_creditSaving) {
+    const fastModels = models.filter((m) => m.tags && m.tags.includes('fast'));
+    if (fastModels.length > 0) models = fastModels;
   }
 
   _modelsCache = models;

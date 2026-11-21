@@ -1,7 +1,9 @@
 import { jest } from '@jest/globals';
 import request from 'supertest';
 import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
+import { clearAllowedRootsCache } from '../utils/fs-guard.js';
 
 // Mock the api-client module
 jest.unstable_mockModule('../utils/api-client.js', () => ({
@@ -498,6 +500,46 @@ replaced
 
       // Clean up
       pendingCommands.delete('valid-token');
+    });
+
+    test('hides protected files such as .env, secrets.json, and package.json in dir and find-files listings', async () => {
+      const localTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-dir-protect-'));
+      const prevRoots = process.env.ALLOWED_ROOTS;
+      const prevEnv = process.env.NODE_ENV;
+      process.env.ALLOWED_ROOTS = localTmpDir;
+      process.env.NODE_ENV = 'test';
+      clearAllowedRootsCache();
+
+      try {
+        await fs.writeFile(path.join(localTmpDir, '.env'), 'SECRET=1');
+        await fs.writeFile(path.join(localTmpDir, 'secrets.json'), '{}');
+        await fs.writeFile(path.join(localTmpDir, 'visible.txt'), 'hello');
+
+        const localApp = createApp({ requireLocalAuth: false, enableRateLimit: false });
+        const sessionRes = await request(localApp).post('/api/agent/sessions').send({ cwd: localTmpDir });
+        const localSessionId = sessionRes.body.session.id;
+
+        const dirRes = await request(localApp).get(`/api/agent/sessions/${localSessionId}/dir`);
+        expect(dirRes.status).toBe(200);
+        const dirNames = dirRes.body.items.map((item) => item.name);
+        expect(dirNames).toContain('visible.txt');
+        expect(dirNames).not.toContain('.env');
+        expect(dirNames).not.toContain('secrets.json');
+
+        const findRes = await request(localApp).get(`/api/agent/sessions/${localSessionId}/find-files`);
+        expect(findRes.status).toBe(200);
+        const foundNames = findRes.body.files.map((item) => item.name);
+        expect(foundNames).toContain('visible.txt');
+        expect(foundNames).not.toContain('secrets.json');
+        expect(foundNames).not.toContain('.env');
+      } finally {
+        if (prevRoots === undefined) delete process.env.ALLOWED_ROOTS;
+        else process.env.ALLOWED_ROOTS = prevRoots;
+        if (prevEnv === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = prevEnv;
+        clearAllowedRootsCache();
+        await fs.rm(localTmpDir, { recursive: true, force: true });
+      }
     });
   });
 });

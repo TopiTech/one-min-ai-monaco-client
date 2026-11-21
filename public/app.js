@@ -14,7 +14,7 @@ import {
 import { api } from './js/api.js';
 import { parseXMLTags } from './js/utils.js';
 import { initTheme, toggleTheme as toggleThemeFn } from './js/theme.js';
-import { bootstrapSettings } from './js/settings.js';
+import { applyProviderCapabilitiesToUi, bootstrapSettings, getActiveProvider } from './js/settings.js';
 import { createChatManager, createChatState } from './js/chat.js';
 import { createImageManager, createImageState } from './js/image.js';
 import { createEditorManager, createEditorState } from './js/editor.js';
@@ -544,6 +544,10 @@ dom.startAgentBtn.onclick = async () => {
 dom.stopAgentBtn.onclick = () => {
   if (!state.agent.active) return;
   state.agent.active = false;
+  if (state.agent.abortController) {
+    state.agent.abortController.abort();
+    state.agent.abortController = null;
+  }
   if (state.agent.resolver) {
     state.agent.resolver({ abort: true });
   }
@@ -558,6 +562,11 @@ dom.resetAgentBtn.onclick = async () => {
     type: 'warning',
   });
   if (accepted) {
+    state.agent.active = false;
+    if (state.agent.abortController) {
+      state.agent.abortController.abort();
+      state.agent.abortController = null;
+    }
     if (state.agent.resolver) {
       state.agent.resolver({ abort: true });
     }
@@ -1074,8 +1083,6 @@ function applyCreditSavingMode() {
       }
     }
   } else {
-    if (webSearch) webSearch.disabled = false;
-    if (codeWebSearch) codeWebSearch.disabled = false;
     if (numOutputs) numOutputs.disabled = false;
     if (editorN) editorN.disabled = false;
     if (editorQuality) {
@@ -1083,6 +1090,7 @@ function applyCreditSavingMode() {
         editorQuality.options[i].disabled = false;
       }
     }
+    applyProviderCapabilitiesToUi(getActiveProvider());
   }
 }
 

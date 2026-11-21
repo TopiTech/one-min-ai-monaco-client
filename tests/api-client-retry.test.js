@@ -438,4 +438,66 @@ describe('normalizeOneMinResponse', () => {
     expect(result.uuid).toBe('abc-123');
     expect(result.raw).toBe(data);
   });
+
+  test('callOneMin rejects invalid 200 JSON without retrying as network error', async () => {
+    process.env.ONE_MIN_AI_API_KEY = 'test-api-key';
+    const { serverConfig } = await import('../config/server.js');
+    const prevAttempts = serverConfig.apiRetryAttempts;
+    serverConfig.apiRetryAttempts = 3;
+
+    const mockFetchFn = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: new Map([['content-type', 'application/json']]),
+      json: async () => {
+        throw new SyntaxError('Unexpected token < in JSON');
+      },
+    }));
+    globalThis.fetch = mockFetchFn;
+
+    try {
+      const { callOneMin } = await import('../utils/api-client.js');
+      await expect(callOneMin('/api/models', { method: 'GET' })).rejects.toMatchObject({
+        status: 502,
+        code: 'UPSTREAM_INVALID_JSON',
+      });
+      expect(mockFetchFn).toHaveBeenCalledTimes(1);
+    } finally {
+      serverConfig.apiRetryAttempts = prevAttempts;
+    }
+  });
+
+  test('callOneMin aborts retry backoff sleep immediately when caller AbortSignal fires', async () => {
+    process.env.ONE_MIN_AI_API_KEY = 'test-api-key';
+    const { serverConfig } = await import('../config/server.js');
+    const prevAttempts = serverConfig.apiRetryAttempts;
+    const prevDelay = serverConfig.apiRetryDelay;
+    serverConfig.apiRetryAttempts = 2;
+    serverConfig.apiRetryDelay = 30000;
+
+    const controller = new AbortController();
+    globalThis.fetch = jest.fn(async () => {
+      setTimeout(() => controller.abort(), 20);
+      return {
+        ok: false,
+        status: 503,
+        headers: new Map(),
+      };
+    });
+
+    const start = Date.now();
+    try {
+      const { callOneMin } = await import('../utils/api-client.js');
+      await expect(
+        callOneMin('/api/models', { method: 'GET', signal: controller.signal }),
+      ).rejects.toMatchObject({
+        name: 'AbortError',
+        status: 499,
+      });
+      expect(Date.now() - start).toBeLessThan(2000);
+    } finally {
+      serverConfig.apiRetryAttempts = prevAttempts;
+      serverConfig.apiRetryDelay = prevDelay;
+    }
+  });
 });

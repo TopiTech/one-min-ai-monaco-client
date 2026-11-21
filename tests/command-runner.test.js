@@ -2,8 +2,10 @@
  * Unit tests for command-runner service
  */
 
+import { EventEmitter } from 'events';
 import {
   checkCommandSafety,
+  collectProcessOutput,
   executeCommand,
   killProcessTree,
   killProcess,
@@ -156,6 +158,28 @@ describe('command-runner', () => {
 
     test('handles terminating non-existent process without throwing', () => {
       expect(() => killProcessTree({ exitCode: null, pid: 9999999 })).not.toThrow();
+    });
+
+    test('checkCommandSafety handles escaped quotes properly without bypass', () => {
+      expect(checkCommandSafety('git commit -m "fix \\"quote\\" ; & done"').safe).toBe(true);
+      expect(checkCommandSafety('git commit -m "fix \\"quote\\"" ; rm -rf /').safe).toBe(false);
+    });
+
+    test('collectProcessOutput decodes multibyte UTF-8 characters split across chunks', async () => {
+      const fakeChild = new EventEmitter();
+      fakeChild.stdout = new EventEmitter();
+      fakeChild.stderr = new EventEmitter();
+      fakeChild.exitCode = null;
+
+      const promise = collectProcessOutput(fakeChild, { timeoutMs: 5000 });
+      const utf8Buf = Buffer.from('日本語テスト', 'utf8');
+      fakeChild.stdout.emit('data', utf8Buf.subarray(0, 4));
+      fakeChild.stdout.emit('data', utf8Buf.subarray(4));
+      fakeChild.exitCode = 0;
+      fakeChild.emit('close', 0);
+
+      const res = await promise;
+      expect(res.stdout).toBe('日本語テスト');
     });
   });
 });

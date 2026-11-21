@@ -10,6 +10,8 @@ import {
   validatePath,
   revalidateRealPath,
   getSafeRealPath,
+  isProtectedPath,
+  isProtectedPathForListing,
   assertNotProtectedPath,
   assertNotWriteProtectedPath,
   getAllowedRoots,
@@ -211,23 +213,8 @@ function createDebouncedFileWriter(filePath, serialize, { delayMs = 50, label = 
   let writingPromise = null;
 
   async function flush() {
-    if (isWriting) {
-      // Re-entrant/concurrent call while a write is in flight: wait for the
-      // in-flight write to complete, then check again. If a parallel flush
-      // scheduled another write during our wait, that write already covers
-      // the latest state — calling flush again is unnecessary. Otherwise,
-      // proceed to write once more so the most recent serialize() result
-      // reaches disk before this flush resolves. Callers (saveSessions(),
-      // shutdown's flushPendingWriters()) depend on this for durability.
-      await writingPromise.catch(() => {});
-      if (!isWriting) {
-        // The previous write just finished and no new one is queued —
-        // ensure the latest state is on disk before returning.
-        // Fall through to the regular write path below.
-      } else {
-        // Another flush() beat us to it and is in flight, covering our state.
-        return;
-      }
+    while (isWriting) {
+      await writingPromise?.catch(() => {});
     }
     isWriting = true;
     writingPromise = (async () => {
@@ -664,6 +651,7 @@ router.post('/sessions/:id/commands', async (req, res, next) => {
         sessionId: req.params.id,
         createdAt: Date.now(),
       });
+      savePendingCommands();
 
       logger.info(`Command execution paused, awaiting user approval`, {
         sessionId: req.params.id,
@@ -698,8 +686,10 @@ router.post('/sessions/:id/commands', async (req, res, next) => {
         res.flushHeaders();
 
         onOutput = (type, text) => {
-          res.write(`event: ${type}\n`);
-          res.write(`data: ${JSON.stringify({ text })}\n\n`);
+          if (!res.writableEnded && !res.destroyed) {
+            res.write(`event: ${type}\n`);
+            res.write(`data: ${JSON.stringify({ text })}\n\n`);
+          }
         };
       }
 
@@ -710,9 +700,11 @@ router.post('/sessions/:id/commands', async (req, res, next) => {
       });
     } catch (err) {
       if (isStream && res.headersSent) {
-        res.write(`event: error\n`);
-        res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
-        res.end();
+        if (!res.writableEnded && !res.destroyed) {
+          res.write(`event: error\n`);
+          res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+          res.end();
+        }
         return;
       }
       throw err;
@@ -735,9 +727,11 @@ router.post('/sessions/:id/commands', async (req, res, next) => {
     });
 
     if (isStream) {
-      res.write(`event: done\n`);
-      res.write(`data: ${JSON.stringify({ executed: true, command, cwd: workingDir, ...result })}\n\n`);
-      res.end();
+      if (!res.writableEnded && !res.destroyed) {
+        res.write(`event: done\n`);
+        res.write(`data: ${JSON.stringify({ executed: true, command, cwd: workingDir, ...result })}\n\n`);
+        res.end();
+      }
     } else {
       res.json({
         executed: true,
@@ -835,8 +829,10 @@ router.post('/sessions/:id/approve', async (req, res, next) => {
         res.flushHeaders();
 
         onOutput = (type, text) => {
-          res.write(`event: ${type}\n`);
-          res.write(`data: ${JSON.stringify({ text })}\n\n`);
+          if (!res.writableEnded && !res.destroyed) {
+            res.write(`event: ${type}\n`);
+            res.write(`data: ${JSON.stringify({ text })}\n\n`);
+          }
         };
       }
 
@@ -847,9 +843,11 @@ router.post('/sessions/:id/approve', async (req, res, next) => {
       });
     } catch (err) {
       if (isStream && res.headersSent) {
-        res.write(`event: error\n`);
-        res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
-        res.end();
+        if (!res.writableEnded && !res.destroyed) {
+          res.write(`event: error\n`);
+          res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+          res.end();
+        }
         return;
       }
       throw err;
@@ -873,11 +871,13 @@ router.post('/sessions/:id/approve', async (req, res, next) => {
     });
 
     if (isStream) {
-      res.write(`event: done\n`);
-      res.write(
-        `data: ${JSON.stringify({ executed: true, command: pending.command, cwd: validatedWorkingDir, ...result })}\n\n`,
-      );
-      res.end();
+      if (!res.writableEnded && !res.destroyed) {
+        res.write(`event: done\n`);
+        res.write(
+          `data: ${JSON.stringify({ executed: true, command: pending.command, cwd: validatedWorkingDir, ...result })}\n\n`,
+        );
+        res.end();
+      }
     } else {
       res.json({
         executed: true,
@@ -1040,6 +1040,7 @@ async function searchWithRg(dir, query, maxResults) {
 
     const child = spawn('rg', args, {
       env: getSafeEnv(),
+      stdio: ['ignore', 'pipe', 'ignore'],
       windowsHide: true,
     });
     // Bound the search so a huge tree or slow filesystem cannot hold the
@@ -1263,10 +1264,12 @@ router.get('/sessions/:id/dir', async (req, res, next) => {
     const items = [];
     for (const entry of entries) {
       if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === '.venv') continue;
+      const itemPath = path.join(resolvedPath, entry.name);
+      if (isProtectedPathForListing(itemPath)) continue;
       items.push({
         name: entry.name,
         isDirectory: entry.isDirectory(),
-        path: path.join(resolvedPath, entry.name),
+        path: itemPath,
       });
       if (items.length >= MAX_DIR_ENTRIES) break;
     }
@@ -1363,6 +1366,7 @@ async function findFilesRecursively(
           // Skip directories that fail validation or access
         }
       } else if (entry.isFile()) {
+        if (isProtectedPath(fullPath)) continue;
         if (
           !pattern ||
           pattern === '*' ||

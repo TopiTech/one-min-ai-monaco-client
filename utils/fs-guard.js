@@ -51,9 +51,15 @@ const WRITE_PROTECTED_PATH_GLOBS = [
   'docs/**',
   'middlewares/**',
   'services/**',
+  'providers/**',
+  'android/**',
+  'mobile/**',
   '.github/**',
+  '.agent/**',
+  '.freebuff/**',
   'eslint.config.js',
   'tsconfig.json',
+  'capacitor.config.json',
   '.prettierrc',
   'README.md',
   'README.*.md',
@@ -301,14 +307,28 @@ export function validatePath(targetPath, { resolveSymlinks = true } = {}) {
   // realpathSync. This prevents path traversal via symlink swaps where an attacker
   // creates a symlink at a non-existent path that resolves outside allowed roots.
   // The fallback for non-existent paths must re-validate the reconstructed path.
-  let realPath;
-  let needsRevalidation = false;
+  const { realPath } = resolvePathWithAncestors(resolvedPath);
+  assertPathWithinRealRoots(realPath);
+  return realPath;
+}
+
+function getRealAllowedRoots() {
+  return getAllowedRoots().map((root) => {
+    try {
+      return fs.realpathSync(root);
+    } catch {
+      return root;
+    }
+  });
+}
+
+function resolvePathWithAncestors(resolvedPath) {
   try {
-    realPath = fs.realpathSync(resolvedPath);
+    return { realPath: fs.realpathSync(resolvedPath), needsRevalidation: false };
   } catch {
     // Path does not exist. Walk up to find the deepest existing ancestor,
-    // then reconstruct the full path. This is safe ONLY because we validate
-    // the final reconstructed path against allowed roots below.
+    // then reconstruct the full path. Callers must validate the reconstructed
+    // path against allowed real roots.
     let current = resolvedPath;
     let existingAncestor = null;
     while (current !== path.dirname(current)) {
@@ -319,40 +339,19 @@ export function validatePath(targetPath, { resolveSymlinks = true } = {}) {
         current = path.dirname(current);
       }
     }
-    if (existingAncestor) {
-      const remaining = resolvedPath.substring(current.length);
-      realPath = path.join(existingAncestor, remaining);
-    } else {
-      realPath = resolvedPath;
-    }
-    needsRevalidation = true;
+    const realPath = existingAncestor
+      ? path.join(existingAncestor, resolvedPath.substring(current.length))
+      : resolvedPath;
+    return { realPath, needsRevalidation: true };
   }
+}
 
-  const realRoots = allowedRoots.map((root) => {
-    try {
-      return fs.realpathSync(root);
-    } catch {
-      return root;
-    }
-  });
-
-  const isAllowed = realRoots.some((root) => isSubPath(realPath, root));
-
+function assertPathWithinRealRoots(targetPath) {
+  const realRoots = getRealAllowedRoots();
+  const isAllowed = realRoots.some((root) => isSubPath(targetPath, root));
   if (!isAllowed) {
     throw new ForbiddenError('Access denied: Path is outside the allowed directories');
   }
-
-  // SEC-VAL-2: For non-existent paths, the reconstructed realPath could theoretically
-  // be exploited via TOCTOU if a symlink is created after this check. Callers that
-  // intend to create or write files MUST use revalidateRealPath() immediately before
-  // the actual filesystem operation to close this window.
-  if (needsRevalidation) {
-    // Return the resolved path (not realPath) so callers can safely re-validate.
-    // The path has been confirmed to be within allowed roots.
-    return realPath;
-  }
-
-  return realPath;
 }
 
 function normalizePathForMatching(targetPath) {
@@ -378,7 +377,12 @@ const STATIC_WRITE_PROTECTED_PREFIXES = new Set([
   'docs',
   'middlewares',
   'services',
+  'providers',
+  'android',
+  'mobile',
   '.github',
+  '.agent',
+  '.freebuff',
 ]);
 
 const STATIC_PROTECTED_EXACT = new Set([
@@ -399,6 +403,7 @@ const STATIC_WRITE_PROTECTED_EXACT = new Set([
   'server.js',
   'eslint.config.js',
   'tsconfig.json',
+  'capacitor.config.json',
   '.prettierrc',
   'readme.md',
   'readme.en.md',
@@ -580,19 +585,7 @@ export function revalidateRealPath(resolvedPath) {
     e.cause = err;
     throw e;
   }
-  // Re-run the allowed-roots check on the freshly resolved real path.
-  const allowedRoots = getAllowedRoots();
-  const realRoots = allowedRoots.map((root) => {
-    try {
-      return fs.realpathSync(root);
-    } catch {
-      return root;
-    }
-  });
-  const isAllowed = realRoots.some((root) => isSubPath(real, root));
-  if (!isAllowed) {
-    throw new ForbiddenError('Access denied: Path is outside the allowed directories');
-  }
+  assertPathWithinRealRoots(real);
   return real;
 }
 
@@ -614,11 +607,10 @@ export async function getSafeRealPath(resolvedPath) {
     }
   } catch (err) {
     if (err.code !== 'ENOENT') throw err;
-    const allowedRoots = getAllowedRoots();
-    const isWithinRoots = allowedRoots.some((root) => isSubPath(resolvedPath, root));
-    if (!isWithinRoots) {
-      throw new ForbiddenError('Access denied: Path is outside the allowed directories');
-    }
+    const { realPath: candidateRealPath } = resolvePathWithAncestors(resolvedPath);
+    assertPathWithinRealRoots(candidateRealPath);
+    assertNotWriteProtectedPath(candidateRealPath);
+    realPath = candidateRealPath;
   }
   return realPath;
 }

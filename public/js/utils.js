@@ -314,13 +314,107 @@ export function repairAndParseJson(text) {
     }
   }
 
+  function stripJsonCommentsOutsideStrings(str) {
+    let out = '';
+    let inString = false;
+    let quoteChar = '';
+    let escaped = false;
+    for (let i = 0; i < str.length; i++) {
+      const ch = str[i];
+      if (inString) {
+        out += ch;
+        if (escaped) {
+          escaped = false;
+        } else if (ch === '\\') {
+          escaped = true;
+        } else if (ch === quoteChar) {
+          inString = false;
+          quoteChar = '';
+        }
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        inString = true;
+        quoteChar = ch;
+        out += ch;
+        continue;
+      }
+      if (ch === '/' && str[i + 1] === '*') {
+        const endIdx = str.indexOf('*/', i + 2);
+        i = endIdx === -1 ? str.length : endIdx + 1;
+        continue;
+      }
+      if (ch === '/' && str[i + 1] === '/') {
+        while (i + 1 < str.length && str[i + 1] !== '\n' && str[i + 1] !== '\r') {
+          i++;
+        }
+        continue;
+      }
+      out += ch;
+    }
+    return out;
+  }
+
+  function convertSingleQuotedJsonOutsideDoubleStrings(str) {
+    let out = '';
+    let i = 0;
+    while (i < str.length) {
+      const ch = str[i];
+      if (ch === '"') {
+        out += ch;
+        i++;
+        let esc = false;
+        while (i < str.length) {
+          const c = str[i];
+          out += c;
+          i++;
+          if (esc) {
+            esc = false;
+          } else if (c === '\\') {
+            esc = true;
+          } else if (c === '"') {
+            break;
+          }
+        }
+        continue;
+      }
+      if (ch === "'") {
+        out += '"';
+        i++;
+        let esc = false;
+        while (i < str.length) {
+          const c = str[i];
+          i++;
+          if (esc) {
+            esc = false;
+            out += c === "'" ? "'" : '\\' + c;
+            continue;
+          }
+          if (c === '\\') {
+            esc = true;
+            continue;
+          }
+          if (c === "'") {
+            break;
+          }
+          out += c === '"' ? '\\"' : c;
+        }
+        if (esc) out += '\\\\';
+        out += '"';
+        continue;
+      }
+      out += ch;
+      i++;
+    }
+    return out;
+  }
+
   let repaired = candidate;
-  // 5. Normalize smart quotes
+  // 5. Normalize smart quotes before fallback comment/quote repair
   repaired = repaired.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
 
-  // 6. Remove comments (single-line // and multi-line /* ... */)
-  repaired = repaired.replace(/(^|[^\\])\/\*[\s\S]*?\*\//g, '$1');
-  repaired = repaired.replace(/(^|[^:\\])\/\/.*$/gm, '$1');
+  // 6. Remove comments (single-line // and multi-line /* ... */) outside string literals
+  repaired = stripJsonCommentsOutsideStrings(repaired);
 
   // 7. Remove trailing commas before } or ]
   repaired = repaired.replace(/,(\s*[}\]])/g, '$1');
@@ -388,9 +482,8 @@ export function repairAndParseJson(text) {
     // Continue to next repair strategy
   }
 
-  // 9. Handle single quotes for keys and string values
-  let sqFixed = escaped.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'(\s*:)/g, '"$1"$2');
-  sqFixed = sqFixed.replace(/:\s*'([^'\\]*(?:\\.[^'\\]*)*)'/g, ': "$1"');
+  // 9. Handle single quotes for keys and string values outside valid double-quoted strings
+  let sqFixed = convertSingleQuotedJsonOutsideDoubleStrings(escaped);
   sqFixed = sqFixed.replace(/,(\s*[}\]])/g, '$1');
   try {
     return JSON.parse(sqFixed);

@@ -267,8 +267,12 @@ async function handleOneForAllChatStream(req, res, data, controller) {
   setSseHeaders(res);
 
   if (format === '1min-sse') {
+    if (controller.signal.aborted || res.writableEnded || res.destroyed) {
+      await response.body?.cancel?.().catch(() => {});
+      return;
+    }
     const bodyText = await response.text();
-    if (!res.writableEnded && !res.destroyed) {
+    if (!controller.signal.aborted && !res.writableEnded && !res.destroyed) {
       res.write(bodyText);
       flushRes(res);
       res.end();
@@ -277,11 +281,12 @@ async function handleOneForAllChatStream(req, res, data, controller) {
   }
 
   const heartbeatInterval = setInterval(() => {
-    if (!res.writableEnded) {
+    if (!res.writableEnded && !res.destroyed) {
       res.write(':\n\n');
       flushRes(res);
     }
   }, 15_000);
+  heartbeatInterval.unref?.();
 
   let streamErrorMsg = null;
   let accumulated = '';
@@ -365,6 +370,11 @@ router.post('/stream', async (req, res, next) => {
       timeout: serverConfig.apiStreamTimeoutMs,
     });
 
+    if (controller.signal.aborted) {
+      await response.body?.cancel?.().catch(() => {});
+      return;
+    }
+
     if (!response.ok) {
       const errorPayload = await parseResponsePayload(response);
       const exposeErrorText = shouldExposeErrorText(response.status, req);
@@ -386,12 +396,15 @@ router.post('/stream', async (req, res, next) => {
           jsonData,
         );
       }
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      res.write(`event: result\ndata: ${JSON.stringify(jsonData)}\n\n`);
-      res.write('data: [DONE]\n\n');
-      return res.end();
+      if (!res.writableEnded && !res.destroyed) {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.write(`event: result\ndata: ${JSON.stringify(jsonData)}\n\n`);
+        res.write('data: [DONE]\n\n');
+        res.end();
+      }
+      return;
     }
 
     setSseHeaders(res);
@@ -399,20 +412,22 @@ router.post('/stream', async (req, res, next) => {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     const heartbeatInterval = setInterval(() => {
-      if (!res.writableEnded) {
+      if (!res.writableEnded && !res.destroyed) {
         res.write(':\n\n');
         flushRes(res);
       }
     }, 15_000);
+    heartbeatInterval.unref?.();
 
     let resultBlocks = [];
     let carry = '';
     let totalStreamBytes = 0;
     let streamLimitExceeded = false;
+    let readerFinished = false;
     const MAX_STREAM_BYTES = 50 * 1024 * 1024;
 
     const normalizeResultBlock = (block) => {
-      const lines = block.split('\n');
+      const lines = block.split(/\r?\n/);
       let replaced = false;
       return lines
         .map((line) => {
@@ -446,7 +461,10 @@ router.post('/stream', async (req, res, next) => {
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          readerFinished = true;
+          break;
+        }
         totalStreamBytes += value?.byteLength ?? value?.length ?? 0;
         if (totalStreamBytes > MAX_STREAM_BYTES) {
           logger.warn('SSE stream exceeded max size, aborting', { totalStreamBytes });
@@ -464,7 +482,7 @@ router.post('/stream', async (req, res, next) => {
             resultBlocks.push(classified.block);
             continue;
           }
-          if (classified.type === 'forward') {
+          if (classified.type === 'forward' && !res.writableEnded && !res.destroyed) {
             res.write(classified.block + '\n\n');
             flushRes(res);
           }
@@ -478,13 +496,13 @@ router.post('/stream', async (req, res, next) => {
         const classified = classifySseBlock(carry);
         if (classified.type === 'result') {
           resultBlocks.push(classified.block);
-        } else if (classified.type === 'forward') {
+        } else if (classified.type === 'forward' && !res.writableEnded && !res.destroyed) {
           res.write(classified.block + '\n\n');
           flushRes(res);
         }
       }
 
-      if (resultBlocks.length > 0) {
+      if (resultBlocks.length > 0 && !res.writableEnded && !res.destroyed) {
         for (const resultBlock of resultBlocks) {
           res.write(normalizeResultBlock(resultBlock) + '\n\n');
         }
@@ -500,15 +518,15 @@ router.post('/stream', async (req, res, next) => {
         }
       }
     } finally {
-      if (streamLimitExceeded) {
+      if (!readerFinished) {
         try {
           await reader.cancel();
         } catch {
           // ignore
         }
-        if (!res.writableEnded && !res.destroyed) {
-          res.write(`event: error\ndata: ${JSON.stringify({ error: 'Stream exceeded maximum size' })}\n\n`);
-        }
+      }
+      if (streamLimitExceeded && !res.writableEnded && !res.destroyed) {
+        res.write(`event: error\ndata: ${JSON.stringify({ error: 'Stream exceeded maximum size' })}\n\n`);
       }
       clearInterval(heartbeatInterval);
       try {
@@ -516,7 +534,9 @@ router.post('/stream', async (req, res, next) => {
       } catch {
         // ignore
       }
-      res.end();
+      if (!res.writableEnded && !res.destroyed) {
+        res.end();
+      }
     }
   } catch (err) {
     if (err.name === 'AbortError' || err.status === 499) {

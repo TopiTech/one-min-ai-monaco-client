@@ -139,7 +139,7 @@
   "uploading": "アップロード中...",
   "monaco_load_failed": "Monaco Editor の読み込みに失敗しました: {error}",
   "workspace_load_failed": "ワークスペースの読み込みに失敗しました: {error}",
-  "context_omitted": "[コンテキスト省略: {count}件のメッセージを要約]\n前回までの操作を continues してください。",
+  "context_omitted": "[コンテキスト省略: {count}件のメッセージを要約]\n前回までの操作を継続してください。",
   "confirm_clear_data": "ブラウザに保存された会話IDや表示設定を削除します。現在の画面を再読み込みしますか？",
   "btn_delete_reload": "削除して再読み込み",
   "lang_label": "言語",

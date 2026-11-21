@@ -33,6 +33,7 @@ export const upload = multer({
       cb(null, `${Date.now()}-${suffix}-${file.fieldname}`);
     },
   }),
+  defParamCharset: 'utf8',
   limits: { fileSize: serverConfig.maxFileSize },
   fileFilter: (_req, file, cb) => {
     const allowed = ALLOWED_MIME_TYPES.some((t) => file.mimetype.startsWith(t));

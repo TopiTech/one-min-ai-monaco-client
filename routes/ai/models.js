@@ -14,7 +14,9 @@ const router = express.Router();
 
 // Available models endpoint (supports optional ?provider=1min|1forall)
 router.get('/', (req, res) => {
-  const providerId = req.query?.provider ? resolveProviderId(String(req.query.provider)) : '1min';
+  const providerId = resolveProviderId(
+    typeof req.query?.provider === 'string' ? req.query.provider : undefined,
+  );
   res.json({
     chatModels: getChatModels(providerId),
     codeModels: getCodeModels(providerId),
@@ -26,21 +28,27 @@ router.get('/', (req, res) => {
 });
 
 // Manual model refresh endpoint
-let _modelRefreshInFlight = null;
+const _modelRefreshInFlight = new Map();
 router.post('/refresh', async (req, res, next) => {
   try {
-    const provider = req.body?.provider ? resolveProviderId(String(req.body.provider)) : undefined;
-    if (_modelRefreshInFlight) {
-      await _modelRefreshInFlight;
-    } else {
-      _modelRefreshInFlight = fetchModels({ provider, includeAll: true });
+    const provider =
+      typeof req.body?.provider === 'string' ? resolveProviderId(req.body.provider) : undefined;
+    const refreshKey = provider || '__all__';
+    let inFlight = _modelRefreshInFlight.get(refreshKey);
+    if (!inFlight) {
+      inFlight = fetchModels({ provider, includeAll: true });
+      _modelRefreshInFlight.set(refreshKey, inFlight);
       try {
-        await _modelRefreshInFlight;
+        await inFlight;
       } finally {
-        _modelRefreshInFlight = null;
+        if (_modelRefreshInFlight.get(refreshKey) === inFlight) {
+          _modelRefreshInFlight.delete(refreshKey);
+        }
       }
+    } else {
+      await inFlight;
     }
-    const activeProvider = provider || '1min';
+    const activeProvider = provider || resolveProviderId(undefined);
     res.json({
       ok: true,
       models: {

@@ -1,7 +1,7 @@
 import express from 'express';
 import { spawn } from 'child_process';
 import { z } from 'zod';
-import { killProcessTree, trackActiveProcess } from '../../services/command-runner.js';
+import { collectProcessOutput, trackActiveProcess } from '../../services/command-runner.js';
 import { HttpError } from '../../utils/errors.js';
 import { extractText } from '../../utils/api-client.js';
 import { parseWebSearchParams } from '../../utils/web-search.js';
@@ -419,92 +419,25 @@ router.post('/run', async (req, res, next) => {
         ? Math.floor(serverConfig.maxCommandOutputSize)
         : 10 * 1024 * 1024;
 
-    const output = await new Promise((resolve, reject) => {
-      let stdout = '';
-      let stderr = '';
-      let stdoutBytes = 0;
-      let stderrBytes = 0;
-      let stdoutTruncated = false;
-      let stderrTruncated = false;
-      let timedOut = false;
-      let killed = false;
-
-      const child = spawn(runner, [targetPath], {
-        cwd,
-        env: safeEnv,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        windowsHide: true,
-        detached: process.platform !== 'win32',
-      });
-      trackActiveProcess(child);
-
-      const timeoutId = setTimeout(() => {
-        timedOut = true;
-        killed = true;
-        killProcessTree(child, true);
-      }, serverConfig.commandTimeoutMs || 30000);
-
-      if (child.stdout) {
-        child.stdout.on('data', (data) => {
-          const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
-          const chunkBytes = buffer.byteLength;
-          if (stdoutBytes < maxOutputSize) {
-            if (stdoutBytes + chunkBytes > maxOutputSize) {
-              const allowedLen = maxOutputSize - stdoutBytes;
-              stdout += buffer.subarray(0, allowedLen).toString('utf8') + '\n...[output truncated]';
-              stdoutBytes = maxOutputSize;
-              stdoutTruncated = true;
-            } else {
-              stdout += buffer.toString('utf8');
-              stdoutBytes += chunkBytes;
-            }
-          } else if (!stdoutTruncated) {
-            stdoutTruncated = true;
-            stdout += '\n...[output truncated]';
-          }
-        });
-      }
-      if (child.stderr) {
-        child.stderr.on('data', (data) => {
-          const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
-          const chunkBytes = buffer.byteLength;
-          if (stderrBytes < maxOutputSize) {
-            if (stderrBytes + chunkBytes > maxOutputSize) {
-              const allowedLen = maxOutputSize - stderrBytes;
-              stderr += buffer.subarray(0, allowedLen).toString('utf8') + '\n...[output truncated]';
-              stderrBytes = maxOutputSize;
-              stderrTruncated = true;
-            } else {
-              stderr += buffer.toString('utf8');
-              stderrBytes += chunkBytes;
-            }
-          } else if (!stderrTruncated) {
-            stderrTruncated = true;
-            stderr += '\n...[output truncated]';
-          }
-        });
-      }
-
-      child.on('close', (exitCode) => {
-        clearTimeout(timeoutId);
-        if (killed && exitCode === null) {
-          exitCode = timedOut ? 124 : 1;
-        }
-        resolve({
-          exitCode: exitCode ?? 0,
-          stdout: stdout.trim(),
-          stderr: stderr.trim(),
-          timedOut,
-          stdoutTruncated,
-          stderrTruncated,
-        });
-      });
-
-      child.on('error', (err) => {
-        clearTimeout(timeoutId);
-        reject(err);
-      });
+    const child = spawn(runner, [targetPath], {
+      cwd,
+      env: safeEnv,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+      detached: process.platform !== 'win32',
     });
+    const cleanupProcess = trackActiveProcess(child);
+    let output;
+    try {
+      output = await collectProcessOutput(child, {
+        timeoutMs: serverConfig.commandTimeoutMs || 30000,
+        maxOutputSize,
+        nullExitCode: 0,
+        rawError: true,
+      });
+    } finally {
+      cleanupProcess();
+    }
 
     res.json({
       ok: true,

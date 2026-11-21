@@ -135,4 +135,58 @@ describe('Video, Jobs, and Multi-Provider Route Integration Tests', () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('UNSUPPORTED_FOR_PROVIDER');
   });
+
+  test('image generation schema and models route honor DEFAULT_PROVIDER=1forall', async () => {
+    const { serverConfig } = await import('../config/server.js');
+    const prevDefault = serverConfig.defaultProvider;
+    serverConfig.defaultProvider = '1forall';
+
+    globalThis.fetch = jest.fn(async (url) => {
+      if (String(url).includes('/v1/images/generations')) {
+        return new Response(
+          JSON.stringify({ data: [{ url: 'https://voicegen-storage.s3.amazonaws.com/default-fa.png' }] }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response('{}', { status: 404 });
+    });
+
+    try {
+      const modelsRes = await request(app).get('/api/models');
+      expect(modelsRes.status).toBe(200);
+      expect(modelsRes.body.defaultProvider).toBe('1forall');
+
+      // Omitting provider should route to 1forall without failing 1min gpt-image-* quality checks
+      const imgRes = await request(app).post('/api/images/generate').send({
+        prompt: 'sunset',
+        model: 'black-forest-labs/flux-schnell',
+        quality: 'high',
+      });
+      expect(imgRes.status).toBe(200);
+      expect(imgRes.body.urls).toEqual(['https://voicegen-storage.s3.amazonaws.com/default-fa.png']);
+    } finally {
+      serverConfig.defaultProvider = prevDefault;
+    }
+  });
+
+  test('POST /api/models/refresh coalesces per provider without conflating concurrent providers', async () => {
+    const requestedUrls = [];
+    globalThis.fetch = jest.fn(async (url) => {
+      requestedUrls.push(String(url));
+      return new Response(JSON.stringify({ data: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    const [resMin, resFa] = await Promise.all([
+      request(app).post('/api/models/refresh').send({ provider: '1min' }),
+      request(app).post('/api/models/refresh').send({ provider: '1forall' }),
+    ]);
+
+    expect(resMin.status).toBe(200);
+    expect(resFa.status).toBe(200);
+    expect(requestedUrls.some((u) => u.includes('1min'))).toBe(true);
+    expect(requestedUrls.some((u) => u.includes('1forall'))).toBe(true);
+  });
 });

@@ -13,7 +13,10 @@ import {
   assertNotProtectedPath,
   assertNotWriteProtectedPath,
   clearAllowedRootsCache,
+  getSafeRealPath,
 } from '../utils/fs-guard.js';
+import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
 
 describe('fs-guard', () => {
@@ -392,6 +395,54 @@ describe('fs-guard', () => {
     test('should reject path with null byte injection', () => {
       delete process.env.ALLOWED_ROOTS;
       expect(() => validatePath('valid\0malicious')).toThrow('null byte');
+    });
+  });
+
+  describe('additional write protections and getSafeRealPath symlink safety', () => {
+    const originalEnv = process.env.ALLOWED_ROOTS;
+    let tmpDir;
+    let outsideDir;
+
+    beforeEach(async () => {
+      tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-guard-safe-'));
+      outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-guard-out-'));
+    });
+
+    afterEach(async () => {
+      if (originalEnv === undefined) {
+        delete process.env.ALLOWED_ROOTS;
+      } else {
+        process.env.ALLOWED_ROOTS = originalEnv;
+      }
+      clearAllowedRootsCache();
+      await fs.rm(tmpDir, { recursive: true, force: true });
+      await fs.rm(outsideDir, { recursive: true, force: true });
+    });
+
+    test('protects providers/, android/, mobile/, and capacitor.config.json from writes', () => {
+      delete process.env.ALLOWED_ROOTS;
+      clearAllowedRootsCache();
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'providers', 'index.js'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'android', 'build.gradle'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'mobile', 'loader', 'index.html'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'capacitor.config.json'))).toBe(true);
+    });
+
+    test('getSafeRealPath rejects ENOENT destination inside symlink escaping allowed roots', async () => {
+      process.env.ALLOWED_ROOTS = tmpDir;
+      clearAllowedRootsCache();
+
+      const symlinkDir = path.join(tmpDir, 'escape-link');
+      try {
+        await fs.symlink(outsideDir, symlinkDir, process.platform === 'win32' ? 'junction' : 'dir');
+      } catch {
+        return;
+      }
+
+      const unresolvedNew = validatePath(path.join(symlinkDir, 'nonexistent.txt'), {
+        resolveSymlinks: false,
+      });
+      await expect(getSafeRealPath(unresolvedNew)).rejects.toThrow('Access denied');
     });
   });
 });

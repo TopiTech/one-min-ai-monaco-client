@@ -264,75 +264,62 @@ export const oneForAllProvider = {
       model: selectedModel,
     });
 
-    const response = await callOneForAll('/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const runNonStreamFallback = async (reasonMsg) => {
+      logger.info(reasonMsg, { model: selectedModel });
+      const syncResult = await oneForAllProvider.chat({
+        prompt,
+        messages,
         model: selectedModel,
-        messages: normalizedMessages,
-        max_tokens: effectiveMaxTokens,
-        stream: true,
-        stream_options: { include_usage: true },
-      }),
-      raw: true,
-      idempotent: false,
-      signal,
-      timeout: serverConfig.apiStreamTimeoutMs,
-    }).catch(async (err) => {
-      // callOneForAll throws HttpError on non-2xx when !raw? Actually when raw:true,
-      // http-client throws HttpError on !response.ok too, with sanitized payload!
-      // Intercept 400 model-does-not-support-streaming here to fall back cleanly.
-      if (isNonStreamingModelError(err?.status, err?.payload)) {
-        logger.info('1forall model does not support streaming; falling back to non-streaming call', {
-          model: selectedModel,
-        });
-        const syncResult = await oneForAllProvider.chat({
-          prompt,
-          messages,
-          model: selectedModel,
-          systemPrompt,
-          maxTokens: effectiveMaxTokens,
-          task: 'chat',
-          signal,
-        });
-        const sseBody = buildSyntheticSseBody(syncResult.text, {
-          model: selectedModel,
-          usage: syncResult.usage,
-        });
-        return new Response(sseBody, {
+        systemPrompt,
+        maxTokens: effectiveMaxTokens,
+        task: 'chat',
+        signal,
+      });
+      const sseBody = buildSyntheticSseBody(syncResult.text, {
+        model: selectedModel,
+        usage: syncResult.usage,
+      });
+      return {
+        response: new Response(sseBody, {
           status: 200,
           headers: { 'content-type': 'text/event-stream; charset=utf-8' },
-        });
+        }),
+        format: '1min-sse',
+      };
+    };
+
+    let response;
+    try {
+      response = await callOneForAll('/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: selectedModel,
+          messages: normalizedMessages,
+          max_tokens: effectiveMaxTokens,
+          stream: true,
+          stream_options: { include_usage: true },
+        }),
+        raw: true,
+        idempotent: false,
+        signal,
+        timeout: serverConfig.apiStreamTimeoutMs,
+      });
+    } catch (err) {
+      // callOneForAll throws HttpError on non-2xx even when raw: true.
+      // Intercept 400 model-does-not-support-streaming here to fall back cleanly.
+      if (isNonStreamingModelError(err?.status, err?.payload)) {
+        return await runNonStreamFallback(
+          '1forall model does not support streaming; falling back to non-streaming call',
+        );
       }
       throw err;
-    });
+    }
 
     if (!response.ok) {
       const errPayload = await parseResponsePayload(response);
       if (isNonStreamingModelError(response.status, errPayload)) {
-        logger.info('1forall model rejected streaming response; retrying non-stream', {
-          model: selectedModel,
-        });
-        const syncResult = await oneForAllProvider.chat({
-          prompt,
-          messages,
-          model: selectedModel,
-          systemPrompt,
-          maxTokens: effectiveMaxTokens,
-          task: 'chat',
-          signal,
-        });
-        const sseBody = buildSyntheticSseBody(syncResult.text, {
-          model: selectedModel,
-          usage: syncResult.usage,
-        });
-        return {
-          response: new Response(sseBody, {
-            status: 200,
-            headers: { 'content-type': 'text/event-stream; charset=utf-8' },
-          }),
-          format: '1min-sse',
-        };
+        return await runNonStreamFallback('1forall model rejected streaming response; retrying non-stream');
       }
       throw new HttpError(
         response.status,
@@ -356,12 +343,9 @@ export const oneForAllProvider = {
       };
     }
 
-    // Distinguish whether this came from our synthetic fallback (already 1min-sse) or OpenAI SSE.
-    const isSyntheticFallback =
-      response.headers?.get?.('content-type')?.includes('charset=utf-8') && !response.url;
     return {
       response,
-      format: isSyntheticFallback ? '1min-sse' : 'openai-sse',
+      format: 'openai-sse',
     };
   },
 

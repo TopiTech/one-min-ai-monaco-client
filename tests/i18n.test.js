@@ -132,6 +132,39 @@ describe('i18n utility module', () => {
 
     expect(t('greeting', { name: 'Bob' })).toBe('Hello Bob!');
     expect(t('greeting')).toBe('Hello {name}!');
+    // Replacement strings containing $& or $$ must remain literal
+    expect(t('greeting', { name: '$& $$ $1' })).toBe('Hello $& $$ $1!');
+  });
+
+  test('out-of-order setLanguage fetches do not let older response override latest language', async () => {
+    const { t, initI18n, setLanguage, getLanguage } = await loadI18nModule({
+      translationsJa: { greeting: 'こんにちは' },
+      translationsEn: { greeting: 'Hello' },
+    });
+    await initI18n();
+
+    let resolveSlowEn;
+    let resolveFastJa;
+    global.fetch = jest.fn((url) => {
+      if (url.includes('en.json')) {
+        return new Promise((resolve) => {
+          resolveSlowEn = () => resolve({ ok: true, json: async () => ({ greeting: 'Slow EN' }) });
+        });
+      }
+      return new Promise((resolve) => {
+        resolveFastJa = () => resolve({ ok: true, json: async () => ({ greeting: 'Fast JA' }) });
+      });
+    });
+
+    const pEn = setLanguage('en');
+    const pJa = setLanguage('ja');
+    resolveFastJa();
+    await pJa;
+    resolveSlowEn();
+    await pEn;
+
+    expect(getLanguage()).toBe('ja');
+    expect(t('greeting')).toBe('Fast JA');
   });
 
   test('initI18n uses ja as default or reads saved lang', async () => {

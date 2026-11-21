@@ -137,29 +137,39 @@ export function createEditorManager(state) {
             _lastAutocompleteAt = now;
 
             const activeProvider = getActiveProvider();
-            const data = await api('/api/code/autocomplete', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                provider: activeProvider,
-                code: autocompleteContext.code,
-                line: autocompleteContext.line,
-                column: autocompleteContext.column,
-                fileName: state.activeFilePath ? state.activeFilePath.split(/[\\/]/).pop() : 'untitled',
-                language: model.getLanguageId(),
-                model: document.getElementById('codeModel')?.value,
-                webSearch:
-                  activeProvider === '1min' && (document.getElementById('codeWebSearch')?.checked || false),
-                numOfSite: document.getElementById('codeNumOfSite')?.value
-                  ? parseInt(document.getElementById('codeNumOfSite').value, 10)
-                  : undefined,
-                maxWord: document.getElementById('codeMaxWord').value
-                  ? parseInt(document.getElementById('codeMaxWord').value, 10)
-                  : undefined,
-              }),
-              signal: token.signal,
-            });
-            if (!data.suggestion || token.isCancellationRequested) return;
+            const abortController = new AbortController();
+            const cancelSub =
+              typeof token.onCancellationRequested === 'function'
+                ? token.onCancellationRequested(() => abortController.abort())
+                : null;
+            let data;
+            try {
+              data = await api('/api/code/autocomplete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  provider: activeProvider,
+                  code: autocompleteContext.code,
+                  line: autocompleteContext.line,
+                  column: autocompleteContext.column,
+                  fileName: state.activeFilePath ? state.activeFilePath.split(/[\\/]/).pop() : 'untitled',
+                  language: model.getLanguageId(),
+                  model: document.getElementById('codeModel')?.value,
+                  webSearch:
+                    activeProvider === '1min' && (document.getElementById('codeWebSearch')?.checked || false),
+                  numOfSite: document.getElementById('codeNumOfSite')?.value
+                    ? parseInt(document.getElementById('codeNumOfSite').value, 10)
+                    : undefined,
+                  maxWord: document.getElementById('codeMaxWord')?.value
+                    ? parseInt(document.getElementById('codeMaxWord').value, 10)
+                    : undefined,
+                }),
+                signal: abortController.signal,
+              });
+            } finally {
+              cancelSub?.dispose?.();
+            }
+            if (!data?.suggestion || token.isCancellationRequested) return;
 
             return {
               items: [

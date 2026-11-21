@@ -17,8 +17,25 @@ const MAX_STREAM_RETRIES = 2;
 const RETRYABLE_STREAM_STATUSES = new Set([408, 429, 502, 503, 504]);
 const STREAM_RENDER_INTERVAL_MS = 125;
 
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function wait(ms, signal) {
+  if (signal?.aborted) {
+    const err = new Error('Aborted');
+    err.name = 'AbortError';
+    return Promise.reject(err);
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      const err = new Error('Aborted');
+      err.name = 'AbortError';
+      reject(err);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener?.('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener?.('abort', onAbort, { once: true });
+  });
 }
 
 async function readErrorMessage(response) {
@@ -96,7 +113,13 @@ export function createChatManager(dom, state) {
     }
 
     while (log.children.length > MAX_MESSAGES) {
-      log.removeChild(log.firstChild);
+      const oldest = log.firstChild;
+      if (oldest?._blobUrls && typeof URL?.revokeObjectURL === 'function') {
+        for (const u of oldest._blobUrls) {
+          URL.revokeObjectURL(u);
+        }
+      }
+      log.removeChild(oldest);
     }
 
     if (!isAtBottom) {
@@ -119,11 +142,16 @@ export function createChatManager(dom, state) {
     if (images && images.length > 0) {
       const imagesDiv = document.createElement('div');
       imagesDiv.className = 'msg-images';
+      const blobUrls = [];
       for (const img of images) {
         const imgEl = document.createElement('img');
         imgEl.className = 'msg-image';
         imgEl.alt = 'attached';
-        imgEl.src = img.url || img.assetUrl || img;
+        const srcUrl = img.url || img.assetUrl || img;
+        if (typeof srcUrl === 'string' && srcUrl.startsWith('blob:')) {
+          blobUrls.push(srcUrl);
+        }
+        imgEl.src = srcUrl;
         imgEl.onerror = function () {
           this.classList.add('is-error-hidden');
           const errorSpan = document.createElement('span');
@@ -132,6 +160,9 @@ export function createChatManager(dom, state) {
           this.after(errorSpan);
         };
         imagesDiv.appendChild(imgEl);
+      }
+      if (blobUrls.length > 0) {
+        div._blobUrls = blobUrls;
       }
       div.appendChild(imagesDiv);
     }
@@ -234,7 +265,7 @@ export function createChatManager(dom, state) {
     updateSendButton();
   }
 
-  async function uploadAttachments() {
+  async function uploadAttachments(signal) {
     const attachments = state.chat.attachments;
     const pending = attachments.filter((att) => !att.assetKey);
 
@@ -256,6 +287,7 @@ export function createChatManager(dom, state) {
 
     const worker = async () => {
       while (queue.length > 0) {
+        if (signal?.aborted) break;
         const item = queue.shift();
         if (!item) break;
         const { att, originalIndex } = item;
@@ -268,6 +300,7 @@ export function createChatManager(dom, state) {
           const data = await api(`/api/assets/upload?provider=${encodeURIComponent(provider)}`, {
             method: 'POST',
             body: fd,
+            signal,
           });
           const key = data?.key || data?.asset?.key || data?.fileContent?.path || data?.asset?.location || '';
           const url = data?.url || (key ? assetUrl(key) : '');
@@ -306,6 +339,7 @@ export function createChatManager(dom, state) {
   }
 
   async function sendChat(setStatus) {
+    if (state.chat.abortController) return;
     const prompt = dom.chatPrompt.value.trim();
     const attachments = state.chat.attachments;
     if (!prompt && attachments.length === 0) return;
@@ -316,9 +350,10 @@ export function createChatManager(dom, state) {
     sendBtn.classList.add('u-hidden');
     abortBtn.classList.add('is-shown');
 
-    state.chat.abortController = new AbortController();
+    const abortController = new AbortController();
+    state.chat.abortController = abortController;
 
-    const imagePreviews = attachments.map((att) => ({ url: att.previewUrl }));
+    const imagePreviews = attachments.filter((att) => att.previewUrl).map((att) => ({ url: att.previewUrl }));
     addMsg('user', prompt || t('chat_image_only'), imagePreviews);
     dom.chatPrompt.value = '';
     dom.chatPrompt.style.height = '';
@@ -350,6 +385,7 @@ export function createChatManager(dom, state) {
     setStatus(t('chat_receiving'), 'warn');
     let fullText = '';
     let followStreamScroll = wasNearBottom;
+    let exitedWithError = false;
 
     const provider = getActiveProvider();
     try {
@@ -363,7 +399,7 @@ export function createChatManager(dom, state) {
           model: dom.chatModel.value,
         };
       } else {
-        const uploadedAttachments = await uploadAttachments();
+        const uploadedAttachments = await uploadAttachments(abortController.signal);
 
         const apiAttachments = {};
         const imageKeys = uploadedAttachments
@@ -395,20 +431,22 @@ export function createChatManager(dom, state) {
       for (let attempt = 0; attempt <= MAX_STREAM_RETRIES; attempt++) {
         let reader = null;
         let streamTimeoutId = null;
+        let cancelPendingRender = () => {};
+        let readerFinished = false;
 
         try {
           if (attempt > 0) {
             const retryMessage = `${t('chat_stream_retry', { attempt: attempt + 1, total: MAX_STREAM_RETRIES + 1 })}`;
             aiContentDiv.textContent = retryMessage;
             setStatus(retryMessage, 'warn');
-            await wait(Math.min(1000 * Math.pow(2, attempt - 1), 4000));
+            await wait(Math.min(1000 * Math.pow(2, attempt - 1), 4000), abortController.signal);
           }
 
           const response = await api('/api/chat/stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: requestBody,
-            signal: state.chat.abortController.signal,
+            signal: abortController.signal,
             raw: true,
           });
 
@@ -443,12 +481,32 @@ export function createChatManager(dom, state) {
           }, MAX_STREAM_MS);
 
           let renderScheduled = false;
+          let renderDisposed = false;
+          let renderRafId = null;
+          let renderTimerId = null;
           let lastRenderAt = 0;
+
+          cancelPendingRender = () => {
+            renderDisposed = true;
+            renderScheduled = false;
+            if (renderRafId !== null && typeof cancelAnimationFrame === 'function') {
+              cancelAnimationFrame(renderRafId);
+              renderRafId = null;
+            }
+            if (renderTimerId !== null) {
+              clearTimeout(renderTimerId);
+              renderTimerId = null;
+            }
+          };
+
           const scheduleRender = () => {
-            if (renderScheduled) return;
+            if (renderScheduled || renderDisposed) return;
             renderScheduled = true;
             const run = () => {
+              renderRafId = null;
+              renderTimerId = null;
               renderScheduled = false;
+              if (renderDisposed) return;
               if (fullText) {
                 aiContentDiv.textContent = fullText;
                 lastRenderAt = Date.now();
@@ -459,19 +517,22 @@ export function createChatManager(dom, state) {
             };
             const delay = Math.max(0, STREAM_RENDER_INTERVAL_MS - (Date.now() - lastRenderAt));
             if (typeof requestAnimationFrame === 'function' && delay === 0) {
-              requestAnimationFrame(run);
+              renderRafId = requestAnimationFrame(run);
             } else {
-              setTimeout(run, delay || STREAM_RENDER_INTERVAL_MS);
+              renderTimerId = setTimeout(run, delay || STREAM_RENDER_INTERVAL_MS);
             }
           };
 
           while (!streamDone) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done) {
+              readerFinished = true;
+              break;
+            }
 
             buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop();
+            const lines = buffer.split(/\r?\n/);
+            buffer = lines.pop() ?? '';
 
             for (const line of lines) {
               if (!line.trim()) {
@@ -479,8 +540,8 @@ export function createChatManager(dom, state) {
                 continue;
               }
 
-              if (line.startsWith('event: ')) {
-                currentEvent = line.slice(7).trim();
+              if (line.startsWith('event:')) {
+                currentEvent = line.slice(6).trim() || 'content';
                 continue;
               }
 
@@ -562,10 +623,12 @@ export function createChatManager(dom, state) {
             }
           }
 
+          cancelPendingRender();
           if (streamError) throw streamError;
           if (fullText) renderMarkdownSafely(aiContentDiv, fullText);
           break;
         } catch (e) {
+          cancelPendingRender();
           const shouldRetry =
             e?.name !== 'AbortError' &&
             !fullText &&
@@ -577,10 +640,18 @@ export function createChatManager(dom, state) {
           }
           throw e;
         } finally {
+          cancelPendingRender();
           if (streamTimeoutId) {
             clearTimeout(streamTimeoutId);
           }
           if (reader) {
+            if (!readerFinished) {
+              try {
+                await reader.cancel();
+              } catch {
+                // ignore
+              }
+            }
             try {
               reader.releaseLock();
             } catch {
@@ -604,6 +675,7 @@ export function createChatManager(dom, state) {
       pruneChatLog();
     } catch (e) {
       aiMsgDiv.classList.remove('streaming');
+      exitedWithError = true;
       if (e.name === 'AbortError') {
         fullText += '\n\n*(' + t('chat_cancelled') + ')*';
         renderMarkdownSafely(aiContentDiv, fullText);
@@ -622,16 +694,20 @@ export function createChatManager(dom, state) {
     } finally {
       aiMsgDiv.classList.remove('streaming');
       dom.chatLog.setAttribute('aria-busy', 'false');
-      state.chat.abortController = null;
+      if (state.chat.abortController === abortController) {
+        state.chat.abortController = null;
+      }
       sendBtn.disabled = false;
       sendBtn.classList.remove('u-hidden');
       abortBtn.classList.remove('is-shown');
-      setStatus(t('status_ready'));
+      if (!exitedWithError) {
+        setStatus(t('status_ready'));
+      }
 
       const remaining = [];
       state.chat.attachments.forEach((att) => {
         if (att.assetKey && fullText && fullText !== t('chat_empty_response')) {
-          if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
+          // Sent attachments keep their rendered blob preview until pruned from #chatLog.
         } else {
           remaining.push(att);
         }

@@ -45,7 +45,7 @@ const imageGenerateSchema = z
     size: z.string().max(IMAGE_SIZE_MAX_LENGTH, 'size is too long').optional(),
   })
   .superRefine((data, ctx) => {
-    const providerId = data.provider || '1min';
+    const providerId = resolveProviderId(data.provider);
     if (providerId === '1min') {
       const selectedModel = data.model || getDefaultModel('IMAGE_GENERATOR');
       const isGptImage = selectedModel.startsWith('gpt-image');
@@ -85,7 +85,7 @@ const imageEditorSchema = z
     output_compression: outputCompressionSchema,
   })
   .superRefine((data, ctx) => {
-    const providerId = data.provider || '1min';
+    const providerId = resolveProviderId(data.provider);
     if (providerId === '1forall') return;
 
     const selectedModel = data.model || getDefaultModel('IMAGE_EDITOR');

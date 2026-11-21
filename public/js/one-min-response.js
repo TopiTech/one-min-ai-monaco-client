@@ -36,6 +36,43 @@ function isEmptyPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0;
 }
 
+function isSearchMetadataObject(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+  const t = String(obj.type || '').toLowerCase();
+  if (
+    t === 'web_search' ||
+    t === 'search_results' ||
+    t === 'grounding' ||
+    t === 'crawling' ||
+    t === 'crawl' ||
+    t === 'browse'
+  ) {
+    return true;
+  }
+  if (
+    'searchResults' in obj ||
+    'search_results' in obj ||
+    'groundingMetadata' in obj ||
+    'webSearchObject' in obj ||
+    'crawling' in obj ||
+    'crawlResults' in obj
+  ) {
+    return true;
+  }
+  if ('sources' in obj && Array.isArray(obj.sources) && !('thought' in obj) && !('content' in obj))
+    return true;
+  if ('citations' in obj && Array.isArray(obj.citations) && !('thought' in obj) && !('content' in obj))
+    return true;
+  return false;
+}
+
+function isCrawlStatusString(str) {
+  if (typeof str !== 'string') return false;
+  return /^(?:⚙\s*|[•\-*]\s*)?(?:Crawling(?:\s+site)?|Crawled(?:\s+site)?|Browsing(?:\s+page|\s+site)?|Searching(?:\s+the\s+web|\s+for)?|Navigating\s+to|Fetching(?:\s+URL)?)[^\n]*$/i.test(
+    str.trim(),
+  );
+}
+
 function normalizeTextValue(value, seen = new WeakSet(), { stringifyObjects = false } = {}) {
   if (value === undefined) return undefined;
   if (value === null) return 'null';
@@ -46,15 +83,21 @@ function normalizeTextValue(value, seen = new WeakSet(), { stringifyObjects = fa
     return String(value);
   }
   if (Array.isArray(value)) {
-    const parts = value.map((item) => normalizeTextValue(item, seen, { stringifyObjects })).filter(Boolean);
+    const nonSearch = value.filter((item) => !isSearchMetadataObject(item) && !isCrawlStatusString(item));
+    const target = nonSearch.length > 0 ? nonSearch : value;
+    const parts = target.map((item) => normalizeTextValue(item, seen, { stringifyObjects })).filter(Boolean);
     return parts.length > 0 ? parts.join('\n') : undefined;
   }
   if (typeof value === 'object') {
     if (isEmptyPlainObject(value)) return undefined;
     if (seen.has(value)) return undefined;
     seen.add(value);
-    const nested = findTextCandidate(value, seen);
-    if (nested) return nested;
+    try {
+      const nested = findTextCandidate(value, seen);
+      if (nested) return nested;
+    } finally {
+      seen.delete(value);
+    }
     if (!stringifyObjects) return undefined;
     try {
       return JSON.stringify(value, null, 2);
@@ -87,5 +130,9 @@ export function findTextCandidate(data, seen = new WeakSet()) {
 export function extractTextFromOneMinResponse(data) {
   const candidate = findTextCandidate(data);
   if (candidate !== undefined) return candidate;
-  return JSON.stringify(data, null, 2);
+  try {
+    return JSON.stringify(data, null, 2);
+  } catch {
+    return '';
+  }
 }

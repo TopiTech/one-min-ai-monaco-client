@@ -1,5 +1,6 @@
 import { spawn, exec } from 'child_process';
 import { platform } from 'os';
+import { StringDecoder } from 'string_decoder';
 import { serverConfig } from '../config/server.js';
 import { getSafeEnv } from '../utils/env-guard.js';
 import logger from '../utils/logger.js';
@@ -241,7 +242,7 @@ function runProcess(commandParts, options = {}) {
 
   const cleanUp = trackActiveProcess(child);
 
-  return collectProcessOutput(child, timeoutMs, onOutput, maxOutputSize).then(
+  return collectProcessOutput(child, { timeoutMs, onOutput, maxOutputSize }).then(
     (res) => {
       cleanUp();
       return res;
@@ -253,76 +254,87 @@ function runProcess(commandParts, options = {}) {
   );
 }
 
-function collectProcessOutput(child, timeoutMs, onOutput, maxOutputSize = serverConfig.maxCommandOutputSize) {
+function createOutputCollector(limit, streamName, onOutput) {
+  const decoder = new StringDecoder('utf8');
+  const streamDecoder = onOutput ? new StringDecoder('utf8') : null;
+  let text = '';
+  let bytes = 0;
+  let truncated = false;
+
+  const pushChunk = (data) => {
+    const buffer = Buffer.isBuffer(data) ? data : Buffer.from(String(data));
+    const chunkBytes = buffer.byteLength;
+    if (bytes < limit) {
+      if (bytes + chunkBytes > limit) {
+        const allowedLen = limit - bytes;
+        text += decoder.write(buffer.subarray(0, allowedLen)) + '\n...[output truncated]';
+        bytes = limit;
+        truncated = true;
+      } else {
+        text += decoder.write(buffer);
+        bytes += chunkBytes;
+      }
+    } else if (!truncated) {
+      truncated = true;
+      text += '\n...[output truncated]';
+    }
+    if (onOutput && streamDecoder) {
+      // A disconnected SSE client can make its response writer throw.
+      // Streaming output is best-effort and must not turn that UI event
+      // into an unhandled exception in the command process.
+      try {
+        onOutput(streamName, streamDecoder.write(buffer));
+      } catch {
+        // Ignore consumer callback failures; continue collecting output.
+      }
+    }
+  };
+
+  const finalize = () => {
+    if (!truncated) {
+      const tail = decoder.end();
+      if (tail) text += tail;
+    }
+    if (onOutput && streamDecoder) {
+      const tail = streamDecoder.end();
+      if (tail) {
+        try {
+          onOutput(streamName, tail);
+        } catch {
+          // Ignore consumer callback failures
+        }
+      }
+    }
+    return { text: text.trim(), truncated };
+  };
+
+  return { pushChunk, finalize };
+}
+
+/**
+ * Collect bounded stdout/stderr output with timeout and tree kill cleanup.
+ * @param {import('child_process').ChildProcess} child
+ * @param {{ timeoutMs?: number, onOutput?: ((type: string, text: string) => void) | null, maxOutputSize?: number, nullExitCode?: number, rawError?: boolean }} [options]
+ */
+export function collectProcessOutput(child, options = {}) {
+  const {
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    onOutput = null,
+    maxOutputSize = serverConfig.maxCommandOutputSize,
+    nullExitCode = 1,
+    rawError = false,
+  } = options;
+
   return new Promise((resolve, reject) => {
-    let stdout = '';
-    let stderr = '';
-    let stdoutBytes = 0;
-    let stderrBytes = 0;
-    let stdoutTruncated = false;
-    let stderrTruncated = false;
+    const limit =
+      typeof maxOutputSize === 'number' && maxOutputSize > 0 ? Math.floor(maxOutputSize) : 10 * 1024 * 1024;
+    const stdoutCollector = createOutputCollector(limit, 'stdout', onOutput);
+    const stderrCollector = createOutputCollector(limit, 'stderr', onOutput);
     let timedOut = false;
     let killed = false;
 
-    const limit =
-      typeof maxOutputSize === 'number' && maxOutputSize > 0 ? Math.floor(maxOutputSize) : 10 * 1024 * 1024;
-
-    child.stdout.on('data', (data) => {
-      const buffer = Buffer.isBuffer(data) ? data : Buffer.from(String(data));
-      const text = buffer.toString('utf8');
-      const chunkBytes = buffer.byteLength;
-      if (stdoutBytes < limit) {
-        if (stdoutBytes + chunkBytes > limit) {
-          const allowedLen = limit - stdoutBytes;
-          stdout += buffer.subarray(0, allowedLen).toString('utf8') + '\n...[output truncated]';
-          stdoutBytes = limit;
-          stdoutTruncated = true;
-        } else {
-          stdout += text;
-          stdoutBytes += chunkBytes;
-        }
-      } else if (!stdoutTruncated) {
-        stdoutTruncated = true;
-        stdout += '\n...[output truncated]';
-      }
-      if (onOutput) {
-        // A disconnected SSE client can make its response writer throw.
-        // Streaming output is best-effort and must not turn that UI event
-        // into an unhandled exception in the command process.
-        try {
-          onOutput('stdout', text);
-        } catch {
-          // Ignore consumer callback failures; continue collecting output.
-        }
-      }
-    });
-
-    child.stderr.on('data', (data) => {
-      const buffer = Buffer.isBuffer(data) ? data : Buffer.from(String(data));
-      const text = buffer.toString('utf8');
-      const chunkBytes = buffer.byteLength;
-      if (stderrBytes < limit) {
-        if (stderrBytes + chunkBytes > limit) {
-          const allowedLen = limit - stderrBytes;
-          stderr += buffer.subarray(0, allowedLen).toString('utf8') + '\n...[output truncated]';
-          stderrBytes = limit;
-          stderrTruncated = true;
-        } else {
-          stderr += text;
-          stderrBytes += chunkBytes;
-        }
-      } else if (!stderrTruncated) {
-        stderrTruncated = true;
-        stderr += '\n...[output truncated]';
-      }
-      if (onOutput) {
-        try {
-          onOutput('stderr', text);
-        } catch {
-          // Ignore consumer callback failures; continue collecting output.
-        }
-      }
-    });
+    child.stdout?.on('data', stdoutCollector.pushChunk);
+    child.stderr?.on('data', stderrCollector.pushChunk);
 
     let forceKillTimeoutId = null;
 
@@ -349,13 +361,16 @@ function collectProcessOutput(child, timeoutMs, onOutput, maxOutputSize = server
         exitCode = timedOut ? 124 : 1; // 124 = timeout exit code
       }
 
+      const finalOut = stdoutCollector.finalize();
+      const finalErr = stderrCollector.finalize();
+
       resolve({
-        exitCode: exitCode ?? 1,
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
+        exitCode: exitCode ?? nullExitCode,
+        stdout: finalOut.text,
+        stderr: finalErr.text,
         timedOut,
-        stdoutTruncated,
-        stderrTruncated,
+        stdoutTruncated: finalOut.truncated,
+        stderrTruncated: finalErr.truncated,
       });
     });
 
@@ -364,9 +379,51 @@ function collectProcessOutput(child, timeoutMs, onOutput, maxOutputSize = server
       if (forceKillTimeoutId) {
         clearTimeout(forceKillTimeoutId);
       }
-      reject(new Error(`Failed to execute command: ${err.message}`));
+      reject(rawError ? err : new Error(`Failed to execute command: ${err.message}`));
     });
   });
+}
+
+/**
+ * Strip contents inside single/double quotes using the same escape rules as parseCommand.
+ * @param {string} command
+ * @returns {string}
+ */
+function stripQuotedContents(command) {
+  let out = '';
+  let quote = null;
+  let escaped = false;
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i];
+    if (escaped) {
+      if (!quote) out += char;
+      escaped = false;
+      continue;
+    }
+    if (process.platform !== 'win32' && !quote && char === '\\') {
+      escaped = true;
+      out += char;
+      continue;
+    }
+    if (quote) {
+      if (char === '\\' && i + 1 < command.length && command[i + 1] === quote) {
+        escaped = true;
+        continue;
+      }
+      if (char === quote) {
+        out += quote;
+        quote = null;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      out += quote;
+      continue;
+    }
+    out += char;
+  }
+  return out;
 }
 
 /**
@@ -397,8 +454,8 @@ export function checkCommandSafety(command) {
   // B-3: Block shell metacharacters before allowlist check.
   // Developers do not need ; | && || ` $() > < in legitimate build/lint commands.
   // To avoid false positives on valid arguments (e.g. git commit -m "fix & update"),
-  // we strip the contents inside quotes before testing.
-  const unquoted = trimmed.replace(/"[^"]*"/g, '""').replace(/'[^']*'/g, "''");
+  // we strip the contents inside quotes using the same escape rules as parseCommand.
+  const unquoted = stripQuotedContents(trimmed);
   if (SHELL_INJECTION_PATTERN.test(unquoted)) {
     return { safe: false, reason: 'Command contains shell metacharacters that could enable injection' };
   }

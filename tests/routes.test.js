@@ -133,6 +133,33 @@ describe('AI Routes Integration Tests', () => {
       expect(response.text).not.toContain('event: result\n');
       expect(response.text).toContain('resultObject":"Hello"');
     });
+
+    test('stream endpoint normalizes CRLF result events without leaving trailing CR on event line', async () => {
+      const encoder = new TextEncoder();
+      const chunks = [
+        'event:content\r\ndata: {"content":"A"}\r\n\r\n',
+        'event:result\r\ndata: {"aiRecord":{"aiRecordDetail":{"resultObject":"AB"}}}\r\n\r\n',
+        'data: [DONE]\r\n\r\n',
+      ];
+      callOneMin.mockResolvedValue({
+        ok: true,
+        headers: new Headers({ 'content-type': 'text/event-stream' }),
+        body: new ReadableStream({
+          start(controller) {
+            for (const chunk of chunks) {
+              controller.enqueue(encoder.encode(chunk));
+            }
+            controller.close();
+          },
+        }),
+      });
+
+      const response = await request(app).post('/api/chat/stream').send(testPayloads.chat);
+
+      expect(response.status).toBe(200);
+      expect(response.text).toContain('event: final-result\n');
+      expect(response.text).not.toContain('event: final-result\r');
+    });
   });
 
   describe('POST /api/images/generate', () => {
@@ -691,6 +718,23 @@ describe('AI Routes Integration Tests', () => {
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toBe('image/png');
       expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    test('should reject repeated array query params with 400 and cancel redirect body', async () => {
+      const arrayRes = await request(app).get('/api/assets/proxy?key=a.png&key=b.png');
+      expect(arrayRes.status).toBe(400);
+
+      const redirectCancel = jest.fn(async () => {});
+      global.fetch = jest.fn().mockResolvedValueOnce({
+        status: 302,
+        ok: false,
+        headers: new Headers({ location: 'http://169.254.169.254/latest/meta-data/' }),
+        body: { cancel: redirectCancel },
+      });
+
+      const res = await request(app).get('/api/assets/proxy').query({ key: 'images/redirect.png' });
+      expect(res.status).toBe(403);
+      expect(redirectCancel).toHaveBeenCalledTimes(1);
     });
   });
 });

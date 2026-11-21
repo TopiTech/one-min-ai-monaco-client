@@ -3,12 +3,14 @@ import fsp from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import { SessionLock } from '../utils/async-lock.js';
 import { HttpError } from '../utils/errors.js';
 import logger from '../utils/logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const DEFAULT_KEYS_FILE = path.join(PROJECT_ROOT, '.mimocode', 'data', 'api_keys.json');
+const keyStoreLock = new SessionLock();
 
 export const SUPPORTED_PROVIDERS = Object.freeze(/** @type {const} */ (['1min', '1forall']));
 
@@ -164,9 +166,11 @@ function loadStoredKeysSync() {
 }
 
 async function persistStoredKeys(keysObj) {
-  memoryKeysCache = { ...keysObj };
   const filePath = getEffectiveFilePath();
-  if (!filePath) return;
+  if (!filePath) {
+    memoryKeysCache = { ...keysObj };
+    return;
+  }
 
   const dir = path.dirname(filePath);
   await fsp.mkdir(dir, { recursive: true });
@@ -175,6 +179,7 @@ async function persistStoredKeys(keysObj) {
   await fsp.writeFile(tmpFile, payload, { encoding: 'utf8', mode: 0o600 });
   try {
     await fsp.rename(tmpFile, filePath);
+    memoryKeysCache = { ...keysObj };
   } catch (err) {
     await fsp.unlink(tmpFile).catch(() => {});
     throw err;
@@ -238,8 +243,10 @@ export async function setApiKey(providerId, rawKey) {
     throw new HttpError(400, `Unsupported provider: ${providerId}`, 'INVALID_PROVIDER');
   }
   const validated = validateApiKeyInput(rawKey);
-  const current = { ...loadStoredKeysSync(), [providerId]: validated };
-  await persistStoredKeys(current);
+  await keyStoreLock.acquire('api_keys', async () => {
+    const current = { ...loadStoredKeysSync(), [providerId]: validated };
+    await persistStoredKeys(current);
+  });
   return {
     provider: providerId,
     configured: true,
@@ -257,9 +264,11 @@ export async function deleteApiKey(providerId) {
   if (!SUPPORTED_PROVIDERS.includes(providerId)) {
     throw new HttpError(400, `Unsupported provider: ${providerId}`, 'INVALID_PROVIDER');
   }
-  const current = { ...loadStoredKeysSync() };
-  delete current[providerId];
-  await persistStoredKeys(current);
+  await keyStoreLock.acquire('api_keys', async () => {
+    const current = { ...loadStoredKeysSync() };
+    delete current[providerId];
+    await persistStoredKeys(current);
+  });
 
   const fallbackKey = getEnvApiKey(providerId);
   return {

@@ -4,9 +4,14 @@ import { extractTextFromOneMinResponse } from './one-min-response.js';
 import { sanitizeLogText } from './sanitize.js';
 import { HttpError } from './errors.js';
 import { getApiKey } from '../services/key-store.js';
-import { createHttpClient, parseResponsePayloadWithInfo, parseResponsePayload } from './http-client.js';
+import {
+  createHttpClient,
+  parseResponsePayloadWithInfo,
+  parseResponsePayload,
+  translateErrorMessage,
+} from './http-client.js';
 
-export { parseResponsePayloadWithInfo, parseResponsePayload };
+export { parseResponsePayloadWithInfo, parseResponsePayload, translateErrorMessage };
 
 function requireApiKey() {
   const apiKey = getApiKey('1min');
@@ -206,39 +211,6 @@ export function isFailedResponse(data) {
   }
   const upper = String(status).toUpperCase();
   return !SUCCESS_STATUSES.has(upper) && !PENDING_STATUSES.has(upper);
-}
-
-export function translateErrorMessage(msg) {
-  if (typeof msg !== 'string') return msg;
-  const lowerMsg = msg.toLowerCase();
-  if (
-    lowerMsg.includes('invalid_api_key') ||
-    lowerMsg.includes('invalid api key') ||
-    lowerMsg.includes('authentication_error') ||
-    lowerMsg.includes('not a valid api key') ||
-    lowerMsg.includes('revoked')
-  ) {
-    return 'APIキーが無効です。設定を確認してください。';
-  }
-  if (
-    lowerMsg.includes('insufficient_quota') ||
-    lowerMsg.includes('quota exceeded') ||
-    lowerMsg.includes('not enough credits') ||
-    lowerMsg.includes('billing')
-  ) {
-    return 'クレジット残高またはAPIの利用可能枠が不足しています。';
-  }
-  if (lowerMsg.includes('content_policy_violation') || lowerMsg.includes('content filter')) {
-    return 'コンテンツポリシーの制限によりリクエストが拒否されました。';
-  }
-  if (
-    lowerMsg.includes('model not found') ||
-    lowerMsg.includes('invalid_model') ||
-    lowerMsg.includes('model not available')
-  ) {
-    return '指定されたモデルが存在しないか利用できません。';
-  }
-  return msg;
 }
 
 export function extractFailureMessage(data) {

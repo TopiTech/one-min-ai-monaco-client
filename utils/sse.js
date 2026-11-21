@@ -20,12 +20,16 @@ export async function* readSseBlocks(response, { maxBytes = DEFAULT_MAX_SSE_BYTE
   let carry = '';
   let totalBytes = 0;
   let truncated = false;
+  let reachedEof = false;
 
   try {
     while (true) {
       if (signal?.aborted) break;
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        reachedEof = true;
+        break;
+      }
       totalBytes += value?.byteLength ?? value?.length ?? 0;
       if (totalBytes > maxBytes) {
         logger.warn('SSE stream exceeded max size, aborting', { totalBytes });
@@ -41,11 +45,11 @@ export async function* readSseBlocks(response, { maxBytes = DEFAULT_MAX_SSE_BYTE
     }
     const tail = decoder.decode();
     if (tail) carry += tail;
-    if (carry.trim() && !truncated) {
+    if (carry.trim() && !truncated && !signal?.aborted) {
       yield carry.trim();
     }
   } finally {
-    if (truncated) {
+    if (!reachedEof) {
       try {
         await reader.cancel();
       } catch {

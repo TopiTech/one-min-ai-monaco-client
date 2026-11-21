@@ -33,16 +33,19 @@ function buildAgentPromptInstructions() {
 }
 
 async function fetchWorkspaceFiles(apiFn, workspaceRoot) {
-  const cached = _fileListCache.get(workspaceRoot);
+  const cacheKey = workspaceRoot || '__default__';
+  const cached = _fileListCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < FILE_LIST_CACHE_TTL_MS) {
     return cached.text;
   }
-  const listRes = await apiFn(`/api/fs/list?dir=${encodeURIComponent(workspaceRoot)}`);
-  const filesList = listRes.items
+  const query = workspaceRoot ? `?dir=${encodeURIComponent(workspaceRoot)}` : '';
+  const listRes = await apiFn(`/api/fs/list${query}`);
+  const resolvedRoot = listRes.dir || workspaceRoot || '.';
+  const filesList = (listRes.items || [])
     .map((item) => `- ${item.isDirectory ? '[Dir] ' : '[File] '}${item.name}`)
     .join('\n');
-  const text = `Workspace path: ${workspaceRoot}\n` + filesList;
-  _fileListCache.set(workspaceRoot, { text, timestamp: Date.now() });
+  const text = `Workspace path: ${resolvedRoot}\n` + filesList;
+  _fileListCache.set(cacheKey, { text, timestamp: Date.now() });
   // Evict oldest entry when cache exceeds limit
   if (_fileListCache.size > FILE_LIST_CACHE_MAX) {
     const oldestKey = _fileListCache.keys().next().value;
@@ -55,10 +58,33 @@ function resolvePathRelativeToWorkspace(workspaceRoot, filePath) {
   if (/^[A-Za-z]:[\\/]/.test(filePath) || filePath.startsWith('/') || filePath.startsWith('\\')) {
     return filePath;
   }
+  if (!workspaceRoot) return filePath;
   const separator = workspaceRoot.includes('\\') ? '\\' : '/';
   const rootTrimmed = workspaceRoot.replace(/[\\/]+$/, '');
   const fileTrimmed = filePath.replace(/^[\\/]+/, '');
   return `${rootTrimmed}${separator}${fileTrimmed}`;
+}
+
+function abortableDelay(ms, signal) {
+  if (!signal) return new Promise((resolve) => setTimeout(resolve, ms));
+  if (signal.aborted) {
+    const err = new Error('Aborted');
+    err.name = 'AbortError';
+    return Promise.reject(err);
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      const err = new Error('Aborted');
+      err.name = 'AbortError';
+      reject(err);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 const _tokenCache = new Map();
@@ -195,8 +221,9 @@ async function trimAgentHistory(apiFn, history, t, creditSaving, maxTokens) {
     }
   }
 }
-async function processCommandStream(res, stepId, t) {
+async function processCommandStream(res, stepId, t, signal) {
   let finalResult = null;
+  let streamError = null;
   const resultBox = document.getElementById(`result-${stepId}`);
   if (resultBox) {
     const toggle = resultBox.previousElementSibling;
@@ -209,19 +236,24 @@ async function processCommandStream(res, stepId, t) {
     resultBox.textContent = '';
   }
 
-  const reader = res.body.getReader();
+  const reader = res?.body?.getReader?.();
+  if (!reader) {
+    return null;
+  }
   const decoder = new TextDecoder('utf-8');
   let carry = '';
+  let reachedEof = false;
 
   const processBlock = (block) => {
     let eventName = 'message';
     let data = '';
-    for (const line of block.split('\n')) {
+    for (const line of block.split(/\r?\n/)) {
       const trimmedLine = line.trim();
-      if (trimmedLine.startsWith('event: ')) {
-        eventName = trimmedLine.slice(7).trim();
-      } else if (trimmedLine.startsWith('data: ')) {
-        data += trimmedLine.slice(6);
+      if (trimmedLine.startsWith('event:')) {
+        eventName = trimmedLine.slice(6).trim() || 'message';
+      } else if (trimmedLine.startsWith('data:')) {
+        const val = trimmedLine.slice(5);
+        data += val.startsWith(' ') ? val.slice(1) : val;
       }
     }
 
@@ -230,9 +262,11 @@ async function processCommandStream(res, stepId, t) {
         const parsed = JSON.parse(data);
         if (eventName === 'done') {
           finalResult = parsed;
+        } else if (eventName === 'error') {
+          streamError = parsed.error || parsed.message || 'Command execution failed';
         } else if (eventName === 'stdout' || eventName === 'stderr') {
           if (resultBox) {
-            resultBox.textContent += parsed.text;
+            resultBox.textContent += parsed.text || '';
             resultBox.scrollTop = resultBox.scrollHeight;
           }
         }
@@ -242,24 +276,45 @@ async function processCommandStream(res, stepId, t) {
     }
   };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      const remaining = carry.trim();
-      if (remaining) {
-        processBlock(remaining);
+  try {
+    while (true) {
+      if (signal?.aborted) break;
+      const { done, value } = await reader.read();
+      if (done) {
+        reachedEof = true;
+        const remaining = carry.trim();
+        if (remaining) {
+          processBlock(remaining);
+        }
+        break;
       }
-      break;
-    }
-    const chunk = decoder.decode(value, { stream: true });
-    const rawBlocks = (carry + chunk).split(/\r?\n\r?\n/);
-    carry = rawBlocks.pop() || '';
+      const chunk = decoder.decode(value, { stream: true });
+      const rawBlocks = (carry + chunk).split(/\r?\n\r?\n/);
+      carry = rawBlocks.pop() || '';
 
-    for (const block of rawBlocks) {
-      if (block.trim()) {
-        processBlock(block);
+      for (const block of rawBlocks) {
+        if (block.trim()) {
+          processBlock(block);
+        }
       }
     }
+  } finally {
+    if (!reachedEof) {
+      try {
+        await reader.cancel();
+      } catch {
+        // ignore
+      }
+    }
+    try {
+      reader.releaseLock();
+    } catch {
+      // ignore
+    }
+  }
+
+  if (streamError) {
+    throw new Error(streamError);
   }
   return finalResult;
 }
@@ -567,11 +622,13 @@ export function createAgentRuntime({
         };
       }
 
+      const signal = state.agent.abortController?.signal;
       setAgentStatus(t('agent_status_awaiting') || '承認待ち...', 'awaiting_approval');
       const runResRaw = await api(`/api/agent/sessions/${sessionId}/commands?stream=true`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command, cwd: workspaceRoot }),
+        signal,
         raw: true,
       });
 
@@ -586,7 +643,11 @@ export function createAgentRuntime({
           '自動承認により実行を開始します...',
           '',
         );
-        runRes = await processCommandStream(runResRaw, stepId, t);
+        runRes = await processCommandStream(runResRaw, stepId, t, signal);
+      }
+
+      if (!runRes) {
+        return { text: 'コマンドの実行結果を取得できませんでした。', success: false };
       }
 
       if (!runRes.requiresApproval) {
@@ -605,10 +666,12 @@ export function createAgentRuntime({
           async () => {
             setAgentStatus(t('agent_status_executing') || '実行中...', 'executing');
             try {
+              const approveSignal = state.agent.abortController?.signal;
               const resRaw = await api(`/api/agent/sessions/${sessionId}/approve?stream=true`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ approvalToken: runRes.approvalToken }),
+                signal: approveSignal,
                 raw: true,
               });
               let res;
@@ -622,7 +685,7 @@ export function createAgentRuntime({
                   '実行を開始します...',
                   '',
                 );
-                res = await processCommandStream(resRaw, stepId, t);
+                res = await processCommandStream(resRaw, stepId, t, approveSignal);
               }
               resolve({ approved: true, result: res });
             } catch (e) {
@@ -640,6 +703,9 @@ export function createAgentRuntime({
       if (approvalResult.error) return { text: `エラー: ${approvalResult.error.message}`, success: false };
 
       const { result } = approvalResult;
+      if (!result) {
+        return { text: '承認されたコマンドの実行結果を取得できませんでした。', success: false };
+      }
       return {
         text: `Exit Code: ${result.exitCode}\n\nSTDOUT:\n${result.stdout}\n\nSTDERR:\n${result.stderr}`,
         success: result.exitCode === 0,
@@ -647,286 +713,337 @@ export function createAgentRuntime({
     },
   };
 
+  let _activeRunId = 0;
+
   async function runAgentLoop(initialInstruction) {
-    const workspaceRoot = dom.explorerPath.value || '';
-    setAgentStatus(t('agent_status_initializing', '初期化中...'), 'thinking');
-    addAgentTimelineStep('user', '指示', initialInstruction);
-
-    if (!state.agent.sessionId) {
-      try {
-        const sessionData = await api('/api/agent/sessions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            cwd: workspaceRoot,
-            task: initialInstruction,
-          }),
-        });
-        state.agent.sessionId = sessionData.session.id;
-        addAgentTimelineStep(
-          'thought',
-          'セッション開始',
-          `エージェントセッションが開始されました。\nワークスペース: ${workspaceRoot}`,
-        );
-      } catch (e) {
-        addAgentTimelineStep('error', 'セッション作成失敗', `セッションの初期化に失敗しました: ${e.message}`);
-        setAgentStatus(t('status_error', 'エラー'), 'error');
-        return;
-      }
-    } else {
-      addAgentTimelineStep('thought', 'セッション再開', '既存のセッションで追加指示を実行します。');
+    const runId = ++_activeRunId;
+    if (state.agent.abortController) {
+      state.agent.abortController.abort();
     }
+    const loopAbortController = new AbortController();
+    state.agent.abortController = loopAbortController;
+    const loopSignal = loopAbortController.signal;
 
-    const sessionId = state.agent.sessionId;
-    const modelSelected = dom.codeModel?.value || 'qwen3-coder-plus';
-    if (state.agent.history.length === 0) {
-      // System prompt is now injected fresh on each loop iteration,
-      // so we only store the user instruction in history.
-      state.agent.history = [{ role: 'user', content: initialInstruction }];
-    } else {
-      state.agent.history.push({
-        role: 'user',
-        content: `【ユーザーからの追加指示】\n${initialInstruction}`,
-      });
-      await trimHistory(state.agent.history);
-    }
-
-    let loopCount = 0;
-    let maxLoops = 20;
-    let consecutiveParseErrors = 0;
-    let maxParseFailures = 3;
     try {
-      const agentConfig = await api('/api/agent/config');
-      if (agentConfig.maxLoops) maxLoops = agentConfig.maxLoops;
-      if (agentConfig.maxParseFailures) maxParseFailures = agentConfig.maxParseFailures;
-      if (agentConfig.maxContextTokens) agentMaxContextTokens = agentConfig.maxContextTokens;
-      if (agentConfig.maxContextTokensCreditSaving) {
-        agentMaxContextTokensCreditSaving = agentConfig.maxContextTokensCreditSaving;
-      }
-    } catch {
-      // Use default
-    }
+      const workspaceRoot = dom.explorerPath.value || '';
+      setAgentStatus(t('agent_status_initializing', '初期化中...'), 'thinking');
+      addAgentTimelineStep('user', '指示', initialInstruction);
 
-    // Retrieve workspace project metadata once per loop session
-    let projectInfoText = '';
-    try {
-      const projRes = await api(`/api/agent/sessions/${sessionId}/project-info`);
-      if (projRes?.project?.hasPackageJson) {
-        const p = projRes.project;
-        projectInfoText = `Project: ${p.projectName || 'unnamed'} (${p.projectType}) | Test Command: ${p.testCommand || 'none'} | Configs: ${p.configFiles?.join(', ') || 'none'}`;
-      }
-    } catch {
-      // project info is optional enhancement
-    }
-
-    while (state.agent.active && loopCount < maxLoops) {
-      loopCount++;
-      setAgentStatus(t('agent_status_thinking', '思考中...'), 'thinking');
-
-      // Re-inject a fresh system prompt on every iteration so the model
-      // always sees the current workspace state and active file, even
-      // after the conversation history has been trimmed.
-      let workspaceFilesText;
-      try {
-        workspaceFilesText = await fetchWorkspaceFiles(api, workspaceRoot);
-      } catch {
-        workspaceFilesText = `Workspace path: ${workspaceRoot}\n(Failed to fetch file list)`;
-      }
-      const freshSysPrompt = buildSystemPrompt({
-        workspaceRoot,
-        workspaceFilesText,
-        activeFilePath: state.editor.activeFilePath,
-        projectInfoText,
-      });
-
-      // Prepend fresh system prompt before the conversation history
-      const messagesForApi = [
-        { role: 'system', content: buildAgentPromptInstructions() },
-        { role: 'system', content: freshSysPrompt },
-        ...state.agent.history,
-      ];
-
-      let chatRes;
-      let networkRetryCount = 0;
-      const maxNetworkRetries = 3;
-      while (networkRetryCount < maxNetworkRetries) {
+      if (!state.agent.sessionId) {
         try {
-          chatRes = await api('/api/agent/chat', {
+          const sessionData = await api('/api/agent/sessions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: loopSignal,
             body: JSON.stringify({
-              provider: getActiveProvider(),
-              messages: messagesForApi,
-              model: modelSelected,
-              webSearch: false,
+              cwd: workspaceRoot,
+              task: initialInstruction,
             }),
-            timeout: 600000,
           });
-          break;
+          if (!state.agent.active || loopSignal.aborted) return;
+          state.agent.sessionId = sessionData.session.id;
+          addAgentTimelineStep(
+            'thought',
+            'セッション開始',
+            `エージェントセッションが開始されました。\nワークスペース: ${workspaceRoot}`,
+          );
         } catch (e) {
-          networkRetryCount++;
-          if (networkRetryCount < maxNetworkRetries) {
-            addAgentTimelineStep(
-              'warn',
-              `AI通信リトライ (${networkRetryCount}/${maxNetworkRetries})`,
-              `AIとの通信に失敗しました (${e.message})。3秒後に自動再試行します...`,
-            );
-            await new Promise((resolve) => setTimeout(resolve, 3000));
-          } else {
-            addAgentTimelineStep('error', 'AI通信失敗', `AIとの通信に失敗しました: ${e.message}`);
-            setAgentStatus(t('status_error', 'エラー'), 'error');
-            break;
-          }
-        }
-      }
-
-      if (!chatRes) break;
-
-      const aiText = chatRes.text || '';
-      if (!aiText) {
-        addAgentTimelineStep('error', t('status_error'), 'AIからの応答が空でした。');
-        setAgentStatus(t('status_error'), 'error');
-        break;
-      }
-
-      const parsed = parseXMLTags(aiText);
-
-      if (parsed.thought) {
-        addAgentTimelineStep('thought', '思考プロセス', parsed.thought);
-      }
-
-      if (parsed.finish) {
-        addAgentTimelineStep(
-          'result',
-          'タスク完了',
-          `エージェントがタスクの完了を報告しました。\n\n要約:\n${parsed.finish}`,
-        );
-        setAgentStatus(t('status_done'), 'completed');
-        break;
-      }
-
-      if (parsed.toolCall) {
-        consecutiveParseErrors = 0;
-        const toolName = parsed.toolCall.name;
-        const params = parsed.toolCall.params;
-
-        const paramListStr = Object.entries(params)
-          .map(([k, v]) => `• ${k}: ${v}`)
-          .join('\n');
-        addAgentTimelineStep('action', `ツール呼び出し: ${toolName}`, paramListStr);
-        setAgentStatus(t('agent_status_executing') || '実行中...', 'executing');
-
-        let toolResultText;
-        let toolSuccess;
-
-        try {
-          const handler = agentToolHandlers[toolName];
-          if (!handler) throw new Error(`未知のツール: ${toolName}`);
-
-          const result = await handler({
-            sessionId,
-            workspaceRoot,
-            params,
-          });
-
-          if (result.abort) break;
-
-          if (result.retryable) {
-            state.agent.history.push({ role: 'assistant', content: aiText });
-            state.agent.history.push({
-              role: 'user',
-              content: `<tool_response>\n${result.text}\n</tool_response>`,
-            });
-            await trimHistory(state.agent.history);
-            loopCount = Math.max(0, loopCount - 1);
-            await new Promise((resolve) => setTimeout(resolve, 1500));
-            continue;
-          }
-
-          toolResultText = result.text;
-          toolSuccess = result.success;
-        } catch (err) {
-          toolResultText = `エラー: ${err.message}`;
-          toolSuccess = false;
-        }
-
-        addAgentTimelineStep(
-          toolSuccess ? 'result' : 'error',
-          `ツール結果: ${toolName}`,
-          toolSuccess ? 'ツールの実行が完了しました。' : 'エラーまたはキャンセルが発生しました。',
-          toolResultText,
-        );
-
-        const feedbackMsg = `<tool_response>\n${toolResultText}\n</tool_response>`;
-
-        state.agent.history.push({ role: 'assistant', content: stripSearchArtifacts(aiText) });
-        state.agent.history.push({ role: 'user', content: feedbackMsg });
-        await trimHistory(state.agent.history);
-      } else {
-        consecutiveParseErrors++;
-        console.warn(
-          `[Code Generator Agent] Format parse failed on AI response (attempt ${consecutiveParseErrors}/${maxParseFailures}). Raw response:\n`,
-          aiText,
-        );
-        const cleanedAiText = stripSearchArtifacts(aiText);
-        const repairPrompt = buildXmlRepairPrompt({
-          aiText: cleanedAiText,
-          errorReason:
-            'Output did not match XML tags (<thought>/<thinking>, <call_tool>, <finish>) or valid JSON tool call format.',
-        });
-        const shouldRetryRepair = consecutiveParseErrors <= Math.floor(maxParseFailures / 2);
-        if (consecutiveParseErrors >= maxParseFailures) {
+          if (e?.name === 'AbortError') return;
           addAgentTimelineStep(
             'error',
-            'パースエラー',
-            `AIがフォーマットに従わない状態が ${maxParseFailures} 回連続したため、安全のためにエージェントを強制停止します。`,
-            cleanedAiText,
+            'セッション作成失敗',
+            `セッションの初期化に失敗しました: ${e.message}`,
           );
+          setAgentStatus(t('status_error', 'エラー'), 'error');
+          return;
+        }
+      } else {
+        addAgentTimelineStep('thought', 'セッション再開', '既存のセッションで追加指示を実行します。');
+      }
+
+      const sessionId = state.agent.sessionId;
+      const modelSelected = dom.codeModel?.value || 'qwen3-coder-plus';
+      if (state.agent.history.length === 0) {
+        // System prompt is now injected fresh on each loop iteration,
+        // so we only store the user instruction in history.
+        state.agent.history = [{ role: 'user', content: initialInstruction }];
+      } else {
+        state.agent.history.push({
+          role: 'user',
+          content: `【ユーザーからの追加指示】\n${initialInstruction}`,
+        });
+        await trimHistory(state.agent.history);
+      }
+
+      let loopCount = 0;
+      let maxLoops = 20;
+      let consecutiveParseErrors = 0;
+      let maxParseFailures = 3;
+      try {
+        const agentConfig = await api('/api/agent/config', { signal: loopSignal });
+        if (agentConfig.maxLoops) maxLoops = agentConfig.maxLoops;
+        if (agentConfig.maxParseFailures) maxParseFailures = agentConfig.maxParseFailures;
+        if (agentConfig.maxContextTokens) agentMaxContextTokens = agentConfig.maxContextTokens;
+        if (agentConfig.maxContextTokensCreditSaving) {
+          agentMaxContextTokensCreditSaving = agentConfig.maxContextTokensCreditSaving;
+        }
+      } catch {
+        // Use default
+      }
+
+      // Retrieve workspace project metadata once per loop session
+      let projectInfoText = '';
+      try {
+        const projRes = await api(`/api/agent/sessions/${sessionId}/project-info`, { signal: loopSignal });
+        if (projRes?.project?.hasPackageJson) {
+          const p = projRes.project;
+          projectInfoText = `Project: ${p.projectName || 'unnamed'} (${p.projectType}) | Test Command: ${p.testCommand || 'none'} | Configs: ${p.configFiles?.join(', ') || 'none'}`;
+        }
+      } catch {
+        // project info is optional enhancement
+      }
+
+      while (state.agent.active && !loopSignal.aborted && loopCount < maxLoops) {
+        loopCount++;
+        setAgentStatus(t('agent_status_thinking', '思考中...'), 'thinking');
+
+        // Re-inject a fresh system prompt on every iteration so the model
+        // always sees the current workspace state and active file, even
+        // after the conversation history has been trimmed.
+        let workspaceFilesText;
+        try {
+          workspaceFilesText = await fetchWorkspaceFiles(api, workspaceRoot);
+        } catch {
+          workspaceFilesText = `Workspace path: ${workspaceRoot}\n(Failed to fetch file list)`;
+        }
+        if (!state.agent.active || loopSignal.aborted) break;
+
+        const freshSysPrompt = buildSystemPrompt({
+          workspaceRoot,
+          workspaceFilesText,
+          activeFilePath: state.editor?.activeFilePath,
+          projectInfoText,
+        });
+
+        // Prepend fresh system prompt before the conversation history
+        const messagesForApi = [
+          { role: 'system', content: buildAgentPromptInstructions() },
+          { role: 'system', content: freshSysPrompt },
+          ...state.agent.history,
+        ];
+
+        let chatRes;
+        let networkRetryCount = 0;
+        const maxNetworkRetries = 3;
+        while (networkRetryCount < maxNetworkRetries) {
+          try {
+            chatRes = await api('/api/agent/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal: loopSignal,
+              body: JSON.stringify({
+                provider: getActiveProvider(),
+                messages: messagesForApi,
+                model: modelSelected,
+                webSearch: false,
+              }),
+              timeout: 600000,
+            });
+            break;
+          } catch (e) {
+            if (e?.name === 'AbortError' || loopSignal.aborted || !state.agent.active) {
+              chatRes = null;
+              break;
+            }
+            networkRetryCount++;
+            if (networkRetryCount < maxNetworkRetries) {
+              addAgentTimelineStep(
+                'warn',
+                `AI通信リトライ (${networkRetryCount}/${maxNetworkRetries})`,
+                `AIとの通信に失敗しました (${e.message})。3秒後に自動再試行します...`,
+              );
+              try {
+                await abortableDelay(3000, loopSignal);
+              } catch {
+                chatRes = null;
+                break;
+              }
+            } else {
+              addAgentTimelineStep('error', 'AI通信失敗', `AIとの通信に失敗しました: ${e.message}`);
+              setAgentStatus(t('status_error', 'エラー'), 'error');
+              break;
+            }
+          }
+        }
+
+        if (!chatRes || !state.agent.active || loopSignal.aborted) break;
+
+        const aiText = chatRes.text || '';
+        if (!aiText) {
+          addAgentTimelineStep('error', t('status_error'), 'AIからの応答が空でした。');
           setAgentStatus(t('status_error'), 'error');
           break;
         }
 
-        const errMsg =
-          'Error: Failed to parse response. Please output valid XML (<thought> or <thinking>, <call_tool>, or <finish>) or a valid JSON object {"thought": "...", "tool": "...", "params": {...}}. Do not perform web searches or crawl URLs.';
-        addAgentTimelineStep(
-          'error',
-          'パース失敗',
-          'AIの出力フォーマットを解析できませんでした。自動修正指示を送信します。',
-          cleanedAiText,
-        );
+        const parsed = parseXMLTags(aiText);
 
-        state.agent.history.push({ role: 'assistant', content: cleanedAiText });
-        state.agent.history.push({ role: 'user', content: shouldRetryRepair ? repairPrompt : errMsg });
-        await trimHistory(state.agent.history);
+        if (parsed.thought) {
+          addAgentTimelineStep('thought', '思考プロセス', parsed.thought);
+        }
 
-        if (shouldRetryRepair) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          loopCount = Math.max(0, loopCount - 1);
-          continue;
+        if (parsed.finish) {
+          addAgentTimelineStep(
+            'result',
+            'タスク完了',
+            `エージェントがタスクの完了を報告しました。\n\n要約:\n${parsed.finish}`,
+          );
+          setAgentStatus(t('status_done'), 'completed');
+          break;
+        }
+
+        if (parsed.toolCall) {
+          consecutiveParseErrors = 0;
+          const toolName = parsed.toolCall.name;
+          const params = parsed.toolCall.params;
+
+          const paramListStr = Object.entries(params)
+            .map(([k, v]) => `• ${k}: ${v}`)
+            .join('\n');
+          addAgentTimelineStep('action', `ツール呼び出し: ${toolName}`, paramListStr);
+          setAgentStatus(t('agent_status_executing') || '実行中...', 'executing');
+
+          let toolResultText;
+          let toolSuccess;
+
+          try {
+            const handler = agentToolHandlers[toolName];
+            if (!handler) throw new Error(`未知のツール: ${toolName}`);
+
+            const result = await handler({
+              sessionId,
+              workspaceRoot,
+              params,
+            });
+
+            if (result.abort) break;
+
+            if (result.retryable) {
+              state.agent.history.push({ role: 'assistant', content: aiText });
+              state.agent.history.push({
+                role: 'user',
+                content: `<tool_response>\n${result.text}\n</tool_response>`,
+              });
+              await trimHistory(state.agent.history);
+              loopCount = Math.max(0, loopCount - 1);
+              try {
+                await abortableDelay(1500, loopSignal);
+              } catch {
+                break;
+              }
+              continue;
+            }
+
+            toolResultText = result.text;
+            toolSuccess = result.success;
+          } catch (err) {
+            toolResultText = `エラー: ${err.message}`;
+            toolSuccess = false;
+          }
+
+          addAgentTimelineStep(
+            toolSuccess ? 'result' : 'error',
+            `ツール結果: ${toolName}`,
+            toolSuccess ? 'ツールの実行が完了しました。' : 'エラーまたはキャンセルが発生しました。',
+            toolResultText,
+          );
+
+          const feedbackMsg = `<tool_response>\n${toolResultText}\n</tool_response>`;
+
+          state.agent.history.push({ role: 'assistant', content: stripSearchArtifacts(aiText) });
+          state.agent.history.push({ role: 'user', content: feedbackMsg });
+          await trimHistory(state.agent.history);
+        } else {
+          consecutiveParseErrors++;
+          console.warn(
+            `[Code Generator Agent] Format parse failed on AI response (attempt ${consecutiveParseErrors}/${maxParseFailures}). Raw response:\n`,
+            aiText,
+          );
+          const cleanedAiText = stripSearchArtifacts(aiText);
+          const repairPrompt = buildXmlRepairPrompt({
+            aiText: cleanedAiText,
+            errorReason:
+              'Output did not match XML tags (<thought>/<thinking>, <call_tool>, <finish>) or valid JSON tool call format.',
+          });
+          const shouldRetryRepair = consecutiveParseErrors <= Math.floor(maxParseFailures / 2);
+          if (consecutiveParseErrors >= maxParseFailures) {
+            addAgentTimelineStep(
+              'error',
+              'パースエラー',
+              `AIがフォーマットに従わない状態が ${maxParseFailures} 回連続したため、安全のためにエージェントを強制停止します。`,
+              cleanedAiText,
+            );
+            setAgentStatus(t('status_error'), 'error');
+            break;
+          }
+
+          const errMsg =
+            'Error: Failed to parse response. Please output valid XML (<thought> or <thinking>, <call_tool>, or <finish>) or a valid JSON object {"thought": "...", "tool": "...", "params": {...}}. Do not perform web searches or crawl URLs.';
+          addAgentTimelineStep(
+            'error',
+            'パース失敗',
+            'AIの出力フォーマットを解析できませんでした。自動修正指示を送信します。',
+            cleanedAiText,
+          );
+
+          state.agent.history.push({ role: 'assistant', content: cleanedAiText });
+          state.agent.history.push({ role: 'user', content: shouldRetryRepair ? repairPrompt : errMsg });
+          await trimHistory(state.agent.history);
+
+          if (shouldRetryRepair) {
+            try {
+              await abortableDelay(500, loopSignal);
+            } catch {
+              break;
+            }
+            loopCount = Math.max(0, loopCount - 1);
+            continue;
+          }
+        }
+
+        try {
+          await abortableDelay(800, loopSignal);
+        } catch {
+          break;
         }
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 800));
-    }
-
-    if (loopCount >= maxLoops && state.agent.active) {
-      addAgentTimelineStep(
-        'error',
-        t('agent_status_limit_reached') || '制限到達',
-        t('agent_status_limit_desc', { max: maxLoops }) ||
-          `実行ステップ数が上限 (${maxLoops}) に達したため、安全のために停止しました。`,
-      );
-      setAgentStatus(t('status_error'), 'error');
-    }
-
-    state.agent.active = false;
-    dom.startAgentBtn.classList.remove('is-hidden');
-    dom.sendAgentFeedbackBtn.classList.remove('is-shown');
-    dom.stopAgentBtn.classList.remove('is-shown');
-    dom.resetAgentBtn.classList.remove('is-hidden');
-    dom.agentInstruction.placeholder = t('agent_instruction_placeholder');
-    if (!dom.agentStatus.classList.contains('completed') && !dom.agentStatus.classList.contains('error')) {
-      setAgentStatus(t('agent_status_idle'), 'idle');
+      if (loopCount >= maxLoops && state.agent.active) {
+        addAgentTimelineStep(
+          'error',
+          t('agent_status_limit_reached') || '制限到達',
+          t('agent_status_limit_desc', { max: maxLoops }) ||
+            `実行ステップ数が上限 (${maxLoops}) に達したため、安全のために停止しました。`,
+        );
+        setAgentStatus(t('status_error'), 'error');
+      }
+    } finally {
+      if (runId === _activeRunId) {
+        if (state.agent.abortController === loopAbortController) {
+          state.agent.abortController = null;
+        }
+        state.agent.active = false;
+        dom.startAgentBtn.classList.remove('is-hidden');
+        dom.sendAgentFeedbackBtn.classList.remove('is-shown');
+        dom.stopAgentBtn.classList.remove('is-shown');
+        dom.resetAgentBtn.classList.remove('is-hidden');
+        dom.agentInstruction.placeholder = t('agent_instruction_placeholder');
+        if (
+          !dom.agentStatus.classList.contains('completed') &&
+          !dom.agentStatus.classList.contains('error')
+        ) {
+          setAgentStatus(t('agent_status_idle'), 'idle');
+        }
+      }
     }
   }
 

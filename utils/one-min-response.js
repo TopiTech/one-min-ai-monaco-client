@@ -92,8 +92,12 @@ function normalizeTextValue(value, seen = new WeakSet(), { stringifyObjects = fa
     if (isEmptyPlainObject(value)) return undefined;
     if (seen.has(value)) return undefined;
     seen.add(value);
-    const nested = findTextCandidate(value, seen);
-    if (nested) return nested;
+    try {
+      const nested = findTextCandidate(value, seen);
+      if (nested) return nested;
+    } finally {
+      seen.delete(value);
+    }
     if (!stringifyObjects) return undefined;
     try {
       return JSON.stringify(value, null, 2);
@@ -126,5 +130,9 @@ export function findTextCandidate(data, seen = new WeakSet()) {
 export function extractTextFromOneMinResponse(data) {
   const candidate = findTextCandidate(data);
   if (candidate !== undefined) return candidate;
-  return JSON.stringify(data, null, 2);
+  try {
+    return JSON.stringify(data, null, 2);
+  } catch {
+    return '';
+  }
 }

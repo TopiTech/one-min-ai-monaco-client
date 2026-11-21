@@ -218,4 +218,57 @@ describe('1forall.ai provider adapter and SSE/Asset handling', () => {
     expect(opts.body.get('format')).toBe('jpeg');
     expect(opts.body.get('file')).toBeTruthy();
   });
+
+  test('consumeOpenAiSseStream cancels upstream reader when exiting early on [DONE]', async () => {
+    const cancelSpy = jest.fn(async () => {});
+    const encoder = new TextEncoder();
+    const res = {
+      body: {
+        getReader: () => {
+          let sent = false;
+          return {
+            read: async () => {
+              if (!sent) {
+                sent = true;
+                return {
+                  done: false,
+                  value: encoder.encode('data: {"choices":[{"delta":{"content":"Hi"}}]}\n\ndata: [DONE]\n\n'),
+                };
+              }
+              return { done: true, value: undefined };
+            },
+            cancel: cancelSpy,
+            releaseLock: () => {},
+          };
+        },
+      },
+    };
+
+    const chunks = [];
+    await consumeOpenAiSseStream(res, { onContent: (c) => chunks.push(c) });
+    expect(chunks.join('')).toBe('Hi');
+    expect(cancelSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('openChatStream classifies charset=utf-8 OpenAI SSE responses as openai-sse even with empty response.url', async () => {
+    const encoder = new TextEncoder();
+    globalThis.fetch = jest.fn(async () => {
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"OK"}}]}\n\n'));
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            controller.close();
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'text/event-stream; charset=utf-8' } },
+      );
+    });
+
+    const { format } = await oneForAllProvider.openChatStream({
+      prompt: 'Hi',
+      model: 'gpt-4o-mini',
+    });
+    expect(format).toBe('openai-sse');
+  });
 });

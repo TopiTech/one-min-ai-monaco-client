@@ -130,6 +130,37 @@ describe('Review Fixes', () => {
         expect(file.name).toBe('テスト.txt');
       }
     });
+
+    test('preserves RFC 5987 UTF-8 filename* uploads without mojibake', async () => {
+      callOneMin.mockResolvedValue({
+        asset: { key: 'uploads/日本語画像.png' },
+      });
+
+      const pngHeader = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      const boundary = '----TestBoundary123';
+      const body = Buffer.concat([
+        Buffer.from(
+          `--${boundary}\r\n` +
+            `Content-Disposition: form-data; name="asset"; filename="fallback.png"; filename*=UTF-8''%E6%97%A5%E6%9C%AC%E8%AA%9E%E7%94%BB%E5%83%8F.png\r\n` +
+            `Content-Type: image/png\r\n\r\n`,
+          'utf8',
+        ),
+        pngHeader,
+        Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8'),
+      ]);
+
+      const response = await request(app)
+        .post('/api/assets/upload')
+        .set('Content-Type', `multipart/form-data; boundary=${boundary}`)
+        .send(body);
+
+      expect(response.status).toBe(200);
+      const sentFormData = callOneMin.mock.calls[0][1].body;
+      if (sentFormData && typeof sentFormData.get === 'function') {
+        const file = sentFormData.get('asset');
+        expect(file.name).toBe('日本語画像.png');
+      }
+    });
   });
 
   describe('CSP connect-src stays BFF-scoped', () => {
