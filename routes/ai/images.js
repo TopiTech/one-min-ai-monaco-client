@@ -5,7 +5,12 @@ import { isPendingStatusResponse } from '../../utils/http-client.js';
 import { HttpError } from '../../utils/errors.js';
 import { extractAssetKey, unwrapAssetProxyUrl } from '../../utils/asset-utils.js';
 import { assertCapability, getProvider, resolveProviderId } from '../../providers/index.js';
-import { getDefaultModel, optionalNumberInput, outputCompressionSchema } from './utils.js';
+import {
+  bindRequestAbortSignal,
+  getDefaultModel,
+  optionalNumberInput,
+  outputCompressionSchema,
+} from './utils.js';
 
 const router = express.Router();
 
@@ -157,6 +162,7 @@ function aspectRatioToSize(aspectRatio) {
 }
 
 router.post('/generate', async (req, res, next) => {
+  const { controller, cleanup } = bindRequestAbortSignal(res);
   try {
     const result = imageGenerateSchema.safeParse(req.body);
     if (!result.success) {
@@ -176,6 +182,7 @@ router.post('/generate', async (req, res, next) => {
         size: data.size,
         output_format: data.output_format,
         async: data.async,
+        signal: controller.signal,
       });
       return res.json(resData);
     }
@@ -212,6 +219,7 @@ router.post('/generate', async (req, res, next) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       idempotent: false,
+      signal: controller.signal,
     });
     if (isFailedResponse(dataRes)) {
       throw new HttpError(
@@ -232,11 +240,15 @@ router.post('/generate', async (req, res, next) => {
     }
     res.json(dataRes);
   } catch (err) {
+    if (controller.signal.aborted && (res.writableEnded || res.destroyed)) return;
     next(err);
+  } finally {
+    cleanup();
   }
 });
 
 router.post('/text-editor', async (req, res, next) => {
+  const { controller, cleanup } = bindRequestAbortSignal(res);
   try {
     const result = imageEditorSchema.safeParse(req.body);
     if (!result.success) {
@@ -253,6 +265,7 @@ router.post('/text-editor', async (req, res, next) => {
         imageUrl: unwrapAssetProxyUrl(data.imageUrl),
         prompt: data.prompt,
         model: data.model,
+        signal: controller.signal,
       });
       return res.json(resData);
     }
@@ -286,6 +299,7 @@ router.post('/text-editor', async (req, res, next) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       idempotent: false,
+      signal: controller.signal,
     });
     if (isFailedResponse(dataRes)) {
       throw new HttpError(
@@ -306,7 +320,10 @@ router.post('/text-editor', async (req, res, next) => {
     }
     res.json(dataRes);
   } catch (err) {
+    if (controller.signal.aborted && (res.writableEnded || res.destroyed)) return;
     next(err);
+  } finally {
+    cleanup();
   }
 });
 

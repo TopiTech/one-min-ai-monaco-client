@@ -1,6 +1,7 @@
 /**
  * Tests for code review improvements across frontend and backend.
  */
+import { jest } from '@jest/globals';
 import request from 'supertest';
 import fs from 'fs/promises';
 import path from 'path';
@@ -1253,6 +1254,351 @@ describe('Code Review Improvements', () => {
         global.fetch = prevFetch;
         global.localStorage = prevStorage;
         global.DOMParser = prevDOMParser;
+      }
+    });
+
+    test('agent-core search_files and find_files forward dir and maxResults query parameters', async () => {
+      const prevStorage = global.localStorage;
+      const { makeEl } = createRichMockDom();
+      global.localStorage = { getItem: () => '1min', setItem: () => {}, removeItem: () => {} };
+
+      const calledUrls = [];
+      try {
+        const { createAgentRuntime } = await import('../public/js/agent-core.js');
+        const dom = {
+          explorerPath: { value: '/workspace' },
+          codeModel: { value: 'qwen3-coder-plus' },
+          startAgentBtn: makeEl('button'),
+          sendAgentFeedbackBtn: makeEl('button'),
+          stopAgentBtn: makeEl('button'),
+          resetAgentBtn: makeEl('button'),
+          agentInstruction: makeEl('textarea'),
+          agentStatus: makeEl('span'),
+        };
+        const state = {
+          agent: { active: true, sessionId: null, history: [], abortController: null },
+          editor: { activeFilePath: null },
+        };
+
+        let step = 0;
+        const runtime = createAgentRuntime({
+          dom,
+          state,
+          api: (url) => {
+            calledUrls.push(url);
+            if (url === '/api/agent/sessions') return Promise.resolve({ session: { id: 'sess-params' } });
+            if (url === '/api/agent/config') return Promise.resolve({ maxLoops: 5 });
+            if (url.endsWith('/project-info')) return Promise.resolve({ project: null });
+            if (url.startsWith('/api/fs/list')) return Promise.resolve({ dir: '/workspace', items: [] });
+            if (url === '/api/agent/chat') return Promise.resolve({ text: 'ok' });
+            if (url.includes('/search?')) {
+              return Promise.resolve({
+                results: [{ file: '/workspace/src/a.js', line: 1, content: 'needle' }],
+              });
+            }
+            if (url.includes('/find-files?')) {
+              return Promise.resolve({ files: [{ relativePath: 'src/a.js' }] });
+            }
+            return Promise.resolve({});
+          },
+          t: (_k, fallback) => fallback || _k,
+          parseXMLTags: () => {
+            step++;
+            if (step === 1) {
+              return {
+                toolCall: {
+                  name: 'search_files',
+                  params: { query: 'needle', dir: 'src', maxResults: 15 },
+                },
+              };
+            }
+            if (step === 2) {
+              return {
+                toolCall: {
+                  name: 'find_files',
+                  params: { pattern: '*.js', dir: 'src', maxResults: 10 },
+                },
+              };
+            }
+            return { finish: 'done' };
+          },
+          setAgentStatus: () => {},
+          addAgentTimelineStep: () => {},
+          addAgentApprovalStep: () => {},
+        });
+
+        await runtime.runAgentLoop('search with dir and maxResults');
+
+        const searchCall = calledUrls.find((u) => u.includes('/search?'));
+        expect(searchCall).toBeDefined();
+        expect(searchCall).toContain(`dir=${encodeURIComponent('/workspace/src')}`);
+        expect(searchCall).toContain('maxResults=15');
+
+        const findCall = calledUrls.find((u) => u.includes('/find-files?'));
+        expect(findCall).toBeDefined();
+        expect(findCall).toContain('maxResults=10');
+      } finally {
+        global.localStorage = prevStorage;
+      }
+    });
+
+    test('editor-tabs handlePathDeleted and handlePathRenamed sync open tabs and active editor model', async () => {
+      const prevDoc = global.document;
+      const prevWin = global.window;
+      const prevFetch = global.fetch;
+      const prevMonaco = global.monaco;
+
+      const { makeEl, documentMock } = createRichMockDom();
+      const models = new Map();
+      let activeModel = null;
+
+      global.document = documentMock;
+      global.window = { dispatchEvent: () => {} };
+      global.monaco = {
+        Uri: {
+          from: ({ scheme, path: p }) => ({ scheme, path: p, toString: () => `${scheme}://${p}` }),
+          file: (p) => ({ scheme: 'file', path: p, toString: () => `file://${p}` }),
+        },
+        editor: {
+          getModel: (uri) => models.get(uri.toString()) || null,
+          createModel: (val, _lang, uri) => {
+            const key = uri.toString();
+            const model = {
+              uriKey: key,
+              _value: val,
+              _ver: 1,
+              setValue: (v) => {
+                model._value = v;
+              },
+              getValue: () => model._value,
+              getAlternativeVersionId: () => model._ver,
+              dispose: () => {
+                models.delete(key);
+              },
+            };
+            models.set(key, model);
+            return model;
+          },
+        },
+      };
+      global.fetch = (url) => {
+        const content = url.includes('keep.js') ? 'keep' : 'file-body';
+        return Promise.resolve(
+          new Response(JSON.stringify({ content, writable: true }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        );
+      };
+
+      try {
+        const { createEditorTabManager } = await import('../public/js/editor-tabs.js');
+        const editorState = {
+          activeFilePath: null,
+          openTabs: [],
+          readOnlyFiles: {},
+          originalVersions: {},
+        };
+        const editorManager = {
+          instance: {
+            updateOptions: () => {},
+            setModel: (m) => {
+              activeModel = m;
+            },
+          },
+          getOrCreateModel: (filePath, content) => {
+            const uri = global.monaco.Uri.file(filePath);
+            return (
+              global.monaco.editor.getModel(uri) ||
+              global.monaco.editor.createModel(content, 'javascript', uri)
+            );
+          },
+          markClean: (p) => {
+            const m = global.monaco.editor.getModel(global.monaco.Uri.file(p));
+            if (m) editorState.originalVersions[p] = m.getAlternativeVersionId();
+          },
+          disposeUnusedModels: () => {},
+          isDirty: (filePath) => {
+            const m = global.monaco.editor.getModel(global.monaco.Uri.file(filePath));
+            if (!m) return false;
+            const originalVersion = editorState.originalVersions[filePath];
+            return originalVersion !== undefined && m.getAlternativeVersionId() !== originalVersion;
+          },
+        };
+        const dom = {
+          editorTabsBar: makeEl('div'),
+          currentFileName: makeEl('span'),
+          saveFileBtn: makeEl('button'),
+        };
+
+        const tabs = createEditorTabManager(editorState, editorManager, dom);
+        await tabs.openFile('/ws/dir/a.js');
+        await tabs.openFile('/ws/dir/b.js');
+        await tabs.openFile('/ws/keep.js');
+
+        // Mark /ws/dir/b.js dirty before parent directory rename
+        const dirtyOldModel = global.monaco.editor.getModel(global.monaco.Uri.file('/ws/dir/b.js'));
+        dirtyOldModel.setValue('edited-body');
+        dirtyOldModel._ver = 2;
+        expect(editorManager.isDirty('/ws/dir/b.js')).toBe(true);
+
+        // Rename parent folder updates both nested tabs, preserves active tab and dirty state
+        await tabs.switchToTab('/ws/dir/a.js');
+        tabs.handlePathRenamed('/ws/dir', '/ws/renamed');
+        expect(editorState.openTabs).toEqual(['/ws/renamed/a.js', '/ws/renamed/b.js', '/ws/keep.js']);
+        expect(editorState.activeFilePath).toBe('/ws/renamed/a.js');
+        expect(activeModel?.uriKey).toBe('file:///ws/renamed/a.js');
+        expect(global.monaco.editor.getModel(global.monaco.Uri.file('/ws/dir/a.js'))).toBeNull();
+        expect(editorManager.isDirty('/ws/renamed/a.js')).toBe(false);
+        expect(editorManager.isDirty('/ws/renamed/b.js')).toBe(true);
+        expect(editorState.originalVersions['/ws/dir/b.js']).toBeUndefined();
+        expect(global.monaco.editor.getModel(global.monaco.Uri.file('/ws/renamed/b.js'))?.getValue()).toBe(
+          'edited-body',
+        );
+
+        // Deleting renamed folder closes all tabs underneath it and switches cleanly to /ws/keep.js
+        tabs.handlePathDeleted('/ws/renamed');
+        await new Promise((r) => setTimeout(r, 20));
+        expect(editorState.openTabs).toEqual(['/ws/keep.js']);
+        expect(editorState.activeFilePath).toBe('/ws/keep.js');
+      } finally {
+        global.document = prevDoc;
+        global.window = prevWin;
+        global.fetch = prevFetch;
+        global.monaco = prevMonaco;
+      }
+    });
+
+    test('model-picker prefers editor-tagged image model when switching providers in Image Editor mode', async () => {
+      const prevDoc = global.document;
+      const prevWin = global.window;
+      const prevFetch = global.fetch;
+      const prevStorage = global.localStorage;
+
+      const { makeEl, documentMock } = createRichMockDom();
+      const imageModel = makeEl('input', 'imageModel');
+      imageModel.value = 'gpt-image-2';
+      makeEl('span', 'imageModelLabel');
+      const editorImageUrl = makeEl('input', 'editorImageUrl');
+      editorImageUrl.value = 'https://example.com/input.png';
+
+      let activeProvider = '1forall';
+      global.document = documentMock;
+      global.window = {
+        dispatchEvent: () => {},
+        addEventListener: () => {},
+      };
+      global.localStorage = { getItem: () => activeProvider, setItem: () => {}, removeItem: () => {} };
+      global.fetch = (url) => {
+        if (url === '/api/models') {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                providers: {
+                  '1forall': {
+                    imageModels: [
+                      {
+                        id: 'black-forest-labs/flux-schnell',
+                        label: 'FLUX Schnell',
+                        provider: '1forall',
+                        tags: ['image', 'fast'],
+                      },
+                      {
+                        id: 'stable-diffusion-image',
+                        label: 'SD Image Editor',
+                        provider: '1forall',
+                        tags: ['image', 'editor'],
+                      },
+                    ],
+                  },
+                },
+              }),
+              { status: 200, headers: { 'content-type': 'application/json' } },
+            ),
+          );
+        }
+        return Promise.resolve(new Response('{}', { status: 200 }));
+      };
+
+      try {
+        const { loadModels } = await import('../public/js/model-picker.js');
+        await loadModels();
+        expect(imageModel.value).toBe('stable-diffusion-image');
+      } finally {
+        global.document = prevDoc;
+        global.window = prevWin;
+        global.fetch = prevFetch;
+        global.localStorage = prevStorage;
+      }
+    });
+
+    test('explorer invokes onRenamePath and onDeletePath callbacks after successful rename and delete', async () => {
+      const prevDoc = global.document;
+      const prevWin = global.window;
+      const prevFetch = global.fetch;
+
+      const { makeEl, documentMock } = createRichMockDom();
+      const fileTree = makeEl('div', 'fileTree');
+      const explorerPath = makeEl('input', 'explorerPath');
+
+      global.document = documentMock;
+      global.window = { innerWidth: 1200, innerHeight: 800, dispatchEvent: () => {} };
+      let currentName = 'old.js';
+      global.fetch = (url) => {
+        if (url.startsWith('/api/fs/list')) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                dir: '/ws',
+                items: [{ name: currentName, isDirectory: false, path: `/ws/${currentName}` }],
+              }),
+              { status: 200, headers: { 'content-type': 'application/json' } },
+            ),
+          );
+        }
+        if (url === '/api/fs/rename') {
+          currentName = 'renamed.js';
+        }
+        return Promise.resolve(
+          new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        );
+      };
+
+      const { toast } = await import('../public/js/toast.js');
+      const promptSpy = jest.spyOn(toast, 'prompt').mockResolvedValueOnce('renamed.js');
+      const confirmSpy = jest.spyOn(toast, 'confirm').mockResolvedValueOnce(true);
+      const successSpy = jest.spyOn(toast, 'success').mockImplementation(() => {});
+      const errorSpy = jest.spyOn(toast, 'error').mockImplementation(() => {});
+
+      try {
+        const { createExplorerManager } = await import('../public/js/explorer.js');
+        const renamed = [];
+        const deleted = [];
+        const explorer = createExplorerManager({ fileTree, explorerPath }, () => {}, {
+          onRenamePath: (oldPath, newPath) => renamed.push({ oldPath, newPath }),
+          onDeletePath: (targetPath) => deleted.push(targetPath),
+        });
+        await explorer.loadWorkspace();
+
+        const firstNode = fileTree.querySelectorAll('.tree-node')[0];
+        await firstNode.onkeydown({ key: 'F2', preventDefault: () => {} });
+        const reloadedNode = fileTree.querySelectorAll('.tree-node')[0];
+        await reloadedNode.onkeydown({ key: 'Delete', preventDefault: () => {} });
+
+        expect(errorSpy).not.toHaveBeenCalled();
+        expect(renamed).toEqual([{ oldPath: '/ws/old.js', newPath: '/ws/renamed.js' }]);
+        expect(deleted).toEqual(['/ws/renamed.js']);
+      } finally {
+        promptSpy.mockRestore();
+        confirmSpy.mockRestore();
+        successSpy.mockRestore();
+        errorSpy.mockRestore();
+        global.document = prevDoc;
+        global.window = prevWin;
+        global.fetch = prevFetch;
       }
     });
   });

@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import {
+  clearRuntimeSecrets,
   deleteApiKey,
   getActiveSecretValues,
   getApiKey,
@@ -10,6 +11,7 @@ import {
   hasApiKey,
   maskApiKey,
   normalizeRawApiKey,
+  registerRuntimeSecret,
   resetKeyStoreCache,
   setApiKey,
   setKeyStoreFilePath,
@@ -34,6 +36,7 @@ describe('services/key-store.js', () => {
   afterEach(() => {
     setKeyStoreFilePath(null);
     resetKeyStoreCache();
+    clearRuntimeSecrets();
     process.env = { ...savedEnv };
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
@@ -117,5 +120,15 @@ describe('services/key-store.js', () => {
     resetKeyStoreCache();
     expect(getApiKey('1min')).toBe('key_1min_concurrent_12345');
     expect(getApiKey('1forall')).toBe('key_1forall_concurrent_67890');
+  });
+
+  test('getActiveSecretValues includes normalized prefix-stripped env keys and runtime secrets', () => {
+    process.env.ONE_MIN_AI_API_KEY = 'Bearer raw_1min_secret_abc123';
+    registerRuntimeSecret('runtime_bff_token_xyz987');
+
+    const secrets = getActiveSecretValues();
+    expect(secrets).toContain('Bearer raw_1min_secret_abc123');
+    expect(secrets).toContain('raw_1min_secret_abc123');
+    expect(secrets).toContain('runtime_bff_token_xyz987');
   });
 });

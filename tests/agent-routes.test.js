@@ -562,5 +562,86 @@ replaced
         await fs.rm(localTmpDir, { recursive: true, force: true });
       }
     });
+
+    test('resolves relative /dir paths against session.cwd, blocks symlink escapes, and maps missing/non-dir to 404/400', async () => {
+      const localTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-dir-cwd-'));
+      const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-dir-outside-'));
+      const prevRoots = process.env.ALLOWED_ROOTS;
+      process.env.ALLOWED_ROOTS = localTmpDir;
+      clearAllowedRootsCache();
+
+      try {
+        const subDir = path.join(localTmpDir, 'nested');
+        await fs.mkdir(subDir, { recursive: true });
+        await fs.writeFile(path.join(subDir, 'inside.js'), 'export const ok = true;\n');
+
+        const localApp = createApp({ requireLocalAuth: false, enableRateLimit: false });
+        const sessionRes = await request(localApp).post('/api/agent/sessions').send({ cwd: localTmpDir });
+        const localSessionId = sessionRes.body.session.id;
+
+        // Relative path resolved against session.cwd (not PROJECT_ROOT)
+        const dirRes = await request(localApp)
+          .get(`/api/agent/sessions/${localSessionId}/dir`)
+          .query({ path: 'nested' });
+        expect(dirRes.status).toBe(200);
+        expect(dirRes.body.items.map((i) => i.name)).toContain('inside.js');
+
+        // Non-existent directory -> 404
+        const missingRes = await request(localApp)
+          .get(`/api/agent/sessions/${localSessionId}/dir`)
+          .query({ path: 'does-not-exist' });
+        expect(missingRes.status).toBe(404);
+
+        // File path instead of directory -> 400
+        const fileAsDirRes = await request(localApp)
+          .get(`/api/agent/sessions/${localSessionId}/dir`)
+          .query({ path: 'nested/inside.js' });
+        expect(fileAsDirRes.status).toBe(400);
+
+        const searchFileAsDir = await request(localApp)
+          .get(`/api/agent/sessions/${localSessionId}/search`)
+          .query({ query: 'ok', dir: 'nested/inside.js' });
+        expect(searchFileAsDir.status).toBe(400);
+
+        const findFileAsDir = await request(localApp)
+          .get(`/api/agent/sessions/${localSessionId}/find-files`)
+          .query({ dir: 'nested/inside.js' });
+        expect(findFileAsDir.status).toBe(400);
+
+        // Symlink escaping allowed roots must be blocked with 403 across /dir, /search, /find-files
+        await fs.writeFile(path.join(outsideDir, 'secret.txt'), 'secret-needle\n');
+        const linkDir = path.join(localTmpDir, 'escape-dir');
+        let symlinkCreated = false;
+        try {
+          await fs.symlink(outsideDir, linkDir, process.platform === 'win32' ? 'junction' : 'dir');
+          symlinkCreated = true;
+        } catch {
+          symlinkCreated = false;
+        }
+
+        if (symlinkCreated) {
+          const escDir = await request(localApp)
+            .get(`/api/agent/sessions/${localSessionId}/dir`)
+            .query({ path: 'escape-dir' });
+          expect(escDir.status).toBe(403);
+
+          const escSearch = await request(localApp)
+            .get(`/api/agent/sessions/${localSessionId}/search`)
+            .query({ query: 'secret-needle', dir: 'escape-dir' });
+          expect(escSearch.status).toBe(403);
+
+          const escFind = await request(localApp)
+            .get(`/api/agent/sessions/${localSessionId}/find-files`)
+            .query({ dir: 'escape-dir' });
+          expect(escFind.status).toBe(403);
+        }
+      } finally {
+        if (prevRoots === undefined) delete process.env.ALLOWED_ROOTS;
+        else process.env.ALLOWED_ROOTS = prevRoots;
+        clearAllowedRootsCache();
+        await fs.rm(localTmpDir, { recursive: true, force: true });
+        await fs.rm(outsideDir, { recursive: true, force: true });
+      }
+    });
   });
 });

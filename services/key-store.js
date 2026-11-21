@@ -27,6 +27,28 @@ const PLACEHOLDER_PATTERNS = [
 let customKeysFilePath = null;
 /** @type {Record<string, string> | null} */
 let memoryKeysCache = null;
+/** @type {Set<string>} */
+const runtimeSecrets = new Set();
+
+/**
+ * Registers an active runtime secret (such as the BFF session token) so it is
+ * included in env/log scrubbing via `getActiveSecretValues()`.
+ * @param {unknown} secret
+ */
+export function registerRuntimeSecret(secret) {
+  if (typeof secret !== 'string') return;
+  const trimmed = secret.trim();
+  if (trimmed.length > 5 && !isPlaceholderKey(trimmed)) {
+    runtimeSecrets.add(trimmed);
+  }
+}
+
+/**
+ * Clears runtime-registered secrets (intended for test isolation).
+ */
+export function clearRuntimeSecrets() {
+  runtimeSecrets.clear();
+}
 
 /**
  * Override the backing file path (used by tests to isolate from workspace data).
@@ -321,11 +343,18 @@ export function getActiveSecretValues() {
     process.env.LOCAL_BFF_AUTH_TOKEN,
     stored['1min'],
     stored['1forall'],
+    ...runtimeSecrets,
   ];
   const unique = new Set();
   for (const val of candidates) {
-    if (val && typeof val === 'string' && val.trim().length > 5 && !isPlaceholderKey(val)) {
-      unique.add(val.trim());
+    if (!val || typeof val !== 'string') continue;
+    const trimmed = val.trim();
+    if (trimmed.length > 5 && !isPlaceholderKey(trimmed)) {
+      unique.add(trimmed);
+    }
+    const normalized = normalizeRawApiKey(trimmed);
+    if (normalized.length > 5 && !isPlaceholderKey(normalized)) {
+      unique.add(normalized);
     }
   }
   return [...unique];

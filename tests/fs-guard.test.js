@@ -242,6 +242,7 @@ describe('fs-guard', () => {
       expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'eslint.config.js'))).toBe(true);
       expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'tsconfig.json'))).toBe(true);
       expect(isWriteProtectedPath(path.join(PROJECT_ROOT, '.prettierrc'))).toBe(true);
+      expect(isWriteProtectedPath(path.join(PROJECT_ROOT, '.prettierignore'))).toBe(true);
       expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'README.md'))).toBe(true);
       expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'README.ja.md'))).toBe(true);
       expect(isWriteProtectedPath(path.join(PROJECT_ROOT, 'README.en.md'))).toBe(true);

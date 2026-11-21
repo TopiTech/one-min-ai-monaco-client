@@ -14,9 +14,7 @@ const router = express.Router();
 
 // Available models endpoint (supports optional ?provider=1min|1forall)
 router.get('/', (req, res) => {
-  const providerId = resolveProviderId(
-    typeof req.query?.provider === 'string' ? req.query.provider : undefined,
-  );
+  const providerId = resolveProviderId(req.query?.provider);
   res.json({
     chatModels: getChatModels(providerId),
     codeModels: getCodeModels(providerId),
@@ -31,8 +29,9 @@ router.get('/', (req, res) => {
 const _modelRefreshInFlight = new Map();
 router.post('/refresh', async (req, res, next) => {
   try {
-    const provider =
-      typeof req.body?.provider === 'string' ? resolveProviderId(req.body.provider) : undefined;
+    const rawProvider = req.body?.provider;
+    const hasExplicitProvider = rawProvider !== undefined && rawProvider !== null && rawProvider !== '';
+    const provider = hasExplicitProvider ? resolveProviderId(rawProvider) : undefined;
     const refreshKey = provider || '__all__';
     let inFlight = _modelRefreshInFlight.get(refreshKey);
     if (!inFlight) {

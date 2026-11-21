@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { callOneMin, isFailedResponse, extractFailureMessage } from '../../utils/api-client.js';
 import { HttpError } from '../../utils/errors.js';
 import { assertCapability, resolveProviderId } from '../../providers/index.js';
-import { getDefaultModel } from './utils.js';
+import { bindRequestAbortSignal, getDefaultModel } from './utils.js';
 
 const router = express.Router();
 
@@ -28,6 +28,7 @@ const conversationCreateSchema = z.object({
 });
 
 router.post('/', async (req, res, next) => {
+  const { controller, cleanup } = bindRequestAbortSignal(res);
   try {
     const result = conversationCreateSchema.safeParse(req.body);
     if (!result.success) {
@@ -47,6 +48,7 @@ router.post('/', async (req, res, next) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       idempotent: false,
+      signal: controller.signal,
     });
     if (isFailedResponse(data)) {
       throw new HttpError(
@@ -58,7 +60,10 @@ router.post('/', async (req, res, next) => {
     }
     res.json(data);
   } catch (err) {
+    if (controller.signal.aborted && (res.writableEnded || res.destroyed)) return;
     next(err);
+  } finally {
+    cleanup();
   }
 });
 

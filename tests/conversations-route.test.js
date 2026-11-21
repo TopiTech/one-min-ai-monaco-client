@@ -68,6 +68,7 @@ describe('POST /api/conversations provider boundary', () => {
     const [pathname, options] = callOneMin.mock.calls[0];
     expect(pathname).toBe('/api/conversations');
     expect(options.idempotent).toBe(false);
+    expect(options.signal).toBeInstanceOf(AbortSignal);
     const sent = JSON.parse(options.body);
     expect(sent).toEqual({
       type: 'UNIFY_CHAT_WITH_AI',

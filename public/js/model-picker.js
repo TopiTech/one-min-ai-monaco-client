@@ -137,6 +137,7 @@ function applyActiveProviderCatalog(providerId = getActiveProvider()) {
 }
 
 function syncPickerSelectionsToCatalog(providerId = getActiveProvider()) {
+  const isImageEditorMode = Boolean(document.getElementById('editorImageUrl')?.value?.trim());
   const pairs = [
     { inputId: 'chatModel', labelId: 'chatModelLabel', models: _allChatModels, fallbackId: 'gpt-4o-mini' },
     {
@@ -150,6 +151,7 @@ function syncPickerSelectionsToCatalog(providerId = getActiveProvider()) {
       labelId: 'imageModelLabel',
       models: _allImageModels,
       fallbackId: providerId === '1forall' ? 'black-forest-labs/flux-schnell' : 'gpt-image-2',
+      preferTag: isImageEditorMode ? 'editor' : null,
     },
     {
       inputId: 'videoModel',
@@ -159,14 +161,20 @@ function syncPickerSelectionsToCatalog(providerId = getActiveProvider()) {
     },
   ];
 
-  for (const { inputId, labelId, models, fallbackId } of pairs) {
+  for (const { inputId, labelId, models, fallbackId, preferTag } of pairs) {
     const inputEl = document.getElementById(inputId);
     const labelEl = document.getElementById(labelId);
     if (!inputEl || !Array.isArray(models) || models.length === 0) continue;
 
     let selected = models.find((m) => m.id === inputEl.value);
+    if (preferTag && selected && !selected.tags?.includes(preferTag)) {
+      selected = undefined;
+    }
     if (!selected) {
-      selected = models.find((m) => m.id === fallbackId) || models[0];
+      selected =
+        (preferTag ? models.find((m) => m.tags?.includes(preferTag)) : null) ||
+        models.find((m) => m.id === fallbackId) ||
+        models[0];
       inputEl.value = selected.id;
     }
     if (labelEl && selected) {

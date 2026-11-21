@@ -9,6 +9,7 @@ import request from 'supertest';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import { clearAllowedRootsCache } from '../utils/fs-guard.js';
 
 jest.unstable_mockModule('../utils/api-client.js', () => ({
   callOneMin: jest.fn(),
@@ -44,12 +45,14 @@ describe('FS Routes', () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-route-test-'));
     // Include tmpDir in ALLOWED_ROOTS so fs routes can access it
     process.env.ALLOWED_ROOTS = tmpDir;
+    clearAllowedRootsCache();
     app = createApp({ requireLocalAuth: false, enableRateLimit: false });
   });
 
   afterEach(async () => {
     delete process.env.NODE_ENV;
     delete process.env.ALLOWED_ROOTS;
+    clearAllowedRootsCache();
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   });
 
@@ -432,6 +435,66 @@ describe('FS Routes', () => {
         .post('/api/fs/write')
         .send({ path: traversalPath, content: 'should fail' });
       expect(res.status).toBe(403);
+    });
+
+    test('returns 404/400 on missing or file-as-directory paths and blocks symlink escapes in list and workspace/select', async () => {
+      const filePath = path.join(tmpDir, 'regular.txt');
+      await fs.writeFile(filePath, 'hello', 'utf-8');
+
+      // Missing paths -> 404
+      expect(
+        (
+          await request(app)
+            .get('/api/fs/list')
+            .query({ dir: path.join(tmpDir, 'missing') })
+        ).status,
+      ).toBe(404);
+      expect(
+        (
+          await request(app)
+            .post('/api/fs/workspace/select')
+            .send({ dir: path.join(tmpDir, 'missing') })
+        ).status,
+      ).toBe(404);
+      expect(
+        (
+          await request(app)
+            .post('/api/fs/delete')
+            .send({ path: path.join(tmpDir, 'missing.txt') })
+        ).status,
+      ).toBe(404);
+      expect(
+        (
+          await request(app)
+            .post('/api/fs/rename')
+            .send({ oldPath: path.join(tmpDir, 'missing.txt'), newPath: path.join(tmpDir, 'new.txt') })
+        ).status,
+      ).toBe(404);
+
+      // Regular file passed as directory -> 400
+      expect((await request(app).get('/api/fs/list').query({ dir: filePath })).status).toBe(400);
+      expect((await request(app).post('/api/fs/workspace/select').send({ dir: filePath })).status).toBe(400);
+
+      // Symlink escaping ALLOWED_ROOTS -> 403
+      const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-route-outside-'));
+      try {
+        const escapeLink = path.join(tmpDir, 'escape-link');
+        let created = false;
+        try {
+          await fs.symlink(outsideDir, escapeLink, process.platform === 'win32' ? 'junction' : 'dir');
+          created = true;
+        } catch {
+          created = false;
+        }
+        if (created) {
+          expect((await request(app).get('/api/fs/list').query({ dir: escapeLink })).status).toBe(403);
+          expect((await request(app).post('/api/fs/workspace/select').send({ dir: escapeLink })).status).toBe(
+            403,
+          );
+        }
+      } finally {
+        await fs.rm(outsideDir, { recursive: true, force: true }).catch(() => {});
+      }
     });
   });
 });

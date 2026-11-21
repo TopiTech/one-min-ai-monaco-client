@@ -30,7 +30,7 @@ import agentRoutes, { flushPendingWriters, initAgentState, killAllSearchProcesse
 import agentChatRoutes from './routes/agent-chat.js';
 import settingsRoutes from './routes/settings.js';
 import { getProvider, resolveProviderId } from './providers/index.js';
-import { getProvidersKeyStatus, hasApiKey } from './services/key-store.js';
+import { getProvidersKeyStatus, hasApiKey, registerRuntimeSecret } from './services/key-store.js';
 import { initModels, getModelSyncStatus, stopModelSync } from './config/models.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -223,12 +223,9 @@ async function handleAssetUpload(req, res, next) {
       }
     }
 
+    const hasProviderValue = (v) => v !== undefined && v !== null && v !== '';
     const providerId = resolveProviderId(
-      typeof req.query?.provider === 'string'
-        ? req.query.provider
-        : typeof req.body?.provider === 'string'
-          ? req.body.provider
-          : undefined,
+      hasProviderValue(req.query?.provider) ? req.query.provider : req.body?.provider,
     );
 
     let normalized;
@@ -313,6 +310,7 @@ export function createApp(options = {}) {
   }
   const localAuthToken =
     localAuthTokenOption ?? authToken ?? process.env.LOCAL_BFF_AUTH_TOKEN ?? getOrCreatePersistentAuthToken();
+  registerRuntimeSecret(localAuthToken);
 
   const app = express();
 

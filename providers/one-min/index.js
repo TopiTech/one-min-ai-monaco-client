@@ -220,14 +220,17 @@ export const oneMinProvider = {
    *   version?: string,
    *   speed?: number,
    *   additionalFields?: Record<string, any>,
+   *   signal?: AbortSignal,
    * }} params
    */
   async generateVideo(params) {
-    const payload = buildOneMinVideoPayload(params);
+    const { signal, ...videoParams } = params;
+    const payload = buildOneMinVideoPayload(videoParams);
     const dataRes = await callOneMin('/api/features', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       idempotent: false,
+      signal,
     });
     if (isFailedResponse(dataRes)) {
       throw new HttpError(

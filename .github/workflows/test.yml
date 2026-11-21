@@ -27,7 +27,7 @@ jobs:
         run: npm ci
 
       - name: Check formatting
-        run: npx prettier --check "server.js" "public/**/*.{js,css,html}" "routes/**/*.js" "utils/*.js" "config/*.js" "services/*.js" "tests/*.js"
+        run: npm run format:check
 
       - name: Lint
         run: npm run lint

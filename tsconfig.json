@@ -17,7 +17,9 @@
     "routes/**/*.js",
     "utils/**/*.js",
     "services/**/*.js",
-    "middlewares/**/*.js"
+    "middlewares/**/*.js",
+    "providers/**/*.js",
+    "scripts/**/*.js"
   ],
   "exclude": ["node_modules", "tests"]
 }

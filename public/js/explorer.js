@@ -2,7 +2,7 @@ import { api } from './api.js';
 import { toast } from './toast.js';
 import { t } from './i18n.js';
 
-export function createExplorerManager(dom, openFileCallback) {
+export function createExplorerManager(dom, openFileCallback, lifecycleCallbacks = {}) {
   let _currentDir = null;
   let _allNodes = []; // flat list for search
   let _visibleNodesCache = null;
@@ -167,6 +167,7 @@ export function createExplorerManager(dom, openFileCallback) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ oldPath: filePath, newPath }),
       });
+      lifecycleCallbacks?.onRenamePath?.(filePath, newPath);
       toast.success(t('rename_complete'));
       await loadWorkspace(_currentDir);
     } catch (e) {
@@ -190,6 +191,7 @@ export function createExplorerManager(dom, openFileCallback) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: filePath }),
       });
+      lifecycleCallbacks?.onDeletePath?.(filePath);
       toast.success(t('delete_complete'));
       await loadWorkspace(_currentDir);
     } catch (e) {
@@ -375,10 +377,10 @@ export function createExplorerManager(dom, openFileCallback) {
           node.click();
         } else if (e.key === 'F2') {
           e.preventDefault();
-          renameItem(item.path);
+          await renameItem(item.path);
         } else if (e.key === 'Delete') {
           e.preventDefault();
-          deleteItem(item.path);
+          await deleteItem(item.path);
         } else if (e.key === 'ArrowDown') {
           e.preventDefault();
           const next = getNextVisibleNode(node);

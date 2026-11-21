@@ -17,6 +17,7 @@ import {
 import { detectBinaryContent } from '../utils/mime-guard.js';
 import { atomicWriteTextFile, readSpecificLines } from '../utils/fs-utils.js';
 import { serverConfig } from '../config/server.js';
+import { BadRequestError, ForbiddenError, NotFoundError } from '../utils/errors.js';
 
 // File size read limits evaluated dynamically via serverConfig.maxFileReadSize
 // SAFETY: list/delete caps are configurable via serverConfig so operators
@@ -173,6 +174,51 @@ router.get('/drives', async (req, res, next) => {
 });
 
 /**
+ * Revalidates a validated directory path against symlink escapes, protection
+ * policies, existence (404), and directory type (400).
+ * @param {string} resolvedDir
+ * @param {boolean} [includeRelativeInForbidden=false]
+ * @returns {Promise<string>}
+ */
+async function resolveValidatedFsDirectory(resolvedDir, includeRelativeInForbidden = false) {
+  const formatProtectedError = (p) => {
+    if (!includeRelativeInForbidden) return 'Access denied: Path is protected';
+    const relativePath = path.relative(PROJECT_ROOT, p).replace(/\\/g, '/');
+    return `Access denied: Cannot select protected path: ${relativePath}`;
+  };
+
+  if (isProtectedPathForListing(resolvedDir)) {
+    throw new ForbiddenError(formatProtectedError(resolvedDir));
+  }
+
+  const realDir = revalidateRealPath(resolvedDir);
+  if (isProtectedPathForListing(realDir)) {
+    throw new ForbiddenError(formatProtectedError(realDir));
+  }
+
+  const stat = await fs.stat(realDir);
+  if (!stat.isDirectory()) {
+    throw new BadRequestError('Specified path is not a directory');
+  }
+  return realDir;
+}
+
+/**
+ * Wraps `fs.lstat` so missing targets yield HTTP 404 instead of 500.
+ * @param {string} targetPath
+ */
+async function safeLstat(targetPath) {
+  try {
+    return await fs.lstat(targetPath);
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      throw new NotFoundError(`Path not found: ${targetPath}`);
+    }
+    throw err;
+  }
+}
+
+/**
  * Select a workspace directory.
  * Validates that the directory exists and is within allowed roots.
  */
@@ -184,16 +230,7 @@ router.post('/workspace/select', async (req, res, next) => {
     const { dir } = result.data;
 
     const resolvedDir = validatePath(dir);
-    if (isProtectedPathForListing(resolvedDir)) {
-      const relativePath = path.relative(PROJECT_ROOT, resolvedDir).replace(/\\/g, '/');
-      return res.status(403).json({ error: `Access denied: Cannot select protected path: ${relativePath}` });
-    }
-
-    const stat = await fs.stat(resolvedDir);
-
-    if (!stat.isDirectory()) {
-      return res.status(400).json({ error: 'Specified path is not a directory' });
-    }
+    await resolveValidatedFsDirectory(resolvedDir, true);
 
     res.json({
       ok: true,
@@ -214,10 +251,8 @@ router.get('/list', async (req, res, next) => {
     if (!result.success)
       return res.status(400).json({ error: result.error.issues[0]?.message || 'Validation error' });
     const dirPath = result.data.dir ? validatePath(String(result.data.dir)) : getDefaultRoot();
-    if (isProtectedPathForListing(dirPath)) {
-      return res.status(403).json({ error: 'Access denied: Path is protected' });
-    }
-    const dir = await fs.opendir(dirPath);
+    const realDirPath = await resolveValidatedFsDirectory(dirPath);
+    const dir = await fs.opendir(realDirPath);
 
     const items = [];
     let entry;
@@ -434,7 +469,7 @@ router.post('/delete', async (req, res, next) => {
     // Target must exist to be deleted.
     // If the target is a symlink, verify its parent directory real path is
     // within allowed roots and unlink the link itself without resolving target.
-    const lstat = await fs.lstat(resolvedPath);
+    const lstat = await safeLstat(resolvedPath);
     if (lstat.isSymbolicLink()) {
       const realParent = revalidateRealPath(path.dirname(resolvedPath));
       const safeSymlinkPath = path.join(realParent, path.basename(resolvedPath));
@@ -484,7 +519,7 @@ router.post('/rename', async (req, res, next) => {
 
     // If resolvedOld is a symlink, verify its parent directory real path is
     // within allowed roots and rename the symlink itself without resolving target.
-    const lstatOld = await fs.lstat(resolvedOld);
+    const lstatOld = await safeLstat(resolvedOld);
     if (lstatOld.isSymbolicLink()) {
       const realOldParent = revalidateRealPath(path.dirname(resolvedOld));
       const safeOldPath = path.join(realOldParent, path.basename(resolvedOld));

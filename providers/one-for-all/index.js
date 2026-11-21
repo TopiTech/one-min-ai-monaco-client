@@ -410,6 +410,18 @@ export const oneForAllProvider = {
     };
   },
 
+  /**
+   * @param {{
+   *   prompt: string,
+   *   model?: string,
+   *   num_outputs?: number,
+   *   aspect_ratio?: string,
+   *   size?: string,
+   *   output_format?: string,
+   *   async?: boolean,
+   *   signal?: AbortSignal,
+   * }} params
+   */
   async generateImage({
     prompt,
     model,
@@ -418,6 +430,7 @@ export const oneForAllProvider = {
     size,
     output_format = 'png',
     async: useAsync = false,
+    signal,
   }) {
     const selectedModel = model || serverConfig.defaultImageModel1ForAll;
     if (useAsync) {
@@ -432,6 +445,7 @@ export const oneForAllProvider = {
           additional_fields: { output_format },
         }),
         idempotent: false,
+        signal,
       });
 
       return buildOneForAllSubmitResponse(data, selectedModel, 'image');
@@ -449,6 +463,7 @@ export const oneForAllProvider = {
         response_format: 'url',
       }),
       idempotent: false,
+      signal,
     });
 
     const urls = Array.isArray(data?.data)
@@ -471,7 +486,16 @@ export const oneForAllProvider = {
     };
   },
 
-  async editImage({ imageUrl, prompt, model, additionalFields = {} }) {
+  /**
+   * @param {{
+   *   imageUrl: string,
+   *   prompt: string,
+   *   model?: string,
+   *   additionalFields?: Record<string, any>,
+   *   signal?: AbortSignal,
+   * }} params
+   */
+  async editImage({ imageUrl, prompt, model, additionalFields = {}, signal }) {
     const selectedModel = model || serverConfig.defaultImageEditorModel1ForAll;
     const data = await callOneForAll('/v1/external/image/image-to-image/', {
       method: 'POST',
@@ -484,6 +508,7 @@ export const oneForAllProvider = {
         additional_fields: additionalFields,
       }),
       idempotent: false,
+      signal,
     });
 
     return buildOneForAllSubmitResponse(data, selectedModel, 'image');
@@ -503,9 +528,18 @@ export const oneForAllProvider = {
    *   version?: string,
    *   speed?: number,
    *   additionalFields?: Record<string, any>,
+   *   signal?: AbortSignal,
    * }} params
    */
-  async generateVideo({ prompt = '', model, imageUrl, aspect_ratio = '16:9', speed, additionalFields }) {
+  async generateVideo({
+    prompt = '',
+    model,
+    imageUrl,
+    aspect_ratio = '16:9',
+    speed,
+    additionalFields,
+    signal,
+  }) {
     const selectedModel = model || serverConfig.defaultVideoModel1ForAll;
     const body = {
       title: buildOneForAllTitle(prompt, 'Generated Video'),
@@ -524,6 +558,7 @@ export const oneForAllProvider = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       idempotent: false,
+      signal,
     });
 
     return buildOneForAllSubmitResponse(data, selectedModel, 'video');

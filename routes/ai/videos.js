@@ -2,7 +2,7 @@ import express from 'express';
 import { z } from 'zod';
 import { assertCapability, getProvider, resolveProviderId } from '../../providers/index.js';
 import { unwrapAssetProxyUrl } from '../../utils/asset-utils.js';
-import { booleanFlagInput, optionalNumberInput } from './utils.js';
+import { bindRequestAbortSignal, booleanFlagInput, optionalNumberInput } from './utils.js';
 
 const router = express.Router();
 
@@ -46,6 +46,7 @@ const videoGenerateSchema = z
   });
 
 router.post('/generate', async (req, res, next) => {
+  const { controller, cleanup } = bindRequestAbortSignal(res);
   try {
     const parsed = videoGenerateSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -77,11 +78,15 @@ router.post('/generate', async (req, res, next) => {
       version: data.version,
       speed: data.speed,
       additionalFields: data.additionalFields,
+      signal: controller.signal,
     });
 
     res.json(result);
   } catch (err) {
+    if (controller.signal.aborted && (res.writableEnded || res.destroyed)) return;
     next(err);
+  } finally {
+    cleanup();
   }
 });
 

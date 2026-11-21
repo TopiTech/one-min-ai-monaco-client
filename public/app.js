@@ -221,7 +221,10 @@ const editorManager = createEditorManager(editorState);
 // Create tab and inline-chat managers
 const tabManager = createEditorTabManager(editorState, editorManager, dom);
 const inlineChatManager = createInlineChatManager(editorState, editorManager, dom);
-const explorerManager = createExplorerManager(dom, (filePath) => tabManager.openFile(filePath));
+const explorerManager = createExplorerManager(dom, (filePath) => tabManager.openFile(filePath), {
+  onDeletePath: (deletedPath) => tabManager.handlePathDeleted(deletedPath),
+  onRenamePath: (oldPath, newPath) => tabManager.handlePathRenamed(oldPath, newPath),
+});
 
 window.addEventListener('beforeunload', (e) => {
   if (editorManager.isAnyDirty && editorManager.isAnyDirty()) {

@@ -21,7 +21,9 @@ import { toast } from './toast.js';
  *   closeTab: (filePath: string) => Promise<void>,
  *   closeTabInternal: (filePath: string) => void,
  *   openFile: (filePath: string) => Promise<void>,
- *   saveFile: () => Promise<void>
+ *   saveFile: () => Promise<void>,
+ *   handlePathDeleted: (deletedPath: string) => void,
+ *   handlePathRenamed: (oldPath: string, newPath: string) => void
  * }}
  */
 export function createEditorTabManager(editorState, editorManager, dom) {
@@ -251,6 +253,107 @@ export function createEditorTabManager(editorState, editorManager, dom) {
     }
   }
 
+  function matchesPathOrDescendant(candidatePath, basePath) {
+    if (!candidatePath || !basePath) return false;
+    if (candidatePath === basePath) return true;
+    const normCand = candidatePath.replace(/\\/g, '/');
+    const normBase = basePath.replace(/\\/g, '/').replace(/\/+$/, '');
+    return normCand === normBase || normCand.startsWith(normBase + '/');
+  }
+
+  function computeRenamedPath(candidatePath, oldBase, newBase) {
+    if (!candidatePath || !oldBase || !newBase) return null;
+    if (candidatePath === oldBase) return newBase;
+    const normCand = candidatePath.replace(/\\/g, '/');
+    const normOld = oldBase.replace(/\\/g, '/').replace(/\/+$/, '');
+    if (normCand === normOld) return newBase;
+    if (!normCand.startsWith(normOld + '/')) return null;
+    const suffix = candidatePath.slice(normOld.length);
+    return newBase.replace(/[\\/]+$/, '') + suffix;
+  }
+
+  function handlePathDeleted(deletedPath) {
+    if (!deletedPath || !Array.isArray(editorState.openTabs)) return;
+    const affectedTabs = editorState.openTabs.filter((tabPath) =>
+      matchesPathOrDescendant(tabPath, deletedPath),
+    );
+    for (const tabPath of affectedTabs) {
+      closeTabInternal(tabPath);
+    }
+  }
+
+  function handlePathRenamed(oldPath, newPath) {
+    if (!oldPath || !newPath || oldPath === newPath || !Array.isArray(editorState.openTabs)) return;
+    let changed = false;
+
+    for (let i = 0; i < editorState.openTabs.length; i++) {
+      const tabPath = editorState.openTabs[i];
+      const updatedPath = computeRenamedPath(tabPath, oldPath, newPath);
+      if (!updatedPath || updatedPath === tabPath) continue;
+
+      changed = true;
+      const existingIdx = editorState.openTabs.indexOf(updatedPath);
+      if (existingIdx !== -1 && existingIdx !== i) {
+        editorState.openTabs.splice(i, 1);
+        i--;
+      } else {
+        editorState.openTabs[i] = updatedPath;
+      }
+
+      if (
+        editorState.readOnlyFiles &&
+        Object.prototype.hasOwnProperty.call(editorState.readOnlyFiles, tabPath)
+      ) {
+        editorState.readOnlyFiles[updatedPath] = editorState.readOnlyFiles[tabPath];
+        delete editorState.readOnlyFiles[tabPath];
+      }
+
+      const wasDirty = editorManager.isDirty?.(tabPath) || false;
+      const hasMonaco = typeof monaco !== 'undefined' && monaco?.Uri && monaco?.editor;
+      let newModel = null;
+      let oldModel = null;
+      if (hasMonaco) {
+        const oldUri = monaco.Uri.file(tabPath);
+        oldModel = monaco.editor.getModel(oldUri);
+        if (oldModel) {
+          const content = oldModel.getValue();
+          newModel = editorManager.getOrCreateModel
+            ? editorManager.getOrCreateModel(updatedPath, content)
+            : monaco.editor.createModel(content, undefined, monaco.Uri.file(updatedPath));
+          if (newModel && newModel !== oldModel && newModel.getValue?.() !== content) {
+            newModel.setValue(content);
+          }
+        }
+      }
+
+      if (editorState.activeFilePath === tabPath) {
+        editorState.activeFilePath = updatedPath;
+        if (editorManager.instance && newModel) {
+          editorManager.instance.setModel(newModel);
+        }
+        updateActiveFileUi(updatedPath);
+      }
+
+      if (oldModel && oldModel !== newModel) {
+        oldModel.dispose();
+      }
+
+      if (editorState.originalVersions) {
+        delete editorState.originalVersions[tabPath];
+      }
+      if (wasDirty && newModel) {
+        editorState.originalVersions ||= {};
+        editorState.originalVersions[updatedPath] = -1;
+      } else if (!wasDirty && newModel) {
+        editorManager.markClean?.(updatedPath);
+      }
+    }
+
+    if (changed) {
+      renderTabs();
+    }
+  }
+
   return {
     renderTabs,
     switchToTab,
@@ -258,5 +361,7 @@ export function createEditorTabManager(editorState, editorManager, dom) {
     closeTabInternal,
     openFile,
     saveFile,
+    handlePathDeleted,
+    handlePathRenamed,
   };
 }

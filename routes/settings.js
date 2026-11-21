@@ -25,48 +25,34 @@ const saveKeySchema = z.object({
 
 async function verifyProviderApiKey(provider, normalizedKey) {
   const timeoutMs = Math.min(serverConfig.apiTimeout, 15_000);
-  if (provider === '1min') {
-    const baseUrl = serverConfig.apiBaseUrl.replace(/\/$/, '');
-    const res = await fetchWithTimeout(
-      `${baseUrl}/openai/v1/models`,
-      {
-        method: 'GET',
-        headers: {
+  const targetUrl =
+    provider === '1min'
+      ? `${serverConfig.apiBaseUrl.replace(/\/$/, '')}/openai/v1/models`
+      : `${serverConfig.oneForAllApiBaseUrl.replace(/\/$/, '')}/v1/external/llm/models/`;
+  const headers =
+    provider === '1min'
+      ? {
           Authorization: `Bearer ${normalizedKey}`,
           'API-KEY': normalizedKey,
-        },
-      },
-      timeoutMs,
-    );
+        }
+      : {
+          Authorization: `Bearer ${normalizedKey}`,
+        };
+
+  const res = await fetchWithTimeout(targetUrl, { method: 'GET', headers }, timeoutMs);
+  try {
     if (res.status === 401 || res.status === 403) {
+      const label = provider === '1min' ? '1min.ai' : '1forall.ai';
       throw new HttpError(
         401,
-        '1min.ai API key verification failed: Invalid or revoked API key.',
+        `${label} API key verification failed: Invalid or revoked API key.`,
         'INVALID_API_KEY',
       );
     }
     return { verified: res.ok, status: res.status };
+  } finally {
+    await res.body?.cancel?.().catch(() => {});
   }
-
-  const baseUrl = serverConfig.oneForAllApiBaseUrl.replace(/\/$/, '');
-  const res = await fetchWithTimeout(
-    `${baseUrl}/v1/external/llm/models/`,
-    {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${normalizedKey}`,
-      },
-    },
-    timeoutMs,
-  );
-  if (res.status === 401 || res.status === 403) {
-    throw new HttpError(
-      401,
-      '1forall.ai API key verification failed: Invalid or revoked API key.',
-      'INVALID_API_KEY',
-    );
-  }
-  return { verified: res.ok, status: res.status };
 }
 
 router.get('/providers', (_req, res) => {

@@ -227,4 +227,60 @@ describe('Video, Jobs, and Multi-Provider Route Integration Tests', () => {
     });
     expect(videoBool.status).toBe(400);
   });
+
+  test('models and resolveProvider reject non-string or duplicate array provider params with 400 INVALID_PROVIDER', async () => {
+    const arrayQueryRes = await request(app).get('/api/models?provider=1min&provider=1forall');
+    expect(arrayQueryRes.status).toBe(400);
+    expect(arrayQueryRes.body.code).toBe('INVALID_PROVIDER');
+
+    const numericBodyRes = await request(app).post('/api/models/refresh').send({ provider: 123 });
+    expect(numericBodyRes.status).toBe(400);
+    expect(numericBodyRes.body.code).toBe('INVALID_PROVIDER');
+
+    const uploadArrayRes = await request(app)
+      .post('/api/assets/upload?provider=1min&provider=1forall')
+      .attach('asset', Buffer.from('hello'), { filename: 'a.txt', contentType: 'text/plain' });
+    expect(uploadArrayRes.status).toBe(400);
+    expect(uploadArrayRes.body.code).toBe('INVALID_PROVIDER');
+  });
+
+  test('image and video routes forward an AbortSignal bound to the HTTP response', async () => {
+    const observedSignals = [];
+    globalThis.fetch = jest.fn(async (_url, opts) => {
+      observedSignals.push(opts?.signal);
+      return new Response(
+        JSON.stringify({
+          data: [{ url: 'https://voicegen-storage.s3.amazonaws.com/img.png' }],
+          code_ref: 'ref-abort-test',
+          status: 'pending',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+
+    const genRes = await request(app).post('/api/images/generate').send({
+      provider: '1forall',
+      prompt: 'signal check',
+    });
+    expect(genRes.status).toBe(200);
+
+    const editRes = await request(app).post('/api/images/text-editor').send({
+      provider: '1forall',
+      imageUrl: 'https://voicegen-storage.s3.amazonaws.com/src.png',
+      prompt: 'signal check edit',
+    });
+    expect(editRes.status).toBe(200);
+
+    const vidRes = await request(app).post('/api/videos/generate').send({
+      provider: '1min',
+      model: 'kling',
+      prompt: 'signal check video',
+    });
+    expect(vidRes.status).toBe(200);
+
+    expect(observedSignals).toHaveLength(3);
+    for (const sig of observedSignals) {
+      expect(sig).toBeInstanceOf(AbortSignal);
+    }
+  });
 });

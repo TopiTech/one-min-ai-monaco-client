@@ -562,7 +562,9 @@ export function createAgentRuntime({
       const fullDir = resolvePathRelativeToWorkspace(workspaceRoot, dir);
       let url = `/api/agent/sessions/${sessionId}/find-files?pattern=${encodeURIComponent(pattern)}`;
       if (dir) url += `&dir=${encodeURIComponent(fullDir)}`;
-      if (params.maxResults) url += `&maxResults=${params.maxResults}`;
+      if (params.maxResults !== undefined && params.maxResults !== null && params.maxResults !== '') {
+        url += `&maxResults=${encodeURIComponent(params.maxResults)}`;
+      }
       const data = await api(url, { signal: state.agent.abortController?.signal });
       const text = data.files?.length
         ? `Found ${data.files.length} matching files:\n` +
@@ -594,10 +596,18 @@ export function createAgentRuntime({
         : 'ディレクトリは空または存在しません。';
       return { text, success: true };
     },
-    search_files: async ({ sessionId, params }) => {
-      const { query } = params;
+    search_files: async ({ sessionId, workspaceRoot, params }) => {
+      const { query, dir, maxResults } = params;
       if (!query) throw new Error('query パラメータが必要です');
-      const data = await api(`/api/agent/sessions/${sessionId}/search?query=${encodeURIComponent(query)}`, {
+      let url = `/api/agent/sessions/${sessionId}/search?query=${encodeURIComponent(query)}`;
+      if (dir) {
+        const fullDir = resolvePathRelativeToWorkspace(workspaceRoot, dir);
+        url += `&dir=${encodeURIComponent(fullDir)}`;
+      }
+      if (maxResults !== undefined && maxResults !== null && maxResults !== '') {
+        url += `&maxResults=${encodeURIComponent(maxResults)}`;
+      }
+      const data = await api(url, {
         signal: state.agent.abortController?.signal,
       });
       const text = data.results?.length

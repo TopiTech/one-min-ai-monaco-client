@@ -27,6 +27,7 @@ import { SessionLock } from '../utils/async-lock.js';
 import { atomicWriteTextFile, readSpecificLines } from '../utils/fs-utils.js';
 import { countTokensMultiple } from '../utils/tokenizer.js';
 import { validateCodeSyntax, extractSymbols, getProjectMetadata } from '../services/code-analyzer.js';
+import { BadRequestError } from '../utils/errors.js';
 import { optionalNumberInput } from './ai/utils.js';
 
 const sessionCreateSchema = z.object({
@@ -1165,6 +1166,23 @@ async function searchWithRg(dir, query, maxResults) {
 }
 
 /**
+ * Revalidates a candidate directory path against symlink escapes, protection
+ * policies, existence (404), and directory type (400).
+ * @param {string} resolvedDir
+ * @returns {Promise<string>}
+ */
+async function resolveValidatedAgentDirectory(resolvedDir) {
+  assertNotProtectedPath(resolvedDir);
+  const realDir = revalidateRealPath(resolvedDir);
+  assertNotProtectedPath(realDir);
+  const stat = await fs.stat(realDir);
+  if (!stat.isDirectory()) {
+    throw new BadRequestError('Specified path is not a directory');
+  }
+  return realDir;
+}
+
+/**
  * Search files within session context.
  */
 router.get('/sessions/:id/search', async (req, res, next) => {
@@ -1179,14 +1197,14 @@ router.get('/sessions/:id/search', async (req, res, next) => {
 
     const searchDir = dir || session.cwd;
     const resolvedSearchDir = validatePath(resolveAgentPath(searchDir, session.cwd));
-    assertNotProtectedPath(resolvedSearchDir);
+    const realSearchDir = await resolveValidatedAgentDirectory(resolvedSearchDir);
 
     const limit = maxResults;
 
     let results = null;
     const rgAvailable = await checkRgAvailable();
     if (rgAvailable) {
-      results = await searchWithRg(resolvedSearchDir, query, limit);
+      results = await searchWithRg(realSearchDir, query, limit);
       if (results === null) {
         // Ripgrep was available, so a process error/timeout is not equivalent
         // to "no matches". Falling back to a recursive JS scan here can turn
@@ -1195,7 +1213,7 @@ router.get('/sessions/:id/search', async (req, res, next) => {
       }
     } else {
       results = [];
-      await searchInDirectory(resolvedSearchDir, query, results, limit);
+      await searchInDirectory(realSearchDir, query, results, limit);
     }
 
     res.json({
@@ -1286,14 +1304,14 @@ router.get('/sessions/:id/dir', async (req, res, next) => {
       return res.status(400).json({ error: resultQuery.error.issues[0]?.message || 'Validation error' });
     }
     const dirPath = resultQuery.data.path || session.cwd;
-    const resolvedPath = validatePath(dirPath);
-    assertNotProtectedPath(resolvedPath);
+    const resolvedPath = validatePath(resolveAgentPath(dirPath, session.cwd));
+    const realPath = await resolveValidatedAgentDirectory(resolvedPath);
 
-    const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
+    const entries = await fs.readdir(realPath, { withFileTypes: true });
     const items = [];
     for (const entry of entries) {
       if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === '.venv') continue;
-      const itemPath = path.join(resolvedPath, entry.name);
+      const itemPath = path.join(realPath, entry.name);
       if (isProtectedPathForListing(itemPath)) continue;
       items.push({
         name: entry.name,
@@ -1304,7 +1322,7 @@ router.get('/sessions/:id/dir', async (req, res, next) => {
     }
 
     res.json({
-      path: resolvedPath,
+      path: realPath,
       items,
     });
   } catch (err) {
@@ -1432,12 +1450,12 @@ router.get('/sessions/:id/find-files', async (req, res, next) => {
     const { pattern, dir, maxResults } = resultQuery.data;
     const searchDir = dir || session.cwd;
     const resolvedDir = validatePath(resolveAgentPath(searchDir, session.cwd));
-    assertNotProtectedPath(resolvedDir);
+    const realDir = await resolveValidatedAgentDirectory(resolvedDir);
 
     const regex = globToPatternRegex(pattern);
-    const files = await findFilesRecursively(resolvedDir, pattern, maxResults, resolvedDir, 0, regex);
+    const files = await findFilesRecursively(realDir, pattern, maxResults, realDir, 0, regex);
     res.json({
-      dir: resolvedDir,
+      dir: realDir,
       pattern,
       count: files.length,
       files,

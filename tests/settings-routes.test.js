@@ -120,4 +120,45 @@ describe('Settings API routes (/api/settings)', () => {
     expect(res.body.verification).toEqual({ verified: false, skipped: true });
     expect(res.body.provider.masked).toBe('onem...1234');
   });
+
+  test('POST /api/settings/keys cancels verification response body to avoid socket leaks', async () => {
+    const cancelSpy = jest.fn(async () => {});
+    globalThis.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () => JSON.stringify({ data: [] }),
+      json: async () => ({ data: [] }),
+      body: { cancel: cancelSpy },
+    }));
+
+    const res = await request(app).post('/api/settings/keys').send({
+      provider: '1min',
+      apiKey: 'onemin_valid_key_12345',
+      verify: true,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.verification.verified).toBe(true);
+    expect(cancelSpy).toHaveBeenCalledTimes(1);
+
+    const cancelErrSpy = jest.fn(async () => {});
+    globalThis.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 401,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () => JSON.stringify({ error: { message: 'Invalid key' } }),
+      json: async () => ({ error: { message: 'Invalid key' } }),
+      body: { cancel: cancelErrSpy },
+    }));
+
+    const failRes = await request(app).post('/api/settings/keys').send({
+      provider: '1forall',
+      apiKey: 'sk_live_invalid_99999',
+      verify: true,
+    });
+
+    expect(failRes.status).toBe(401);
+    expect(cancelErrSpy).toHaveBeenCalledTimes(1);
+  });
 });

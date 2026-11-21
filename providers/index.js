@@ -17,14 +17,21 @@ export const PROVIDER_CAPABILITIES = Object.freeze({
 
 /**
  * Resolves and validates a provider ID, falling back to `serverConfig.defaultProvider`.
- * @param {string} [rawProvider]
+ * @param {unknown} [rawProvider]
  * @returns {'1min'|'1forall'}
  */
 export function resolveProviderId(rawProvider) {
   if (rawProvider === undefined || rawProvider === null || rawProvider === '') {
     return /** @type {'1min'|'1forall'} */ (serverConfig.defaultProvider || '1min');
   }
-  const normalized = String(rawProvider).trim().toLowerCase();
+  if (typeof rawProvider !== 'string') {
+    throw new HttpError(
+      400,
+      'Unsupported provider. Provider must be a string ("1min" or "1forall").',
+      'INVALID_PROVIDER',
+    );
+  }
+  const normalized = rawProvider.trim().toLowerCase();
   if (normalized !== '1min' && normalized !== '1forall') {
     throw new HttpError(
       400,
@@ -37,7 +44,7 @@ export function resolveProviderId(rawProvider) {
 
 /**
  * Returns the provider adapter instance for a given ID.
- * @param {string} [providerId]
+ * @param {unknown} [providerId]
  */
 export function getProvider(providerId) {
   const id = resolveProviderId(providerId);
@@ -49,8 +56,8 @@ export function getProvider(providerId) {
  * @param {import('express').Request} req
  */
 export function resolveProvider(req) {
-  const raw = req?.body?.provider ?? req?.query?.provider;
-  return getProvider(raw ? String(raw) : undefined);
+  const raw = req?.body?.provider !== undefined ? req.body.provider : req?.query?.provider;
+  return getProvider(raw);
 }
 
 /**

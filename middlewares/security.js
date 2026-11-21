@@ -115,7 +115,13 @@ export function corsHeaders(req, res, next) {
         res.setHeader('Vary', 'Origin');
       } else {
         const varyStr = Array.isArray(existingVary) ? existingVary.join(', ') : String(existingVary);
-        if (!varyStr.toLowerCase().split(',').map((s) => s.trim()).includes('origin')) {
+        if (
+          !varyStr
+            .toLowerCase()
+            .split(',')
+            .map((s) => s.trim())
+            .includes('origin')
+        ) {
           res.setHeader('Vary', `${varyStr}, Origin`);
         }
       }
