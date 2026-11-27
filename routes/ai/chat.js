@@ -11,7 +11,7 @@ import logger from '../../utils/logger.js';
 import { serverConfig } from '../../config/server.js';
 import { shouldExposeErrorText } from '../../server.js';
 import { assertCapability, getProvider, resolveProviderId } from '../../providers/index.js';
-import { consumeOpenAiSseStream } from '../../utils/sse.js';
+import { consumeOpenAiSseStream, readBoundedResponseText } from '../../utils/sse.js';
 import { bindRequestAbortSignal, booleanFlagInput, getDefaultModel, optionalNumberInput } from './utils.js';
 
 const router = express.Router();
@@ -272,7 +272,17 @@ async function handleOneForAllChatStream(req, res, data, controller) {
       await response.body?.cancel?.().catch(() => {});
       return;
     }
-    const bodyText = await response.text();
+    const { text: bodyText, truncated } = await readBoundedResponseText(response);
+    if (truncated) {
+      if (!res.writableEnded && !res.destroyed) {
+        res.write(
+          `event: error\ndata: ${JSON.stringify({ error: 'Upstream stream exceeded maximum size' })}\n\n`,
+        );
+        flushRes(res);
+        res.end();
+      }
+      return;
+    }
     if (!controller.signal.aborted && !res.writableEnded && !res.destroyed) {
       res.write(bodyText);
       flushRes(res);

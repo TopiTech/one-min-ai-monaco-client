@@ -315,9 +315,14 @@ export function createChatManager(dom, state) {
         } catch (err) {
           att.uploading = false;
           results[originalIndex] = { status: 'rejected', reason: err };
-          toast.error(
-            t('chat_upload_failed', { name: att.file.name, error: err.message || t('chat_unknown_error') }),
-          );
+          // A cancelled upload is not a failure: keep the console quiet and
+          // let sendChat() surface the AbortError to its caller instead of a
+          // misleading "some attachments failed" toast.
+          if (err?.name !== 'AbortError' && !signal?.aborted) {
+            toast.error(
+              t('chat_upload_failed', { name: att.file.name, error: err.message || t('chat_unknown_error') }),
+            );
+          }
         }
         updateAttachmentPreview();
       }
@@ -328,6 +333,12 @@ export function createChatManager(dom, state) {
       .map(() => worker());
 
     await Promise.all(workers);
+
+    if (signal?.aborted) {
+      const abortErr = new Error('Aborted');
+      abortErr.name = 'AbortError';
+      throw abortErr;
+    }
 
     const failed = results.filter((r) => r && r.status === 'rejected');
     if (failed.length > 0) {
@@ -387,6 +398,10 @@ export function createChatManager(dom, state) {
     let fullText = '';
     let followStreamScroll = wasNearBottom;
     let exitedWithError = false;
+    // Whether the request actually reached the API. Only then may attachments
+    // be dropped from the composer: an abort during upload used to look like a
+    // sent message and discarded files the user never sent.
+    let requestStarted = false;
 
     const provider = getActiveProvider();
     try {
@@ -446,6 +461,7 @@ export function createChatManager(dom, state) {
             await wait(Math.min(1000 * Math.pow(2, attempt - 1), 4000), abortController.signal);
           }
 
+          requestStarted = true;
           const response = await api('/api/chat/stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -724,7 +740,7 @@ export function createChatManager(dom, state) {
 
       const remaining = [];
       state.chat.attachments.forEach((att) => {
-        if (att.assetKey && fullText && fullText !== t('chat_empty_response')) {
+        if (requestStarted && att.assetKey && fullText && fullText !== t('chat_empty_response')) {
           // Sent attachments keep their rendered blob preview until pruned from #chatLog.
         } else {
           remaining.push(att);

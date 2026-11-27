@@ -957,6 +957,12 @@ button.small {
   display: flex;
 }
 
+/* Revealed temporarily by the explorer's filename filter so matches inside
+   collapsed folders are visible without changing the user's expand state. */
+.tree-children.is-filter-revealed {
+  display: flex;
+}
+
 /* Folder-picker error */
 #folderPickerError {
   display: none;

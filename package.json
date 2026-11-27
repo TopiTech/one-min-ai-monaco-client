@@ -18,7 +18,7 @@
     "type-check": "tsc --noEmit",
     "android:prepare": "node scripts/android-prepare.js",
     "android:sync": "node scripts/android-prepare.js && npx cap sync android",
-    "android:build": "node scripts/android-prepare.js && npx cap sync android && cd android && gradlew.bat assembleDebug",
+    "android:build": "node scripts/android-prepare.js && npx cap sync android && node scripts/android-build.js",
     "android:open": "npx cap open android"
   },
   "dependencies": {
@@ -56,7 +56,7 @@
     "typescript": "^7.0.2"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "jest": {
     "testEnvironment": "node",

@@ -87,6 +87,12 @@ export function createExplorerManager(dom, openFileCallback, lifecycleCallbacks 
     const tree = dom.fileTree;
     if (!tree) return;
 
+    // A group revealed by a previous query must not stay revealed: the query
+    // below re-adds the class only for the folders it actually matches.
+    tree.querySelectorAll('.tree-children.is-filter-revealed').forEach((el) => {
+      el.classList.remove('is-filter-revealed');
+    });
+
     if (!query) {
       tree.querySelectorAll('.tree-node, .tree-children').forEach((el) => {
         el.style.display = '';
@@ -109,6 +115,13 @@ export function createExplorerManager(dom, openFileCallback, lifecycleCallbacks 
         let parent = node.parentElement;
         while (parent && parent !== tree) {
           parent.style.display = '';
+          // A collapsed folder keeps `.tree-children` hidden through the
+          // stylesheet rule, so clearing the inline style is not enough to
+          // reveal a match inside it. `is-filter-revealed` overrides that
+          // rule without changing the user's expand/collapse state.
+          if (parent.classList?.contains('tree-children')) {
+            parent.classList.add('is-filter-revealed');
+          }
           parent = parent.parentElement;
         }
       }
@@ -373,6 +386,10 @@ export function createExplorerManager(dom, openFileCallback, lifecycleCallbacks 
             }
           } else {
             childrenContainer.classList.remove('is-expanded');
+            // Collapsing must actually hide the group, even when a search term
+            // revealed it, otherwise aria-expanded="false" and the visible
+            // content disagree.
+            childrenContainer.classList.remove('is-filter-revealed');
             toggle.classList.remove('expanded');
           }
           invalidateVisibleNodesCache();
@@ -442,7 +459,8 @@ export function createExplorerManager(dom, openFileCallback, lifecycleCallbacks 
         }
         if (
           parentGroup.classList.contains('tree-children') &&
-          !parentGroup.classList.contains('is-expanded')
+          !parentGroup.classList.contains('is-expanded') &&
+          !parentGroup.classList.contains('is-filter-revealed')
         ) {
           return false;
         }

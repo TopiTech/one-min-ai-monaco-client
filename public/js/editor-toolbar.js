@@ -265,6 +265,16 @@ async function _runCurrentFile() {
     return;
   }
 
+  // Snapshot what the user is about to confirm. Reading the live editor after
+  // the (async) confirmation dialog would execute whatever file happens to be
+  // active by then, under the extension captured before the switch.
+  const code = instance.getValue();
+  const langId = instance.getModel()?.getLanguageId() || 'plaintext';
+  const baseName = filePath.split(/[\\/]/).pop() || '';
+  const dotIdx = baseName.lastIndexOf('.');
+  const ext =
+    dotIdx > 0 && dotIdx < baseName.length - 1 ? baseName.slice(dotIdx + 1).toLowerCase() : undefined;
+
   _isRunning = true;
   try {
     const confirmed = await toast.confirm(
@@ -273,6 +283,10 @@ async function _runCurrentFile() {
       { type: 'warning' },
     );
     if (!confirmed) {
+      return;
+    }
+    if (_editorState?.activeFilePath !== filePath) {
+      toast.warning(t('run_file_changed'));
       return;
     }
 
@@ -300,13 +314,6 @@ async function _runCurrentFile() {
     const startTime = Date.now();
 
     try {
-      const code = instance.getValue();
-      const langId = instance.getModel()?.getLanguageId() || 'plaintext';
-      const baseName = filePath.split(/[\\/]/).pop() || '';
-      const dotIdx = baseName.lastIndexOf('.');
-      const ext =
-        dotIdx > 0 && dotIdx < baseName.length - 1 ? baseName.slice(dotIdx + 1).toLowerCase() : undefined;
-
       const res = await api('/api/code/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

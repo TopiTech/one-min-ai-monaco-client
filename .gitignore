@@ -17,6 +17,7 @@ defs.txt
 coverage/
 *.log
 public/vs/
+public/.vs-staging-*/
 public/vendor/
 jest-results.json
 test_output.txt

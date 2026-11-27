@@ -167,19 +167,18 @@ describe('Review Fixes', () => {
     test("should keep Content-Security-Policy connect-src narrowed to 'self'", async () => {
       const response = await request(app).get('/');
 
+      expect(response.status).toBe(200);
       const csp = response.headers['content-security-policy'];
-      if (csp) {
-        expect(csp).toContain("connect-src 'self'");
-      }
+      expect(typeof csp).toBe('string');
+      expect(csp).toContain("connect-src 'self'");
     });
   });
 
   describe('Static files with X-Content-Type-Options', () => {
     test('should serve static JS files with X-Content-Type-Options nosniff', async () => {
       const response = await request(app).get('/js/api.js');
-      if (response.status === 200) {
-        expect(response.headers['x-content-type-options']).toBe('nosniff');
-      }
+      expect(response.status).toBe(200);
+      expect(response.headers['x-content-type-options']).toBe('nosniff');
     });
   });
 

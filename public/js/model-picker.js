@@ -223,6 +223,10 @@ export async function loadModels() {
     _allCodeModels = FALLBACK_CODE_MODELS;
     _allImageModels = FALLBACK_IMAGE_MODELS;
     _allVideoModels = FALLBACK_VIDEO_MODELS;
+    // Keep the hidden inputs and labels consistent with the fallback lists,
+    // otherwise a model from the previous catalog stays selected (and every
+    // request fails with "unknown model") after a transient fetch error.
+    syncPickerSelectionsToCatalog(getActiveProvider());
     toast.warning(t('model_fetch_warning'));
   }
 }
@@ -405,6 +409,12 @@ function selectModel(m) {
 }
 
 function openModelPicker(btn, type) {
+  // Switching straight from one picker button to another never runs
+  // closeModelPicker() for the outgoing button (they stop propagation), so
+  // reset its expanded state explicitly.
+  if (_activePickerBtn && _activePickerBtn !== btn) {
+    _activePickerBtn.setAttribute('aria-expanded', 'false');
+  }
   _activePickerBtn = btn;
   _activePickerType = type;
   _activeTag = 'all';

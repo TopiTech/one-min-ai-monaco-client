@@ -4,11 +4,12 @@ import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
-import { callOneMin, normalizeAssetResponse } from './utils/api-client.js';
 import { serverConfig, isAndroidPlatform } from './config/server.js';
 import { DATA_DIR, TMP_DIR, migrateLegacyDataSync } from './config/paths.js';
 import logger, { initLogger, sanitizeUrlForLogging } from './utils/logger.js';
 import { validateBufferMimeType, getExtensionFromMimeType } from './utils/mime-guard.js';
+import { readHeadBytes } from './utils/fs-utils.js';
+import { setStaticCacheHeaders } from './utils/static-cache.js';
 import fs from 'fs';
 import fsp from 'fs/promises';
 import { sanitizePayload } from './utils/sanitize.js';
@@ -143,19 +144,10 @@ async function handleAssetUpload(req, res, next) {
 
     if (req.file.size > 0) {
       // S-1: with disk storage, validate the on-disk buffer to avoid
-      // loading the whole file into memory again. Read just the first
-      // 8KB which is enough to cover the magic byte checks.
-      const headBuf = Buffer.alloc(8192);
-      const fd = await fsp.open(tmpFilePath, 'r');
-      let bytesRead = 0;
-      try {
-        const result = await fd.read(headBuf, 0, 8192, 0);
-        bytesRead = result.bytesRead;
-      } finally {
-        await fd.close();
-      }
-      const rawHead = headBuf.subarray(0, bytesRead);
-      const head = req.file.size > bytesRead ? trimIncompleteTrailingUtf8(rawHead) : rawHead;
+      // loading the whole file into memory again. The first 8KB are enough
+      // to cover every magic-byte check.
+      const headBytes = await readHeadBytes(tmpFilePath, 8192);
+      const head = req.file.size > headBytes.length ? trimIncompleteTrailingUtf8(headBytes) : headBytes;
       if (!validateBufferMimeType(head, req.file.mimetype)) {
         logger.warn('Asset upload rejected: MIME type signature mismatch', {
           filename: req.file.originalname,
@@ -223,9 +215,17 @@ async function handleAssetUpload(req, res, next) {
             'ASSET_STREAMING_UNAVAILABLE',
           );
         }
+        // A single FileHandle.read() may return fewer bytes than requested,
+        // which would upload a silently truncated asset. Fill the buffer.
         const buf = Buffer.alloc(stat.size);
-        await headFd.read(buf, 0, stat.size, 0);
-        assetBlob = new Blob([buf], { type: req.file.mimetype || 'application/octet-stream' });
+        let offset = 0;
+        while (offset < stat.size) {
+          const { bytesRead } = await headFd.read(buf, offset, stat.size - offset, offset);
+          if (bytesRead === 0) break;
+          offset += bytesRead;
+        }
+        const fileBuffer = offset === stat.size ? buf : buf.subarray(0, offset);
+        assetBlob = new Blob([fileBuffer], { type: req.file.mimetype || 'application/octet-stream' });
       } finally {
         await headFd.close();
       }
@@ -236,27 +236,16 @@ async function handleAssetUpload(req, res, next) {
       hasProviderValue(req.query?.provider) ? req.query.provider : req.body?.provider,
     );
 
-    let normalized;
-    if (providerId === '1forall') {
-      const provider = getProvider('1forall');
-      normalized = await provider.uploadAsset({ blob: assetBlob, filename: safeName });
-    } else {
-      const formData = new FormData();
-      formData.append('asset', assetBlob, safeName);
-
-      const data = await callOneMin('/api/assets', {
-        method: 'POST',
-        body: formData,
-        idempotent: false,
+    // Both providers expose the same uploadAsset contract; keeping the request
+    // shape in the adapters avoids a second, silently diverging 1min.ai upload
+    // implementation here.
+    const provider = getProvider(providerId);
+    const normalized = await provider.uploadAsset({ blob: assetBlob, filename: safeName });
+    if (!normalized.key) {
+      logger.warn('Asset upload completed without a usable asset key', {
+        provider: providerId,
+        filename: req.file.originalname,
       });
-      normalized = normalizeAssetResponse(data);
-      delete normalized.raw;
-      if (!normalized.key) {
-        logger.warn('Asset upload completed without a usable asset key', {
-          filename: req.file.originalname,
-          responseKeys: Object.keys(data || {}),
-        });
-      }
     }
 
     logger.info('Asset upload successful', { filename: req.file.originalname });
@@ -317,8 +306,14 @@ export function createApp(options = {}) {
     serverConfig.enableCommandExecution = false;
     serverConfig.enableCodeRun = false;
   }
+  // Only touch the persisted session-token file when authentication is
+  // actually enforced. Test runs (and any caller that disables auth) must not
+  // create or migrate `.onemin-ai/data` as a side effect of building the app.
   const localAuthToken =
-    localAuthTokenOption ?? authToken ?? process.env.LOCAL_BFF_AUTH_TOKEN ?? getOrCreatePersistentAuthToken();
+    localAuthTokenOption ??
+    authToken ??
+    process.env.LOCAL_BFF_AUTH_TOKEN ??
+    (requireLocalAuth ? getOrCreatePersistentAuthToken() : createLocalAuthToken());
   registerRuntimeSecret(localAuthToken);
 
   const app = express();
@@ -508,15 +503,7 @@ export function createApp(options = {}) {
   app.use(
     express.static(path.join(__dirname, 'public'), {
       index: false,
-      setHeaders: (res, filePath) => {
-        if (filePath.endsWith('.js')) {
-          res.setHeader('X-Content-Type-Options', 'nosniff');
-        }
-        // Cache immutable assets aggressively: Monaco vendor files, marked, DOMPurify
-        if (/(\/|\\)(vs|vendor)(\/|\\)/.test(filePath)) {
-          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        }
-      },
+      setHeaders: setStaticCacheHeaders,
       fallthrough: true,
     }),
   );
@@ -554,6 +541,13 @@ export function createApp(options = {}) {
   // Mount the agent-chat route at /agent so the /chat sub-route is at /api/agent/chat
   protectedRouter.use('/agent', agentChatRoutes);
   app.use('/api', protectedApiAuth, protectedRouter);
+
+  // Unknown API routes must use the same JSON error shape as every other API
+  // failure instead of falling through to Express' default HTML 404 page,
+  // which callers cannot parse.
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'Not Found', code: 'NOT_FOUND' });
+  });
 
   app.use((err, req, res, next) => {
     const status = err.status || 500;

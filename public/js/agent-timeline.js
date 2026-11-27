@@ -251,9 +251,11 @@ export function createAgentTimeline(dom) {
 
     log.appendChild(step);
     log.scrollTop = log.scrollHeight;
-    // Move focus to the first actionable control so the approval can be
-    // completed without a mouse or a second tab sequence.
-    approveBtn.focus();
+    // Deliberately do NOT move focus to the approve button. The agent panel is
+    // visible while the user types elsewhere; focusing a button that executes a
+    // shell command means the next Enter (meant for the chat composer) would
+    // approve it. The card is announced through the log's aria-live region and
+    // is reachable with Tab.
 
     // M-9: Fade out the approval step once it has been resolved.
     let finalized = false;

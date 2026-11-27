@@ -245,12 +245,19 @@ export function createEditorManager(state) {
     _instance?.layout();
   }
 
-  function markClean(filePath) {
+  /**
+   * Records the edit version that is known to be on disk.
+   *
+   * `versionId` must be captured *before* the write is awaited: the live model
+   * can keep changing while the request is in flight, and those edits were not
+   * part of the written content, so they have to stay dirty.
+   */
+  function markClean(filePath, versionId) {
     const fileUri = monaco.Uri.file(filePath);
     const model = monaco.editor.getModel(fileUri);
-    if (model) {
-      state.originalVersions[filePath] = model.getAlternativeVersionId();
-    }
+    const cleanVersion = versionId ?? model?.getAlternativeVersionId();
+    if (cleanVersion === undefined) return;
+    state.originalVersions[filePath] = cleanVersion;
   }
 
   function isDirty(filePath) {

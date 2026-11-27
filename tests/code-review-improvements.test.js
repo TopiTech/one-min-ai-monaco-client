@@ -1636,7 +1636,10 @@ describe('Code Review Improvements', () => {
           readOnlyFiles: {},
         };
         const editorManager = {
-          instance: { getValue: () => 'const x = 1;' },
+          instance: {
+            getValue: () => 'const x = 1;',
+            getModel: () => ({ getAlternativeVersionId: () => 1 }),
+          },
           markClean: () => {},
         };
         const tabs = createEditorTabManager(

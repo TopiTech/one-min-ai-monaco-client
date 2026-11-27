@@ -30,6 +30,10 @@ export function createEditorTabManager(editorState, editorManager, dom, callback
   const setStatus = typeof callbacks?.setStatus === 'function' ? callbacks.setStatus : null;
   let _saveStatusTimer = null;
   let _openFileSeq = 0;
+  // Writes are chained per file: two Ctrl+S presses must reach the disk in the
+  // order the user made them, otherwise the older content can land last and be
+  // reported as saved.
+  const _saveChains = new Map();
 
   function isReadOnly(filePath) {
     return Boolean(editorState.readOnlyFiles?.[filePath]);
@@ -231,15 +235,32 @@ export function createEditorTabManager(editorState, editorManager, dom, callback
       toast.warning(t('file_read_only_save_blocked'));
       return;
     }
+    // Capture the target path and the edit version before awaiting: the user
+    // can switch tabs or keep typing while the write is in flight, and marking
+    // the *then active* file (or the then current version) clean would drop
+    // unsaved state that was never written.
+    const targetPath = editorState.activeFilePath;
     const content = editorManager.instance.getValue();
+    const savedVersionId = editorManager.instance.getModel()?.getAlternativeVersionId();
     try {
       if (setStatus) setStatus(t('saving'), 'warn');
-      await api('/api/fs/write', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: editorState.activeFilePath, content }),
-      });
-      editorManager.markClean(editorState.activeFilePath);
+      const previousWrite = _saveChains.get(targetPath) ?? Promise.resolve();
+      const write = previousWrite
+        .catch(() => {})
+        .then(() =>
+          api('/api/fs/write', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: targetPath, content }),
+          }),
+        );
+      _saveChains.set(targetPath, write);
+      try {
+        await write;
+      } finally {
+        if (_saveChains.get(targetPath) === write) _saveChains.delete(targetPath);
+      }
+      editorManager.markClean(targetPath, savedVersionId);
       if (setStatus) setStatus(t('save_complete'), 'ok');
       toast.success(t('file_saved'));
       if (_saveStatusTimer) clearTimeout(_saveStatusTimer);

@@ -7,6 +7,40 @@ import { validatePath, assertNotWriteProtectedPath } from './fs-guard.js';
 import { BadRequestError, ForbiddenError } from './errors.js';
 
 /**
+ * Reads up to `maxBytes` from the start of a file.
+ *
+ * `FileHandle.read` is allowed to return fewer bytes than requested even
+ * before EOF, so a single read can silently truncate the returned buffer.
+ * This helper loops until the requested length is filled or EOF is reached.
+ *
+ * @param {string} filePath Absolute path of the file to read.
+ * @param {number} maxBytes Upper bound on the number of bytes to read.
+ * @returns {Promise<Buffer>} The bytes read (possibly fewer than `maxBytes` at EOF).
+ */
+export async function readHeadBytes(filePath, maxBytes) {
+  const limit = Number.isFinite(maxBytes) && maxBytes > 0 ? Math.floor(maxBytes) : 0;
+  if (limit === 0) return Buffer.alloc(0);
+
+  const fd = await fs.open(filePath, 'r');
+  try {
+    const stat = await fd.stat();
+    const length = Math.min(limit, stat.size);
+    if (length <= 0) return Buffer.alloc(0);
+
+    const buffer = Buffer.alloc(length);
+    let offset = 0;
+    while (offset < length) {
+      const { bytesRead } = await fd.read(buffer, offset, length - offset, offset);
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+    }
+    return offset === length ? buffer : buffer.subarray(0, offset);
+  } finally {
+    await fd.close();
+  }
+}
+
+/**
  * Atomically writes a text file by writing to a temporary file first and renaming it.
  * Uses 'wx' flag to prevent symlink hijacking and checks if the target path is a symlink.
  * Preserves existing file permissions on POSIX when overwriting unless `options.mode` is specified.

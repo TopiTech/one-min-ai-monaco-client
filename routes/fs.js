@@ -15,7 +15,7 @@ import {
   isProtectedPathForListing,
 } from '../utils/fs-guard.js';
 import { detectBinaryContent } from '../utils/mime-guard.js';
-import { atomicWriteTextFile, readSpecificLines } from '../utils/fs-utils.js';
+import { atomicWriteTextFile, readSpecificLines, readHeadBytes } from '../utils/fs-utils.js';
 import { serverConfig } from '../config/server.js';
 import { BadRequestError, ForbiddenError, NotFoundError } from '../utils/errors.js';
 
@@ -332,16 +332,9 @@ router.get('/read', async (req, res, next) => {
     // on large binaries before reject. Empty files are safely skipped.
     let isBinary = false;
     if (stat.size > 0) {
-      const fd = await fs.open(realPath, 'r');
-      try {
-        const readLen = Math.min(8192, stat.size);
-        const headBuf = Buffer.alloc(readLen);
-        const { bytesRead } = await fd.read(headBuf, 0, readLen, 0);
-        if (detectBinaryContent(headBuf.subarray(0, bytesRead))) {
-          isBinary = true;
-        }
-      } finally {
-        await fd.close();
+      const head = await readHeadBytes(realPath, 8192);
+      if (detectBinaryContent(head)) {
+        isBinary = true;
       }
     }
 

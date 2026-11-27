@@ -24,7 +24,7 @@ import path from 'path';
 import { z } from 'zod';
 import logger from '../utils/logger.js';
 import { SessionLock } from '../utils/async-lock.js';
-import { atomicWriteTextFile, readSpecificLines } from '../utils/fs-utils.js';
+import { atomicWriteTextFile, readSpecificLines, readHeadBytes } from '../utils/fs-utils.js';
 import { countTokensMultiple } from '../utils/tokenizer.js';
 import { validateCodeSyntax, extractSymbols, getProjectMetadata } from '../services/code-analyzer.js';
 import { BadRequestError, ForbiddenError, NotFoundError } from '../utils/errors.js';
@@ -122,7 +122,6 @@ const directoryQuerySchema = z.object({
   path: z.string().max(4096, 'path is too long').optional(),
 });
 
-const MAX_DIR_ENTRIES = 5000;
 const SKIPPED_DIRS = new Set([
   'node_modules',
   '.git',
@@ -255,6 +254,84 @@ function createDebouncedFileWriter(filePath, serialize, { delayMs = 50, label = 
 
 const PENDING_COMMAND_TTL_MS = 5 * 60 * 1000;
 
+/**
+ * Validates a session read back from disk. Persisted state is parsed JSON:
+ * it can be hand-edited, truncated, or written by an older app version, so
+ * every field the routes rely on must be re-established here. Structurally
+ * invalid entries are dropped instead of producing sessions that throw on
+ * first use; a valid entry is never dropped for a reason that a route could
+ * report on its own.
+ *
+ * Exported so the persistence contract can be unit-tested without
+ * enabling on-disk state.
+ *
+ * @param {unknown} raw
+ * @param {string} id
+ * @returns {null | { id: string, cwd: string, task: string, history: Record<string, unknown>[], status: string, createdAt: string, lastAccessedAt: number }}
+ */
+export function normalizePersistedSession(raw, id) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const record = /** @type {Record<string, unknown>} */ (raw);
+  if (!id) return null;
+  if (typeof record.cwd !== 'string' || !record.cwd) return null;
+
+  // Canonicalize the workspace when it still resolves. A session whose
+  // directory no longer validates (moved checkout, changed ALLOWED_ROOTS) is
+  // kept with its stored path: dropping it here would erase the record from
+  // the file on the next save, while every route that touches the directory
+  // re-validates it and answers 403.
+  let cwd = record.cwd;
+  try {
+    cwd = validatePath(record.cwd);
+  } catch {
+    // Keep the stored path; command execution re-validates it.
+  }
+
+  const rawHistory = Array.isArray(record.history) ? record.history : [];
+  /** @type {Record<string, unknown>[]} */
+  const history = [];
+  for (const entry of rawHistory) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const historyEntry = /** @type {Record<string, unknown>} */ (entry);
+    if (typeof historyEntry.type !== 'string') continue;
+    history.push(historyEntry);
+  }
+  if (history.length > serverConfig.agentMaxHistoryEntries) {
+    history.splice(0, history.length - serverConfig.agentMaxHistoryEntries);
+  }
+
+  const lastAccessedAt = Number(record.lastAccessedAt);
+
+  return {
+    id,
+    cwd,
+    task: typeof record.task === 'string' ? record.task : '',
+    history,
+    status: 'idle',
+    createdAt:
+      typeof record.createdAt === 'string' && record.createdAt ? record.createdAt : new Date().toISOString(),
+    lastAccessedAt: Number.isFinite(lastAccessedAt) ? lastAccessedAt : Date.now(),
+  };
+}
+
+/**
+ * Validates a pending command read back from disk.
+ * @param {unknown} pending
+ * @param {number} now
+ * @returns {null | { command: string, cwd: string, sessionId: string, createdAt: number }}
+ */
+export function normalizePersistedPendingCommand(pending, now) {
+  if (!pending || typeof pending !== 'object' || Array.isArray(pending)) return null;
+  const record = /** @type {Record<string, unknown>} */ (pending);
+  const { command, cwd, sessionId } = record;
+  if (typeof command !== 'string' || !command.trim()) return null;
+  if (typeof cwd !== 'string' || !cwd) return null;
+  if (typeof sessionId !== 'string' || !sessionId) return null;
+  const createdAt = Number(record.createdAt);
+  if (!Number.isFinite(createdAt) || now - createdAt > PENDING_COMMAND_TTL_MS) return null;
+  return { command, cwd, sessionId, createdAt };
+}
+
 // Cache the pending-commands-load promise so it runs exactly once.
 let _pendingLoadReady = null;
 
@@ -266,14 +343,22 @@ async function loadPendingCommands() {
       await ensureDataDir();
       const data = await fs.readFile(PENDING_COMMANDS_FILE, 'utf-8');
       const parsed = JSON.parse(data);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
       const now = Date.now();
+      let skipped = 0;
+      let loaded = 0;
       for (const [token, pending] of Object.entries(parsed)) {
-        // Discard tokens that already expired while the server was down.
-        const createdAt = Number(pending?.createdAt);
-        if (!Number.isFinite(createdAt) || now - createdAt > PENDING_COMMAND_TTL_MS) continue;
-        pendingCommands.set(token, pending);
+        if (typeof token !== 'string' || !token) continue;
+        if (loaded >= serverConfig.agentMaxPendingCommands) break;
+        const normalized = normalizePersistedPendingCommand(pending, now);
+        if (!normalized) {
+          skipped++;
+          continue;
+        }
+        pendingCommands.set(token, normalized);
+        loaded++;
       }
-      logger.info(`Loaded ${pendingCommands.size} pending commands from persistence`);
+      logger.info(`Loaded ${pendingCommands.size} pending commands from persistence`, { skipped });
     } catch (err) {
       if (err.code !== 'ENOENT') {
         logger.error('Failed to load pending commands from file', { error: err.message });
@@ -316,13 +401,21 @@ async function loadSessions() {
     await ensureDataDir();
     const data = await fs.readFile(SESSIONS_FILE, 'utf-8');
     const parsed = JSON.parse(data);
-    for (const [id, session] of Object.entries(parsed)) {
-      if (!sessions.has(id)) {
-        session.status = 'idle'; // Ensure status is idle on load
-        sessions.set(id, session);
-      }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      logger.warn('Ignoring agent session persistence: expected a JSON object');
+      return;
     }
-    logger.info(`Loaded ${Object.keys(parsed).length} agent sessions from persistence`);
+    let skipped = 0;
+    for (const [id, raw] of Object.entries(parsed)) {
+      if (sessions.has(id)) continue;
+      const session = normalizePersistedSession(raw, id);
+      if (!session) {
+        skipped++;
+        continue;
+      }
+      sessions.set(id, session);
+    }
+    logger.info(`Loaded ${sessions.size} agent sessions from persistence`, { skipped });
   } catch (err) {
     if (err.code !== 'ENOENT') {
       logger.error('Failed to load sessions from file', { error: err.message });
@@ -954,16 +1047,9 @@ router.get('/sessions/:id/files', async (req, res, next) => {
 
     let isBinary = false;
     if (stat.size > 0) {
-      const fd = await fs.open(realPath, 'r');
-      try {
-        const readLen = Math.min(8192, stat.size);
-        const headBuf = Buffer.alloc(readLen);
-        const { bytesRead } = await fd.read(headBuf, 0, readLen, 0);
-        if (detectBinaryContent(headBuf.subarray(0, bytesRead))) {
-          isBinary = true;
-        }
-      } finally {
-        await fd.close();
+      const head = await readHeadBytes(realPath, 8192);
+      if (detectBinaryContent(head)) {
+        isBinary = true;
       }
     }
 
@@ -1317,22 +1403,27 @@ router.get('/sessions/:id/dir', async (req, res, next) => {
     const realPath = await resolveValidatedAgentDirectory(resolvedPath);
 
     const entries = await fs.readdir(realPath, { withFileTypes: true });
-    const items = [];
+    const listable = [];
+    // Use the same cap as /api/fs/list so both directory listings behave
+    // identically and operators can tune it in one place.
+    const maxEntries = serverConfig.fsMaxListEntries;
     for (const entry of entries) {
       if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === '.venv') continue;
       const itemPath = path.join(realPath, entry.name);
       if (isProtectedPathForListing(itemPath)) continue;
-      items.push({
+      listable.push({
         name: entry.name,
         isDirectory: entry.isDirectory(),
         path: itemPath,
       });
-      if (items.length >= MAX_DIR_ENTRIES) break;
+      // Read one entry past the cap so truncation is reported accurately.
+      if (listable.length > maxEntries) break;
     }
 
     res.json({
       path: realPath,
-      items,
+      items: listable.slice(0, maxEntries),
+      truncated: listable.length > maxEntries,
     });
   } catch (err) {
     next(err);

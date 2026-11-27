@@ -1638,11 +1638,9 @@
     <script src="./vendor/purify.min.js"></script>
     <script src="./vendor/marked.min.js"></script>
     <script src="/vs/loader.js"></script>
-    <script type="module" src="./js/i18n.js"></script>
-    <script type="module" src="./js/api.js"></script>
-    <script type="module" src="./js/dom-style.js"></script>
-    <script type="module" src="./js/model-picker.js"></script>
-    <script type="module" src="./js/utils.js"></script>
+    <!-- app.js is the single module entry point: it imports i18n/api/dom-style/
+         model-picker/utils (and every feature module), so listing them here as
+         separate module scripts only duplicated module-graph entries. -->
     <script type="module" src="./app.js"></script>
   </body>
 </html>

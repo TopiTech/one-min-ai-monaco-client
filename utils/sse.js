@@ -66,6 +66,74 @@ export async function* readSseBlocks(response, { maxBytes = DEFAULT_MAX_SSE_BYTE
 }
 
 /**
+ * Reads a response body as text while enforcing a byte budget.
+ *
+ * Used where the body is a complete SSE payload that has to be forwarded
+ * verbatim (no per-event parsing), so the size cap that `readSseBlocks`
+ * applies to incrementally consumed streams still applies here.
+ *
+ * When the budget is exceeded the read stops and `truncated` is true; `text`
+ * is then empty, so a caller can never forward a partial body by accident.
+ * `totalBytes` counts every byte read, including the chunk that overflowed.
+ *
+ * @param {Response} response
+ * @param {number} [maxBytes]
+ * @returns {Promise<{ text: string, truncated: boolean, totalBytes: number }>}
+ */
+export async function readBoundedResponseText(response, maxBytes = DEFAULT_MAX_SSE_BYTES) {
+  const reader = response?.body?.getReader?.();
+  if (!reader) {
+    return { text: '', truncated: false, totalBytes: 0 };
+  }
+
+  const decoder = new TextDecoder();
+  let text = '';
+  let totalBytes = 0;
+  let truncated = false;
+  let reachedEof = false;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        reachedEof = true;
+        break;
+      }
+      totalBytes += value?.byteLength ?? value?.length ?? 0;
+      if (totalBytes > maxBytes) {
+        truncated = true;
+        break;
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    if (!truncated) {
+      text += decoder.decode();
+    }
+  } finally {
+    if (!reachedEof) {
+      try {
+        await reader.cancel();
+      } catch {
+        // ignore
+      }
+    }
+    try {
+      reader.releaseLock();
+    } catch {
+      // ignore
+    }
+  }
+
+  if (truncated) {
+    // Fail closed: the body was cut short, so no caller may treat what was
+    // read so far as a complete payload.
+    text = '';
+    logger.warn('Upstream text response exceeded max size', { totalBytes, maxBytes });
+  }
+  return { text, truncated, totalBytes };
+}
+
+/**
  * Parses an OpenAI-compatible SSE stream (`data: {...}` / `data: [DONE]`) and
  * forwards normalized chunks to callbacks.
  *

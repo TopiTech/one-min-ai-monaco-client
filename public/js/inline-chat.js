@@ -17,11 +17,14 @@ const WIDGET_ID = 'inline.chat.widget';
  * @param {object} editorState - Reference to state.editor
  * @param {object} editorManager - The editor manager instance
  * @param {object} dom - DOM element references
- * @returns {{ widget: object, submit: () => Promise<void>, toggle: () => void, close: () => void }}
+ * @returns {{ widget: object, submitInlineChat: () => Promise<void>, toggleInlineChat: () => void, closeInlineChat: () => void }}
  */
 export function createInlineChatManager(editorState, editorManager, dom) {
   let widgetDom = null;
   let isOpen = false;
+  // Incremented whenever the widget is opened or closed so an in-flight request
+  // can detect that the UI state it captured no longer exists.
+  let widgetSession = 0;
 
   function getOrCreateDomNode() {
     if (widgetDom) return widgetDom;
@@ -107,6 +110,7 @@ export function createInlineChatManager(editorState, editorManager, dom) {
     statusDiv.className = 'inline-chat-status is-shown loading';
     input.disabled = true;
 
+    const sessionAtSubmit = widgetSession;
     const targetFilePath = editorState.activeFilePath;
     const targetModel = editorManager.instance.getModel();
     const code = editorManager.instance.getValue();
@@ -143,11 +147,22 @@ export function createInlineChatManager(editorState, editorManager, dom) {
         });
 
         if (accepted) {
-          if (
-            editorState.activeFilePath !== targetFilePath ||
-            editorManager.instance?.getModel() !== targetModel
-          ) {
+          const sameFilePath = editorState.activeFilePath === targetFilePath;
+          const sameModel = editorManager.instance?.getModel() === targetModel;
+          if (!sameFilePath || !sameModel) {
             toast.warning(t('tab_switch_failed', { error: targetFilePath }));
+            return;
+          }
+          // The captured line/column is only valid while the document still
+          // holds the text the suggestion was generated for; otherwise the
+          // insertion would land at a stale offset inside unrelated code.
+          // Compare contents (not version ids) so an edit that was undone, or
+          // a reopen that re-set identical content, is not rejected.
+          const modelDisposed = typeof targetModel?.isDisposed === 'function' && targetModel.isDisposed();
+          const contentUnchanged =
+            !modelDisposed && typeof targetModel?.getValue === 'function' && targetModel.getValue() === code;
+          if (!contentUnchanged) {
+            toast.warning(t('inline_chat_content_changed'));
             return;
           }
           const range = new monaco.Range(
@@ -171,14 +186,19 @@ export function createInlineChatManager(editorState, editorManager, dom) {
       toast.error(t('inline_chat_failed', { error: e.message }));
     } finally {
       _isSubmitting = false;
-      statusDiv.classList.remove('is-shown', 'loading');
+      // The widget DOM node is reused across opens, so its busy state must be
+      // cleared even when the widget was closed (or reopened) meanwhile;
+      // otherwise the next open shows a disabled input and a stuck spinner.
       statusDiv.className = 'inline-chat-status';
+      statusDiv.classList.remove('is-shown', 'loading');
       input.disabled = false;
-      if (!failed) {
-        input.value = '';
-        closeInlineChat();
-      } else {
-        input.focus();
+      if (sessionAtSubmit === widgetSession) {
+        if (!failed) {
+          input.value = '';
+          closeInlineChat();
+        } else {
+          input.focus();
+        }
       }
     }
   }
@@ -193,6 +213,7 @@ export function createInlineChatManager(editorState, editorManager, dom) {
     } else {
       editorManager.instance.addContentWidget(widget);
       isOpen = true;
+      widgetSession++;
       setTimeout(() => {
         const input = getOrCreateDomNode().querySelector('#inlineChatPrompt');
         if (input) input.focus();
@@ -204,6 +225,7 @@ export function createInlineChatManager(editorState, editorManager, dom) {
     if (isOpen) {
       editorManager.instance.removeContentWidget(widget);
       isOpen = false;
+      widgetSession++;
       editorManager.instance.focus();
     }
   }

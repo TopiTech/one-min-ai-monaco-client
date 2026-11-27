@@ -24,7 +24,14 @@ export default defineConfig([
     files: ['**/*.{js,mjs,cjs}'],
     plugins: { js },
     extends: ['js/recommended'],
-    languageOptions: { globals: { ...globals.browser, ...globals.node } },
+  },
+  // Server-side sources run on Node; browser code must not rely on Node
+  // globals (and vice versa), so each environment gets its own globals
+  // instead of a merged set that makes `no-undef` blind to such mistakes.
+  {
+    files: ['**/*.{js,mjs,cjs}'],
+    ignores: ['public/**'],
+    languageOptions: { globals: { ...globals.node } },
   },
   // Test files: add Jest globals so describe/test/expect/beforeEach/afterEach are recognized
   {
@@ -40,6 +47,7 @@ export default defineConfig([
     files: ['public/**/*.{js,mjs,cjs}'],
     languageOptions: {
       globals: {
+        ...globals.browser,
         monaco: 'readonly',
         toast: 'readonly',
         state: 'readonly',
