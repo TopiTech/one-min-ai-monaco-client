@@ -60,19 +60,6 @@ export function shouldExposeErrorText(status, req) {
 
 const MAX_IN_MEMORY_ASSET_FALLBACK_SIZE = 8 * 1024 * 1024;
 
-// nodejs-mobile ships a Node.js binary built with --with-intl=none, and V8 only
-// implements Unicode property escapes (\p{...}) when ICU support is enabled.
-// A regex literal containing one therefore aborts parsing of this whole module
-// on Android ("Invalid property name in character class"), so build the pattern
-// at runtime and fall back to a broad non-ASCII allowlist on those runtimes.
-const UNSAFE_FILENAME_CHARS = (() => {
-  try {
-    return new RegExp('[^\\p{L}\\p{N}._-]', 'gu');
-  } catch {
-    return /[^0-9A-Za-z\u00a0-\uffff._-]/g;
-  }
-})();
-
 // Replace the env-var-based default singleton with the validated serverConfig.
 // This ensures LOG_LEVEL, LOG_TO_FILE, and LOG_FILE are all parsed and clamped
 // consistently (e.g. LOG_LEVEL "info" → parseLogLevel, LOG_TO_FILE "true" →
@@ -180,7 +167,10 @@ async function handleAssetUpload(req, res, next) {
 
     const originalName = req.file.originalname || '';
 
-    let safeName = path.basename(originalName).replace(UNSAFE_FILENAME_CHARS, '_').replace(/^\.+/, '');
+    let safeName = path
+      .basename(originalName)
+      .replace(/[^\p{L}\p{N}._-]/gu, '_')
+      .replace(/^\.+/, '');
 
     let ext = path.extname(safeName);
     if (!ext || ext === '.') {
@@ -688,6 +678,7 @@ if (process.env.NODE_ENV !== 'test') {
   Promise.all([initModels(), initAgentState()])
     .then(() => {
       const server = createApp().listen(serverConfig.port, '127.0.0.1', () => {
+        logger.info(`Node.js runtime: ${process.version} (ICU ${process.versions.icu || 'unavailable'})`);
         logger.info(`1min.ai Monaco client running: http://127.0.0.1:${serverConfig.port}`);
         logger.info('Server configuration', {
           port: serverConfig.port,

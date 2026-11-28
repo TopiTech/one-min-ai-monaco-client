@@ -3,7 +3,9 @@
   display: grid;
   grid-template-columns: var(--sidebar-width) 1fr;
   height: 100vh;
-  width: 100vw;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   position: relative;
   z-index: 1;
 }
@@ -369,23 +371,32 @@
     display: none;
   }
 
+  .topbar {
+    height: calc(70px + var(--safe-area-inset-top, 0px));
+    padding-top: var(--safe-area-inset-top, 0px);
+  }
+
   .sidebar {
     position: fixed;
     bottom: 0;
     left: 0;
-    width: 100vw;
-    height: 70px;
+    right: 0;
+    width: 100%;
+    height: calc(70px + var(--safe-area-inset-bottom, 0px));
     flex-direction: row;
-    padding: 8px 16px;
+    padding: 8px 16px calc(8px + var(--safe-area-inset-bottom, 0px));
     border-right: 0;
     border-top: 1px solid var(--glass-border);
     z-index: 99;
     align-items: center;
     justify-content: space-around;
+    gap: 8px;
   }
 
   .brand,
-  .hint {
+  .hint,
+  .sidebar .credit-save-box,
+  .sidebar .perf-mode-box {
     display: none;
   }
 
@@ -429,11 +440,11 @@
   }
 
   .main {
-    padding-bottom: 70px;
+    padding-bottom: calc(70px + var(--safe-area-inset-bottom, 0px));
   }
 
   .view {
-    height: calc(100vh - 140px);
+    height: calc(100vh - 140px - var(--safe-area-inset-top, 0px) - var(--safe-area-inset-bottom, 0px));
     padding: 20px 16px;
   }
 
@@ -442,6 +453,13 @@
     grid-template-columns: 1fr;
     height: auto;
     gap: 16px;
+  }
+
+  /* Keep the composer compact on phones; the conversation side card stacks
+     below the chat card and the view scrolls. */
+  #chat .log {
+    height: 40vh;
+    min-height: 160px;
   }
 
   #editor {
@@ -463,8 +481,44 @@
 
 @media (max-width: 768px) {
   .topbar {
-    height: 60px;
+    height: calc(60px + var(--safe-area-inset-top, 0px));
     padding: 0 16px;
+    padding-top: var(--safe-area-inset-top, 0px);
+    gap: 8px;
+  }
+
+  .topbar > div:first-child {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
+  }
+
+  #viewTitle {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .topbar-actions {
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .provider-switcher {
+    padding: 4px 8px;
+    gap: 6px;
+  }
+
+  .provider-select {
+    min-width: 0;
+    max-width: 110px;
+  }
+
+  #healthBtn {
+    display: none;
   }
 
   .topbar h2,
@@ -489,6 +543,19 @@
 }
 
 @media (max-width: 480px) {
+  .topbar {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  #status {
+    display: none;
+  }
+
+  .provider-select {
+    max-width: 96px;
+  }
+
   .log {
     padding: 16px;
   }
@@ -618,11 +685,12 @@
 
 @media (max-width: 768px) {
   .main {
-    padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(70px + var(--safe-area-inset-bottom, 0px));
   }
 
   .view {
     padding: 16px 12px;
+    overflow-x: hidden;
   }
 
   .panel.two {

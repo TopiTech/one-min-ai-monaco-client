@@ -3,8 +3,7 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import fs from 'fs';
-import { serverConfig, isAndroidPlatform } from '../config/server.js';
-import { TMP_DIR } from '../config/paths.js';
+import { serverConfig } from '../config/server.js';
 import { UnsupportedMediaTypeError, PayloadTooLargeError, BadRequestError } from '../utils/errors.js';
 
 const ALLOWED_MIME_TYPES = [
@@ -20,13 +19,10 @@ const ALLOWED_MIME_TYPES = [
 ];
 
 // S-1: Switched from multer.memoryStorage() to diskStorage to avoid OOM
-// when several large uploads arrive concurrently. Each file lands in a
-// temporary directory with a random suffix and is unlinked after the upstream
+// when several large uploads arrive concurrently. Each file lands in
+// os.tmpdir() with a random suffix and is unlinked after the upstream
 // request finishes (success or failure).
-// nodejs-mobile resolves os.tmpdir() to Android's read-only /tmp, so use the
-// app data directory there instead.
-const UPLOAD_TMP_ROOT = isAndroidPlatform() ? TMP_DIR : os.tmpdir();
-export const UPLOAD_TMP_DIR = path.join(UPLOAD_TMP_ROOT, 'one-min-ai-uploads');
+export const UPLOAD_TMP_DIR = path.join(os.tmpdir(), 'one-min-ai-uploads');
 fs.mkdirSync(UPLOAD_TMP_DIR, { recursive: true });
 
 export const upload = multer({

@@ -98,6 +98,9 @@ Java_com_topitech_oneminai_MainActivity_startNodeWithArguments(
     setenv("LOG_TO_FILE", "false", 1);
     setenv("ENABLE_COMMAND_EXECUTION", "false", 1);
     setenv("ENABLE_CODE_RUN", "false", 1);
+    // Bound V8's heap: mobile Node otherwise sizes the old space from total
+    // device RAM, and exceeding the Android cgroup limit kills the app.
+    setenv("NODE_OPTIONS", "--max-old-space-size=512", 1);
 
     if (!cache_dir.empty()) {
         setenv("TMPDIR", cache_dir.c_str(), 1);

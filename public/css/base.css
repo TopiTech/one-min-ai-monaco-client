@@ -41,6 +41,12 @@
   font-family: var(--font-sans);
 }
 
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 /* Background Layer with Liquid Blobs */
 body {
   background-color: var(--bg);

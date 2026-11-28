@@ -1,7 +1,8 @@
 /**
- * Prepares the Android Capacitor + nodejs-mobile bundle:
+ * Prepares the Android Capacitor + Node.js bundle:
  * 1. Copies vendored frontend assets (marked, DOMPurify) into public/vendor.
- * 2. Downloads & SHA-256 verifies nodejs-mobile v18.20.4 Android binaries into android/app/libnode.
+ * 2. Downloads & SHA-256 verifies the ICU-enabled Node.js for Mobile Apps
+ *    Android binaries (fogtape/nodejs-mobile Node 24 LTS) into android/app/libnode.
  * 3. Stages an allowlisted, secret-free Node.js project in android/app/src/main/assets/nodejs-project.
  * 4. Installs production-only dependencies inside the staged directory and removes monaco-editor.
  * 5. Verifies no secrets/logs (.env, .onemin-ai, .mimocode, logs, *.log) exist in the staged assets.
@@ -20,64 +21,68 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DEFAULT_PROJECT_ROOT = path.resolve(__dirname, '..');
 
-export const NODEJS_MOBILE_VERSION = 'v18.20.4';
-export const NODEJS_MOBILE_URL = `https://github.com/nodejs-mobile/nodejs-mobile/releases/download/${NODEJS_MOBILE_VERSION}/nodejs-mobile-${NODEJS_MOBILE_VERSION}-android.zip`;
-export const NODEJS_MOBILE_SHA256 = 'bd7321eaa1a7602fbe0bb87302df2d79d87835cf4363fbdd17c350dbb485c2af';
+// The upstream nodejs-mobile release is built with --with-intl=none: V8 then
+// rejects every Unicode property escape (\p{...}) and Intl is unavailable.
+// This fork is the same embeddable Node.js for Mobile Apps library, built from
+// Node 24 LTS with ICU 78 statically linked and 16 KB page-size support.
+// Release: https://github.com/fogtape/nodejs-mobile/releases/tag/v24.22.1-0
+export const NODEJS_MOBILE_VERSION = 'v24.22.1-0';
+export const NODEJS_MOBILE_ASSET = `nodejs-mobile-android-${NODEJS_MOBILE_VERSION.replace(/^v/, '')}.zip`;
+export const NODEJS_MOBILE_URL = `https://github.com/fogtape/nodejs-mobile/releases/download/${NODEJS_MOBILE_VERSION}/${NODEJS_MOBILE_ASSET}`;
+export const NODEJS_MOBILE_SHA256 = 'd6fd9f610fe5d81fede8f0d400c5a62723247725a19831835f15abf4f0604250';
 const TARGET_ABIS = ['arm64-v8a', 'x86_64'];
 const UNUSED_ABIS = ['armeabi-v7a'];
+const RUNTIME_STAMP_FILE = '.runtime-version';
 
 const COPY_FILES = ['server.js', 'package.json', 'package-lock.json'];
 const COPY_DIRS = ['config', 'providers', 'routes', 'services', 'utils', 'middlewares'];
 const FORBIDDEN_TOP_ENTRIES = new Set(['.env', '.onemin-ai', '.mimocode', 'logs']);
 
-/**
- * nodejs-mobile's libnode is built with --with-intl=none, and V8 only parses
- * Unicode property escapes (\p{...}) when ICU support is compiled in. A regex
- * literal containing one throws "Invalid property name in character class" as
- * soon as the module is required, so dependencies that use such literals must
- * be rewritten for the Android bundle.
- *
- * path-to-regexp backs Express routing. It only uses these patterns to validate
- * route parameter names, which this app keeps ASCII, so an ASCII class is
- * equivalent for every route the server registers. Each entry fails the build
- * when its source text changes instead of silently shipping a broken bundle.
- */
-const NO_ICU_PATCHES = [
-  {
-    file: 'node_modules/path-to-regexp/dist/index.js',
-    replacements: [
-      {
-        from: 'const ID_START = /^[$_\\p{ID_Start}]$/u;',
-        to: 'const ID_START = /^[$_A-Za-z]$/;',
-      },
-      {
-        from: 'const ID_CONTINUE = /^[$\\u200c\\u200d\\p{ID_Continue}]$/u;',
-        to: 'const ID_CONTINUE = /^[$\\u200c\\u200d0-9A-Za-z_]$/;',
-      },
-      {
-        from: 'const ID = /^[$_\\p{ID_Start}][$\\u200c\\u200d\\p{ID_Continue}]*$/u;',
-        to: 'const ID = /^[$_A-Za-z][$\\u200c\\u200d0-9A-Za-z_]*$/;',
-      },
-    ],
-  },
-];
+function fileContainsAllMarkers(filePath, markers) {
+  const fd = fs.openSync(filePath, 'r');
+  try {
+    const chunkSize = 4 * 1024 * 1024;
+    const overlap = 64;
+    let carried = Buffer.alloc(0);
+    let position = 0;
+    const remaining = [...markers];
 
-function applyNoIcuPatches(stagedDir) {
-  for (const patch of NO_ICU_PATCHES) {
-    const filePath = path.join(stagedDir, patch.file);
-    let source = fs.readFileSync(filePath, 'utf8');
-    for (const { from, to } of patch.replacements) {
-      if (!source.includes(from)) {
-        throw new Error(
-          `[android-prepare] Expected no-ICU patch target not found in ${patch.file}: ${from}. ` +
-            'Update NO_ICU_PATCHES for the new dependency version.',
-        );
+    for (;;) {
+      const chunk = Buffer.allocUnsafe(chunkSize);
+      const bytesRead = fs.readSync(fd, chunk, 0, chunkSize, position);
+      if (bytesRead === 0) return remaining.length === 0;
+
+      const data = Buffer.concat([carried, chunk.subarray(0, bytesRead)]);
+      for (let i = remaining.length - 1; i >= 0; i -= 1) {
+        if (data.includes(Buffer.from(remaining[i]))) {
+          remaining.splice(i, 1);
+        }
       }
-      source = source.split(from).join(to);
+      if (remaining.length === 0) return true;
+
+      carried = data.subarray(Math.max(0, data.length - overlap));
+      position += bytesRead;
     }
-    fs.writeFileSync(filePath, source);
-    console.log(`[android-prepare] Applied no-ICU regex patch to ${patch.file}`);
+  } finally {
+    fs.closeSync(fd);
   }
+}
+
+/**
+ * Fail the build if the downloaded runtime is not the ICU-enabled build.
+ * `icu_78` is the versioned C++ namespace of statically linked ICU and
+ * `u_getVersion` its stable C API symbol, so both are reliable markers.
+ */
+function assertIcuEnabled(libnodeDir) {
+  for (const abi of TARGET_ABIS) {
+    const soPath = path.join(libnodeDir, 'bin', abi, 'libnode.so');
+    if (!fileContainsAllMarkers(soPath, ['icu_78', 'u_getVersion'])) {
+      throw new Error(
+        `[android-prepare] libnode for ${abi} has no ICU symbols. Refusing to stage a non-Intl runtime.`,
+      );
+    }
+  }
+  console.log(`[android-prepare] Verified ICU runtime in libnode (${TARGET_ABIS.join(', ')})`);
 }
 
 function buildSanitizedChildEnv() {
@@ -158,7 +163,17 @@ function extractZip(zipPath, destDir) {
 
 export async function ensureLibnode(projectRoot = DEFAULT_PROJECT_ROOT) {
   const libnodeDir = path.join(projectRoot, 'android', 'app', 'libnode');
+  const stampMatches = (() => {
+    try {
+      return (
+        fs.readFileSync(path.join(libnodeDir, RUNTIME_STAMP_FILE), 'utf8').trim() === NODEJS_MOBILE_VERSION
+      );
+    } catch {
+      return false;
+    }
+  })();
   const allPresent =
+    stampMatches &&
     fs.existsSync(path.join(libnodeDir, 'include', 'node', 'node.h')) &&
     TARGET_ABIS.every((abi) => fs.existsSync(path.join(libnodeDir, 'bin', abi, 'libnode.so')));
 
@@ -205,6 +220,9 @@ export async function ensureLibnode(projectRoot = DEFAULT_PROJECT_ROOT) {
       throw new Error(`Missing expected native library after extraction: ${soPath}`);
     }
   }
+
+  assertIcuEnabled(libnodeDir);
+  await fsp.writeFile(path.join(libnodeDir, RUNTIME_STAMP_FILE), `${NODEJS_MOBILE_VERSION}\n`);
 
   console.log(`[android-prepare] Extracted libnode (${TARGET_ABIS.join(', ')}) into ${libnodeDir}`);
   return libnodeDir;
@@ -291,7 +309,6 @@ export async function stageNodeProject(projectRoot = DEFAULT_PROJECT_ROOT, { ins
     runChecked('npm', ['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], stagedDir);
     // monaco-editor is in dependencies for desktop copy-monaco, but unused on Android (~80MB)
     await fsp.rm(path.join(stagedDir, 'node_modules', 'monaco-editor'), { recursive: true, force: true });
-    applyNoIcuPatches(stagedDir);
   }
 
   await assertNoSecretsInStagedDir(stagedDir);

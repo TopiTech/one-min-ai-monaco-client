@@ -1,10 +1,10 @@
-# Android アプリビルドガイド (Capacitor + nodejs-mobile)
+# Android アプリビルドガイド (Capacitor + Node.js for Mobile Apps)
 
-本アプリは Capacitor（WebView シェル）と `nodejs-mobile`（v18.20.4 組み込みランタイム）を組み合わせ、既存の Express BFF（`server.js`）とフロントエンド UI を **Android 端末単体で完結動作** させることができます。
+本アプリは Capacitor（WebView シェル）と ICU 有効な Node.js for Mobile Apps（v24.22.1-0 組み込みランタイム）を組み合わせ、既存の Express BFF（`server.js`）とフロントエンド UI を **Android 端末単体で完結動作** させることができます。
 
 ## アーキテクチャ概要
 
-- **ランタイム**: 端末内バックグラウンドスレッドで `libnode.so`（Node.js v18.20.4）を起動し、`127.0.0.1:38517` で Express BFF を待ち受けます。
+- **ランタイム**: 端末内バックグラウンドスレッドで `libnode.so`（Node.js v24.22.1 / ICU 78.3）を起動し、`127.0.0.1:38517` で Express BFF を待ち受けます。
 - **WebView**: 起動ローダー（`mobile/loader/index.html`）から `/api/health` の応答を確認後、`http://127.0.0.1:38517/` に遷移します。
 - **ネットワーク保護**: `network_security_config.xml` により平文 HTTP は `127.0.0.1` / `localhost` のみに限定され、外部通信は HTTPS のみ許可されます。
 - **データ永続化**: API キーやローカル BFF セッション トークンは端末内のアプリ専用ディレクトリ（`filesDir/nodejs-project/.onemin-ai/data/`）に保存され、`android:allowBackup="false"` によりクラウド自動バックアップの対象外となります。
@@ -15,9 +15,10 @@
 - **非表示・無効化 (`APP_PLATFORM=android`)**:
   - Monaco Editor（`public/vs`）およびコーディング／AI Agent タブ
   - OS コマンド実行 (`ENABLE_COMMAND_EXECUTION=false`) およびコード実行 (`ENABLE_CODE_RUN=false`)
-- **Node 18 ランタイム制約**:
-  - `nodejs-mobile` の Node 18.20.4 には `fs.openAsBlob` が存在しないため、8MB を超える大容量アセットアップロードはエラーになります（8MB 以下は既存のメモリフォールバックで動作します）。
-  - 個人利用向けにローカル loopback での単体利用を想定しています（Node.js 18 は upstream EOL であるため公開サーバー用途には使用しないでください）。
+- **Node.js 24 ランタイム**:
+  - 公式 `nodejs-mobile` は `--with-intl=none` でビルドされているため、Unicode プロパティエスケープ（`\p{...}`）や `Intl` が使えません。本アプリは ICU 78 を静的リンクした [fogtape/nodejs-mobile v24.22.1-0](https://github.com/fogtape/nodejs-mobile/releases/tag/v24.22.1-0) を使用しています。
+  - Node 24 では `fs.openAsBlob` が利用できるため、大容量アセットもストリーミングでアップロードされます（古いランタイム向けの 8MB メモリフォールバックは残しています）。
+  - 個人利用向けにローカル loopback での単体利用を想定しています。公開サーバー用途には使用しないでください。
 
 ## 必要なビルド環境
 
@@ -45,7 +46,7 @@ npm run android:sync
 `android:prepare`（`android:sync` 内で実行）は以下を自動実行します。
 
 1. `public/vendor/` への DOMPurify / marked コピー
-2. `nodejs-mobile` v18.20.4 Android バイナリ（`arm64-v8a` / `x86_64`）のダウンロードと SHA-256 検証・展開（`android/app/libnode/`）
+2. ICU 有効な Node.js for Mobile Apps v24.22.1-0 Android バイナリ（`arm64-v8a` / `x86_64`）のダウンロード、SHA-256 検証、ICU シンボル確認、展開（`android/app/libnode/`）
 3. `android/app/src/main/assets/nodejs-project/` への最小ファイル群コピー（`public/vs`、`.env`、`.onemin-ai`、`logs`、`tests` は除外）
 4. 本番依存パッケージのインストール（`monaco-editor` は容量削減のため削除）と秘密情報非混入チェック
 
@@ -62,6 +63,8 @@ npm run android:open
 ```
 
 生成先: `android/app/build/outputs/apk/debug/app-debug.apk`
+
+> **容量について**: Node.js 24 + ICU を 2 ABI 分同梱するため、debug APK は約 300MB になります。配布時は ABI 分割（`arm64-v8a` / `x86_64`）を推奨します。
 
 ### 3. 実機・エミュレータへのインストールとログ確認
 
