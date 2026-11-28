@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "cookie": "^2.0.1",
-    "dompurify": "^3.4.15",
+    "dompurify": "^3.5.0",
     "dotenv": "^18.0.6",
     "express": "^5.3.0",
     "express-rate-limit": "^8.7.1",
@@ -35,7 +35,7 @@
     "zod": "^4.6.5"
   },
   "overrides": {
-    "dompurify": "^3.4.15",
+    "dompurify": "$dompurify",
     "ip-address": "^10.7.0",
     "qs": "^6.16.0"
   },
