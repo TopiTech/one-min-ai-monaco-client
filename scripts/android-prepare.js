@@ -30,6 +30,56 @@ const COPY_FILES = ['server.js', 'package.json', 'package-lock.json'];
 const COPY_DIRS = ['config', 'providers', 'routes', 'services', 'utils', 'middlewares'];
 const FORBIDDEN_TOP_ENTRIES = new Set(['.env', '.onemin-ai', '.mimocode', 'logs']);
 
+/**
+ * nodejs-mobile's libnode is built with --with-intl=none, and V8 only parses
+ * Unicode property escapes (\p{...}) when ICU support is compiled in. A regex
+ * literal containing one throws "Invalid property name in character class" as
+ * soon as the module is required, so dependencies that use such literals must
+ * be rewritten for the Android bundle.
+ *
+ * path-to-regexp backs Express routing. It only uses these patterns to validate
+ * route parameter names, which this app keeps ASCII, so an ASCII class is
+ * equivalent for every route the server registers. Each entry fails the build
+ * when its source text changes instead of silently shipping a broken bundle.
+ */
+const NO_ICU_PATCHES = [
+  {
+    file: 'node_modules/path-to-regexp/dist/index.js',
+    replacements: [
+      {
+        from: 'const ID_START = /^[$_\\p{ID_Start}]$/u;',
+        to: 'const ID_START = /^[$_A-Za-z]$/;',
+      },
+      {
+        from: 'const ID_CONTINUE = /^[$\\u200c\\u200d\\p{ID_Continue}]$/u;',
+        to: 'const ID_CONTINUE = /^[$\\u200c\\u200d0-9A-Za-z_]$/;',
+      },
+      {
+        from: 'const ID = /^[$_\\p{ID_Start}][$\\u200c\\u200d\\p{ID_Continue}]*$/u;',
+        to: 'const ID = /^[$_A-Za-z][$\\u200c\\u200d0-9A-Za-z_]*$/;',
+      },
+    ],
+  },
+];
+
+function applyNoIcuPatches(stagedDir) {
+  for (const patch of NO_ICU_PATCHES) {
+    const filePath = path.join(stagedDir, patch.file);
+    let source = fs.readFileSync(filePath, 'utf8');
+    for (const { from, to } of patch.replacements) {
+      if (!source.includes(from)) {
+        throw new Error(
+          `[android-prepare] Expected no-ICU patch target not found in ${patch.file}: ${from}. ` +
+            'Update NO_ICU_PATCHES for the new dependency version.',
+        );
+      }
+      source = source.split(from).join(to);
+    }
+    fs.writeFileSync(filePath, source);
+    console.log(`[android-prepare] Applied no-ICU regex patch to ${patch.file}`);
+  }
+}
+
 function buildSanitizedChildEnv() {
   const env = { ...process.env };
   // Strip npm 11 parent allow-scripts env vars that conflict with --ignore-scripts in child npm ci
@@ -241,6 +291,7 @@ export async function stageNodeProject(projectRoot = DEFAULT_PROJECT_ROOT, { ins
     runChecked('npm', ['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], stagedDir);
     // monaco-editor is in dependencies for desktop copy-monaco, but unused on Android (~80MB)
     await fsp.rm(path.join(stagedDir, 'node_modules', 'monaco-editor'), { recursive: true, force: true });
+    applyNoIcuPatches(stagedDir);
   }
 
   await assertNoSecretsInStagedDir(stagedDir);
