@@ -568,6 +568,25 @@ export function createChatManager(dom, state) {
 
             try {
               const data = JSON.parse(dataStr);
+              const extractSseFailure = (payload) => {
+                if (!payload || typeof payload !== 'object') return null;
+                const rawStatus = payload?.aiRecord?.status ?? payload?.status;
+                const status = rawStatus ? String(rawStatus).toUpperCase() : '';
+                const isFailed = ['FAILED', 'FAILURE', 'CANCELLED', 'CANCELED', 'ERROR', 'TIMEOUT'].includes(
+                  status,
+                );
+                if (!isFailed && !payload?.error) return null;
+                const ro = payload?.aiRecord?.aiRecordDetail?.resultObject;
+                const detailMsg =
+                  ro && typeof ro === 'object' && !Array.isArray(ro) ? ro.message || ro.error : null;
+                return (
+                  payload?.aiRecord?.aiRecordDetail?.errorMessage ||
+                  detailMsg ||
+                  payload?.aiRecord?.errorMessage ||
+                  (typeof payload?.error === 'string' ? payload.error : payload?.error?.message) ||
+                  (isFailed ? `Stream failed with status: ${status}` : 'Stream error')
+                );
+              };
 
               if (currentEvent === 'error') {
                 streamError = new Error(data?.error || data?.message || 'Stream error');
@@ -580,6 +599,13 @@ export function createChatManager(dom, state) {
               }
 
               if (currentEvent === 'result') {
+                const failureMsg = extractSseFailure(data);
+                if (failureMsg) {
+                  streamError = new Error(failureMsg);
+                  streamError.nonRetryable = true;
+                  streamDone = true;
+                  return;
+                }
                 // The `result` event can arrive before, during, or after
                 // incremental `content` chunks. If we've already accumulated
                 // text from content events, only adopt the result if it
@@ -598,6 +624,13 @@ export function createChatManager(dom, state) {
               // `event: result` and sends it as `event: final-result`
               // after all content deltas. Adopt it unconditionally.
               if (currentEvent === 'final-result') {
+                const failureMsg = extractSseFailure(data);
+                if (failureMsg) {
+                  streamError = new Error(failureMsg);
+                  streamError.nonRetryable = true;
+                  streamDone = true;
+                  return;
+                }
                 const text = findTextCandidate(data?.aiRecord || data);
                 if (text) {
                   fullText = text;
@@ -665,6 +698,7 @@ export function createChatManager(dom, state) {
           cancelPendingRender();
           const shouldRetry =
             e?.name !== 'AbortError' &&
+            !e?.nonRetryable &&
             !fullText &&
             attempt < MAX_STREAM_RETRIES &&
             (!e?.status || RETRYABLE_STREAM_STATUSES.has(Number(e.status)));

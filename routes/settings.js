@@ -1,11 +1,12 @@
 import express from 'express';
 import { z } from 'zod';
 import { serverConfig } from '../config/server.js';
-import { fetchModels } from '../config/models.js';
+import { fetchModels, resetProviderModels } from '../config/models.js';
 import { PROVIDER_CAPABILITIES } from '../providers/index.js';
 import {
   deleteApiKey,
   getProvidersKeyStatus,
+  hasApiKey,
   setApiKey,
   validateApiKeyInput,
 } from '../services/key-store.js';
@@ -131,6 +132,18 @@ router.delete('/keys/:provider', async (req, res, next) => {
     }
     const status = await deleteApiKey(provider);
     logger.info('UI-stored API key removed', { provider });
+
+    if (hasApiKey(provider)) {
+      fetchModels({ provider, includeAll: true }).catch((err) => {
+        logger.warn('Background model refresh after key delete failed', {
+          provider,
+          error: err?.message,
+        });
+      });
+    } else {
+      resetProviderModels(provider);
+    }
+
     res.json({
       ok: true,
       provider: status,

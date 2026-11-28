@@ -433,6 +433,9 @@ function initProviderAndApiKeySettings() {
         toast?.success?.(
           t('key_deleted_success', { provider: providerId === '1forall' ? '1forall.ai' : '1min.ai' }),
         );
+        window.dispatchEvent(
+          new CustomEvent('models-refresh-requested', { detail: { provider: providerId } }),
+        );
       } catch (err) {
         toast?.error?.(t('key_delete_failed', { error: err.message }));
       } finally {

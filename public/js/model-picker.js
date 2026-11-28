@@ -121,7 +121,7 @@ const FALLBACK_VIDEO_MODELS = [
   { id: 'sora-2', label: 'OpenAI Sora 2 (Fallback)', provider: 'OpenAI', tags: ['video', 'fast'] },
 ];
 
-function applyActiveProviderCatalog(providerId = getActiveProvider()) {
+function applyActiveProviderCatalog(providerId = getActiveProvider(), { notifyImage = false } = {}) {
   const cat = _providerCatalogs[providerId];
   if (cat) {
     _allChatModels =
@@ -133,10 +133,10 @@ function applyActiveProviderCatalog(providerId = getActiveProvider()) {
     _allVideoModels =
       Array.isArray(cat.videoModels) && cat.videoModels.length > 0 ? cat.videoModels : FALLBACK_VIDEO_MODELS;
   }
-  syncPickerSelectionsToCatalog(providerId);
+  syncPickerSelectionsToCatalog(providerId, { notifyImage });
 }
 
-function syncPickerSelectionsToCatalog(providerId = getActiveProvider()) {
+function syncPickerSelectionsToCatalog(providerId = getActiveProvider(), { notifyImage = false } = {}) {
   const isImageEditorMode = Boolean(document.getElementById('editorImageUrl')?.value?.trim());
   const pairs = [
     { inputId: 'chatModel', labelId: 'chatModelLabel', models: _allChatModels, fallbackId: 'gpt-4o-mini' },
@@ -161,11 +161,14 @@ function syncPickerSelectionsToCatalog(providerId = getActiveProvider()) {
     },
   ];
 
+  let imageModelChanged = false;
+  let nextImageModelId = '';
   for (const { inputId, labelId, models, fallbackId, preferTag } of pairs) {
     const inputEl = document.getElementById(inputId);
     const labelEl = document.getElementById(labelId);
     if (!inputEl || !Array.isArray(models) || models.length === 0) continue;
 
+    const prevValue = inputEl.value;
     let selected = models.find((m) => m.id === inputEl.value);
     if (preferTag && selected && !selected.tags?.includes(preferTag)) {
       selected = undefined;
@@ -177,9 +180,24 @@ function syncPickerSelectionsToCatalog(providerId = getActiveProvider()) {
         models[0];
       inputEl.value = selected.id;
     }
+    if (inputId === 'imageModel' && inputEl.value !== prevValue) {
+      imageModelChanged = true;
+      nextImageModelId = inputEl.value;
+    }
     if (labelEl && selected) {
       labelEl.textContent = selected.label;
     }
+  }
+  if (
+    notifyImage &&
+    imageModelChanged &&
+    typeof window !== 'undefined' &&
+    typeof window.dispatchEvent === 'function' &&
+    typeof CustomEvent === 'function'
+  ) {
+    window.dispatchEvent(
+      new CustomEvent('model-selected', { detail: { type: 'image', id: nextImageModelId } }),
+    );
   }
 }
 
@@ -196,7 +214,7 @@ export async function loadModels() {
 
     const activeProvider = getActiveProvider();
     if (_providerCatalogs[activeProvider]) {
-      applyActiveProviderCatalog(activeProvider);
+      applyActiveProviderCatalog(activeProvider, { notifyImage: true });
     } else {
       _allChatModels =
         Array.isArray(data.chatModels) && data.chatModels.length > 0 ? data.chatModels : FALLBACK_CHAT_MODELS;
@@ -210,7 +228,7 @@ export async function loadModels() {
         Array.isArray(data.videoModels) && data.videoModels.length > 0
           ? data.videoModels
           : FALLBACK_VIDEO_MODELS;
-      syncPickerSelectionsToCatalog(activeProvider);
+      syncPickerSelectionsToCatalog(activeProvider, { notifyImage: true });
     }
 
     const activeSync = _providerCatalogs[activeProvider]?.sync;

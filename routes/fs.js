@@ -397,12 +397,19 @@ router.post('/create', async (req, res, next) => {
     // TOCTOU mitigation
     const realPath = await getSafeRealPath(resolvedPath);
 
-    if (type === 'directory') {
-      await fs.mkdir(realPath, { recursive: true });
-    } else {
-      const dir = path.dirname(realPath);
-      await fs.mkdir(dir, { recursive: true });
-      await atomicWriteTextFile(realPath, content);
+    try {
+      if (type === 'directory') {
+        await fs.mkdir(realPath, { recursive: true });
+      } else {
+        const dir = path.dirname(realPath);
+        await fs.mkdir(dir, { recursive: true });
+        await atomicWriteTextFile(realPath, content);
+      }
+    } catch (fsErr) {
+      if (['EEXIST', 'EISDIR', 'ENOTDIR'].includes(fsErr?.code)) {
+        throw new BadRequestError(`Cannot create ${type}: ${fsErr.message}`);
+      }
+      throw fsErr;
     }
 
     res.json({ ok: true, path: realPath, type });
@@ -534,7 +541,21 @@ router.post('/rename', async (req, res, next) => {
     // New path may or may not exist (TOCTOU mitigation)
     const realNew = await getSafeRealPath(resolvedNew);
 
-    await fs.rename(realOld, realNew);
+    if (oldStat.isDirectory()) {
+      const relativeTarget = path.relative(realOld, realNew);
+      if (relativeTarget && !relativeTarget.startsWith('..') && !path.isAbsolute(relativeTarget)) {
+        throw new BadRequestError('Cannot move or rename a directory into itself');
+      }
+    }
+
+    try {
+      await fs.rename(realOld, realNew);
+    } catch (fsErr) {
+      if (['EINVAL', 'EEXIST', 'ENOTEMPTY', 'ENOTDIR', 'EISDIR', 'EPERM'].includes(fsErr?.code)) {
+        throw new BadRequestError(`Cannot rename target: ${fsErr.message}`);
+      }
+      throw fsErr;
+    }
     res.json({ ok: true, oldPath: realOld, newPath: realNew });
   } catch (err) {
     next(err);

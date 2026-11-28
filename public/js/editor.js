@@ -255,7 +255,8 @@ export function createEditorManager(state) {
   function markClean(filePath, versionId) {
     const fileUri = monaco.Uri.file(filePath);
     const model = monaco.editor.getModel(fileUri);
-    const cleanVersion = versionId ?? model?.getAlternativeVersionId();
+    if (!model) return;
+    const cleanVersion = versionId ?? model.getAlternativeVersionId();
     if (cleanVersion === undefined) return;
     state.originalVersions[filePath] = cleanVersion;
   }

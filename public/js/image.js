@@ -25,10 +25,20 @@ const QUICK_EDIT_KEYS = new Set([
   'quality',
   'n',
   'num_outputs',
+  'num_images',
   'background',
   'output_format',
+  'format',
   'output_compression',
 ]);
+const QUICK_EDIT_FIELD_IDS = Object.freeze({
+  size: 'editorSize',
+  quality: 'editorQuality',
+  n: 'editorN',
+  background: 'editorBackground',
+  output_format: 'editorOutputFormat',
+  output_compression: 'editorOutputCompression',
+});
 const ALWAYS_HIDDEN_PARAM_KEYS = new Set(['prompt', 'imageUrl']);
 const PARAM_STORE_KEY = 'monaco_image_model_params';
 
@@ -114,7 +124,7 @@ export function createImageManager(dom) {
   let _capabilityRequestId = 0;
 
   function getFeatureSelect() {
-    return document.getElementById('imageFeature');
+    return typeof document !== 'undefined' ? document.getElementById('imageFeature') : null;
   }
 
   function currentFeature() {
@@ -132,12 +142,86 @@ export function createImageManager(dom) {
     return feature !== 'IMAGE_GENERATOR' && feature !== 'IMAGE_EDITOR';
   }
 
-  function hiddenParamKeys() {
+  function getSupportedQuickEditMap(capabilities = _capabilities) {
+    if (!capabilities || !Array.isArray(capabilities.params)) return null;
+    const byKey = new Map(capabilities.params.map((p) => [p.key, p]));
+    const firstKey = (keys) => keys.find((k) => byKey.has(k)) || null;
+
+    const imageSizeParam = byKey.get('imageSize');
+    const supportsFreeformImageSize =
+      imageSizeParam && (!Array.isArray(imageSizeParam.options) || imageSizeParam.options.length === 0);
+    const qualityParam = byKey.get('quality');
+
+    return {
+      size: byKey.has('size') ? 'size' : supportsFreeformImageSize ? 'imageSize' : null,
+      quality: qualityParam && qualityParam.type !== 'number' ? 'quality' : null,
+      n: firstKey(['n', 'num_outputs', 'num_images']),
+      background: byKey.has('background') ? 'background' : null,
+      output_format: firstKey(['output_format', 'format']),
+      output_compression: byKey.has('output_compression') ? 'output_compression' : null,
+    };
+  }
+
+  function hiddenParamKeys(capabilities = _capabilities) {
     const hidden = new Set(ALWAYS_HIDDEN_PARAM_KEYS);
     if (isGenericFeatureMode()) return hidden;
-    const quickKeys = isEditModeActive() ? QUICK_EDIT_KEYS : QUICK_GENERATE_KEYS;
-    for (const key of quickKeys) hidden.add(key);
+    if (isEditModeActive()) {
+      const quickEditMap = getSupportedQuickEditMap(capabilities);
+      if (quickEditMap) {
+        for (const matchedKey of Object.values(quickEditMap)) {
+          if (matchedKey) hidden.add(matchedKey);
+        }
+        return hidden;
+      }
+      for (const key of QUICK_EDIT_KEYS) hidden.add(key);
+      return hidden;
+    }
+    for (const key of QUICK_GENERATE_KEYS) hidden.add(key);
     return hidden;
+  }
+
+  function syncQuickEditControlsVisibility(capabilities = _capabilities) {
+    if (typeof document === 'undefined') return;
+    const imgToImgParams = document.getElementById('imageToImageParams');
+    if (!imgToImgParams) return;
+
+    if (!isEditModeActive() || isGenericFeatureMode()) {
+      imgToImgParams.classList.remove('is-shown');
+      return;
+    }
+
+    const quickEditMap = getSupportedQuickEditMap(capabilities);
+    if (!quickEditMap) {
+      const model = dom.imageModel?.value || '';
+      const showLegacy = getActiveProvider() === '1min' && String(model).startsWith('gpt-image');
+      imgToImgParams.classList.toggle('is-shown', showLegacy);
+      return;
+    }
+
+    let visibleCount = 0;
+    const touchedRows = new Set();
+    for (const [field, elementId] of Object.entries(QUICK_EDIT_FIELD_IDS)) {
+      const control = document.getElementById(elementId);
+      if (!control) continue;
+      const supported = Boolean(quickEditMap[field]);
+      if (supported) visibleCount++;
+      const fieldWrap = control.closest?.('.u-flex-1, .u-flex-2') || control.parentElement;
+      if (fieldWrap?.classList) {
+        fieldWrap.classList.toggle('u-hidden', !supported);
+      }
+      const row = fieldWrap?.parentElement;
+      if (row) touchedRows.add(row);
+    }
+
+    for (const row of touchedRows) {
+      const wrappers = [...(row.children || [])];
+      if (wrappers.length > 0 && row.classList) {
+        const allHidden = wrappers.every((child) => child.classList?.contains('u-hidden'));
+        row.classList.toggle('u-hidden', allHidden);
+      }
+    }
+
+    imgToImgParams.classList.toggle('is-shown', visibleCount > 0);
   }
 
   function capabilityStoreKey() {
@@ -238,12 +322,14 @@ export function createImageManager(dom) {
   }
 
   function renderParamControls(capabilities) {
+    if (typeof document === 'undefined') return;
+    syncQuickEditControlsVisibility(capabilities);
     const section = document.getElementById('modelParamsSection');
     const grid = document.getElementById('modelParamsGrid');
     if (!section || !grid) return;
     grid.textContent = '';
 
-    const hidden = hiddenParamKeys();
+    const hidden = hiddenParamKeys(capabilities);
     const params = (capabilities?.params || []).filter((param) => !hidden.has(param.key));
     if (params.length === 0) {
       section.classList.add('u-hidden');
@@ -263,6 +349,15 @@ export function createImageManager(dom) {
     }
   }
 
+  function syncModelInputSelection(modelId) {
+    if (!modelId) return;
+    if (dom.imageModel) dom.imageModel.value = modelId;
+    if (dom.imageModelLabel) {
+      const match = getAllImageModels().find((model) => model.id === modelId);
+      dom.imageModelLabel.textContent = match?.label || modelId;
+    }
+  }
+
   function applyCapabilities(capabilities) {
     _capabilities = capabilities;
     const models = Array.isArray(capabilities?.models) ? capabilities.models : [];
@@ -270,17 +365,14 @@ export function createImageManager(dom) {
     if (models.length > 0 && currentModel && !models.includes(currentModel)) {
       // The feature is model-specific; fall back to a documented model instead
       // of letting the request fail upstream.
-      const fallback = models[0];
-      if (dom.imageModel) dom.imageModel.value = fallback;
-      if (dom.imageModelLabel) {
-        const match = getAllImageModels().find((model) => model.id === fallback);
-        dom.imageModelLabel.textContent = match?.label || fallback;
-      }
+      syncModelInputSelection(models[0]);
+    } else if (capabilities?.model && (!currentModel || !models.length)) {
+      syncModelInputSelection(capabilities.model);
     }
     renderParamControls(capabilities);
   }
 
-  async function loadCapabilities({ force = false } = {}) {
+  async function loadCapabilities({ force = false, fallbackOnUnsupported = false } = {}) {
     const provider = getActiveProvider();
     const feature =
       isGenericFeatureMode() || currentFeature() === 'IMAGE_EDITOR' ? currentFeature() : 'IMAGE_GENERATOR';
@@ -293,17 +385,38 @@ export function createImageManager(dom) {
     }
 
     const requestId = ++_capabilityRequestId;
-    const query = new URLSearchParams({ provider, feature });
-    if (model) query.set('model', model);
+    const fetchCapabilities = async (requestedModel) => {
+      const query = new URLSearchParams({ provider, feature });
+      if (requestedModel) query.set('model', requestedModel);
+      return api(`/api/images/capabilities?${query.toString()}`);
+    };
+
     try {
-      const data = await api(`/api/images/capabilities?${query.toString()}`);
+      let data;
+      try {
+        data = await fetchCapabilities(model);
+      } catch (err) {
+        const shouldRecoverModel =
+          Boolean(model) &&
+          (fallbackOnUnsupported || err?.code === 'UNSUPPORTED_IMAGE_MODEL' || err?.status === 400);
+        if (!shouldRecoverModel || requestId !== _capabilityRequestId) {
+          throw err;
+        }
+        data = await fetchCapabilities('');
+        if (requestId !== _capabilityRequestId) return cached?.data || null;
+        if (data?.model) {
+          syncModelInputSelection(data.model);
+        }
+      }
       if (requestId !== _capabilityRequestId) return cached?.data || null;
-      _capabilityCache.set(key, { at: Date.now(), data });
+      const effectiveKey = `${provider}|${feature}|${data?.model || model}`;
+      _capabilityCache.set(effectiveKey, { at: Date.now(), data });
       applyCapabilities(data);
       return data;
     } catch (err) {
       if (requestId === _capabilityRequestId) {
         console.warn('[image] failed to load image capabilities:', err?.message || err);
+        syncQuickEditControlsVisibility(_capabilities);
       }
       return null;
     }
@@ -436,7 +549,7 @@ export function createImageManager(dom) {
         textToImageParams?.classList.remove('is-hidden');
         updateEditorImagePreview(dom.editorImageUrl?.value || '');
       }
-      loadCapabilities({ force: true });
+      loadCapabilities({ force: true, fallbackOnUnsupported: true });
     });
 
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
@@ -448,7 +561,7 @@ export function createImageManager(dom) {
         if (getActiveProvider() !== '1min') {
           if (featureSelect) featureSelect.value = 'IMAGE_GENERATOR';
         }
-        loadCapabilities({ force: true });
+        loadCapabilities({ force: true, fallbackOnUnsupported: true });
       });
     }
   }
@@ -861,22 +974,39 @@ export function createImageManager(dom) {
           }),
         });
       } else if (isEditMode) {
+        const quickEditMap = getSupportedQuickEditMap();
+        const isGptImageFallback =
+          !quickEditMap && provider === '1min' && String(model || '').startsWith('gpt-image');
+        const editPayload = {
+          provider,
+          imageUrl,
+          prompt,
+          model,
+          params: modelParams,
+        };
+        if (quickEditMap?.size || isGptImageFallback) {
+          editPayload.size = document.getElementById('editorSize')?.value?.trim() || '1024x1024';
+        }
+        if (quickEditMap?.quality || isGptImageFallback) {
+          editPayload.quality = document.getElementById('editorQuality')?.value || 'medium';
+        }
+        if (quickEditMap?.n || isGptImageFallback) {
+          editPayload.n = document.getElementById('editorN')?.value || '1';
+        }
+        if (quickEditMap?.background || isGptImageFallback) {
+          editPayload.background = document.getElementById('editorBackground')?.value || 'auto';
+        }
+        if (quickEditMap?.output_format || isGptImageFallback) {
+          editPayload.output_format = document.getElementById('editorOutputFormat')?.value || 'webp';
+        }
+        if (quickEditMap?.output_compression || isGptImageFallback) {
+          const compression = document.getElementById('editorOutputCompression')?.value;
+          if (compression) editPayload.output_compression = compression;
+        }
         data = await api('/api/images/text-editor', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            provider,
-            imageUrl,
-            prompt,
-            model,
-            size: document.getElementById('editorSize')?.value?.trim() || '1024x1024',
-            quality: document.getElementById('editorQuality')?.value || 'medium',
-            n: document.getElementById('editorN')?.value || '1',
-            background: document.getElementById('editorBackground')?.value || 'auto',
-            output_format: document.getElementById('editorOutputFormat')?.value || 'webp',
-            output_compression: document.getElementById('editorOutputCompression')?.value || undefined,
-            params: modelParams,
-          }),
+          body: JSON.stringify(editPayload),
         });
       } else {
         data = await api('/api/images/generate', {
@@ -999,8 +1129,7 @@ export function createImageManager(dom) {
         if (dom.imageModel) dom.imageModel.value = defaultGen.id;
         if (dom.imageModelLabel) dom.imageModelLabel.textContent = defaultGen.label;
       }
-      renderParamControls(_capabilities);
-      loadCapabilities();
+      loadCapabilities({ fallbackOnUnsupported: true });
       return;
     }
 
@@ -1009,7 +1138,7 @@ export function createImageManager(dom) {
       preview.classList.add('is-shown');
     }
     if (clearBtn) clearBtn.classList.add('is-shown');
-    if (imgToImgParams) imgToImgParams.classList.add('is-shown');
+    syncQuickEditControlsVisibility(_capabilities);
     if (textToImgParams) textToImgParams.classList.add('is-hidden');
     if (btnText) {
       btnText.textContent = _mediaMode === 'video' ? t('btn_generate_video') : t('img_edit_btn');
@@ -1023,8 +1152,7 @@ export function createImageManager(dom) {
         if (dom.imageModelLabel) dom.imageModelLabel.textContent = defaultEditor.label;
       }
     }
-    renderParamControls(_capabilities);
-    loadCapabilities();
+    loadCapabilities({ fallbackOnUnsupported: true });
   }
 
   function clearImage() {

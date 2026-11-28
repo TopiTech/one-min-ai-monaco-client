@@ -87,6 +87,13 @@ export function updateOneMinCompatModels(modelIds) {
   }
 }
 
+export function resetOneMinCompatModels() {
+  runtimeCompatModels.clear();
+  for (const id of ONE_MIN_STATIC_COMPAT_MODELS) {
+    runtimeCompatModels.add(id);
+  }
+}
+
 export function isOneMinCompatModel(model) {
   if (typeof model !== 'string' || !model.trim()) return false;
   return runtimeCompatModels.has(model.trim());

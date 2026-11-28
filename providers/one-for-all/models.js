@@ -24,6 +24,10 @@ export function registerOneForAllModelLimits(models) {
   }
 }
 
+export function resetOneForAllModelLimits() {
+  modelTokenLimits.clear();
+}
+
 /**
  * Resolves `max_tokens` for 1forall text calls, honoring task defaults (cost
  * control) and ensuring the value never drops below the model's

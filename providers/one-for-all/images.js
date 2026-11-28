@@ -14,11 +14,12 @@ import {
   getCatalogImageFields,
   validateParamValues,
 } from '../../services/image-schema.js';
-import { unwrapAssetProxyUrl } from '../../utils/asset-utils.js';
+import { isS3BucketUrl, unwrapAssetProxyUrl } from '../../utils/asset-utils.js';
 import { callOneForAll } from './client.js';
 
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 30_000;
+const MAX_DOWNLOAD_REDIRECTS = 5;
 const MAX_PROMPT_LENGTH = 5000;
 const MAX_TITLE_LENGTH = 100;
 
@@ -81,16 +82,7 @@ export function isOneForAllOwnedUrl(rawUrl) {
   const apiHost = new URL(serverConfig.oneForAllApiBaseUrl).hostname;
   if (parsed.hostname === apiHost) return true;
   const buckets = Array.isArray(serverConfig.oneForAllS3Buckets) ? serverConfig.oneForAllS3Buckets : [];
-  return buckets.some((bucket) => {
-    if (!bucket) return false;
-    const escaped = bucket.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-    return (
-      parsed.hostname === bucket ||
-      new RegExp(`^${escaped}\\.s3(?:[.-][\\w-]+)?\\.amazonaws\\.com$`, 'i').test(parsed.hostname) ||
-      (/^s3(?:[.-][\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname) &&
-        (parsed.pathname === `/${bucket}` || parsed.pathname.startsWith(`/${bucket}/`)))
-    );
-  });
+  return isS3BucketUrl(parsed, buckets, { allowExactHost: true, allowDashRegion: true });
 }
 
 /** Resolves a bare asset key or proxy URL into an absolute upstream URL. */
@@ -102,9 +94,19 @@ export function resolveOneForAllImageSource(rawUrl) {
   return `${base}/${unwrapped.replace(/^\//, '')}`;
 }
 
+function estimateBase64DecodedBytes(rawBase64) {
+  const compact = rawBase64.replace(/\s+/g, '');
+  if (compact.length === 0) return 0;
+  const padding = compact.endsWith('==') ? 2 : compact.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor((compact.length * 3) / 4) - padding);
+}
+
 function decodeDataUrl(dataUrl) {
   const match = dataUrl.match(/^data:(image\/[\w.+-]+);base64,([\s\S]+)$/i);
   if (!match) return null;
+  if (estimateBase64DecodedBytes(match[2]) > MAX_UPLOAD_BYTES) {
+    throw new HttpError(413, 'image payload is too large to upload', 'IMAGE_TOO_LARGE');
+  }
   const buffer = Buffer.from(match[2], 'base64');
   if (buffer.byteLength > MAX_UPLOAD_BYTES) {
     throw new HttpError(413, 'image payload is too large to upload', 'IMAGE_TOO_LARGE');
@@ -112,9 +114,45 @@ function decodeDataUrl(dataUrl) {
   return new Blob([buffer], { type: match[1] });
 }
 
+async function readBoundedUploadBytes(response, maxBytes) {
+  if (response.body && typeof response.body.getReader === 'function') {
+    const reader = response.body.getReader();
+    const chunks = [];
+    let totalBytes = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const byteLen = value?.byteLength ?? value?.length ?? 0;
+        totalBytes += byteLen;
+        if (totalBytes > maxBytes) {
+          await reader.cancel().catch(() => {});
+          throw new HttpError(413, 'source image exceeds the 20MB upload limit', 'IMAGE_TOO_LARGE');
+        }
+        if (byteLen > 0) {
+          chunks.push(value);
+        }
+      }
+      return Buffer.concat(chunks.map((c) => Buffer.from(c.buffer, c.byteOffset, c.byteLength)));
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch {
+        // ignore
+      }
+    }
+  }
+  const buffer = await response.arrayBuffer();
+  if (buffer.byteLength > maxBytes) {
+    throw new HttpError(413, 'source image exceeds the 20MB upload limit', 'IMAGE_TOO_LARGE');
+  }
+  return buffer;
+}
+
 /**
  * Downloads an image so it can be re-uploaded to the 1forall library.
- * Hosts are restricted to the same allowlist the asset proxy uses (SSRF guard).
+ * Hosts and every HTTP redirect hop are restricted to the same allowlist the
+ * asset proxy uses (SSRF guard).
  *
  * @param {string} rawUrl
  * @param {{ signal?: AbortSignal }} [options]
@@ -142,18 +180,51 @@ export async function downloadImageForUpload(rawUrl, { signal } = {}) {
   signal?.addEventListener?.('abort', onAbort, { once: true });
   const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
   try {
-    const response = await fetch(parsed, {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: { accept: 'image/*' },
-    });
+    let currentUrl = parsed;
+    let redirectCount = 0;
+    let response;
+    while (true) {
+      response = await fetch(currentUrl, {
+        signal: controller.signal,
+        redirect: 'manual',
+        headers: { accept: 'image/*' },
+      });
+      if ([301, 302, 303, 307, 308].includes(response.status) && response.headers.has('location')) {
+        const locationHeader = response.headers.get('location');
+        await response.body?.cancel?.().catch(() => {});
+        redirectCount += 1;
+        if (redirectCount > MAX_DOWNLOAD_REDIRECTS) {
+          throw new HttpError(502, 'too many redirects fetching source image', 'IMAGE_FETCH_FAILED');
+        }
+        let redirectTarget;
+        try {
+          redirectTarget = new URL(locationHeader, currentUrl);
+        } catch {
+          throw new HttpError(502, 'invalid redirect location from upstream', 'IMAGE_FETCH_FAILED');
+        }
+        if (!isTrustedAssetUrl(redirectTarget)) {
+          throw new HttpError(
+            400,
+            `imageUrl redirect host is not allowed: ${redirectTarget.hostname}`,
+            'INVALID_IMAGE_URL',
+          );
+        }
+        currentUrl = redirectTarget;
+        continue;
+      }
+      break;
+    }
+
     if (!response.ok) {
+      await response.body?.cancel?.().catch(() => {});
       throw new HttpError(502, `failed to download source image (${response.status})`, 'IMAGE_FETCH_FAILED');
     }
     const contentType = String(response.headers.get('content-type') || 'image/png')
       .split(';')[0]
-      .trim();
+      .trim()
+      .toLowerCase();
     if (!contentType.startsWith('image/')) {
+      await response.body?.cancel?.().catch(() => {});
       throw new HttpError(
         415,
         `source image has unsupported content type: ${contentType}`,
@@ -162,13 +233,11 @@ export async function downloadImageForUpload(rawUrl, { signal } = {}) {
     }
     const declaredLength = Number(response.headers.get('content-length'));
     if (Number.isFinite(declaredLength) && declaredLength > MAX_UPLOAD_BYTES) {
+      await response.body?.cancel?.().catch(() => {});
       throw new HttpError(413, 'source image exceeds the 20MB upload limit', 'IMAGE_TOO_LARGE');
     }
-    const buffer = await response.arrayBuffer();
-    if (buffer.byteLength > MAX_UPLOAD_BYTES) {
-      throw new HttpError(413, 'source image exceeds the 20MB upload limit', 'IMAGE_TOO_LARGE');
-    }
-    return new Blob([buffer], { type: contentType });
+    const payload = await readBoundedUploadBytes(response, MAX_UPLOAD_BYTES);
+    return new Blob([payload], { type: contentType });
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener?.('abort', onAbort);
@@ -325,6 +394,24 @@ export function buildOneForAllAdditionalFields(entry, model, params = {}, extra 
   }
 
   if (Object.keys(nested).length === 0) return {};
+
+  for (const descriptor of descriptors) {
+    if (!(descriptor.key in nested)) continue;
+    if (descriptor.type === 'image' && typeof nested[descriptor.key] === 'string') {
+      nested[descriptor.key] = unwrapAssetProxyUrl(nested[descriptor.key]);
+    } else if (descriptor.type === 'array' && descriptor.itemType === 'image') {
+      if (Array.isArray(nested[descriptor.key])) {
+        nested[descriptor.key] = nested[descriptor.key].map((item) =>
+          typeof item === 'string' ? unwrapAssetProxyUrl(item) : item,
+        );
+      } else if (typeof nested[descriptor.key] === 'string') {
+        nested[descriptor.key] = nested[descriptor.key]
+          .split(/[\n,]/)
+          .map((item) => unwrapAssetProxyUrl(item.trim()))
+          .filter(Boolean);
+      }
+    }
+  }
 
   const { values, issues } = validateParamValues(descriptors, nested);
   if (issues.length > 0) {

@@ -321,9 +321,14 @@ async function processCommandStream(res, stepId, t, signal) {
       const { done, value } = await reader.read();
       if (done) {
         reachedEof = true;
-        const remaining = carry.trim();
-        if (remaining) {
-          processBlock(remaining);
+        const tail = decoder.decode();
+        if (tail) carry += tail;
+        if (carry.trim()) {
+          for (const block of carry.split(/\r?\n\r?\n/)) {
+            if (block.trim()) {
+              processBlock(block);
+            }
+          }
         }
         break;
       }

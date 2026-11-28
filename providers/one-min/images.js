@@ -8,12 +8,20 @@
  * being hardcoded per model family.
  */
 import { invalidRequestError } from '../../utils/errors.js';
+import { extractAssetKey } from '../../utils/asset-utils.js';
 import {
   describeOneMinParams,
   describeOneMinFeature,
   validateGptImageSize,
   validateParamValues,
 } from '../../services/image-schema.js';
+
+const IMAGE_ARRAY_KEYS = new Set([
+  'additional_images',
+  'style_reference_images',
+  'character_reference_images',
+  'leonardo_image_prompts',
+]);
 
 /** Canonical request field -> promptObject keys, in preference order. */
 const CANONICAL_TARGETS = Object.freeze({
@@ -166,6 +174,27 @@ export function buildOneMinImagePayload({ feature, model, params = {}, extra = {
 
   if (requirePrompt && !isProvided(values.prompt)) {
     throw invalidParams('prompt is required', { model, parameter: 'prompt' });
+  }
+
+  // Unwrap local BFF proxy URLs or 1min S3 URLs on all image-typed parameters
+  // (including dynamic model fields such as swapImageUrl, targetImageUrl, maskUrl,
+  // referenceImage1, and image-array parameters).
+  for (const descriptor of descriptors) {
+    if (!(descriptor.key in values)) continue;
+    if (descriptor.type === 'image' && typeof values[descriptor.key] === 'string') {
+      values[descriptor.key] = extractAssetKey(values[descriptor.key].trim());
+    } else if (descriptor.type === 'array' && IMAGE_ARRAY_KEYS.has(descriptor.key)) {
+      if (Array.isArray(values[descriptor.key])) {
+        values[descriptor.key] = values[descriptor.key].map((item) =>
+          typeof item === 'string' ? extractAssetKey(item.trim()) : item,
+        );
+      } else if (typeof values[descriptor.key] === 'string') {
+        values[descriptor.key] = values[descriptor.key]
+          .split(/[\n,]/)
+          .map((item) => extractAssetKey(item.trim()))
+          .filter(Boolean);
+      }
+    }
   }
 
   // Validate the gpt-image dimension rules first so their specific messages win

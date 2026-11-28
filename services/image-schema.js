@@ -22,7 +22,8 @@ const SPEC_DIR = path.resolve(__dirname, '..', 'config', 'image-specs');
 const ONE_MIN_SPEC = JSON.parse(fs.readFileSync(path.join(SPEC_DIR, '1min.json'), 'utf8'));
 const ONE_MIN_OVERRIDES = JSON.parse(fs.readFileSync(path.join(SPEC_DIR, '1min-overrides.json'), 'utf8'));
 
-const IMAGE_REF_PATTERN = /(?:^|[_-])(?:image|mask)(?:[_-]?(?:url|path|reference)s?)?$/i;
+const IMAGE_REF_PATTERN =
+  /(?:^|[_-])(?:image|mask)(?:[_-]?(?:url|path|reference|prompt)s?)?\d*$|^(?:swap|target|reference)image(?:url)?\d*$|^(?:character|style|omni)_reference$/i;
 const DEFAULT_PROMPT_MAX_LENGTH = 5000;
 const DEFAULT_REF_MAX_LENGTH = 4096;
 
@@ -217,10 +218,7 @@ function mapOneForAllFieldType(field) {
   if (raw === 'SELECT' || raw === 'SELECT_INTEGER') return 'select';
   if (raw === 'SLIDER' || raw === 'INTEGER' || raw === 'NUMBER' || raw === 'FLOAT') return 'number';
   if (raw === 'IMAGE') return 'image';
-  if (raw === 'ARRAY') {
-    const items = String(field?.items_type || '').toUpperCase();
-    return items === 'IMAGE' ? 'image' : 'array';
-  }
+  if (raw === 'ARRAY') return 'array';
   return 'text';
 }
 
@@ -239,7 +237,9 @@ export function getCatalogImageFields(entry) {
     ? entry.additionalFields
     : Array.isArray(entry?.meta?.additionalFields)
       ? entry.meta.additionalFields
-      : [];
+      : Array.isArray(entry?.additional_fields)
+        ? entry.additional_fields
+        : [];
   return {
     sizes,
     additionalFields,
@@ -257,9 +257,16 @@ export function describeOneForAllParams(entry) {
     .filter((field) => field?.code && field.enabled !== false)
     .map((field) => {
       const type = mapOneForAllFieldType(field);
+      const rawItemType = field?.items_type ?? field?.itemsType;
+      const itemType =
+        type === 'array' && typeof rawItemType === 'string' && rawItemType.trim()
+          ? rawItemType.trim().toLowerCase()
+          : undefined;
+      /** @type {Record<string, any>} */
       const descriptor = {
         key: field.code,
         type,
+        ...(itemType ? { itemType } : {}),
         required: Boolean(field.required),
         labelKey: null,
         label: field.name || humanizeKey(field.code),
@@ -385,12 +392,28 @@ function coerceSingleValue(descriptor, raw) {
   }
 
   if (type === 'array') {
-    const list = Array.isArray(raw)
+    const rawItems = Array.isArray(raw)
       ? raw
       : String(raw)
           .split(/[\n,]/)
           .map((item) => item.trim())
           .filter(Boolean);
+    const list = [];
+    for (const item of rawItems) {
+      if (item === undefined || item === null) continue;
+      if (typeof item === 'object') {
+        return { issue: `${key} entries must be primitive strings or numbers` };
+      }
+      const trimmed = String(item).trim();
+      if (!trimmed) continue;
+      if (trimmed.length > DEFAULT_REF_MAX_LENGTH) {
+        return { issue: `${key} entries exceed ${DEFAULT_REF_MAX_LENGTH} characters` };
+      }
+      list.push(trimmed);
+    }
+    if (list.length > 32) {
+      return { issue: `${key} exceeds maximum of 32 items` };
+    }
     if (list.length === 0) {
       if (descriptor.required) return { issue: `${key} requires at least one value` };
       return { skip: true };

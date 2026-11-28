@@ -497,11 +497,18 @@ function isPathProtectedByRoot(resolvedPath, root, patterns) {
     realRoot = root;
   }
 
-  if (!isSubPath(resolvedPath, realRoot)) {
+  let matchedRoot = isSubPath(resolvedPath, realRoot) ? realRoot : null;
+  if (!matchedRoot) {
+    const lexicalRoot = path.resolve(root);
+    if (isSubPath(resolvedPath, lexicalRoot)) {
+      matchedRoot = lexicalRoot;
+    }
+  }
+  if (!matchedRoot) {
     return false;
   }
 
-  const relativePath = path.relative(realRoot, resolvedPath);
+  const relativePath = path.relative(matchedRoot, resolvedPath);
   if (!relativePath) {
     return false;
   }

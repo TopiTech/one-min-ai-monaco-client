@@ -385,7 +385,7 @@ async function ensureDataDir() {
   if (!shouldPersistSessions()) return;
   if (_dirReady) return _dirReady;
   migrateLegacyDataSync();
-  _dirReady = fs.mkdir(DATA_DIR, { recursive: true }).catch((err) => {
+  _dirReady = fs.mkdir(DATA_DIR, { recursive: true, mode: 0o700 }).catch((err) => {
     // Reset so a future call can retry (e.g. after a transient fs error).
     _dirReady = null;
     logger.error('Failed to create data directory', { error: err.message });

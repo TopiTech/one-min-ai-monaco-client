@@ -523,6 +523,8 @@ function setStatus(text, cls) {
 // Agent timeline rendering is delegated to the agentTimeline module.
 // The agentTimeline instance is created above (after dom is available).
 
+let _agentUiRunId = 0;
+
 dom.startAgentBtn.onclick = async () => {
   if (state.agent.active) return;
   const instruction = dom.agentInstruction.value.trim();
@@ -530,6 +532,8 @@ dom.startAgentBtn.onclick = async () => {
     toast.warning(t('agent_instruction_required'));
     return;
   }
+
+  const uiRunId = ++_agentUiRunId;
 
   // Clear input so user can type feedback immediately
   dom.agentInstruction.value = '';
@@ -546,16 +550,20 @@ dom.startAgentBtn.onclick = async () => {
   try {
     await agentRuntime.runAgentLoop(instruction);
   } catch (err) {
-    console.error('Agent loop crashed:', err);
-    setAgentStatus(t('status_error'), 'error');
-    agentTimeline.addStep('error', t('agent_crash_title'), t('agent_crash_desc', { error: err.message }));
+    if (uiRunId === _agentUiRunId) {
+      console.error('Agent loop crashed:', err);
+      setAgentStatus(t('status_error'), 'error');
+      agentTimeline.addStep('error', t('agent_crash_title'), t('agent_crash_desc', { error: err.message }));
+    }
   } finally {
-    state.agent.active = false;
-    dom.startAgentBtn.classList.remove('is-hidden');
-    dom.sendAgentFeedbackBtn.classList.remove('is-shown');
-    dom.stopAgentBtn.classList.remove('is-shown');
-    dom.resetAgentBtn.classList.remove('is-hidden');
-    dom.agentInstruction.placeholder = t('agent_instruction_placeholder');
+    if (uiRunId === _agentUiRunId) {
+      state.agent.active = false;
+      dom.startAgentBtn.classList.remove('is-hidden');
+      dom.sendAgentFeedbackBtn.classList.remove('is-shown');
+      dom.stopAgentBtn.classList.remove('is-shown');
+      dom.resetAgentBtn.classList.remove('is-hidden');
+      dom.agentInstruction.placeholder = t('agent_instruction_placeholder');
+    }
   }
 };
 
@@ -580,6 +588,7 @@ dom.resetAgentBtn.onclick = async () => {
     type: 'warning',
   });
   if (accepted) {
+    ++_agentUiRunId;
     const previousSessionId = state.agent.sessionId;
     state.agent.active = false;
     if (state.agent.abortController) {
@@ -783,13 +792,33 @@ function initFolderPicker() {
   };
 
   const updateDriveSelection = () => {
-    [...drives.querySelectorAll('.folder-picker-drive')].forEach((button) => {
-      const drivePath = button.title;
-      const isDrive =
-        folderPickerCurrentPath === drivePath ||
-        folderPickerCurrentPath.toLowerCase().startsWith(drivePath.toLowerCase());
-      button.classList.toggle('active', isDrive);
-    });
+    const buttons = [...drives.querySelectorAll('.folder-picker-drive')];
+    const normalizePath = (p) => {
+      const unified = String(p || '').replace(/\\/g, '/');
+      const trimmed = unified.length > 1 ? unified.replace(/\/+$/, '') : unified;
+      return /^[a-z]:/i.test(trimmed) ? trimmed.toLowerCase() : trimmed;
+    };
+    const currentNorm = normalizePath(folderPickerCurrentPath);
+    let bestBtn = null;
+    let bestLen = -1;
+
+    for (const button of buttons) {
+      const driveNorm = normalizePath(button.title);
+      if (!driveNorm) continue;
+      const isMatch =
+        currentNorm === driveNorm ||
+        (driveNorm === '/' && currentNorm.startsWith('/')) ||
+        (driveNorm.endsWith(':/') && currentNorm.startsWith(driveNorm)) ||
+        currentNorm.startsWith(driveNorm + '/');
+      if (isMatch && driveNorm.length > bestLen) {
+        bestLen = driveNorm.length;
+        bestBtn = button;
+      }
+    }
+
+    for (const button of buttons) {
+      button.classList.toggle('active', button === bestBtn);
+    }
   };
 
   let folderPickerReqSeq = 0;

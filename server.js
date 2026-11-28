@@ -278,7 +278,7 @@ function getOrCreatePersistentAuthToken() {
   } catch {
     const token = createLocalAuthToken();
     try {
-      fs.mkdirSync(path.dirname(tokenFile), { recursive: true });
+      fs.mkdirSync(path.dirname(tokenFile), { recursive: true, mode: 0o700 });
       fs.writeFileSync(tokenFile, token, { mode: 0o600 });
     } catch (err) {
       // Persistence is best-effort: the in-memory token still works for
@@ -550,7 +550,8 @@ export function createApp(options = {}) {
   });
 
   app.use((err, req, res, next) => {
-    const status = err.status || 500;
+    const rawStatus = Number(err?.status ?? err?.statusCode);
+    const status = Number.isInteger(rawStatus) && rawStatus >= 400 && rawStatus <= 599 ? rawStatus : 500;
 
     // In production (NODE_ENV=production) or when NODE_ENV is unset, never
     // expose stack traces or payloads to remote clients unless explicitly enabled
@@ -675,8 +676,13 @@ if (process.env.NODE_ENV !== 'test') {
     24 * 60 * 60 * 1000,
   );
   logPruneInterval.unref();
-  Promise.all([initModels(), initAgentState()])
+  initAgentState()
     .then(() => {
+      initModels().catch((err) => {
+        logger.warn('Background initial model sync failed; using built-in catalogs', {
+          error: err?.message || String(err),
+        });
+      });
       const server = createApp().listen(serverConfig.port, '127.0.0.1', () => {
         logger.info(`Node.js runtime: ${process.version} (ICU ${process.versions.icu || 'unavailable'})`);
         logger.info(`1min.ai Monaco client running: http://127.0.0.1:${serverConfig.port}`);

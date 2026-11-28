@@ -58,7 +58,9 @@ const optionalReferenceSchema = z.preprocess(
 
 const outputFormatSchema = z
   .string()
+  .trim()
   .max(IMAGE_OPTION_MAX_LENGTH)
+  .transform((val) => val.toLowerCase())
   .refine((val) => ['png', 'webp', 'jpeg', 'jpg'].includes(val), {
     message: 'output_format must be one of: png, webp, jpeg, jpg',
   });

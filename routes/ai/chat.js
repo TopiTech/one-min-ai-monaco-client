@@ -392,6 +392,9 @@ router.post('/stream', async (req, res, next) => {
 
     if (response.headers.get('content-type')?.includes('application/json')) {
       const jsonData = await response.json().catch(() => null);
+      if (!jsonData || typeof jsonData !== 'object') {
+        throw new HttpError(502, '1min.ai returned an invalid JSON response', 'UPSTREAM_API_ERROR');
+      }
       if (isFailedResponse(jsonData)) {
         throw new HttpError(
           502,
@@ -517,29 +520,31 @@ router.post('/stream', async (req, res, next) => {
       const tail = decoder.decode();
       if (tail) carry += tail;
 
-      if (carry.trim()) {
-        const classified = classifySseBlock(carry);
-        if (classified.type === 'result') {
-          resultBlocks.push(classified.block);
-        } else if (classified.type === 'done') {
-          doneBlocks.push(classified.block);
-        } else if (classified.type === 'forward' && !res.writableEnded && !res.destroyed) {
-          res.write(classified.block + '\n\n');
+      if (!streamLimitExceeded) {
+        if (carry.trim()) {
+          const classified = classifySseBlock(carry);
+          if (classified.type === 'result') {
+            resultBlocks.push(classified.block);
+          } else if (classified.type === 'done') {
+            doneBlocks.push(classified.block);
+          } else if (classified.type === 'forward' && !res.writableEnded && !res.destroyed) {
+            res.write(classified.block + '\n\n');
+            flushRes(res);
+          }
+        }
+
+        if (resultBlocks.length > 0 && !res.writableEnded && !res.destroyed) {
+          for (const resultBlock of resultBlocks) {
+            res.write(normalizeResultBlock(resultBlock) + '\n\n');
+          }
           flushRes(res);
         }
-      }
-
-      if (resultBlocks.length > 0 && !res.writableEnded && !res.destroyed) {
-        for (const resultBlock of resultBlocks) {
-          res.write(normalizeResultBlock(resultBlock) + '\n\n');
+        if (doneBlocks.length > 0 && !res.writableEnded && !res.destroyed) {
+          for (const doneBlock of doneBlocks) {
+            res.write(doneBlock + '\n\n');
+          }
+          flushRes(res);
         }
-        flushRes(res);
-      }
-      if (doneBlocks.length > 0 && !res.writableEnded && !res.destroyed) {
-        for (const doneBlock of doneBlocks) {
-          res.write(doneBlock + '\n\n');
-        }
-        flushRes(res);
       }
     } catch (streamErr) {
       if (controller.signal.aborted || streamErr.name === 'AbortError') {

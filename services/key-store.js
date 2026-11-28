@@ -194,7 +194,7 @@ async function persistStoredKeys(keysObj) {
   }
 
   const dir = path.dirname(filePath);
-  await fsp.mkdir(dir, { recursive: true });
+  await fsp.mkdir(dir, { recursive: true, mode: 0o700 });
   const tmpFile = path.join(dir, `api_keys.${crypto.randomBytes(6).toString('hex')}.tmp`);
   const payload = JSON.stringify(keysObj, null, 2);
   try {

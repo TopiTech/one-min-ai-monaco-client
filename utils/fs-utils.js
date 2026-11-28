@@ -101,6 +101,16 @@ export async function atomicWriteTextFile(filePath, content, options = {}) {
  * @returns {Promise<string>} The requested lines joined by newlines.
  */
 export async function readSpecificLines(filePath, startLine = 1, endLine) {
+  const normalizedStart =
+    Number.isFinite(Number(startLine)) && Number(startLine) >= 1 ? Math.floor(Number(startLine)) : 1;
+  const normalizedEnd =
+    endLine !== undefined && endLine !== null && Number.isFinite(Number(endLine))
+      ? Math.floor(Number(endLine))
+      : undefined;
+  if (normalizedEnd !== undefined && normalizedEnd < normalizedStart) {
+    return '';
+  }
+
   return new Promise((resolve, reject) => {
     const fileStream = createReadStream(filePath, { encoding: 'utf-8' });
     const rl = readline.createInterface({
@@ -121,11 +131,13 @@ export async function readSpecificLines(filePath, startLine = 1, endLine) {
     };
 
     rl.on('line', (line) => {
+      if (isClosed) return;
       currentLine++;
-      if (currentLine >= startLine) {
-        if (endLine === undefined || currentLine <= endLine) {
+      if (currentLine >= normalizedStart) {
+        if (normalizedEnd === undefined || currentLine <= normalizedEnd) {
           resultLines.push(line);
-        } else {
+        }
+        if (normalizedEnd !== undefined && currentLine >= normalizedEnd) {
           cleanup();
         }
       }

@@ -25,6 +25,10 @@ router.get('/:provider/:kind/:jobId', async (req, res, next) => {
     const job = await provider.getJob(jobId, kind, { signal: controller.signal });
     res.json(job);
   } catch (err) {
+    if (controller.signal.aborted && (res.writableEnded || res.destroyed)) return;
+    if (controller.signal.aborted && !res.headersSent) {
+      return res.status(499).json({ error: 'Client Closed Request' });
+    }
     next(err);
   } finally {
     cleanup();

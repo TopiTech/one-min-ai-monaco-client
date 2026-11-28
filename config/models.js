@@ -3,8 +3,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { callOneMin } from '../utils/api-client.js';
 import { callOneForAll } from '../providers/one-for-all/client.js';
-import { registerOneForAllModelLimits } from '../providers/one-for-all/models.js';
-import { updateOneMinCompatModels } from '../providers/one-min/openai-compat.js';
+import { registerOneForAllModelLimits, resetOneForAllModelLimits } from '../providers/one-for-all/models.js';
+import { resetOneMinCompatModels, updateOneMinCompatModels } from '../providers/one-min/openai-compat.js';
 import { hasApiKey } from '../services/key-store.js';
 import logger from '../utils/logger.js';
 
@@ -247,6 +247,41 @@ export function stopModelSync() {
     clearInterval(syncInterval);
     syncInterval = null;
   }
+}
+
+/**
+ * Restores a provider's model catalog and sync metadata back to the built-in
+ * fallback lists (e.g. after the user deletes an API key).
+ *
+ * @param {'1min'|'1forall'} [providerId='1min']
+ */
+export function resetProviderModels(providerId = '1min') {
+  if (providerId === '1forall') {
+    _oneForAllChatModels = normalizeModelList(fallbackOneForAll.chatModels || []);
+    _oneForAllCodeModels = normalizeModelList(fallbackOneForAll.codeModels || []);
+    _oneForAllImageModels = normalizeModelList(fallbackOneForAll.imageModels || []);
+    _oneForAllVideoModels = normalizeModelList(fallbackOneForAll.videoModels || []);
+    resetOneForAllModelLimits();
+    lastOneForAllFetchStatus = {
+      ok: true,
+      lastSync: null,
+      error: null,
+      source: 'fallback',
+    };
+    return;
+  }
+
+  _chatModels = normalizeModelList(raw.chatModels || []);
+  _codeModels = normalizeModelList(raw.codeModels || []);
+  _imageModels = normalizeModelList(raw.imageModels || []);
+  _videoModels = normalizeModelList(raw.videoModels || []);
+  resetOneMinCompatModels();
+  lastFetchStatus = {
+    ok: true,
+    lastSync: null,
+    error: null,
+    source: 'fallback',
+  };
 }
 
 export { fetchModels, fetchOneForAllModels };

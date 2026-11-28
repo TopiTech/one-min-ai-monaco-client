@@ -1,4 +1,5 @@
 import { serverConfig } from '../config/server.js';
+import { isS3BucketUrl } from '../utils/asset-utils.js';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 
@@ -64,23 +65,7 @@ export function isTrustedAssetUrl(parsed) {
     ...(Array.isArray(serverConfig.oneForAllS3Buckets) ? serverConfig.oneForAllS3Buckets : []),
   ].filter(Boolean);
 
-  for (const bucket of buckets) {
-    const escapedBucket = bucket.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-    const isVirtualHostS3 =
-      new RegExp(`^${escapedBucket}\\.s3(?:\\.[\\w-]+)?\\.amazonaws\\.com$`, 'i').test(parsed.hostname) ||
-      new RegExp(`^${escapedBucket}\\.s3-accelerate\\.amazonaws\\.com$`, 'i').test(parsed.hostname) ||
-      new RegExp(`^${escapedBucket}\\.s3\\.dualstack\\.[\\w-]+\\.amazonaws\\.com$`, 'i').test(
-        parsed.hostname,
-      );
-    const isPathStyleS3 =
-      /^s3(?:\.[\w-]+)?\.amazonaws\.com$/i.test(parsed.hostname) &&
-      (parsed.pathname === `/${bucket}` || parsed.pathname.startsWith(`/${bucket}/`));
-    if (isVirtualHostS3 || isPathStyleS3) {
-      return true;
-    }
-  }
-
-  return false;
+  return isS3BucketUrl(parsed, buckets);
 }
 
 export async function assetProxyHandler(req, res, next) {

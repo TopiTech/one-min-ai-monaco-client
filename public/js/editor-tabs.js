@@ -240,6 +240,7 @@ export function createEditorTabManager(editorState, editorManager, dom, callback
     // the *then active* file (or the then current version) clean would drop
     // unsaved state that was never written.
     const targetPath = editorState.activeFilePath;
+    const wasOpen = Boolean(editorState.openTabs?.includes?.(targetPath));
     const content = editorManager.instance.getValue();
     const savedVersionId = editorManager.instance.getModel()?.getAlternativeVersionId();
     try {
@@ -259,6 +260,9 @@ export function createEditorTabManager(editorState, editorManager, dom, callback
         await write;
       } finally {
         if (_saveChains.get(targetPath) === write) _saveChains.delete(targetPath);
+      }
+      if (wasOpen && !editorState.openTabs?.includes?.(targetPath)) {
+        return;
       }
       editorManager.markClean(targetPath, savedVersionId);
       if (setStatus) setStatus(t('save_complete'), 'ok');
