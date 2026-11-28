@@ -357,6 +357,12 @@ describe('agent command working directory guard', () => {
   test('rejects a command whose cwd is outside the allowed roots', async () => {
     // A persisted session keeps its stored cwd even when that directory no
     // longer validates, so this guard is what stops it from being used.
+    //
+    // Force the feature flag on: it defaults to false and only local .env
+    // files set it, so relying on the environment made this test pass locally
+    // but hit the "execution disabled" branch in CI before the cwd guard.
+    const previousExec = serverConfig.enableCommandExecution;
+    serverConfig.enableCommandExecution = true;
     const app = createApp({ requireLocalAuth: false, enableRateLimit: false });
     const created = await request(app).post('/api/agent/sessions').send({ cwd: PROJECT_ROOT });
     expect(created.status).toBe(200);
@@ -371,6 +377,7 @@ describe('agent command working directory guard', () => {
       expect(response.body.error).toMatch(/^Invalid working directory/);
     } finally {
       await request(app).delete(`/api/agent/sessions/${sessionId}`);
+      serverConfig.enableCommandExecution = previousExec;
     }
   });
 });
