@@ -92,7 +92,10 @@ function stripTags(html) {
 
 function slugToModelGuess(slug) {
   return slug
-    .replace(/-(image-generation|image-text-editor|image-mask-editor|image-variator|image-upscaler|image-extender|background-remover|background-replacer|object-remover|text-remover|search-and-replace|face-swapper|sketch-to-image|3d-image-generator|image-to-prompt|image-analysis)$/i, '')
+    .replace(
+      /-(image-generation|image-text-editor|image-mask-editor|image-variator|image-upscaler|image-extender|background-remover|background-replacer|object-remover|text-remover|search-and-replace|face-swapper|sketch-to-image|3d-image-generator|image-to-prompt|image-analysis)$/i,
+      '',
+    )
     .trim();
 }
 

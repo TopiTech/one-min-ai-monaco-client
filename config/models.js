@@ -347,7 +347,9 @@ function normalizeOneForAllFields(rawFields) {
       required: Boolean(field?.required),
       enabled: true,
       description:
-        typeof field?.description === 'string' ? field.description.trim().slice(0, MAX_FIELD_DESCRIPTION) : '',
+        typeof field?.description === 'string'
+          ? field.description.trim().slice(0, MAX_FIELD_DESCRIPTION)
+          : '',
     });
   }
   return fields;

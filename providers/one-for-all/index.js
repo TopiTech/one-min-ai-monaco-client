@@ -423,10 +423,7 @@ export const oneForAllProvider = {
     output_format,
   }) {
     const selectedModel = model || serverConfig.defaultImageModel1ForAll;
-    const effectiveParams = mergeDefined(
-      { num_outputs, aspect_ratio, size, output_format },
-      params,
-    );
+    const effectiveParams = mergeDefined({ num_outputs, aspect_ratio, size, output_format }, params);
     if (useAsync) {
       const body = buildOneForAllTextToImageBody({
         entry,

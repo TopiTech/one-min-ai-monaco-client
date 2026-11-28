@@ -282,9 +282,8 @@ export function createImageManager(dom) {
 
   async function loadCapabilities({ force = false } = {}) {
     const provider = getActiveProvider();
-    const feature = isGenericFeatureMode() || currentFeature() === 'IMAGE_EDITOR'
-      ? currentFeature()
-      : 'IMAGE_GENERATOR';
+    const feature =
+      isGenericFeatureMode() || currentFeature() === 'IMAGE_EDITOR' ? currentFeature() : 'IMAGE_GENERATOR';
     const model = dom.imageModel?.value || '';
     const key = `${provider}|${feature}|${model}`;
     const cached = _capabilityCache.get(key);

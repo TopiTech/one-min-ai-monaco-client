@@ -101,11 +101,10 @@ function isProvided(value) {
 export function buildOneMinImagePayload({ feature, model, params = {}, extra = {}, requirePrompt = false }) {
   const descriptors = describeOneMinParams(feature, model);
   if (descriptors.length === 0) {
-    throw invalidRequestError(
-      `${feature} is not supported for model "${model}"`,
-      'UNSUPPORTED_IMAGE_MODEL',
-      { feature, model },
-    );
+    throw invalidRequestError(`${feature} is not supported for model "${model}"`, 'UNSUPPORTED_IMAGE_MODEL', {
+      feature,
+      model,
+    });
   }
   const byKey = new Map(descriptors.map((descriptor) => [descriptor.key, descriptor]));
   const values = {};

@@ -184,14 +184,16 @@ describe('Image generation expansion', () => {
       const captured = [];
       globalThis.fetch = mockOneMinFeature(captured);
 
-      const res = await request(app).post('/api/images/generate').send({
-        provider: '1min',
-        model: 'black-forest-labs/flux-2-pro',
-        prompt: 'a lighthouse at dawn',
-        aspect_ratio: '16:9',
-        num_outputs: 2,
-        params: { steps: 30, guidance: 3.5, prompt_upsampling: true, output_format: 'jpg' },
-      });
+      const res = await request(app)
+        .post('/api/images/generate')
+        .send({
+          provider: '1min',
+          model: 'black-forest-labs/flux-2-pro',
+          prompt: 'a lighthouse at dawn',
+          aspect_ratio: '16:9',
+          num_outputs: 2,
+          params: { steps: 30, guidance: 3.5, prompt_upsampling: true, output_format: 'jpg' },
+        });
 
       expect(res.status).toBe(200);
       expect(captured[0].type).toBe('IMAGE_GENERATOR');
@@ -232,12 +234,14 @@ describe('Image generation expansion', () => {
       const captured = [];
       globalThis.fetch = mockOneMinFeature(captured);
 
-      const unknownParam = await request(app).post('/api/images/generate').send({
-        provider: '1min',
-        model: 'gpt-image-2',
-        prompt: 'a cat',
-        params: { steps: 30 },
-      });
+      const unknownParam = await request(app)
+        .post('/api/images/generate')
+        .send({
+          provider: '1min',
+          model: 'gpt-image-2',
+          prompt: 'a cat',
+          params: { steps: 30 },
+        });
       expect(unknownParam.status).toBe(400);
       expect(unknownParam.body.code).toBe('INVALID_IMAGE_PARAMS');
       expect(unknownParam.body.error).toContain('steps');
@@ -299,13 +303,15 @@ describe('Image generation expansion', () => {
       const captured = [];
       globalThis.fetch = mockOneMinFeature(captured);
 
-      const variator = await request(app).post('/api/images/feature').send({
-        provider: '1min',
-        feature: 'IMAGE_VARIATOR',
-        model: 'black-forest-labs/flux-redux-dev',
-        imageUrl: 'images/source.png',
-        params: { num_outputs: 2, seed: 42, aspect_ratio: '4:3' },
-      });
+      const variator = await request(app)
+        .post('/api/images/feature')
+        .send({
+          provider: '1min',
+          feature: 'IMAGE_VARIATOR',
+          model: 'black-forest-labs/flux-redux-dev',
+          imageUrl: 'images/source.png',
+          params: { num_outputs: 2, seed: 42, aspect_ratio: '4:3' },
+        });
       expect(variator.status).toBe(200);
       expect(captured[0].type).toBe('IMAGE_VARIATOR');
       expect(captured[0].promptObject).toMatchObject({
@@ -315,13 +321,15 @@ describe('Image generation expansion', () => {
         aspect_ratio: '4:3',
       });
 
-      const upscaler = await request(app).post('/api/images/feature').send({
-        provider: '1min',
-        feature: 'IMAGE_UPSCALER',
-        model: 'recraft',
-        imageUrl: 'images/source.png',
-        params: { upscale_type: 'creative' },
-      });
+      const upscaler = await request(app)
+        .post('/api/images/feature')
+        .send({
+          provider: '1min',
+          feature: 'IMAGE_UPSCALER',
+          model: 'recraft',
+          imageUrl: 'images/source.png',
+          params: { upscale_type: 'creative' },
+        });
       expect(upscaler.status).toBe(200);
       expect(captured[1].promptObject).toEqual({
         imageUrl: 'images/source.png',
@@ -359,14 +367,16 @@ describe('Image generation expansion', () => {
         return new Response('{}', { status: 404, headers: { 'content-type': 'application/json' } });
       });
 
-      const res = await request(app).post('/api/images/generate').send({
-        provider: '1forall',
-        model: 'black-forest-labs/flux-2-pro',
-        prompt: 'a lighthouse',
-        async: true,
-        aspect_ratio: '16:9',
-        params: { steps: 30, negative_prompt: 'blurry' },
-      });
+      const res = await request(app)
+        .post('/api/images/generate')
+        .send({
+          provider: '1forall',
+          model: 'black-forest-labs/flux-2-pro',
+          prompt: 'a lighthouse',
+          async: true,
+          aspect_ratio: '16:9',
+          params: { steps: 30, negative_prompt: 'blurry' },
+        });
 
       expect(res.status).toBe(200);
       expect(captured[0].size).toBe('16:9');
@@ -382,13 +392,15 @@ describe('Image generation expansion', () => {
         });
       });
 
-      const res = await request(app).post('/api/images/generate').send({
-        provider: '1forall',
-        model: 'black-forest-labs/flux-2-pro',
-        prompt: 'a lighthouse',
-        async: true,
-        params: { cfg_scale: 7 },
-      });
+      const res = await request(app)
+        .post('/api/images/generate')
+        .send({
+          provider: '1forall',
+          model: 'black-forest-labs/flux-2-pro',
+          prompt: 'a lighthouse',
+          async: true,
+          params: { cfg_scale: 7 },
+        });
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe('INVALID_IMAGE_PARAMS');

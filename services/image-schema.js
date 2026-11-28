@@ -101,7 +101,8 @@ function buildDescriptor({ key, source, meta = {}, fallbackDescription = '' }) {
   if (ui === 'number') {
     if (Number.isFinite(Number(min))) descriptor.min = Number(min);
     if (Number.isFinite(Number(max))) descriptor.max = Number(max);
-    descriptor.step = meta.step !== undefined ? meta.step : Number.isInteger(source.step) ? source.step : undefined;
+    descriptor.step =
+      meta.step !== undefined ? meta.step : Number.isInteger(source.step) ? source.step : undefined;
     if (descriptor.step === undefined) {
       descriptor.step = min !== undefined || max !== undefined ? 1 : undefined;
     }

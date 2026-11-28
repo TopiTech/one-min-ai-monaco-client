@@ -253,8 +253,8 @@ describe('Video, Jobs, and Multi-Provider Route Integration Tests', () => {
     });
     expect(videoOk.status).toBe(200);
     const vidSent = JSON.parse(
-      globalThis.fetch.mock.calls
-        .find(([u]) => String(u).endsWith('/v1/external/video/convert-to-video/'))[1].body,
+      globalThis.fetch.mock.calls.find(([u]) => String(u).endsWith('/v1/external/video/convert-to-video/'))[1]
+        .body,
     );
     expect(vidSent.source_image_path).toBe('https://cdn.example.com/frame.png');
     expect(vidSent.speed).toBeUndefined();

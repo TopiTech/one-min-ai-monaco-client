@@ -9,7 +9,11 @@
 import { serverConfig } from '../../config/server.js';
 import { HttpError, invalidRequestError } from '../../utils/errors.js';
 import { isTrustedAssetUrl } from '../../services/asset-proxy.js';
-import { describeOneForAllParams, getCatalogImageFields, validateParamValues } from '../../services/image-schema.js';
+import {
+  describeOneForAllParams,
+  getCatalogImageFields,
+  validateParamValues,
+} from '../../services/image-schema.js';
 import { unwrapAssetProxyUrl } from '../../utils/asset-utils.js';
 import { callOneForAll } from './client.js';
 
@@ -146,9 +150,15 @@ export async function downloadImageForUpload(rawUrl, { signal } = {}) {
     if (!response.ok) {
       throw new HttpError(502, `failed to download source image (${response.status})`, 'IMAGE_FETCH_FAILED');
     }
-    const contentType = String(response.headers.get('content-type') || 'image/png').split(';')[0].trim();
+    const contentType = String(response.headers.get('content-type') || 'image/png')
+      .split(';')[0]
+      .trim();
     if (!contentType.startsWith('image/')) {
-      throw new HttpError(415, `source image has unsupported content type: ${contentType}`, 'INVALID_IMAGE_TYPE');
+      throw new HttpError(
+        415,
+        `source image has unsupported content type: ${contentType}`,
+        'INVALID_IMAGE_TYPE',
+      );
     }
     const declaredLength = Number(response.headers.get('content-length'));
     if (Number.isFinite(declaredLength) && declaredLength > MAX_UPLOAD_BYTES) {
@@ -369,7 +379,14 @@ export function buildOneForAllTextToImageBody({ entry, model, prompt, params = {
  * }} options
  * @returns {Record<string, any>}
  */
-export function buildOneForAllImageToImageBody({ entry, model, prompt, fileReference, params = {}, extra = {} }) {
+export function buildOneForAllImageToImageBody({
+  entry,
+  model,
+  prompt,
+  fileReference,
+  params = {},
+  extra = {},
+}) {
   if (!fileReference) {
     throw new HttpError(400, 'imageUrl is required', 'INVALID_IMAGE_PARAMS');
   }
