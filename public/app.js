@@ -370,6 +370,11 @@ $('createConversation').onclick = async () => {
 
 dom.generateImage.onclick = () => imageManager.generateImage();
 
+// Render the model-specific parameter controls for the initial model.
+if (typeof imageManager.refreshCapabilities === 'function') {
+  Promise.resolve().then(() => imageManager.refreshCapabilities());
+}
+
 dom.uploadAsset.onclick = async () => {
   const file = $('assetInput').files[0];
   if (!file) {

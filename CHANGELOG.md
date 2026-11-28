@@ -26,6 +26,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Per-model image parameters for both providers: 1min.ai's 46 generator /
+  27 editor models and 1forall.ai's catalog `sizes` + `additional_fields` are
+  described by `services/image-schema.js` and exposed through
+  `GET /api/images/capabilities`, so the UI renders model-specific controls
+  instead of a fixed form.
+- `POST /api/images/feature` for the remaining 1min.ai image features
+  (`IMAGE_VARIATOR`, `IMAGE_UPSCALER`, `IMAGE_INPAINTER`, background/object
+  removal, face swap, 3D, image-to-prompt, ...).
+- `scripts/sync-image-specs.js` regenerates `config/image-specs/1min.json`
+  from the public docs (`--dry-run`, `--verbose`, `--report`), with
+  `config/image-specs/1min-overrides.json` holding enums and ranges.
+- 1forall.ai image editing now uploads the source to the model library before
+  calling `image-to-image`, and job polling flattens `urls` /
+  `child_conversions` into a single URL list.
+- Image feature selector and dynamic parameter grid in the image panel
+  (ja/en labels), plus `model-selected` event from the model picker.
+- `tests/image-expansion.test.js` covering capabilities, per-model payloads,
+  unknown-parameter rejection, upload hand-off, multi-output polling, docs
+  transcription integrity, and frontend wiring/i18n.
 - `LICENSE` (MIT) and `SECURITY.md` for public distribution.
 - `.github/` issue and pull request templates and Dependabot config.
 - `monaco-editor` added to Dependabot monitoring.

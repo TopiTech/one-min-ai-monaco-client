@@ -1,0 +1,343 @@
+{
+  "$comment": "UI metadata overlaid on the docs transcription in 1min.json. Keep enums/ranges here (not in the generated file) so a docs re-sync never drops hand-verified constraints. Descriptor fields: ui (select|number|text|boolean|image|array), options, min, max, step, group, labelKey, default. `allowOther` lets the UI accept values outside `options`.",
+  "featureMeta": {
+    "IMAGE_GENERATOR": {
+      "labelKey": "img_feature_generate",
+      "promptParam": "prompt",
+      "group": "generation"
+    },
+    "IMAGE_EDITOR": {
+      "labelKey": "img_feature_edit",
+      "promptParam": "prompt",
+      "group": "generation"
+    },
+    "IMAGE_INPAINTER": {
+      "labelKey": "img_feature_inpaint",
+      "promptParam": "prompt",
+      "group": "generation"
+    },
+    "IMAGE_VARIATOR": {
+      "labelKey": "img_feature_variate",
+      "promptParam": "prompt",
+      "group": "generation"
+    },
+    "IMAGE_UPSCALER": {
+      "labelKey": "img_feature_upscale",
+      "group": "enhance"
+    },
+    "IMAGE_EXTENDER": {
+      "labelKey": "img_feature_extend",
+      "group": "enhance"
+    },
+    "BACKGROUND_REMOVER": {
+      "labelKey": "img_feature_remove_bg",
+      "group": "enhance"
+    },
+    "BACKGROUND_REPLACER": {
+      "labelKey": "img_feature_replace_bg",
+      "promptParam": "prompt",
+      "group": "enhance"
+    },
+    "IMAGE_OBJECT_REMOVER": {
+      "labelKey": "img_feature_remove_object",
+      "group": "enhance"
+    },
+    "TEXT_REMOVER": {
+      "labelKey": "img_feature_remove_text",
+      "group": "enhance"
+    },
+    "SEARCH_AND_REPLACE": {
+      "labelKey": "img_feature_search_replace",
+      "group": "enhance"
+    },
+    "FACE_SWAPPER": {
+      "labelKey": "img_feature_face_swap",
+      "group": "enhance"
+    },
+    "SKETCH_TO_IMAGE": {
+      "labelKey": "img_feature_sketch",
+      "promptParam": "prompt",
+      "group": "generation"
+    },
+    "IMAGE_3D_GENERATOR": {
+      "labelKey": "img_feature_3d",
+      "promptParam": "prompt",
+      "group": "generation"
+    },
+    "IMAGE_TO_PROMPT": {
+      "labelKey": "img_feature_to_prompt",
+      "group": "analyze"
+    },
+    "IMAGE_ANALYSIS": {
+      "labelKey": "img_feature_analyze",
+      "promptParam": "prompt",
+      "group": "analyze"
+    }
+  },
+  "paramMeta": {
+    "prompt": {
+      "ui": "text",
+      "multiline": true,
+      "group": "basic",
+      "labelKey": "img_param_prompt"
+    },
+    "negativePrompt": {
+      "ui": "text",
+      "multiline": true,
+      "group": "advanced",
+      "labelKey": "img_param_negative_prompt"
+    },
+    "negative_prompt": {
+      "ui": "text",
+      "multiline": true,
+      "group": "advanced",
+      "labelKey": "img_param_negative_prompt"
+    },
+    "imageUrl": {
+      "ui": "image",
+      "group": "basic",
+      "labelKey": "img_param_source_image"
+    },
+    "maskUrl": {
+      "ui": "image",
+      "group": "advanced",
+      "labelKey": "img_param_mask"
+    },
+    "image": {
+      "ui": "image",
+      "group": "basic",
+      "labelKey": "img_param_source_image"
+    },
+    "size": {
+      "ui": "text",
+      "group": "output",
+      "labelKey": "img_param_size",
+      "pattern": "^\\d+x\\d+$",
+      "presets": ["1024x1024", "1536x1024", "1024x1536", "1280x720", "720x1280"]
+    },
+    "imageSize": {
+      "ui": "select",
+      "group": "output",
+      "labelKey": "img_param_size",
+      "options": ["1024x1024", "1024x768", "768x1024", "1536x1024", "1024x1536"],
+      "allowOther": true
+    },
+    "aspect_ratio": {
+      "ui": "select",
+      "group": "output",
+      "labelKey": "img_param_aspect_ratio",
+      "options": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "4:5", "5:4", "21:9"],
+      "allowOther": true
+    },
+    "background": {
+      "ui": "select",
+      "group": "output",
+      "labelKey": "img_param_background",
+      "options": ["auto", "transparent", "opaque"],
+      "allowOther": true
+    },
+    "output_format": {
+      "ui": "select",
+      "group": "output",
+      "labelKey": "img_param_output_format",
+      "options": ["png", "jpeg", "webp", "jpg"],
+      "allowOther": true
+    },
+    "format": {
+      "ui": "select",
+      "group": "output",
+      "labelKey": "img_param_output_format",
+      "options": ["webp", "png", "jpg"],
+      "allowOther": true
+    },
+    "output_compression": {
+      "ui": "number",
+      "group": "output",
+      "labelKey": "img_param_output_compression",
+      "min": 0,
+      "max": 100,
+      "step": 1
+    },
+    "output_quality": {
+      "ui": "number",
+      "group": "output",
+      "labelKey": "img_param_output_quality",
+      "min": 1,
+      "max": 100,
+      "step": 1
+    },
+    "quality": {
+      "ui": "select",
+      "group": "output",
+      "labelKey": "img_param_quality",
+      "options": ["low", "medium", "high", "xhigh", "max", "auto"],
+      "allowOther": true
+    },
+    "n": {
+      "ui": "number",
+      "group": "output",
+      "labelKey": "img_param_count",
+      "step": 1
+    },
+    "num_outputs": {
+      "ui": "number",
+      "group": "output",
+      "labelKey": "img_param_count",
+      "step": 1
+    },
+    "num_images": {
+      "ui": "number",
+      "group": "output",
+      "labelKey": "img_param_count",
+      "step": 1
+    },
+    "seed": {
+      "ui": "number",
+      "group": "advanced",
+      "labelKey": "img_param_seed",
+      "step": 1
+    },
+    "steps": {
+      "ui": "number",
+      "group": "advanced",
+      "labelKey": "img_param_steps",
+      "step": 1
+    },
+    "num_inference_steps": {
+      "ui": "number",
+      "group": "advanced",
+      "labelKey": "img_param_steps",
+      "step": 1
+    },
+    "guidance": {
+      "ui": "number",
+      "group": "advanced",
+      "labelKey": "img_param_guidance",
+      "step": 0.1
+    },
+    "guidance_scale": {
+      "ui": "number",
+      "group": "advanced",
+      "labelKey": "img_param_guidance",
+      "step": 0.1
+    },
+    "safety_tolerance": {
+      "ui": "number",
+      "group": "advanced",
+      "labelKey": "img_param_safety_tolerance",
+      "step": 1
+    },
+    "prompt_upsampling": {
+      "ui": "boolean",
+      "group": "advanced",
+      "labelKey": "img_param_prompt_upsampling"
+    },
+    "prompt_strength": {
+      "ui": "number",
+      "group": "advanced",
+      "labelKey": "img_param_prompt_strength",
+      "step": 0.01
+    },
+    "rendering_speed": {
+      "ui": "select",
+      "group": "output",
+      "labelKey": "img_param_rendering_speed",
+      "options": ["TURBO", "DEFAULT", "QUALITY"]
+    },
+    "resolution": {
+      "ui": "text",
+      "group": "output",
+      "labelKey": "img_param_resolution",
+      "allowOther": true
+    },
+    "output_resolution": {
+      "ui": "select",
+      "group": "output",
+      "labelKey": "img_param_output_resolution",
+      "options": ["1K", "2K", "4K", "8K"],
+      "allowOther": true
+    },
+    "transparent": {
+      "ui": "boolean",
+      "group": "output",
+      "labelKey": "img_param_transparent"
+    },
+    "upscale_type": {
+      "ui": "select",
+      "group": "output",
+      "labelKey": "img_param_upscale_type",
+      "options": ["crisp", "creative"]
+    },
+    "mode": {
+      "ui": "select",
+      "group": "advanced",
+      "labelKey": "img_param_mode",
+      "options": ["fast", "relax"],
+      "allowOther": true
+    },
+    "style_type": {
+      "ui": "select",
+      "group": "advanced",
+      "labelKey": "img_param_style",
+      "options": ["NONE", "AUTO", "GENERAL", "REALISTIC", "DESIGN"],
+      "allowOther": true
+    },
+    "style_preset": {
+      "ui": "text",
+      "group": "advanced",
+      "labelKey": "img_param_style",
+      "allowOther": true
+    },
+    "megapixels": {
+      "ui": "select",
+      "group": "output",
+      "labelKey": "img_param_megapixels",
+      "options": ["1", "0.25"],
+      "allowOther": true
+    },
+    "width": {
+      "ui": "number",
+      "group": "output",
+      "labelKey": "img_param_width",
+      "step": 64
+    },
+    "height": {
+      "ui": "number",
+      "group": "output",
+      "labelKey": "img_param_height",
+      "step": 64
+    },
+    "disable_safety_checker": {
+      "ui": "boolean",
+      "group": "advanced",
+      "labelKey": "img_param_disable_safety_checker"
+    },
+    "prompt_extend": {
+      "ui": "boolean",
+      "group": "advanced",
+      "labelKey": "img_param_prompt_extend"
+    },
+    "seed_fixed": {
+      "ui": "number",
+      "group": "advanced",
+      "labelKey": "img_param_seed",
+      "step": 1
+    }
+  },
+  "modelParams": {
+    "SKETCH_TO_IMAGE:stable-image": [
+      { "name": "imageUrl", "type": "string", "required": true, "description": "Path to the sketch image (from Asset API)" },
+      { "name": "prompt", "type": "string", "required": true, "description": "Description of the image to render from the sketch" },
+      { "name": "style_preset", "type": "string", "required": false, "description": "Stable Image style preset" },
+      { "name": "control_strength", "type": "number", "required": false, "min": 0, "max": 1, "description": "How closely the sketch is followed (0-1)" }
+    ],
+    "SKETCH_TO_IMAGE:Qubico/controlnet-scribble": [
+      { "name": "imageUrl", "type": "string", "required": true, "description": "Path to the sketch image (from Asset API)" },
+      { "name": "prompt", "type": "string", "required": true, "description": "Description of the image to render from the sketch" }
+    ],
+    "SKETCH_TO_IMAGE:stable-diffusion-xl": [
+      { "name": "imageUrl", "type": "string", "required": true, "description": "Path to the sketch image (from Asset API)" },
+      { "name": "prompt", "type": "string", "required": true, "description": "Description of the image to render from the sketch" }
+    ]
+  }
+}

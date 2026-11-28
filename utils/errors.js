@@ -57,3 +57,17 @@ export class GatewayTimeoutError extends HttpError {
     super(504, message, code);
   }
 }
+
+/**
+ * Builds a 400 error for request validation failures. The message is repeated
+ * inside `payload` because the global error handler prefers `payload.message`
+ * when sanitizing responses — without it a validation reason would be replaced
+ * by the generic upstream-error text.
+ *
+ * @param {string} message
+ * @param {string} [code]
+ * @param {Record<string, unknown>} [details]
+ */
+export function invalidRequestError(message, code = 'INVALID_REQUEST', details = {}) {
+  return new HttpError(400, message, code, { message, ...details });
+}

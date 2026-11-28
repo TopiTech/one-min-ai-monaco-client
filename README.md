@@ -146,8 +146,10 @@ package.json
 | `POST`   | `/api/models/refresh`                  | 選択プロバイダのモデルカタログを手動再取得する。                                     |
 | `POST`   | `/api/chat`                            | 選択プロバイダ（1min.ai / 1forall.ai）のチャット API へ中継（SSE 対応）。            |
 | `POST`   | `/api/conversations`                   | 会話履歴用の conversation を作成（1min.ai）。                                        |
-| `POST`   | `/api/images/generate`                 | 選択プロバイダの画像生成 API へ中継。                                                |
+| `POST`   | `/api/images/generate`                 | 選択プロバイダの画像生成 API へ中継（モデル別パラメータ対応）。                     |
+| `GET`    | `/api/images/capabilities?provider=...` | モデルが受け付ける画像パラメータ・サイズ・対応機能を返す（UI が動的描画）。          |
 | `POST`   | `/api/images/text-editor`              | 選択プロバイダの画像編集 API へ中継（1min.ai / 1forall image-to-image）。            |
+| `POST`   | `/api/images/feature`                  | 1min.ai の画像系機能（バリエーション・アップスケール・インペイント等）を実行。      |
 | `POST`   | `/api/videos/generate`                 | Text-to-Video / Image-to-Video ジョブを開始し `jobId` を返す。                       |
 | `GET`    | `/api/jobs/:provider/:kind/:jobId`     | 非同期生成ジョブ（`image` / `video` / `llm`）の完了状態と成果物 URL を取得。         |
 | `POST`   | `/api/assets/upload`                   | ローカルから受け取った画像をプロバイダのアセットストレージへアップロード。           |

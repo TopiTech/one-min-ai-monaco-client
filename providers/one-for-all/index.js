@@ -5,6 +5,20 @@ import { translateErrorMessage, parseResponsePayload } from '../../utils/http-cl
 import logger from '../../utils/logger.js';
 import { buildSyntheticSseBody } from '../../utils/sse.js';
 import { callOneForAll } from './client.js';
+import {
+  buildOneForAllImageToImageBody,
+  buildOneForAllTextToImageBody,
+  buildOneForAllTitle,
+  ensureOneForAllFileReference,
+  normalizeOneForAllOutputs,
+  ONE_FOR_ALL_SYNC_MAX_IMAGES,
+  toOpenAiPixelSize,
+  pickOneForAllSize,
+  uploadImageToLibrary,
+} from './images.js';
+import { registerOneForAllModelLimits, resolveOneForAllMaxTokens } from './models.js';
+
+export { buildOneForAllTitle, registerOneForAllModelLimits, resolveOneForAllMaxTokens };
 
 export const ONE_FOR_ALL_CAPABILITIES = Object.freeze({
   webSearch: false,
@@ -19,58 +33,14 @@ export const ONE_FOR_ALL_CAPABILITIES = Object.freeze({
   maxImagesPerRequest: 4,
 });
 
-/** @type {Map<string, { minMaxTokens?: number, defaultMaxTokens?: number }>} */
-const modelTokenLimits = new Map();
-
-export function registerOneForAllModelLimits(models) {
-  if (!Array.isArray(models)) return;
-  for (const m of models) {
-    if (!m?.id) continue;
-    const min = Number(m?.meta?.minMaxTokens ?? m?.min_max_tokens);
-    const def = Number(m?.meta?.defaultMaxTokens ?? m?.default_max_tokens);
-    if (Number.isFinite(min) || Number.isFinite(def)) {
-      modelTokenLimits.set(m.id, {
-        minMaxTokens: Number.isFinite(min) ? min : undefined,
-        defaultMaxTokens: Number.isFinite(def) ? def : undefined,
-      });
-    }
+/** Shallow merge that drops undefined values so defaults are not overwritten. */
+function mergeDefined(base, overrides = {}) {
+  const merged = {};
+  for (const [key, value] of Object.entries({ ...base, ...overrides })) {
+    if (value === undefined || value === null || value === '') continue;
+    merged[key] = value;
   }
-}
-
-/**
- * Generates a short title (<= 100 chars) required by 1forall native image/video endpoints.
- */
-export function buildOneForAllTitle(prompt, fallback = 'AI Generation') {
-  if (typeof prompt !== 'string') return fallback;
-  const firstLine = prompt
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .find(Boolean);
-  if (!firstLine) return fallback;
-  // eslint-disable-next-line no-control-regex
-  const clean = firstLine.replace(/[\u0000-\u001F\u007F]/g, '').trim();
-  return clean ? clean.slice(0, 80) : fallback;
-}
-
-/**
- * Resolves `max_tokens` for 1forall text calls, honoring task defaults (cost control)
- * and ensuring the value never drops below the model's `min_max_tokens`.
- */
-export function resolveOneForAllMaxTokens({ task = 'chat', requestedMaxTokens, model }) {
-  let base;
-  if (Number.isFinite(Number(requestedMaxTokens)) && Number(requestedMaxTokens) > 0) {
-    base = Math.floor(Number(requestedMaxTokens));
-  } else if (task === 'autocomplete') {
-    base = serverConfig.oneForAllMaxTokensAutocomplete;
-  } else if (task === 'inline') {
-    base = serverConfig.oneForAllMaxTokensInline;
-  } else {
-    base = serverConfig.oneForAllMaxTokensChat;
-  }
-
-  const limits = model ? modelTokenLimits.get(model) : undefined;
-  const minTokens = limits?.minMaxTokens ?? 1;
-  return Math.max(base, minTokens);
+  return merged;
 }
 
 function normalizeOpenAiMessages({ prompt, messages, systemPrompt }) {
@@ -97,17 +67,6 @@ function normalizeOpenAiMessages({ prompt, messages, systemPrompt }) {
   }
 
   return out;
-}
-
-function aspectRatioToSize(aspectRatio) {
-  const map = {
-    '1:1': '1024x1024',
-    '16:9': '1792x1024',
-    '9:16': '1024x1792',
-    '4:3': '1280x1024',
-    '3:4': '1024x1280',
-  };
-  return map[aspectRatio] || '1024x1024';
 }
 
 function extractOpenAiErrorDetail(payload, fallbackStatus) {
@@ -167,8 +126,10 @@ const ONE_FOR_ALL_FAILED_STATUSES = new Set([
 export function normalizeOneForAllJobStatus(data, codeRef, kind = 'image') {
   const rawStatus = String(data?.status || '').toLowerCase();
   if (rawStatus === 'completed' || rawStatus === 'success') {
-    const url = data?.url_file || data?.response || '';
-    const urls = url ? [url] : [];
+    const urls = normalizeOneForAllOutputs(data);
+    if (urls.length === 0 && typeof data?.response === 'string' && data.response) {
+      urls.push(data.response);
+    }
     return {
       status: 'completed',
       jobId: codeRef,
@@ -425,39 +386,59 @@ export const oneForAllProvider = {
   },
 
   /**
+   * Generates an image either through the asynchronous native endpoint
+   * (`text-to-image` + `check-status`) or the synchronous OpenAI-compatible
+   * endpoint, depending on `async`.
+   *
+   * `entry` is the catalog entry for `model` (config/models.js); it carries the
+   * model's `sizes` and `additional_fields`, so per-model parameters are
+   * validated against what 1forall actually accepts.
+   *
    * @param {{
    *   prompt: string,
    *   model?: string,
+   *   entry?: object|null,
+   *   params?: Record<string, any>,
+   *   extra?: Record<string, any>,
+   *   async?: boolean,
+   *   signal?: AbortSignal,
    *   num_outputs?: number,
    *   aspect_ratio?: string,
    *   size?: string,
    *   output_format?: string,
-   *   async?: boolean,
-   *   signal?: AbortSignal,
-   * }} params
+   * }} options
    */
   async generateImage({
     prompt,
     model,
-    num_outputs = 1,
-    aspect_ratio = '1:1',
-    size,
-    output_format = 'png',
+    entry = null,
+    params = {},
+    extra = {},
     async: useAsync = false,
     signal,
+    // Legacy top-level equivalents, kept for callers written before `params`.
+    num_outputs,
+    aspect_ratio,
+    size,
+    output_format,
   }) {
     const selectedModel = model || serverConfig.defaultImageModel1ForAll;
+    const effectiveParams = mergeDefined(
+      { num_outputs, aspect_ratio, size, output_format },
+      params,
+    );
     if (useAsync) {
+      const body = buildOneForAllTextToImageBody({
+        entry,
+        model: selectedModel,
+        prompt,
+        params: effectiveParams,
+        extra,
+      });
       const data = await callOneForAll('/v1/external/image/text-to-image/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: buildOneForAllTitle(prompt, 'Generated Image'),
-          text: String(prompt).slice(0, 5000),
-          model: selectedModel,
-          size: aspect_ratio || '1:1',
-          additional_fields: { output_format },
-        }),
+        body: JSON.stringify(body),
         idempotent: false,
         signal,
       });
@@ -465,7 +446,21 @@ export const oneForAllProvider = {
       return buildOneForAllSubmitResponse(data, selectedModel, 'image');
     }
 
-    const n = Math.min(Math.max(Math.round(Number(num_outputs) || 1), 1), 4);
+    const requested = Number(effectiveParams.num_outputs ?? effectiveParams.n ?? 1);
+    const n = Math.min(
+      Math.max(Number.isFinite(requested) ? Math.round(requested) : 1, 1),
+      ONE_FOR_ALL_SYNC_MAX_IMAGES,
+    );
+    // The sync endpoint only takes a pixel size; map the catalog ratio to one.
+    const selectedSize = entry
+      ? toOpenAiPixelSize(
+          pickOneForAllSize(entry, {
+            size: effectiveParams.size,
+            aspectRatio: effectiveParams.aspect_ratio,
+          }),
+        )
+      : toOpenAiPixelSize(effectiveParams.size || effectiveParams.aspect_ratio);
+
     const data = await callOneForAll('/v1/images/generations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -473,7 +468,7 @@ export const oneForAllProvider = {
         model: selectedModel,
         prompt: String(prompt).slice(0, 5000),
         n,
-        size: size || aspectRatioToSize(aspect_ratio),
+        size: selectedSize,
         response_format: 'url',
       }),
       idempotent: false,
@@ -482,7 +477,7 @@ export const oneForAllProvider = {
 
     const urls = Array.isArray(data?.data)
       ? data.data
-          .map((d) => d?.url || (d?.b64_json ? `data:image/png;base64,${d.b64_json}` : null))
+          .map((item) => item?.url || (item?.b64_json ? `data:image/png;base64,${item.b64_json}` : null))
           .filter(Boolean)
       : [];
 
@@ -501,26 +496,48 @@ export const oneForAllProvider = {
   },
 
   /**
+   * Edits an image through the native `image-to-image` endpoint. The source is
+   * uploaded to the 1forall library first when it is not already a library URL,
+   * because `file_reference` only accepts those.
+   *
    * @param {{
    *   imageUrl: string,
    *   prompt: string,
    *   model?: string,
+   *   entry?: object|null,
+   *   params?: Record<string, any>,
+   *   extra?: Record<string, any>,
    *   additionalFields?: Record<string, any>,
    *   signal?: AbortSignal,
-   * }} params
+   * }} options
    */
-  async editImage({ imageUrl, prompt, model, additionalFields = {}, signal }) {
+  async editImage({
+    imageUrl,
+    prompt,
+    model,
+    entry = null,
+    params = {},
+    extra = {},
+    additionalFields,
+    signal,
+  }) {
     const selectedModel = model || serverConfig.defaultImageEditorModel1ForAll;
+    const fileReference = await ensureOneForAllFileReference(imageUrl, {
+      title: buildOneForAllTitle(prompt, 'Edited Image'),
+      signal,
+    });
+    const body = buildOneForAllImageToImageBody({
+      entry,
+      model: selectedModel,
+      prompt,
+      fileReference,
+      params,
+      extra: mergeDefined(extra, additionalFields),
+    });
     const data = await callOneForAll('/v1/external/image/image-to-image/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: buildOneForAllTitle(prompt, 'Edited Image'),
-        text: String(prompt).slice(0, 5000),
-        model: selectedModel,
-        file_reference: imageUrl,
-        additional_fields: additionalFields,
-      }),
+      body: JSON.stringify(body),
       idempotent: false,
       signal,
     });
@@ -594,35 +611,11 @@ export const oneForAllProvider = {
   },
 
   async uploadAsset({ blob, filename }) {
-    const fieldName = process.env.ONE_FOR_ALL_UPLOAD_FIELD || 'file';
     const safeFilename = String(filename || 'upload.png');
-    const extMatch = safeFilename.match(/\.(jpe?g|png)$/i);
-    const mimeIsJpeg =
-      String(blob?.type || '')
-        .toLowerCase()
-        .includes('jpeg') ||
-      String(blob?.type || '')
-        .toLowerCase()
-        .includes('jpg');
-    const format = extMatch
-      ? extMatch[1].toLowerCase().startsWith('jp')
-        ? 'jpeg'
-        : 'png'
-      : mimeIsJpeg
-        ? 'jpeg'
-        : 'png';
-
-    const formData = new FormData();
-    formData.append('title', buildOneForAllTitle(safeFilename, 'Uploaded Image'));
-    formData.append('format', format);
-    formData.append(fieldName, blob, safeFilename);
-
-    const data = await callOneForAll('/v1/external/image/upload/', {
-      method: 'POST',
-      body: formData,
-      idempotent: false,
+    const url = await uploadImageToLibrary(blob, {
+      title: buildOneForAllTitle(safeFilename, 'Uploaded Image'),
+      filename: safeFilename,
     });
-    const url = data?.uploaded_image_url || data?.url_file || data?.source_image_path || '';
     return {
       key: url,
       url,

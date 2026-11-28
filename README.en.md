@@ -145,8 +145,10 @@ See `docs/api-specifications.md` and `docs/api-specifications-1forall.md` for de
 | `POST`   | `/api/models/refresh`                | Refresh upstream model catalogs for the selected or all providers.            |
 | `POST`   | `/api/chat`                          | Relay chat requests (SSE / JSON) to the active provider.                      |
 | `POST`   | `/api/conversations`                 | Create a conversation thread (1min.ai).                                       |
-| `POST`   | `/api/images/generate`               | Relay image generation requests to the active provider.                       |
+| `POST`   | `/api/images/generate`               | Relay image generation requests with model-specific parameters.               |
+| `GET`    | `/api/images/capabilities?provider=...` | Return the image parameters, sizes, and features a model accepts (drives the UI). |
 | `POST`   | `/api/images/text-editor`            | Relay image editing (`IMAGE_EDITOR` / `image-to-image`) requests.             |
+| `POST`   | `/api/images/feature`                | Run 1min.ai image features (variations, upscale, inpaint, ...).               |
 | `POST`   | `/api/videos/generate`               | Start a Text-to-Video or Image-to-Video job and return its `jobId`.           |
 | `GET`    | `/api/jobs/:provider/:kind/:jobId`   | Poll async generation status (`image` / `video` / `llm`) and retrieve URLs.   |
 | `POST`   | `/api/assets/upload`                 | Upload local images to the active provider asset endpoint.                    |

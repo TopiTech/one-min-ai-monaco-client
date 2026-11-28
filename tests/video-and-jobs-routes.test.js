@@ -190,8 +190,22 @@ describe('Video, Jobs, and Multi-Provider Route Integration Tests', () => {
     expect(requestedUrls.some((u) => u.includes('1forall'))).toBe(true);
   });
 
-  test('1forall image edit and video generation unwrap /api/assets/proxy?url= and handle null/bool numbers', async () => {
-    globalThis.fetch = jest.fn(async () => {
+  test('1forall image edit uploads the source before image-to-image and video generation unwraps /api/assets/proxy?url=', async () => {
+    const uploadedUrl = 'https://voicegen-storage.s3.amazonaws.com/media/images/uploaded.png';
+    globalThis.fetch = jest.fn(async (url) => {
+      const target = String(url);
+      if (target.endsWith('/v1/external/image/upload/')) {
+        return new Response(JSON.stringify({ uploaded_image_url: uploadedUrl }), {
+          status: 201,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (target.includes('asset.1min.ai')) {
+        return new Response(Uint8Array.from([0x89, 0x50, 0x4e, 0x47]), {
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+        });
+      }
       return new Response(JSON.stringify({ code_ref: 'job-ref-1', status: 'processing' }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -201,12 +215,34 @@ describe('Video, Jobs, and Multi-Provider Route Integration Tests', () => {
     const editRes = await request(app).post('/api/images/text-editor').send({
       provider: '1forall',
       model: 'flux-kontext',
-      imageUrl: '/api/assets/proxy?url=https%3A%2F%2Fcdn.example.com%2Finput.png',
+      imageUrl: '/api/assets/proxy?key=images%2Fsource.png',
       prompt: 'make it brighter',
     });
     expect(editRes.status).toBe(200);
-    const editSent = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
-    expect(editSent.file_reference).toBe('https://cdn.example.com/input.png');
+    const uploadCall = globalThis.fetch.mock.calls.find(([u]) =>
+      String(u).endsWith('/v1/external/image/upload/'),
+    );
+    expect(uploadCall).toBeTruthy();
+    const translateCall = globalThis.fetch.mock.calls.find(([u]) =>
+      String(u).endsWith('/v1/external/image/image-to-image/'),
+    );
+    const editSent = JSON.parse(translateCall[1].body);
+    // file_reference must be the library URL returned by the upload endpoint.
+    expect(editSent.file_reference).toBe(uploadedUrl);
+
+    const editPassthrough = await request(app).post('/api/images/text-editor').send({
+      provider: '1forall',
+      model: 'flux-kontext',
+      imageUrl: 'https://voicegen-storage.s3.amazonaws.com/media/images/already-owned.png',
+      prompt: 'make it darker',
+    });
+    expect(editPassthrough.status).toBe(200);
+    const passthroughCall = globalThis.fetch.mock.calls
+      .filter(([u]) => String(u).endsWith('/v1/external/image/image-to-image/'))
+      .at(-1);
+    expect(JSON.parse(passthroughCall[1].body).file_reference).toBe(
+      'https://voicegen-storage.s3.amazonaws.com/media/images/already-owned.png',
+    );
 
     const videoOk = await request(app).post('/api/videos/generate').send({
       provider: '1forall',
@@ -216,7 +252,10 @@ describe('Video, Jobs, and Multi-Provider Route Integration Tests', () => {
       speed: null,
     });
     expect(videoOk.status).toBe(200);
-    const vidSent = JSON.parse(globalThis.fetch.mock.calls[1][1].body);
+    const vidSent = JSON.parse(
+      globalThis.fetch.mock.calls
+        .find(([u]) => String(u).endsWith('/v1/external/video/convert-to-video/'))[1].body,
+    );
     expect(vidSent.source_image_path).toBe('https://cdn.example.com/frame.png');
     expect(vidSent.speed).toBeUndefined();
 

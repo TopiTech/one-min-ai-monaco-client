@@ -403,9 +403,23 @@ function selectModel(m) {
   const targetId = _activePickerBtn.dataset.targetInput;
   const hiddenInput = document.getElementById(targetId);
   const labelSpan = _activePickerBtn.querySelector('span:first-of-type');
+  const pickerType = _activePickerType;
   if (hiddenInput) hiddenInput.value = m.id;
   if (labelSpan) labelSpan.textContent = m.label;
   closeModelPicker();
+  // Consumers (image.js) re-render model-specific controls on change; the
+  // hidden input's value is set programmatically, so no `change` event fires.
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    try {
+      window.dispatchEvent(
+        new CustomEvent('model-selected', {
+          detail: { type: pickerType, id: m.id, label: m.label },
+        }),
+      );
+    } catch {
+      // CustomEvent is unavailable in some test harnesses; ignore.
+    }
+  }
 }
 
 function openModelPicker(btn, type) {

@@ -13,6 +13,55 @@ const MAX_CARDS = 50;
 const JOB_POLL_INTERVAL_MS = 3000;
 const JOB_POLL_MAX_MS = 10 * 60 * 1000;
 const PENDING_JOB_STATUSES = new Set(['PROCESSING', 'PENDING', 'QUEUED', 'IN_PROGRESS']);
+const CAPABILITY_CACHE_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Request fields the fixed quick controls already cover. They are hidden from
+ * the dynamic model-parameter grid so a model parameter never has two inputs.
+ */
+const QUICK_GENERATE_KEYS = new Set(['aspect_ratio', 'num_outputs', 'n', 'num_images']);
+const QUICK_EDIT_KEYS = new Set([
+  'size',
+  'quality',
+  'n',
+  'num_outputs',
+  'background',
+  'output_format',
+  'output_compression',
+]);
+const ALWAYS_HIDDEN_PARAM_KEYS = new Set(['prompt', 'imageUrl']);
+const PARAM_STORE_KEY = 'monaco_image_model_params';
+
+/** Reads the per-model parameter values remembered from earlier sessions. */
+function readParamStore(storeKey) {
+  try {
+    if (typeof localStorage === 'undefined') return {};
+    const raw = localStorage.getItem(PARAM_STORE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return (parsed && parsed[storeKey]) || {};
+  } catch {
+    return {};
+  }
+}
+
+function writeParamStore(storeKey, values) {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const raw = localStorage.getItem(PARAM_STORE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    const store = parsed && typeof parsed === 'object' ? parsed : {};
+    store[storeKey] = values;
+    // Keep the store bounded: only the most recent 40 model/feature entries.
+    const keys = Object.keys(store);
+    if (keys.length > 40) {
+      for (const key of keys.slice(0, keys.length - 40)) delete store[key];
+    }
+    localStorage.setItem(PARAM_STORE_KEY, JSON.stringify(store));
+  } catch {
+    // Storage may be unavailable (private mode, quota); persistence is best-effort.
+  }
+}
 
 function hasPendingJobStatus(data) {
   return PENDING_JOB_STATUSES.has(String(data?.status || data?.aiRecord?.status || '').toUpperCase());
@@ -58,6 +107,248 @@ export function createImageState() {
 export function createImageManager(dom) {
   let _mediaMode = 'image';
   let _isGenerating = false;
+  /** @type {Record<string, any>|null} */
+  let _capabilities = null;
+  /** @type {Map<string, { at: number, data: Record<string, any> }>} */
+  const _capabilityCache = new Map();
+  let _capabilityRequestId = 0;
+
+  function getFeatureSelect() {
+    return document.getElementById('imageFeature');
+  }
+
+  function currentFeature() {
+    const select = getFeatureSelect();
+    return (select && select.value) || 'IMAGE_GENERATOR';
+  }
+
+  function isEditModeActive() {
+    if (currentFeature() === 'IMAGE_EDITOR') return true;
+    return Boolean(dom.editorImageUrl?.value?.trim());
+  }
+
+  function isGenericFeatureMode() {
+    const feature = currentFeature();
+    return feature !== 'IMAGE_GENERATOR' && feature !== 'IMAGE_EDITOR';
+  }
+
+  function hiddenParamKeys() {
+    const hidden = new Set(ALWAYS_HIDDEN_PARAM_KEYS);
+    if (isGenericFeatureMode()) return hidden;
+    const quickKeys = isEditModeActive() ? QUICK_EDIT_KEYS : QUICK_GENERATE_KEYS;
+    for (const key of quickKeys) hidden.add(key);
+    return hidden;
+  }
+
+  function capabilityStoreKey() {
+    return `${getActiveProvider()}|${currentFeature()}|${dom.imageModel?.value || ''}`;
+  }
+
+  function persistCurrentParams() {
+    writeParamStore(capabilityStoreKey(), collectModelParams());
+  }
+
+  function buildParamField(param, storedValue) {
+    const field = document.createElement('div');
+    field.className =
+      param.type === 'text' && param.multiline
+        ? 'model-param-field model-param-field--wide'
+        : 'model-param-field';
+
+    const label = document.createElement('label');
+    label.className = 'label-muted-sm';
+    const labelText = param.labelKey ? t(param.labelKey, param.label) : param.label;
+    label.textContent = labelText + (param.required ? ' *' : '');
+    if (param.description) label.title = param.description;
+    field.appendChild(label);
+
+    let control;
+    if (param.type === 'select') {
+      if (param.allowOther) {
+        // Free-form values stay possible: the server validates against the
+        // model's enum and returns the accepted list when it rejects one.
+        control = document.createElement('input');
+        control.type = 'text';
+        control.setAttribute('list', `cap-options-${param.key}`);
+        const datalist = document.createElement('datalist');
+        datalist.id = `cap-options-${param.key}`;
+        for (const option of param.options || []) {
+          const optionEl = document.createElement('option');
+          optionEl.value = String(option);
+          datalist.appendChild(optionEl);
+        }
+        field.appendChild(datalist);
+        if (param.default !== undefined) control.value = String(param.default);
+      } else {
+        control = document.createElement('select');
+        if (!param.required) {
+          const empty = document.createElement('option');
+          empty.value = '';
+          empty.textContent = '—';
+          control.appendChild(empty);
+        }
+        for (const option of param.options || []) {
+          const optionEl = document.createElement('option');
+          optionEl.value = String(option);
+          optionEl.textContent = String(option);
+          control.appendChild(optionEl);
+        }
+        if (param.default !== undefined) control.value = String(param.default);
+      }
+    } else if (param.type === 'boolean') {
+      control = document.createElement('input');
+      control.type = 'checkbox';
+      control.checked = param.default === true || param.default === 'true';
+    } else if (param.type === 'number') {
+      control = document.createElement('input');
+      control.type = 'number';
+      if (param.min !== undefined) control.min = String(param.min);
+      if (param.max !== undefined) control.max = String(param.max);
+      control.step = String(param.step ?? 1);
+      if (param.default !== undefined) control.value = String(param.default);
+    } else if (param.type === 'array' || (param.type === 'text' && param.multiline)) {
+      control = document.createElement('textarea');
+      control.rows = 2;
+      control.placeholder = param.type === 'array' ? t('img_param_array_hint', 'カンマ区切り') : '';
+      if (param.default !== undefined) control.value = String(param.default);
+    } else {
+      control = document.createElement('input');
+      control.type = 'text';
+      if (param.default !== undefined) control.value = String(param.default);
+      if (param.type === 'image') {
+        control.placeholder = t('img_param_image_hint', 'asset key または URL');
+      }
+    }
+
+    if (storedValue !== undefined && storedValue !== null) {
+      if (param.type === 'boolean') {
+        control.checked = storedValue === true || storedValue === 'true';
+      } else if (param.type === 'array') {
+        control.value = Array.isArray(storedValue) ? storedValue.join(', ') : String(storedValue);
+      } else {
+        control.value = String(storedValue);
+      }
+    }
+
+    control.dataset.paramKey = param.key;
+    control.dataset.paramType = param.type;
+    if (param.type !== 'boolean') control.classList.add('u-w-full');
+    field.appendChild(control);
+    return field;
+  }
+
+  function renderParamControls(capabilities) {
+    const section = document.getElementById('modelParamsSection');
+    const grid = document.getElementById('modelParamsGrid');
+    if (!section || !grid) return;
+    grid.textContent = '';
+
+    const hidden = hiddenParamKeys();
+    const params = (capabilities?.params || []).filter((param) => !hidden.has(param.key));
+    if (params.length === 0) {
+      section.classList.add('u-hidden');
+      return;
+    }
+    const stored = readParamStore(capabilityStoreKey());
+    for (const param of params) {
+      grid.appendChild(buildParamField(param, stored[param.key]));
+    }
+    section.classList.remove('u-hidden');
+
+    if (!grid.dataset.persistBound) {
+      grid.dataset.persistBound = '1';
+      const persist = () => persistCurrentParams();
+      grid.addEventListener('change', persist);
+      grid.addEventListener('input', persist);
+    }
+  }
+
+  function applyCapabilities(capabilities) {
+    _capabilities = capabilities;
+    const models = Array.isArray(capabilities?.models) ? capabilities.models : [];
+    const currentModel = dom.imageModel?.value;
+    if (models.length > 0 && currentModel && !models.includes(currentModel)) {
+      // The feature is model-specific; fall back to a documented model instead
+      // of letting the request fail upstream.
+      const fallback = models[0];
+      if (dom.imageModel) dom.imageModel.value = fallback;
+      if (dom.imageModelLabel) {
+        const match = getAllImageModels().find((model) => model.id === fallback);
+        dom.imageModelLabel.textContent = match?.label || fallback;
+      }
+    }
+    renderParamControls(capabilities);
+  }
+
+  async function loadCapabilities({ force = false } = {}) {
+    const provider = getActiveProvider();
+    const feature = isGenericFeatureMode() || currentFeature() === 'IMAGE_EDITOR'
+      ? currentFeature()
+      : 'IMAGE_GENERATOR';
+    const model = dom.imageModel?.value || '';
+    const key = `${provider}|${feature}|${model}`;
+    const cached = _capabilityCache.get(key);
+    if (!force && cached && Date.now() - cached.at < CAPABILITY_CACHE_TTL_MS) {
+      applyCapabilities(cached.data);
+      return cached.data;
+    }
+
+    const requestId = ++_capabilityRequestId;
+    const query = new URLSearchParams({ provider, feature });
+    if (model) query.set('model', model);
+    try {
+      const data = await api(`/api/images/capabilities?${query.toString()}`);
+      if (requestId !== _capabilityRequestId) return cached?.data || null;
+      _capabilityCache.set(key, { at: Date.now(), data });
+      applyCapabilities(data);
+      return data;
+    } catch (err) {
+      if (requestId === _capabilityRequestId) {
+        console.warn('[image] failed to load image capabilities:', err?.message || err);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Reads the rendered model-specific controls back into a plain object.
+   * Empty values are omitted so the model keeps its documented default.
+   */
+  function collectModelParams() {
+    const grid = document.getElementById('modelParamsGrid');
+    const params = {};
+    if (!grid) return params;
+    for (const control of grid.querySelectorAll('[data-param-key]')) {
+      const key = control.dataset.paramKey;
+      const type = control.dataset.paramType;
+      if (!key) continue;
+      if (type === 'boolean') {
+        if (control.checked) params[key] = true;
+        continue;
+      }
+      const raw = String(control.value ?? '').trim();
+      if (raw === '') continue;
+      if (type === 'number') {
+        const num = Number(raw);
+        if (Number.isFinite(num)) params[key] = num;
+        continue;
+      }
+      if (type === 'array') {
+        const list = raw
+          .split(/[\n,]/)
+          .map((item) => item.trim())
+          .filter(Boolean);
+        if (list.length > 0) params[key] = list;
+        continue;
+      }
+      params[key] = raw;
+    }
+    return params;
+  }
+
+  async function refreshCapabilities(options = {}) {
+    return loadCapabilities(options);
+  }
 
   function removeCardCriticalStyles(card) {
     const cmpEl = card?.querySelector?.('.image-comparison-slider');
@@ -109,6 +400,9 @@ export function createImageManager(dom) {
     videoModelWrap?.classList.toggle('u-hidden', _mediaMode !== 'video');
     imageParamsBox?.classList.toggle('u-hidden', _mediaMode === 'video');
     videoParamsBox?.classList.toggle('u-hidden', _mediaMode !== 'video');
+    document
+      .getElementById('imageFeatureWrap')
+      ?.classList.toggle('u-hidden', _mediaMode === 'video' || getActiveProvider() !== '1min');
 
     if (btnText) {
       if (_mediaMode === 'video') {
@@ -117,6 +411,9 @@ export function createImageManager(dom) {
         const hasSource = Boolean(dom.editorImageUrl?.value?.trim());
         btnText.textContent = hasSource ? t('img_edit_btn') : t('img_generate_btn');
       }
+    }
+    if (_mediaMode === 'image') {
+      loadCapabilities();
     }
   }
 
@@ -127,7 +424,38 @@ export function createImageManager(dom) {
     tabVideo?.addEventListener('click', () => setMediaMode('video'));
   }
 
+  function initCapabilityListeners() {
+    const featureSelect = getFeatureSelect();
+    featureSelect?.addEventListener('change', () => {
+      const isFeature = isGenericFeatureMode();
+      const textToImageParams = document.getElementById('textToImageParams');
+      const imageToImageParams = document.getElementById('imageToImageParams');
+      if (isFeature) {
+        textToImageParams?.classList.add('is-hidden');
+        imageToImageParams?.classList.remove('is-shown');
+      } else {
+        textToImageParams?.classList.remove('is-hidden');
+        updateEditorImagePreview(dom.editorImageUrl?.value || '');
+      }
+      loadCapabilities({ force: true });
+    });
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('model-selected', (event) => {
+        if (event?.detail?.type !== 'image') return;
+        loadCapabilities({ force: true });
+      });
+      window.addEventListener('provider-changed', () => {
+        if (getActiveProvider() !== '1min') {
+          if (featureSelect) featureSelect.value = 'IMAGE_GENERATOR';
+        }
+        loadCapabilities({ force: true });
+      });
+    }
+  }
+
   initMediaModeTabs();
+  initCapabilityListeners();
 
   function renderVideos(data) {
     const urls = extractImages(data);
@@ -495,20 +823,45 @@ export function createImageManager(dom) {
     const prompt = dom.imagePrompt?.value?.trim() || '';
     const model = dom.imageModel?.value;
     const provider = getActiveProvider();
+    const feature = currentFeature();
+    const isFeatureMode = isGenericFeatureMode();
 
-    if (!prompt) {
+    if (!prompt && !isFeatureMode) {
       toast.warning(t('img_enter_prompt'));
       return;
     }
+    if (!prompt && !imageUrl) {
+      toast.warning(t('img_enter_prompt_or_image', 'プロンプトまたは画像を指定してください'));
+      return;
+    }
 
-    const isEditMode = !!imageUrl;
+    const isEditMode = !isFeatureMode && (!!imageUrl || feature === 'IMAGE_EDITOR');
+    if (isEditMode && !imageUrl) {
+      toast.warning(t('img_enter_source_image', '編集する画像を指定してください'));
+      return;
+    }
+
     const generateBtn = dom.generateImage;
     _isGenerating = true;
     if (generateBtn) generateBtn.disabled = true;
 
     try {
+      const modelParams = collectModelParams();
       let data;
-      if (isEditMode) {
+      if (isFeatureMode) {
+        data = await api('/api/images/feature', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider,
+            feature,
+            model,
+            prompt: prompt || undefined,
+            imageUrl: imageUrl || undefined,
+            params: modelParams,
+          }),
+        });
+      } else if (isEditMode) {
         data = await api('/api/images/text-editor', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -523,6 +876,7 @@ export function createImageManager(dom) {
             background: document.getElementById('editorBackground')?.value || 'auto',
             output_format: document.getElementById('editorOutputFormat')?.value || 'webp',
             output_compression: document.getElementById('editorOutputCompression')?.value || undefined,
+            params: modelParams,
           }),
         });
       } else {
@@ -535,6 +889,7 @@ export function createImageManager(dom) {
             model,
             num_outputs: document.getElementById('numOutputs')?.value || '1',
             aspect_ratio: document.getElementById('aspectRatio')?.value || '1:1',
+            params: modelParams,
           }),
         });
       }
@@ -542,13 +897,19 @@ export function createImageManager(dom) {
       const jobId = data?.jobId || data?.code_ref || data?.aiRecord?.uuid;
       const isPending =
         hasPendingJobStatus(data) ||
-        (jobId && extractImages(data).length === 0 && provider === '1forall' && isEditMode);
+        Boolean(jobId && extractImages(data).length === 0 && provider === '1forall' && isEditMode);
 
       if (isPending && jobId) {
         data = await pollJobUntilComplete({ provider, kind: 'image', jobId });
       }
 
-      toast.success(isEditMode ? t('img_edited') : t('img_generated_toast'));
+      toast.success(
+        isFeatureMode
+          ? t('img_feature_done', '画像処理が完了しました')
+          : isEditMode
+            ? t('img_edited')
+            : t('img_generated_toast'),
+      );
       if (dom.assetResult) dom.assetResult.textContent = JSON.stringify(data, null, 2);
       renderImages(data, isEditMode ? imageUrl : null);
     } catch (e) {
@@ -639,6 +1000,8 @@ export function createImageManager(dom) {
         if (dom.imageModel) dom.imageModel.value = defaultGen.id;
         if (dom.imageModelLabel) dom.imageModelLabel.textContent = defaultGen.label;
       }
+      renderParamControls(_capabilities);
+      loadCapabilities();
       return;
     }
 
@@ -661,6 +1024,8 @@ export function createImageManager(dom) {
         if (dom.imageModelLabel) dom.imageModelLabel.textContent = defaultEditor.label;
       }
     }
+    renderParamControls(_capabilities);
+    loadCapabilities();
   }
 
   function clearImage() {
@@ -680,5 +1045,7 @@ export function createImageManager(dom) {
     updateEditorImagePreview,
     clearImage,
     pruneImageGallery,
+    refreshCapabilities,
+    collectModelParams,
   };
 }

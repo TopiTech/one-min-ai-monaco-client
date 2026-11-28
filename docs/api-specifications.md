@@ -159,25 +159,49 @@
 - **レスポンス**: 生成されたオブジェクトから `uuid` を取得し、それを `promptObject.conversationId` に渡します。
 
 ---
+## 4. 画像 AI API (Image AI API)
 
-## 4. 画像生成 ＆ 画像テキスト編集 (Image AI API)
+画像機能はすべて汎用の AI Feature エンドポイント (`POST /api/features`) に `type` を指定して呼び出します。
+`promptObject` の形は**モデルごとに異なる**ため、本アプリは公式ドキュメントのパラメータ表を
+転記したスキーマ (`config/image-specs/1min.json`) に従ってリクエストを組み立てます
+（同期手順は 4.8 を参照）。
 
-画像の生成と編集は、汎用の AI Feature エンドポイント (`POST /api/features`) を使用します。
+### 4.1 入力制限 (BFF)
 
-このBFFの画像エンドポイント (`/api/images/generate`、`/api/images/text-editor`) では、上流APIへの過大な
-リクエストや不正な枚数を防ぐため、次の入力制限を適用します。
+BFF の画像エンドポイント (`/api/images/generate`、`/api/images/text-editor`、`/api/images/feature`) は
+上流への過大なリクエストや不正な値を防ぐため、次の制限を適用します。
 
-- `prompt`: 最大50,000文字
-- `imageUrl`: 最大4,096文字
-- `num_outputs` / `n`: 1〜10の整数
-- `size`: 最大32文字（gpt-imageモデルでは下記の解像度制約も適用）
+| 項目 | 制限 |
+| :--- | :--- |
+| `prompt` | 最大 50,000 文字 |
+| `imageUrl` / `maskUrl` | 最大 4,096 文字 |
+| `num_outputs` / `n` | 1〜10 の整数 |
+| `size` | 最大 32 文字。gpt-image 系は 4.3 の解像度制約も適用 |
+| モデル別パラメータ | そのモデルのドキュメントに記載されたキーのみ受理（未知キーは 400 `INVALID_IMAGE_PARAMS`） |
+| 未対応モデル | 機能とモデルの組み合わせが未記載なら 400 `UNSUPPORTED_IMAGE_MODEL` |
 
-### A. 新規画像生成 (IMAGE_GENERATOR)
+### 4.2 新規画像生成 (IMAGE_GENERATOR / 46 モデル)
 
 - **エンドポイント**: `POST /api/features`
-- **リクエストパラメータ `type`**: `"IMAGE_GENERATOR"`
+- **`type`**: `"IMAGE_GENERATOR"`
 
-#### 1. OpenAI (gpt-image) モデル用のパラメータ
+系統ごとの `promptObject`（`scripts/sync-image-specs.js --report` の集計）:
+
+| 系統 | モデル例 | 主なパラメータ |
+| :--- | :--- | :--- |
+| gpt-image | `gpt-image-2`, `gpt-image-2.5-flare/sunburst`, `gpt-image-1-mini` | `prompt`, `size`(必須), `quality`(必須), `n`, `background`, `style`, `output_format`, `output_compression` |
+| flux-2 | `black-forest-labs/flux-2-pro/max/flex/dev/klein-*` | `prompt`, `aspect_ratio`, `output_format`, `output_quality`, `steps`, `guidance`, `safety_tolerance`, `prompt_upsampling`, `seed`, `num_inference_steps`, `megapixels`, `go_fast`, `disable_safety_checker` |
+| flux-1.x | `flux-dev`, `flux-schnell`, `flux-1.1-pro(-ultra)`, `*-lora` | `prompt`, `aspect_ratio`, `image_prompt`, `image_prompt_strength`, `raw_mode`, `seed`, `prompt_strength`, `num_inference_steps`, `guidance`, `output_quality`, `megapixels`, `lora_weights`, `lora_scale`, `width`/`height` |
+| ideogram | `ideogram-4`, `ideogram-3` | `prompt`, `rendering_speed`(必須), `transparent`, `resolution`, `aspect_ratio`, `output_resolution`, `num_images`, `magic_prompt`, `style_type`, `style_preset`, `style_reference_images`, `negative_prompt`, `seed` |
+| leonardo | `leonardo-*`（API 上は UUID のモデルもあり） | `prompt`, `size`, `n`, `negativePrompt`, `leonardo_guidance_scale`, `leonardo_num_inference_steps`, `leonardo_seed`, `leonardo_preset_style`, `leonardo_alchemy`, `leonardo_photo_real`, `leonardo_prompt_magic`, `leonardo_tiling`, `leonardo_transparency` ほか |
+| magic-art | `magic-art`, `magic-art_6_1`, `magic-art_7_0` | `prompt`, `mode`, `n`, `negativePrompt`, `isNiji6`, `maintainModeration`, `aspect_width`, `aspect_height`, `stylize`, `chaos`, `weird`, `character_reference`, `style_reference` |
+| qwen-image | `qwen-image-2.1-pro/turbo`, `qwen-image-3.0(-pro)` | `prompt`, `width`, `height`, `n`, `prompt_extend`, `prompt_extend_mode`, `enable_thinking`, `seed`, `negative_prompt` |
+| gemini | `gemini-2.5-flash-image`, `gemini-3-pro-image-preview`, `gemini-3.1-flash-image-preview` | `prompt`, `imageSize`, `aspectRatio`, `temperature`, `topP` |
+| stable-diffusion | `stable-image`, `stable-image-ultra`, `sd3.5-*`, `stable-diffusion-xl-1024-v1-0` | `prompt`, `negativePrompt`, `aspect_ratio`, `output_format`, `seed`, `style_preset`, `cfg_scale`, `steps`, `sampler`, `samples`, `size`, `image`/`strength` |
+| recraft | `recraft` | `prompt`, `task_type`, `style`, `substyle`, `size`, `n`, `negative_prompt` |
+| その他 | `dzine`, `grok-2-image-1212`, `meta/muse-image` | `prompt` と `style_code`/`size`/`n` などモデル固有 |
+
+リクエスト例:
 
 ```json
 {
@@ -186,8 +210,8 @@
   "promptObject": {
     "prompt": "サイバーパンクな都市の夜景、ネオンライト",
     "size": "1024x1024",
-    "n": 1,
     "quality": "medium",
+    "n": 1,
     "background": "auto",
     "output_format": "png",
     "output_compression": 80
@@ -195,31 +219,54 @@
 }
 ```
 
-#### 2. Flux / Google系モデル用のパラメータ
-
 ```json
 {
   "type": "IMAGE_GENERATOR",
-  "model": "flux-2-pro",
+  "model": "black-forest-labs/flux-2-pro",
   "promptObject": {
     "prompt": "サイバーパンクな都市の夜景、ネオンライト",
-    "num_outputs": 1,
     "aspect_ratio": "16:9",
-    "output_format": "png"
+    "output_format": "png",
+    "output_quality": 80,
+    "steps": 25,
+    "guidance": 3,
+    "prompt_upsampling": true
   }
 }
 ```
 
----
+BFF はモデルが宣言していないパラメータを送信しません。旧クライアントが常時送る
+`num_outputs` / `aspect_ratio` は、そのモデルに `n`/`size` など相当するキーがあれば自動変換し、
+無ければ無視します（例: gpt-image 系への `aspect_ratio` は `size` へ変換）。
 
-### B. 画像テキスト編集 (IMAGE_EDITOR)
+### 4.3 gpt-image 系のサイズ制約（生成・編集の両方に適用）
 
-インプット画像に対し、テキストプロンプト（指示）により一部領域の追加・変更・スタイル変換を行う機能です。
+`gpt-image-` シリーズに `size` を指定する場合、次のすべてを満たす必要があります
+（BFF が送信前に検証し、違反時は 400 を返します）。
 
-- **エンドポイント**: `POST /api/features`
-- **リクエストパラメータ `type`**: `"IMAGE_EDITOR"`
+1. **形式**: `"Width x Height"`（例: `"1024x1024"`, `"1536x1024"`）。
+2. **16の倍数**: 横幅・縦幅ともに 16 の倍数。
+3. **総ピクセル数**: 655,360 〜 8,294,400。
+4. **最長辺**: 3,840px 以下。
+5. **アスペクト比**: 長辺 / 短辺 が 3:1 以下。
 
-#### リクエストパラメータ構造
+`output_compression` は `output_format` が `jpeg` / `webp` のときのみ送信されます。
+
+### 4.4 画像テキスト編集 (IMAGE_EDITOR / 27 モデル)
+
+- **`type`**: `"IMAGE_EDITOR"`
+- 共通: `imageUrl`（Asset API のキーまたは絶対URL）と `prompt` が必須。
+
+| 系統 | モデル例 | 主なパラメータ |
+| :--- | :--- | :--- |
+| gpt-image | `gpt-image-2`, `gpt-image-2.5-*`, `gpt-image-1-mini` | `size`, `quality`, `n`, `background`, `output_format`, `output_compression` |
+| flux-2 | `flux-2-pro/max/flex/dev/klein-4b` | `aspect_ratio`（既定 `match_input_image`）, `output_format`, `output_quality`, `steps`, `guidance`, `prompt_upsampling`, `seed` |
+| flux-kontext | `flux-kontext-pro/max/dev(-lora)` | `aspect_ratio`, `num_inference_steps`, `guidance`, `seed`, `output_quality`, `lora_weights`, `lora_strength`, `megapixels` |
+| flux-1.x | `flux-canny-*`, `flux-depth-*` | `num_outputs`, `num_inference_steps`, `guidance`, `seed`, `format`, `megapixels` |
+| qwen-image | `qwen-image-2.1-*`, `qwen-image-3.0(-pro)` | `additional_images`, `width`, `height`, `n`, `prompt_extend`, `enable_thinking`, `seed`, `negative_prompt` |
+| gemini | `gemini-*` | `imageSize`, `referenceImage1`, `referenceImage2`, `temperature`, `topP` |
+| stable-diffusion | `stable-diffusion-xl-1024-v1-0` | `samples`, `cfg_scale`, `steps`, `seed`, `image_strength`, `step_schedule_start/end`, `sampler`, `style_preset` |
+| muse | `meta/muse-image` | `additional_images` |
 
 ```json
 {
@@ -231,22 +278,63 @@
     "size": "1024x1024",
     "quality": "medium",
     "n": 1,
-    "background": "auto",
-    "output_format": "webp",
-    "output_compression": 90
+    "output_format": "webp"
   }
 }
 ```
 
-#### OpenAI製モデル（gpt-image）の仕様制限（重要）
+### 4.5 マスク編集 (IMAGE_INPAINTER / 7 モデル)
 
-画像編集モデルに `gpt-image-` シリーズを指定する場合、`promptObject.size` パラメータには非常に厳格なルールが存在し、満たさない場合はAPI側でエラーになります。
+- **`type`**: `"IMAGE_INPAINTER"`（ドキュメント上は Image Mask Editor）
+- 必須: `imageUrl`, `maskUrl`（白=編集、黒=保持）, `prompt`
 
-1. **解像度のフォーマット**: `"Width x Height"` の形式（例: `"1024x1024"`, `"1280x1024"`）で指定します。
-2. **16の倍数ルール**: 横幅（W）と縦幅（H）は共に **16の倍数** である必要があります。
-3. **総ピクセル数**: 総ピクセル数（W × H）は **655,360 〜 8,294,400ピクセル** の間である必要があります。
-4. **最長辺制限**: W, H の大きい方の長さが **3840px以下** である必要があります。
-5. **アスペクト比制限**: アスペクト比（長辺 / 短辺）が **3:1以下** である必要があります。
+| 系統 | モデル | 主なパラメータ |
+| :--- | :--- | :--- |
+| gpt-image | `gpt-image-2`, `gpt-image-1`, `gpt-image-1-mini` | `size`, `n`, `quality`, `output_format`, `output_compression`, `background` |
+| flux-fill | `flux-fill-pro`, `flux-fill-dev` | `num_inference_steps`, `guidance`, `seed`, `output_quality`, `megapixels`, `outpaint`, `prompt_upsampling`, `safety_tolerance` |
+| ideogram | `ideogram-3` | `num_images`, `rendering_speed`, `magic_prompt`, `style_type`, `character_reference_images`, `seed` |
+| stable-diffusion | `stable-image` | `output_format` |
+
+### 4.6 その他の画像機能 (12 タイプ)
+
+いずれも `POST /api/features` の `type` で指定します（BFF では `POST /api/images/feature`）。
+
+| `type` | モデル数 | 主な `promptObject` |
+| :--- | :---: | :--- |
+| `IMAGE_VARIATOR` | 10 | `imageUrl`, `format`, `aspect_ratio`, `num_outputs`, `num_inference_steps`, `seed`, `output_quality`, `mode`, `isNiji6`, `maintainModeration` |
+| `IMAGE_UPSCALER` | 4 | `imageUrl`, `upscale_type`(crisp/creative), `upscaling_resize`, `resemblance`, `detail` |
+| `IMAGE_EXTENDER` | 3 | `imageUrl`, `left`/`right`/`up`/`down`, `resolution`, `rendering_speed` |
+| `BACKGROUND_REMOVER` | 3 | `imageUrl`（+ `output_format`） |
+| `BACKGROUND_REPLACER` | 6 | `imageUrl`, `prompt`, `size`, `quality`, `n`, `magic_prompt`, `style_preset` |
+| `IMAGE_OBJECT_REMOVER` | 3 | `imageUrl`, `prompt`/マスク指定 |
+| `TEXT_REMOVER` | 1 | `imageUrl` |
+| `SEARCH_AND_REPLACE` | 1 | `imageUrl`, `search`, `replace` |
+| `FACE_SWAPPER` | 2 | `swapImageUrl`, `targetImageUrl`, `n`, `output_format` |
+| `SKETCH_TO_IMAGE` | 1 | `imageUrl`, `prompt`, `style_preset` |
+| `IMAGE_3D_GENERATOR` | 2 | `imageUrl` |
+| `IMAGE_TO_PROMPT` | 1 | `imageUrl` |
+| `IMAGE_ANALYSIS` | 1 | `imageUrl`, `advancedScan`, `version` |
+
+`TEXT_REMOVER` / `IMAGE_ANALYSIS` はドキュメントのみ存在し、現行カタログに有効モデルが無い場合があります。
+
+### 4.7 非同期実行と結果取得
+
+長い処理（`IMAGE_EDITOR` の `gpt-image-2` + `quality: high` など）は同期リクエストがゲートウェイの
+524 に達するため、`"async": true` を付与して `uuid` を `GET /api/results/:resultId` でポーリングします
+（詳細は 8 章）。BFF は `status: "PROCESSING"` の応答に `jobId` を付けて返します。
+
+### 4.8 パラメータ・スキーマの同期と capabilities API
+
+| 対象 | 内容 |
+| :--- | :--- |
+| `scripts/sync-image-specs.js` | `https://docs.1min.ai` の AI for Image 全ページから `promptObject` の表を抽出し `config/image-specs/1min.json` を再生成（`--dry-run` / `--verbose` / `--report`）。 |
+| `config/image-specs/1min-overrides.json` | 列挙値・範囲・ラベルなど、ドキュメント本文の別表にある情報を人手で補完。 |
+| `services/image-schema.js` | スキーマ解決・値の検証・未知キー拒否・gpt-image のサイズ検証。 |
+| `GET /api/images/capabilities` | `provider` / `feature` / `model` に対し `params[]`（型・列挙・min/max・既定値）、`models[]`、`features[]` を返し、UI が入力欄を動的生成する。 |
+| `POST /api/images/feature` | 4.6 の画像機能を 1 つの経路で実行（`feature` + `params`）。 |
+
+`params[]` の `type` は `select` / `number` / `boolean` / `text` / `image` / `array` の 6 種類で、
+1forall.ai の `additional_fields` も同じ形に正規化されます。
 
 ---
 

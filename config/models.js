@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { callOneMin } from '../utils/api-client.js';
 import { callOneForAll } from '../providers/one-for-all/client.js';
-import { registerOneForAllModelLimits } from '../providers/one-for-all/index.js';
+import { registerOneForAllModelLimits } from '../providers/one-for-all/models.js';
 import { updateOneMinCompatModels } from '../providers/one-min/openai-compat.js';
 import { hasApiKey } from '../services/key-store.js';
 import logger from '../utils/logger.js';
@@ -72,6 +72,16 @@ export const getImageModels = (providerId = '1min') =>
   providerId === '1forall' ? _oneForAllImageModels : _imageModels;
 export const getVideoModels = (providerId = '1min') =>
   providerId === '1forall' ? _oneForAllVideoModels : _videoModels;
+
+/**
+ * Catalog entry (including `meta.sizes` / `meta.additionalFields`) for a
+ * 1forall image model, or null when the catalog does not list it.
+ * @param {string} [modelId]
+ */
+export function getOneForAllImageModel(modelId) {
+  if (!modelId) return null;
+  return _oneForAllImageModels.find((model) => model.id === modelId) || null;
+}
 
 let lastFetchStatus = {
   ok: true,
@@ -296,6 +306,53 @@ function isNotFoundError(error) {
   return error?.status === 404;
 }
 
+const MAX_IMAGE_SIZES = 64;
+const MAX_ADDITIONAL_FIELDS = 64;
+const MAX_FIELD_DESCRIPTION = 300;
+const MAX_FIELD_OPTIONS = 2000;
+
+function normalizeOneForAllSizes(rawSizes) {
+  if (!Array.isArray(rawSizes)) return [];
+  const sizes = [];
+  for (const size of rawSizes.slice(0, MAX_IMAGE_SIZES)) {
+    const code = typeof size?.code === 'string' ? size.code.trim().slice(0, MAX_MODEL_ID_LENGTH) : '';
+    if (!code) continue;
+    sizes.push({
+      code,
+      name: typeof size?.name === 'string' ? size.name.trim().slice(0, MAX_MODEL_LABEL_LENGTH) : code,
+      ratio: typeof size?.ratio === 'string' ? size.ratio.trim().slice(0, 32) : '',
+      default: Boolean(size?.default),
+      enabled: size?.enabled !== false,
+    });
+  }
+  return sizes;
+}
+
+function normalizeOneForAllFields(rawFields) {
+  if (!Array.isArray(rawFields)) return [];
+  const fields = [];
+  for (const field of rawFields.slice(0, MAX_ADDITIONAL_FIELDS)) {
+    const code = typeof field?.code === 'string' ? field.code.trim().slice(0, MAX_MODEL_ID_LENGTH) : '';
+    if (!code || field?.enabled === false) continue;
+    fields.push({
+      code,
+      name: typeof field?.name === 'string' ? field.name.trim().slice(0, MAX_MODEL_LABEL_LENGTH) : code,
+      type: typeof field?.type === 'string' ? field.type.trim().toUpperCase().slice(0, 32) : 'TEXT',
+      itemsType: typeof field?.items_type === 'string' ? field.items_type.trim().toUpperCase() : null,
+      options: typeof field?.options === 'string' ? field.options.trim().slice(0, MAX_FIELD_OPTIONS) : '',
+      default_value: field?.default_value ?? null,
+      min: field?.min ?? null,
+      max: field?.max ?? null,
+      step: field?.step ?? null,
+      required: Boolean(field?.required),
+      enabled: true,
+      description:
+        typeof field?.description === 'string' ? field.description.trim().slice(0, MAX_FIELD_DESCRIPTION) : '',
+    });
+  }
+  return fields;
+}
+
 function normalizeOneForAllModel(rawModel, kind) {
   if (!rawModel || typeof rawModel !== 'object' || Array.isArray(rawModel)) return null;
   if (rawModel.enabled === false || rawModel.deprecated === true) return null;
@@ -338,6 +395,17 @@ function normalizeOneForAllModel(rawModel, kind) {
     }
   }
   if (mode) meta.mode = mode;
+
+  if (kind === 'image') {
+    // The catalog is the only place that describes per-model image parameters:
+    // `sizes` are the accepted aspect codes, `additional_fields` the extra
+    // promptObject-equivalent options (mask, negative_prompt, steps, ...).
+    const sizes = normalizeOneForAllSizes(rawModel.sizes);
+    if (sizes.length > 0) meta.sizes = sizes;
+    const additionalFields = normalizeOneForAllFields(rawModel.additional_fields);
+    if (additionalFields.length > 0) meta.additionalFields = additionalFields;
+    if (rawModel.recommended) meta.recommended = true;
+  }
 
   return {
     id,

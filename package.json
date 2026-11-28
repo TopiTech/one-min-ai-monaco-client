@@ -6,6 +6,8 @@
   "scripts": {
     "copy-monaco": "node scripts/copy-monaco.js",
     "copy-vendor": "node scripts/copy-vendor.js",
+    "sync:image-specs": "node scripts/sync-image-specs.js",
+    "sync:image-specs:report": "node scripts/sync-image-specs.js --report",
     "start": "node scripts/copy-vendor.js && node scripts/copy-monaco.js && node server.js",
     "dev": "node scripts/copy-vendor.js && node scripts/copy-monaco.js && node --watch server.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",

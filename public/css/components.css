@@ -605,6 +605,29 @@ button.ghost:hover {
   display: none;
 }
 
+/* Model-specific parameter grid rendered from /api/images/capabilities */
+#modelParamsGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+#modelParamsGrid .model-param-field {
+  flex: 1 1 200px;
+  min-width: 160px;
+}
+
+#modelParamsGrid .model-param-field--wide {
+  flex: 2 1 100%;
+}
+
+#modelParamsGrid textarea {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+}
+
 .json-preview-sm {
   margin-top: 18px;
   max-height: 200px;
