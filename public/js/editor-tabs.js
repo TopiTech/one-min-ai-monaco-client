@@ -182,7 +182,10 @@ export function createEditorTabManager(editorState, editorManager, dom, callback
   }
 
   async function openFile(filePath) {
-    if (editorState.openTabs.includes(filePath) && editorManager.isDirty?.(filePath)) {
+    // An open tab already holds this file's buffer. Re-reading it would call
+    // model.setValue(), which resets the undo stack and the cursor position of
+    // the tab the user is switching to; switch to the model instead.
+    if (editorState.openTabs.includes(filePath)) {
       await switchToTab(filePath);
       return;
     }

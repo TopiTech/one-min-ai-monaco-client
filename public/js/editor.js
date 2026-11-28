@@ -49,7 +49,7 @@ export function createEditorManager(state) {
 
   function getTheme() {
     // UI-9: Respect OS high-contrast preference
-    if (window.matchMedia?.('(prefers-contrast: more)').matches) {
+    if (window.matchMedia?.('(prefers-contrast: more)')?.matches) {
       return isDarkTheme() ? 'hc-black' : 'hc-light';
     }
     return isDarkTheme() ? 'vs-dark' : 'vs';

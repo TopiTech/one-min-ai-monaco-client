@@ -309,7 +309,7 @@ function initPerformanceModeSettings() {
   if (savedPerfMode !== null) {
     isEnabled = savedPerfMode === 'true';
   } else {
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
       isEnabled = true;
     }
   }

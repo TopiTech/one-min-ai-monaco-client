@@ -24,6 +24,26 @@ function parseNodeCheckError(stderr) {
 }
 
 /**
+ * `spawnSync` does not throw when the child cannot be started or is killed by
+ * its timeout: it returns `{ error, status: null, stderr: null }`. Such a
+ * result carries no syntax information, so it must not be parsed as one.
+ *
+ * @param {{ error?: Error|null, status?: number|null }|null|undefined} result
+ * @returns {boolean}
+ */
+function didSyntaxCheckRun(result) {
+  return Boolean(result) && !result.error && typeof result.status === 'number';
+}
+
+/**
+ * @param {{ error?: Error|null }|null|undefined} result
+ * @returns {Error}
+ */
+function syntaxCheckFailure(result) {
+  return result?.error instanceof Error ? result.error : new Error('node --check did not run');
+}
+
+/**
  * Validate syntax of code in supported languages without executing it.
  *
  * @param {string} code - Source code string.
@@ -74,6 +94,13 @@ export function validateCodeSyntax(code, language = 'javascript') {
         return { valid: true };
       }
 
+      // A spawn failure or timeout produced no exit status and no parser
+      // output. Reporting "Unknown syntax error" for it marked valid files as
+      // broken, and skipped the in-memory fallback below entirely.
+      if (!didSyntaxCheckRun(res)) {
+        throw syntaxCheckFailure(res);
+      }
+
       // If failed due to CommonJS top-level return, check as CommonJS script
       if (res.stderr && res.stderr.includes('Illegal return statement')) {
         const cjsRes = spawnSync(process.execPath, ['--check'], {
@@ -84,6 +111,9 @@ export function validateCodeSyntax(code, language = 'javascript') {
         });
         if (cjsRes.status === 0) {
           return { valid: true };
+        }
+        if (!didSyntaxCheckRun(cjsRes)) {
+          throw syntaxCheckFailure(cjsRes);
         }
         const parsed = parseNodeCheckError(cjsRes.stderr);
         return { valid: false, ...parsed };
